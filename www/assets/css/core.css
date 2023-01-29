@@ -8,6 +8,11 @@ Developed by Caleb Mitchell Smith (PixelCoda)
 Licensed under GPLv3....see LICENSE file. */
 
 
+.modal-content {
+  background-color: #1e1e2d !important;
+}
+
+
 .observation-item{
   color: wheat;
   border-bottom: 1px solid white;
