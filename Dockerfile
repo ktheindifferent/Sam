@@ -1,7 +1,7 @@
 FROM rust:latest
 MAINTAINER caleb <calebsmithwoolrich@gmail.com>
 
-RUN echo "0.0.000025"
+RUN echo "0.0.000026"
 
 RUN apt update
 RUN apt upgrade -y
