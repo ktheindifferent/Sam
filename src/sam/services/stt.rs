@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2022 The Open Sam Foundation (OSF)
+// Copyright 2021-2023 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -80,15 +80,30 @@ pub fn install() -> std::io::Result<()> {
     }
 
     let data = include_bytes!("../../../packages/whisper/main-amd64");
-
     let mut pos = 0;
     let mut buffer = File::create("/opt/sam/bin/whisper")?;
-
     while pos < data.len() {
         let bytes_written = buffer.write(&data[pos..])?;
         pos += bytes_written;
     }
 
+    let data = include_bytes!("../../../fonts/courier.ttf");
+    let mut pos = 0;
+    let mut buffer = File::create("/opt/sam/fonts/courier.ttf")?;
+    while pos < data.len() {
+        let bytes_written = buffer.write(&data[pos..])?;
+        pos += bytes_written;
+    }
+
+    let data = include_bytes!("../../../packages/ffmpeg/amd64/ffmpeg");
+    let mut pos = 0;
+    let mut buffer = File::create("/opt/sam/bin/ffmpeg")?;
+    while pos < data.len() {
+        let bytes_written = buffer.write(&data[pos..])?;
+        pos += bytes_written;
+    }
+
+    crate::sam::tools::linux_cmd(format!("chmod +x /opt/sam/bin/ffmpeg"));
     crate::sam::tools::linux_cmd(format!("chmod +x /opt/sam/bin/whisper"));
     Ok(())
 }

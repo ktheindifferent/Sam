@@ -3,7 +3,7 @@
    ███████    ███████    ██ ████ ██    
         ██    ██   ██    ██  ██  ██    
    ███████ ██ ██   ██ ██ ██      ██ ██ 
-Copyright 2021-2022 The Open Sam Foundation (OSF)
+Copyright 2021-2023 The Open Sam Foundation (OSF)
 Developed by Caleb Mitchell Smith (PixelCoda)
 Licensed under GPLv3....see LICENSE file. */
 
@@ -636,9 +636,6 @@ Licensed under GPLv3....see LICENSE file. */
       height: 50px;
     }
  
-  * {
-      font-family: 'PressStart2P';
-  }
 
 
     .sidebar{
@@ -677,4 +674,33 @@ Licensed under GPLv3....see LICENSE file. */
 
 .content > div > div > div {
   z-index: 1;
+}
+
+
+* {
+  font-family: 'PressStart2P';
+}
+
+.fontfix{
+  font-family: 'PressStart2P' !important;
+  font-size: 10px;
+  float: right;
+}
+
+button.btn {
+  font-family: 'Press Start2P' !important;
+  font-weight: bold;
+}
+
+select {
+  font-family: 'Press Start2P' !important;
+  font-weight: bold;
+}
+
+label{
+  color: white;
+}
+
+.observations-container{
+  color: white;
 }

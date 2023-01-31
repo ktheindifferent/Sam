@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2022 The Open Sam Foundation (OSF)
+// Copyright 2021-2023 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -107,8 +107,15 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
         match get_lifx_service_db_obj(){
             Ok(service) => {
-                let objects = crate::sam::services::lifx::get(service.secret.clone(), false).unwrap();
-                return Ok(Response::json(&objects));
+                let objects = crate::sam::services::lifx::get(service.secret.clone(), false);
+                match objects {
+                    Ok(objects) => {
+                        return Ok(Response::json(&objects));
+                    },
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                }
             },
             Err(e) => {
                 log::error!("{}", e);

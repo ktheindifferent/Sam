@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2022 The Open Sam Foundation (OSF)
+// Copyright 2021-2023 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -350,7 +350,7 @@ pub fn s3_init() {
 
                     if stt.stt.len() > 0 {
                         // Hot Ding
-                        crate::sam::tools::linux_cmd(format!("aplay /opt/sam/beep.wav"));
+                        // crate::sam::tools::linux_cmd(format!("aplay /opt/sam/beep.wav"));
 
 
                         // Observe Sound + Prediction

@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2022 The Open Sam Foundation (OSF)
+// Copyright 2021-2023 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -1292,7 +1292,7 @@ impl Room {
         ])?;
 
         if rows.len() == 0 {
-            client.execute("INSERT INTO rooms (oid, name, icon, location_oid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)",
+            client.execute("INSERT INTO rooms (oid, name, icon, location_oid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
                 &[&self.oid.clone(),
                 &self.name,
                 &self.icon,
@@ -1910,7 +1910,7 @@ impl Observation {
     }
     pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = Config::pg_select(Self::sql_table_name(), Some(format!("id, oid, timestamp, scout_oid, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json")), limit, offset, order, query)?;
+        let jsons = Config::pg_select(Self::sql_table_name(), Some(format!("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json")), limit, offset, order, query)?;
 
         for j in jsons{
             let object: Self = serde_json::from_str(&j).unwrap();

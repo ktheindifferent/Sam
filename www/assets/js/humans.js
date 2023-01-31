@@ -3,35 +3,58 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2022 The Open Sam Foundation (OSF)
+// Copyright 2021-2023 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
 var humans_table = $("#humans_table");
 var humans_table_body = $("#humans_table_body");
+
+const queryString = window.location.search;
+const urlParams = new URLSearchParams(queryString);
+const oid = urlParams.get('oid');
+
 $(document).ready(function() {
 
+    if(oid !== null && oid !== undefined) {
+        initialzeHumanProfile(oid);
+    } else {
+        initialzeHumansTable();
+    }
+    
+    
+});
+
+function initialzeHumanProfile(oid){
+    $("#human_profile_group").show();
+
+
+    $.get(`/api/humans/${oid}`, function( data ) {
+        $("#human_name").val(data.name);
+        $("#human_email").val(data.email);
+        $("#human_phone_number").val(data.phone_number);
+    });
+
+    
+}
+
+function initialzeHumansTable() {
+    $("#humans_index_group").show();
     var html = "";
     $.get("/api/humans", function( data ) {
         $(data).each(function() {
             html += `
                 <tr>
-                    <td>${this.name}</td>
-                    <td>${this.email}</td>
-                    <td>${this.authorization_level}</td>
-                    <td>
-                        <button class='btn btn-xsm btn-primary'>
-                            <i class="fa fa-pencil-alt"></i>
-                        </button>
-                        <button class='btn btn-xsm btn-danger'>
-                            <i class="fa fa-trash"></i>
-                        </button>
+                    <td style="font-size: 12px;">
+                        <a href="/humans.html?oid=${this.oid}">
+                            ${this.name}
+                            <br/>
+                            ${this.email}
+                        </a>
                     </td>
                 </td>
             `;
         });
         $("#humans_table_body").html(html);
     });
-    
-    
-});
+}

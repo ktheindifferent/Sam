@@ -22,22 +22,16 @@ class ObservationDeck {
                 ref.refresh(page+1);
             }
         });
+        
     }
 
 
     open() {
         this.is_open = true;
         var ref = this;
-        if(ref.observations.length > 0) {
-            $("body").append(`<div id='observations_container' class='observations-container'><button onclick="observation_deck.close()" title="Close" class="btn btn-link observations-exit-btn" ><i class="fas fa fa-times"></i></button>
-                ${ref.genHtml()}
-            </div>`);
-        } else {
-            $("body").append(`<div id='observations_container' class='observations-container'><button onclick="observation_deck.close()" title="Close" class="btn btn-link observations-exit-btn" ><i class="fas fa fa-times"></i></button>
-                <p>Loading observations...</p>
-                ${ref.genHtml()}
-            </div>`);
-        }
+        $("body").append(`<div id='observations_container' class='observations-container'><button onclick="observation_deck.close()" title="Close" class="btn btn-link observations-exit-btn" ><i class="fas fa fa-times"></i></button>
+            ${ref.genHtml()}
+        </div>`);
     }
 
     genHtml(){
@@ -47,6 +41,10 @@ class ObservationDeck {
         $(this.observations).each(function(i, obj) {
             html += ref.genObjHtml(obj);
         });
+
+        if(this.observations.length < 1){
+            return "No Observations Yet :( <br/>Add a camera/microphone under things to start recording observations.";
+        }
 
         return html;
     

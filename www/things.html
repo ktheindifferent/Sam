@@ -3,7 +3,7 @@
      ███████    ███████    ██ ████ ██    
           ██    ██   ██    ██  ██  ██    
      ███████ ██ ██   ██ ██ ██      ██ ██ 
-Copyright 2021-2022 The Open Sam Foundation (OSF)
+Copyright 2021-2023 The Open Sam Foundation (OSF)
 Developed by Caleb Mitchell Smith (PixelCoda)
 Licensed under GPLv3....see LICENSE file. -->
 
@@ -215,6 +215,13 @@ div.container {
     background-color: #f2f2f2;
     padding: 20px;
 }
+
+
+.topbar-right-buttons{
+  right: -230px;
+}
+
+
 /* * {
   cursor: none !important;
 } */
@@ -322,7 +329,16 @@ div.container {
    
           <div class="search-bar input-group topbar-right-buttons">
 
-            <button title="Notifications" class="btn btn-link" onclick="notifications.open();"><i class="fas fa-bell"></i></button>
+            <div class="dropdown">
+              <button class="btn btn-link" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                <i class="fas fa-plus"></i>
+              </button>
+              <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                <a class="dropdown-item" href="#" onclick="newThing('rtsp');">Camera</a>
+              </div>
+            </div>
+            <button title="Observation Deck" class="btn btn-link" style="margin-left: 0;" onclick="observation_deck.open();"><i class="fas fa-binoculars"></i></button>
+            <button title="Notifications" class="btn btn-link" style="margin-left: 0;" onclick="notifications.open();"><i class="fas fa-bell"></i></button>
             <button title="Software Store" class="btn btn-link" style="margin-left: 0;" onclick="oss.show();"><i class="fas fa-store-alt"></i></button>
             <button title="Search" class="btn btn-link" style="margin-left: 0;" onclick="search_widget.show();"><i class="fas fa-search"></i></button>
             <button title="Console" class="btn btn-link" style="margin-left: 0;" onclick="window.open('/apps/console/index.html', 'signup', 'menubar=no, location=no, toolbar=no, scrollbars=no, height=300'); return false;"><i class="fas fa-terminal"></i></button>

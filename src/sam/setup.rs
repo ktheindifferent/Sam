@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2022 The Open Sam Foundation (OSF)
+// Copyright 2021-2023 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -42,6 +42,7 @@ pub async fn install() {
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/streams"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/models"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/files"));
+    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/fonts"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/rivescript"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/who.io"));

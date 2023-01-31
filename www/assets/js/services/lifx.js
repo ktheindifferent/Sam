@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2022 The Open Sam Foundation (OSF)
+// Copyright 2021-2023 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -355,7 +355,7 @@ class LifXThing {
                 <h4 class="card-title" style="text-align: center;">
                 <i class="bi bi-lightbulb-off float-left"></i>
      
-                <span style="position: absolute;top: 8px;left: 0;right: 0;width: 100%;text-align: center;">...</span>
+                <span style="position: absolute;top: 8px;left: 0;right: 0;width: 100%;text-align: center; font-size: 10px;">...</span>
                 
                 </h4>
             </div>
@@ -368,7 +368,7 @@ class LifXThing {
 
             if($("#lifx_"+this.oid).length === 0){
                 var xhtml = "";
-                xhtml = `<div class="col-md-6" id="lifx_${this.oid}">`;
+                xhtml = `<div class="col-sm-12 col-md-6" id="lifx_${this.oid}">`;
                 xhtml += html;
                 xhtml += "</div>";
                 $("#things_container").append(xhtml);
@@ -399,14 +399,14 @@ class LifXThing {
 
      
         var icon = "bi bi-lightbulb-off";
-        var button_html = `<button onclick="getLifxThing('${this.oid}').set_state('on')" type="button" class="btn btn-sm btn-secondary"><i class="fas fa-bolt"></i> Turn On</button>`;
+        var button_html = `<button onclick="getLifxThing('${this.oid}').set_state('on')" type="button" class="btn btn-sm btn-secondary"><span class="fontfix">Turn On</span> <i class="fas fa-bolt"></i></button>`;
         var button_color = "secondary";
 
 
         if((this.public_obj !== undefined && this.public_obj.power == "on") || ( this.private_obj !== undefined && this.private_obj.power == "on")){
             icon = "bi bi-lightbulb";
             button_color = "primary";
-            button_html = `<button onclick="getLifxThing('${this.oid}').set_state('off')" type="button" class="btn btn-sm btn-primary"><i class="fas fa-power-off"></i> Turn Off</button>`;
+            button_html = `<button onclick="getLifxThing('${this.oid}').set_state('off')" type="button" class="btn btn-sm btn-primary"><span class="fontfix">Turn Off</span> <i class="fas fa-power-off"></i></button>`;
         }
 
         if((this.public_obj === undefined) && ( this.private_obj === undefined)){
@@ -423,7 +423,7 @@ class LifXThing {
                     var title = "Unknown";
                     if(!this.group_mode){
                         title = this.thing.name;
-                        html += `<small style="font-size: 10px;position: absolute;top: 28px;left: 0;right: 0;width: 100%;text-align: center;"><a href="/rooms.html?oid=${this.thing.room.oid}">${this.thing.room.name}</a></small>`;
+                        html += `<small style="font-size: 10px;position: absolute;top: 32px;left: 0;right: 0;width: 100%;text-align: center;"><a href="/rooms.html?oid=${this.thing.room.oid}">${this.thing.room.name}</a></small>`;
                     } else {
                         if(this.public_obj !== undefined && this.public_obj !== null){
                             title = this.public_obj.group.name + " Group";
@@ -432,7 +432,7 @@ class LifXThing {
                     }
                     
                     
-                    html += `<span style="position: absolute;top: 8px;left: 0;right: 0;width: 100%;text-align: center;">${title}</span>
+                    html += `<span style="position: absolute;top: 18px;left: 0;right: 0;width: 100%;text-align: center; font-size: 10px;">${title}</span>
                             
                             <button onclick="getLifxThing('${this.oid}').settings()" class="btn btn-xsm btn-${button_color}" href="#" style="
                                 right: 10px;
@@ -462,7 +462,7 @@ class LifXThing {
     
             if($("#lifx_"+this.oid).length === 0){
                 var xhtml = "";
-                xhtml = `<div class="col-md-6" id="lifx_${this.oid}">`;
+                xhtml = `<div class="col-sm-12 col-md-6" id="lifx_${this.oid}">`;
                 xhtml += html;
                 xhtml += "</div>";
                 $("#things_container").append(xhtml);
@@ -472,7 +472,6 @@ class LifXThing {
                 $("#lifx_"+this.oid).find( "div" )[2].classList.remove("animate");
                 $($("#lifx_"+this.oid).find( "div" )[1]).find("button")[0].disabled = false;
                 $($("#lifx_"+this.oid).find( "div" )[2]).find("button")[0].disabled = false;
-                
             }
     
    

@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2022 The Open Sam Foundation (OSF)
+// Copyright 2021-2023 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -89,7 +89,7 @@ $(document).ready(function() {
                 `;
 
                 html += `
-                    <div class="col-md-3" id="lifx_pxlITlL9w3Lf2Z2">
+                    <div class="col-lg-3 col-sm-6" id="lifx_pxlITlL9w3Lf2Z2">
                         <div class="card ">
                             <div class="card-header">
                                 <h4 class="card-title" style="text-align: center;"><i class="fas fa-lightbulb float-left"></i><span>${location.name}</span></h4>
