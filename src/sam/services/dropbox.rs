@@ -9,6 +9,9 @@ use rouille::Request;
 use rouille::Response;
 use serde::{Serialize, Deserialize};
 
+use std::fs::File;
+use std::io::prelude::*;
+
 pub fn get_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String(format!("dropbox")));
@@ -99,6 +102,17 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
        
     }
 
+    if request.url() == "/api/services/dropbox/download" {
+
+        let path_param = request.get_param("path").unwrap();
+        let data = download_file(&path_param).unwrap();
+        
+        let response = Response::from_data("", data);
+
+
+        return Ok(response);
+    }
+
     if request.url() == "/api/services/dropbox/auth/1" {
         let auth = get_auth_url();
         return Ok(Response::json(&auth));
@@ -162,13 +176,22 @@ pub fn create_folder(path: &str){
 
 }
 
-pub fn download_file(dropbox_path: &str, file_system_path: &str){
+// TODO: Cache Files
+pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
     let obj = get_db_obj().unwrap();
     let mut auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
     let dropbox_file = dropbox_sdk::files::download(&client, &dropbox_sdk::files::DownloadArg::new(dropbox_path.clone().to_string()), None, None);
+    
+    let mut body = dropbox_file.unwrap().unwrap().body.unwrap();
 
-    // log::info!("dropbox_file: {:?}", dropbox_file);
+    let mut data = Vec::new();
+    body.read_to_end(&mut data).expect("Unable to read data");
+
+    return Ok(data);
+    
+
+    // log::info!("dropbox_file: {:?}", );
 }
 
 pub fn delete(path: &str){

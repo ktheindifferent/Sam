@@ -21,7 +21,7 @@ class StoredFiles {
         this.default_storage_location = undefined;
 
        var ref = this;
-        $.get("/api/settings/key:default_storage_location/value", function( data ) {
+        $.get("/api/settings/key:default_file_storage_location/value", function( data ) {
             ref.default_storage_location = data;
         });
         
@@ -129,9 +129,10 @@ class StoredFiles {
                             </tr>
                         `;
                     } else {
+                        file_name = this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", "");
                         html += `
-                        <tr onclick="openDropboxFile('${this.path}', '${this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", "")}')">
-                            <td>${this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", "")}</td>
+                        <tr onclick='openDropboxFile("${this.path}")'>
+                            <td>${file_name}</td>
                         </tr>
                     `;
                     }
@@ -146,7 +147,7 @@ class StoredFiles {
         // Opened dropbox directory
         if(this.virtual_path !== "/Dropbox/" && this.virtual_path.includes("/Dropbox/") && !this.opened_file.open){
             html += `
-                <tr onclick="returnToRootPath()">
+                <tr onclick="returnToPreviousPath()">
                     <td><i style="font-size: 20px;" class="fas fa-caret-left"></i> Back</td>
                 </tr>
             `;
@@ -162,7 +163,7 @@ class StoredFiles {
                         `;
                     } else {
                         html += `
-                            <tr onclick="openDropboxFile('${this.path}', ${this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", "")})">
+                            <tr onclick="openDropboxFile('${this.path}')">
                                 <td>${this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", "")}</td>
                             </tr>
                         `;
@@ -177,28 +178,50 @@ class StoredFiles {
 
         // Opened dropbox file
         if(this.virtual_path !== "/Dropbox/" && this.virtual_path.includes("/Dropbox/") && this.opened_file.open){
-         
-
 
             html += `
-                <tr onclick="returnToRootPath()">
-                    <td><i style="font-size: 20px;" class="fas fa-caret-left"></i> Back</td>
+                <tr onclick="returnToPreviousPath()">
+                    <td class='no-controller-select'>
+                        <button class="btn btn-sm btn-secondary">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+
+                        <button class="btn btn-sm btn-danger">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
                 </tr>
             `;
-
 
             html += `
                 <tr>
                     <td class='no-controller-select'><center>${this.opened_file.filename}</center></td>
                 </tr>
             `;
+            
+
+            var x = this.opened_file.filename;
+
+            // If opend file is an image:
+            if(x.includes(".png") || x.includes(".jpg") || x.includes(".jpeg")){
+                html += `<tr><td class='no-controller-select'><img style="width: 100%;" src='/api/services/dropbox/download?path=${this.virtual_path.replace("/Dropbox", "")}'></img></td></tr>`;
+            }
+
+
+            if(x.includes(".mp4") ){
+                html += `<tr><td class='no-controller-select'>
                 
+                <video width="320" height="240" controls>
+                    <source src="/api/services/dropbox/download?path=${this.virtual_path.replace("/Dropbox", "")}" type="video/mp4">
+                </video>
+                
+                </td></tr>`;
+            }
 
-
-
-          
 
             
+
+
         }
 
         // Opened file from SQL storage
@@ -233,7 +256,7 @@ class StoredFiles {
 
             // If opend file is an image:
             if(x.includes(".png") || x.includes(".jpg") || x.includes(".jpeg")){
-                html += `<tr><td class='no-controller-select'><img style="width: 100%;" src='/files/${this.virtual_path.replace("oid:", "")}'></img></td></tr>`;
+                html += `<tr><td class='no-controller-select'><img style="width: 100%;" src='/api/services/storage/file/${this.virtual_path.replace("oid:", "")}'></img></td></tr>`;
             }
 
 
@@ -241,7 +264,7 @@ class StoredFiles {
                 html += `<tr><td class='no-controller-select'>
                 
                 <video width="320" height="240" controls>
-                    <source src="/files/${this.virtual_path.replace("oid:", "")}" type="video/mp4">
+                    <source src="/api/services/storage/file/${this.virtual_path.replace("oid:", "")}" type="video/mp4">
                 </video>
                 
                 </td></tr>`;
@@ -380,16 +403,18 @@ function returnToRootPath(){
 }
 
 function openDropboxPath(path){
+    stored_files.return_path = stored_files.virtual_path;
     stored_files.virtual_path = "/Dropbox" + path;
     stored_files.opened_file.open = false;
     stored_files.opened_file.filename = "";
     stored_files.refreshHTML();
 }
 
-function openDropboxFile(path, name){
+function openDropboxFile(path){
+    nname = path.replace(path.replace("/Dropbox", ""), "").replace("/", "");
     stored_files.virtual_path = "/Dropbox" + path;
     stored_files.opened_file.open = true;
-    stored_files.opened_file.filename = name;
+    stored_files.opened_file.filename = path.split("/").pop();
     stored_files.refreshHTML();
 }
 
@@ -402,25 +427,22 @@ function openFile(oid, name){
 }
 
 function returnToPreviousPath(){
-    if(stored_files.return_path === stored_files.virtual_path){
-        var split = stored_files.virtual_path.split("/");
-        console.log(split.length);
 
-        if(split.length === 2 || split.length === 1){
-            return returnToRootPath();
-        }
+    var split = stored_files.virtual_path.split("/");
+    split.pop();
 
-
-        var popped = split.splice(-1);
-        console.log(popped);
-        if(popped.length > 0){
-            var npath = popped.join("/");
-            stored_files.return_path = npath;
-        } else {
-            stored_files.return_path = "/";
-        }
-
+    if(split.length === 2 && split[1] === "Dropbox"){
+        return openDropboxRoot();
     }
+
+    if(split.length > 0){
+        var npath = split.join("/");
+        stored_files.return_path = npath;
+    } else {
+        stored_files.return_path = "/";
+    }
+
+    // Safty for blank return paths
     if(stored_files.return_path.length < 1){
         stored_files.return_path = "/";
     }

@@ -681,10 +681,21 @@ Licensed under GPLv3....see LICENSE file. */
   font-family: 'PressStart2P';
 }
 
+.btn-max{
+  width: 100%;
+}
+
 .fontfix{
   font-family: 'PressStart2P' !important;
   font-size: 10px;
   float: right;
+}
+
+.fontfix2 {
+  font-family: 'PressStart2P' !important;
+  font-size: 12px;
+  float: right;
+  margin-left: 5px;
 }
 
 button.btn {

@@ -38,6 +38,7 @@ invidious = "0.4.0"
 rustube = { version = "0.6.0", features = ["blocking"] }
 tch = "0.10.1"
 anyhow = "1.0.66"
+titlecase = "2.2.1"
 
 [features]
 default = ["reqwest/default-tls", "trust-dns-resolver/dns-over-native-tls"]

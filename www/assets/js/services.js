@@ -40,58 +40,50 @@ $(document).ready(function() {
 
         if(paired_services.jupiter) {
             $("#jupiter_card_body").html(`
-            <h3>Connected</h3>
-            <button type="button" class="btn btn-secondary"><i class="fas fa-unlink"></i> Un-Link</button>
-        `);
+                <h5>Connected</h5>
+                <button type="button" class="btn btn-secondary"><i class="fas fa-unlink"></i> <span class="fontfix2">Un-Link</span></button>
+            `);
         } else {
-           
             $("#jupiter_card_body").html(`
-                <h3>Not Connected</h3>
-                <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#pair_jupiter_modal" aria-expanded="false" aria-controls="pair_spotify_modal" aria-label="pair_spotify_modal"><i class="fas fa-link"></i> Link</button>
+                <h5>Not Connected</h5>
+                <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#pair_jupiter_modal" aria-expanded="false" aria-controls="pair_spotify_modal" aria-label="pair_spotify_modal"><i class="fas fa-link"></i> <span class="fontfix2">Link</span></button>
             `);
         }
 
 
-
         if(paired_services.spotify) {
             $("#spotify_card_body").html(`
-            <h3>Connected</h3>
-            <button type="button" class="btn btn-secondary"><i class="fas fa-unlink"></i> Un-Link</button>
-        `);
+                <h5>Connected</h5>
+                <button type="button" class="btn btn-secondary"><i class="fas fa-unlink"></i> <span class="fontfix2">Un-Link</span></button>
+            `);
         } else {
-           
             $("#spotify_card_body").html(`
-                <h3>Not Connected</h3>
-                <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#pair_spotify_modal" aria-expanded="false" aria-controls="pair_spotify_modal" aria-label="pair_spotify_modal"><i class="fas fa-link"></i> Link</button>
+                <h5>Not Connected</h5>
+                <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#pair_spotify_modal" aria-expanded="false" aria-controls="pair_spotify_modal" aria-label="pair_spotify_modal"><i class="fas fa-link"></i> <span class="fontfix2">Link</span></button>
             `);
         }
 
         if(paired_services.dropbox) {
             $("#dropbox_card_body").html(`
-            <h3>Connected</h3>
-            <button type="button" class="btn btn-secondary"><i class="fas fa-unlink"></i> Un-Link</button>
-        `);
-        } else {
-           
-            
-            $("#dropbox_card_body").html(`
-                <h3>Not Connected</h3>
-                <button type="button" class="btn btn-primary" onclick="linkDropboxAccount()" aria-expanded="false"><i class="fas fa-link"></i> Link</button>
+                <h5>Connected</h5>
+                <button type="button" class="btn btn-secondary"><i class="fas fa-unlink"></i> <span class="fontfix2">Un-Link</span></button>
             `);
-        
-
+        } else {
+            $("#dropbox_card_body").html(`
+                <h5>Not Connected</h5>
+                <button type="button" class="btn btn-primary" onclick="linkDropboxAccount()" aria-expanded="false"><i class="fas fa-link"></i> <span class="fontfix2">Link</span></button>
+            `);
         }
 
         if(paired_services.lifx) {
             $("#lifx_card_body").html(`
-            <h3>Connected</h3>
-            <button type="button" class="btn btn-secondary"><i class="fas fa-unlink"></i> Un-Link</button>
-        `);
-        } else {
-           
+                <h5>Connected</h5>
+                <button type="button" class="btn btn-secondary"><i class="fas fa-unlink"></i> <span class="fontfix2">Un-Link</span></button>
+            `);
+        } else {  
             $("#lifx_card_body").html(`
-                <h3>Not Connected</h3>
-                <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#pair_lifx_modal" aria-expanded="false" aria-controls="pair_lifx_modal" aria-label="pair_lifx_modal"><i class="fas fa-link"></i> Link</button>
+                <h5>Not Connected</h5>
+                <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#pair_lifx_modal" aria-expanded="false" aria-controls="pair_lifx_modal" aria-label="pair_lifx_modal"><i class="fas fa-link"></i> <span class="fontfix2">Link</span></button>
             `);
         }
 

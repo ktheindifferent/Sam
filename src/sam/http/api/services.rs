@@ -48,6 +48,10 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
     if request.url().contains("/api/services/storage"){
         return crate::sam::services::storage::handle(current_session, request);   
     }
+
+    if request.url().contains("/api/services/image"){
+        return crate::sam::services::image::handle(current_session, request);   
+    }
     
     
     

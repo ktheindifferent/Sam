@@ -41,6 +41,7 @@ pub async fn install() {
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/dat"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/streams"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/models"));
+    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/models/nst"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/files"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/fonts"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts"));
@@ -132,6 +133,9 @@ pub async fn install() {
             }
         }
     }
+
+    // NST
+    crate::sam::services::image::nst::install();
     
 }
 
