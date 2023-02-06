@@ -12,7 +12,7 @@ class VideoPlayer {
             this.player_html = `<iframe class='video-youtube' src="https://www.youtube.com/embed/${youtube_id}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
         
             // Tell sever to cache video in tmp cache
-            // $.get(`/api/services/youtube/cache?id=${youtube_id}`, function( data ) {});
+            // $.get(`/api/services/media/youtube/cache?id=${youtube_id}`, function( data ) {});
         
             // this.player_html = `
             // <video

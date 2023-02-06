@@ -44,6 +44,7 @@ pub async fn install() {
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/models/nst"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/files"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/fonts"));
+    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/games"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/rivescript"));
     crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/who.io"));
@@ -95,14 +96,6 @@ pub async fn install() {
         }
     }
 
-    match crate::sam::services::snapcast::install(){
-        Ok(_) => {
-            log::info!("Snapcast server installed successfully");
-        },
-        Err(e) => {
-            log::error!("Failed to install snapcast server: {}", e);
-        }
-    }
 
     match crate::sam::services::stt::install(){
         Ok(_) => {
@@ -113,9 +106,9 @@ pub async fn install() {
         }
     }
 
-    match crate::sam::services::image::install(){
+    match crate::sam::services::media::install(){
         Ok(_) => {
-            log::info!("Image service installed successfully");
+            log::info!("Media service installed successfully");
         },
         Err(e) => {
             log::error!("Failed to install image service: {}", e);
@@ -134,9 +127,6 @@ pub async fn install() {
         }
     }
 
-    // NST
-    crate::sam::services::image::nst::install();
-    
 }
 
 

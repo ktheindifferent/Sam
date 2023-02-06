@@ -41,7 +41,7 @@ async fn main() {
     config.init().await;
 
     // Initialize Snapcast Server
-    crate::sam::services::snapcast::init();
+    crate::sam::services::media::snapcast::init();
 
     // Initialize Web Socket Server
     crate::sam::services::socket::init();
@@ -59,7 +59,7 @@ async fn main() {
     crate::sam::http::api::settings::set_defaults();
     
     // Configure Snapcast
-    crate::sam::services::snapcast::configure();
+    crate::sam::services::media::snapcast::configure();
 
     // Initialize Storage Service
     crate::sam::services::storage::init();

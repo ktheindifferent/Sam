@@ -29,6 +29,9 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
             pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid));
             pg_query.query_coulmns.push(format!(" AND human_oid ="));
 
+            pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.sid));
+            pg_query.query_coulmns.push(format!(" AND sid ="));
+
             let notifications = crate::sam::memory::Notification::select(None, None, Some(format!("timestamp DESC")), Some(pg_query))?;
             
             return Ok(Response::json(&notifications));

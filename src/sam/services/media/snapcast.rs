@@ -96,7 +96,7 @@ pub fn install() -> std::io::Result<()> {
 }
 
 pub fn install_snapcast_server_arm64() -> std::io::Result<()> {
-    let data = include_bytes!("../../../packages/snapcast/0.26.0/arm64/bullseye/snapserver.deb");
+    let data = include_bytes!("../../../../packages/snapcast/0.26.0/arm64/bullseye/snapserver.deb");
     let mut pos = 0;
     let mut buffer = File::create("/opt/sam/tmp/snapserver.deb")?;
     while pos < data.len() {
@@ -110,7 +110,7 @@ pub fn install_snapcast_server_arm64() -> std::io::Result<()> {
 }
 
 pub fn install_snapcast_server_arm() -> std::io::Result<()> {
-    let data = include_bytes!("../../../packages/snapcast/0.26.0/snapserver_0.26.0-1_armhf.deb");
+    let data = include_bytes!("../../../../packages/snapcast/0.26.0/snapserver_0.26.0-1_armhf.deb");
     let mut pos = 0;
     let mut buffer = File::create("/opt/sam/tmp/snapserver.deb")?;
     while pos < data.len() {
@@ -124,7 +124,7 @@ pub fn install_snapcast_server_arm() -> std::io::Result<()> {
 }
 
 pub fn install_snapcast_server_amd64() -> std::io::Result<()> {
-    let data = include_bytes!("../../../packages/snapcast/0.26.0/snapserver_0.26.0-1_amd64.deb");
+    let data = include_bytes!("../../../../packages/snapcast/0.26.0/snapserver_0.26.0-1_amd64.deb");
     let mut pos = 0;
     let mut buffer = File::create("/opt/sam/tmp/snapserver.deb")?;
     while pos < data.len() {

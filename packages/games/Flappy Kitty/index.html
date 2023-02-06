@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Flappy Kitty</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src * data: gap: https://ssl.gstatic.com 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; media-src *; frame-src *; img-src * data: content:;">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="msapplication-tap-highlight" content="no">
+  <meta name="viewport" content="width=device-width, user-scalable=0, minimum-scale=1.0, maximum-scale=1.0"/>
+
+  <script type="text/javascript" src="js/phaser.min.js"></script>
+
+  <!-- Wormbox Fonts and Styles -->
+  <link rel="stylesheet" type="text/css" href="wormbox-core/fonts/google/permanent_marker.css">
+  <link rel="stylesheet" type="text/css" href="wormbox-core/fonts/google/material.css">
+  <link rel="stylesheet" type="text/css" href="wormbox-core/fonts/press_start/press_start.css">
+  <link rel="stylesheet" type="text/css" href="wormbox-core/css/vendor/vuetify-v2.1.10.css">
+  <link rel="stylesheet" type="text/css" href="wormbox-core/css/vendor/toastr.min.css">
+  <link rel="stylesheet" type="text/css" href="wormbox-core/css/wormbox.css">
+
+  <!-- Wormbox Vendor Scripts -->
+  <script type="text/javascript" src="wormbox-core/vendor/firebase/firebase-app.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/firebase/firebase-analytics.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/firebase/firebase-auth.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/firebase/firebase-database.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/jquery.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/offline/offline.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/html2canvas.js"></script> 
+  <script type="text/javascript" src="wormbox-core/vendor/i18n.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/lodash.min.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/vue.min.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/toastr.min.js"></script>
+  <script type="text/javascript" src="wormbox-core/vendor/vuetify-v2.1.10.min.js"></script>
+
+  <!-- Monitize -->
+  <script type="text/javascript" src="js/monitize.js"></script>
+  
+  <!-- Localize -->
+  <script type="text/javascript" src="wormbox-core/tools/wormboxLocalize.js"></script>
+  <script type="text/javascript" src="wormbox-core/tools/wormboxMusic.js"></script>
+  <script type="text/javascript" src="wormbox-core/tools/wormboxEvents.js"></script>
+  <script type="text/javascript" src="wormbox-core/tools/wormboxTools.js"></script>
+  <script type="text/javascript" src="wormbox-core/tools/wormboxWindowManager.js"></script>
+  <script type="text/javascript" src="wormbox-core/modals/wormboxUser.js"></script>
+  <script type="text/javascript" src="wormbox-core/ui/wormboxAuthenticatable.js"></script>
+  <script type="text/javascript" src="wormbox-core/ui/wormboxNotification.js"></script>
+  <script type="text/javascript" src="wormbox-core/ui/wormboxShareable.js"></script>
+  <script type="text/javascript" src="wormbox-core/ui/wormboxSpinner.js"></script>
+  <script type="text/javascript" src="wormbox-core/ui/wormboxTOS.js"></script>
+  <script type="text/javascript" src="wormbox-core/ui/menus/wormboxJoinFriendMenu.js"></script>
+  <script type="text/javascript" src="js/wormbox-config.js"></script>
+  <script type="text/javascript" src="wormbox-core/wormbox.js"></script>
+  <script src="js/bootstrap.js"></script>
+  
+
+
+  <style>
+  body{
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #000;
+  }
+  #screen{
+    position: fixed;
+    top: 0;
+  }
+
+  #screen canvas{
+    margin: 0 auto;
+  }
+  </style>
+</head>
+<body>
+<div id="settings">
+  <v-app id="inspire">
+    <div class="text-left">
+      <v-menu offset-y>
+        <template v-slot:activator="{ on }">
+          <v-btn class="ma-2" text icon color="white" v-on="on">
+            <v-icon>mdi-settings</v-icon>
+          </v-btn>
+        </template>
+        <v-list>
+          <v-list-item
+            v-for="(item, index) in items"
+            :key="index"
+            v-bind:class="{ themeBtnActive: items[index].isActive, themeBtnIsHidden: items[index].isHidden }"
+            @click="changeGameMode(item.key);"
+          >
+            <v-list-item-title v-bind:class="{ localizeLang: true }">{{ item.title }}</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+    </div>
+  </v-app>
+</div>
+<div id="loading_overlay"></div>
+<div id="loading">Loading<span class="loading-elipsis-p1">.</span><span class="loading-elipsis-p2">.</span><span class="loading-elipsis-p3">.</span></div>
+<div id="screen"></div>
+<div id="github"></div>
+
+<audio id="song" volume="0.1" style="display: none;"></audio>
+ <script type="text/javascript" src="cordova.js"></script>
+
+<script type="text/javascript" src="index.min.js"></script>
+<script type="text/javascript" src="js/webfonts.js"></script>
+</body>
+</html>

@@ -13,15 +13,14 @@ use rouille::Response;
 
 
 pub fn install() -> std::io::Result<()> {
-    // let data = include_bytes!("../../../packages/tch/vgg16.ot");
-
-    // let mut pos = 0;
-    // let mut buffer = File::create("/opt/sam/models/vgg16.ot")?;
-
-    // while pos < data.len() {
-    //     let bytes_written = buffer.write(&data[pos..])?;
-    //     pos += bytes_written;
-    // }
+    match nst::install(){
+        Ok(_) => {
+            log::info!("NST installed successfully");
+        },
+        Err(e) => {
+            log::error!("Failed to install NST: {}", e);
+        }
+    }
 
     Ok(())
 }

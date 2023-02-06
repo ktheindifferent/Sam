@@ -7,7 +7,7 @@ use invidious::reqwest::blocking::Client;
 
 
 pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
-    if request.url() == "/api/services/youtube" {
+    if request.url() == "/api/services/media/youtube" {
 
         let q_param = request.get_param("q");
 
@@ -24,7 +24,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         }
     }
 
-    if request.url() == "/api/services/youtube/lucky" {
+    if request.url() == "/api/services/media/youtube/lucky" {
 
         let q_param = request.get_param("q");
 
@@ -42,7 +42,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         }
     }
 
-    if request.url() == "/api/services/youtube/stream" {
+    if request.url() == "/api/services/media/youtube/stream" {
 
         let id_param = request.get_param("id");
         match id_param {
@@ -64,7 +64,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
     }
 
 
-    if request.url() == "/api/services/youtube/download" {
+    if request.url() == "/api/services/media/youtube/download" {
 
         let id = request.get_param("id").unwrap();
 
@@ -109,7 +109,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
     }
 
 
-    if request.url() == "/api/services/youtube/cache" {
+    if request.url() == "/api/services/media/youtube/cache" {
 
         let id_param = request.get_param("id");
         match id_param {

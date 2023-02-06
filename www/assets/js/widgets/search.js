@@ -42,7 +42,7 @@ class SearchWidget {
 
         $("#search_results").html(" ");
     
-        $.get(`/api/services/youtube?q=${search_input.val()}`, function( data ) {
+        $.get(`/api/services/media/youtube?q=${search_input.val()}`, function( data ) {
 
             $("#search_results").html(" ");
    
@@ -88,7 +88,7 @@ var search_widget = new SearchWidget();
 
 function downloadYoutubeVideo(id){
     notifications.new(`Downloading video: ${id} from YouTube...`);
-    $.get(`/api/services/youtube/download?id=${id}`, function( data ) {
+    $.get(`/api/services/media/youtube/download?id=${id}`, function( data ) {
 
     });
 }

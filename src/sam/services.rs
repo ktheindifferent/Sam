@@ -22,15 +22,13 @@ error_chain! {
 
 pub mod darknet;
 pub mod dropbox;
-pub mod image;
-pub mod youtube;
 pub mod jupiter;
 pub mod lifx;
+pub mod media;
 pub mod notifications;
 pub mod osf;
 pub mod rivescript;
 pub mod rtsp;
-pub mod snapcast;
 pub mod socket;
 pub mod sound;
 pub mod sprec;

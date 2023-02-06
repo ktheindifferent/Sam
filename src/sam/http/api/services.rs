@@ -29,8 +29,8 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         return crate::sam::services::osf::handle(current_session, request);   
     }
 
-    if request.url().contains("/api/services/youtube"){
-        return crate::sam::services::youtube::handle(current_session, request);   
+    if request.url().contains("/api/services/media/youtube"){
+        return crate::sam::services::media::youtube::handle(current_session, request);   
     }
     
     if request.url().contains("/api/services/tts"){
@@ -49,8 +49,8 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         return crate::sam::services::storage::handle(current_session, request);   
     }
 
-    if request.url().contains("/api/services/image"){
-        return crate::sam::services::image::handle(current_session, request);   
+    if request.url().contains("/api/services/media"){
+        return crate::sam::services::media::handle(current_session, request);   
     }
     
     
