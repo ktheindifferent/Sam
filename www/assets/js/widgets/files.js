@@ -158,13 +158,13 @@ class StoredFiles {
                     if(this.object_type === "folder"){
                         html += `
                             <tr onclick="openDropboxPath('${this.path}')">
-                                <td>${this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", "")}</td>
+                                <td>${this.path.split("/").pop()}</td>
                             </tr>
                         `;
                     } else {
                         html += `
                             <tr onclick="openDropboxFile('${this.path}')">
-                                <td>${this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", "")}</td>
+                                <td>${this.path.split("/").pop()}</td>
                             </tr>
                         `;
                     }
