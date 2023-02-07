@@ -20,7 +20,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Game {
     pub name: String,
-    pub file_path: String,
+    pub launch: String,
     pub icon: String,
 }
 
@@ -35,8 +35,8 @@ pub fn games() -> Result<Vec<Game>, crate::sam::services::Error> {
         if !pth.contains(".zip") {
             let mut game = Game{
                 name: titlecase(&format!("{}", pth.clone()).replace("/opt/sam/games/", "").replace("_", " ")),
-                file_path: pth.clone(),
-                icon: format!("{}/icon.png", pth.clone()),
+                launch: format!("{}/index.html", pth.clone().replace("/opt/sam", "")),
+                icon: format!("{}/icon.png", pth.clone().replace("/opt/sam", "")),
             };
             games.push(game);
         }
@@ -53,6 +53,9 @@ pub fn install() -> Result<(), crate::sam::services::Error> {
         let bytes_written = buffer.write(&data[pos..])?;
         pos += bytes_written;
     }
+
+    crate::sam::tools::extract_zip("/opt/sam/games/Flappy_Kitty.zip", format!("/opt/sam/games/"));
+
 
     return Ok(());
 }

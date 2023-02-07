@@ -78,7 +78,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
         crate::sam::tools::linux_cmd(format!("ffmpeg -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav", tmp_file_path.clone(), tmp_file_path.clone()));
 
-        crate::sam::tools::linux_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-base.en.bin -f {}.16.wav -owts", tmp_file_path.clone()));
+        crate::sam::tools::linux_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts", tmp_file_path.clone()));
     
         crate::sam::services::stt::patch_whisper_wts(format!("{}.16.wav.wts", tmp_file_path.clone()))?;
 

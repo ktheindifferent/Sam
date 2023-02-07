@@ -18,8 +18,22 @@ use std::fmt;
 use std::str::FromStr;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio_postgres::{Error, Row};
+use tokio_postgres::{Row};
 use std::path::Path;
+use crate::sam;
+
+use error_chain::error_chain;
+error_chain! {
+    foreign_links {
+        Io(std::io::Error);
+        HttpRequest(reqwest::Error);
+        TokioPg(tokio_postgres::Error);
+        Hound(hound::Error);
+        PostError(rouille::input::post::PostError);
+        ParseFloatError(std::num::ParseFloatError);
+        TchError(tch::TchError);
+    }
+}
 
 // store application version as a const
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
@@ -67,7 +81,7 @@ impl Config {
             });
         });
     }
-    pub async fn build_tables(&self) -> Result<(), Error>{
+    pub async fn build_tables(&self) -> Result<()>{
     
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
@@ -101,7 +115,7 @@ impl Config {
         
         return Ok(());
     }    
-    pub async fn create_db(&self) -> Result<(), Error>{
+    pub async fn create_db(&self) -> Result<()>{
 
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
@@ -136,7 +150,7 @@ impl Config {
         }
         return client;
     }
-    pub fn destroy_row(oid: String, table_name: String) -> Result<bool, Error>{
+    pub fn destroy_row(oid: String, table_name: String) -> Result<bool>{
         let mut client = Config::client()?;
 
         let _destroy_rows = client.query(format!("DELETE FROM {} WHERE oid = '{}' ", table_name, oid).as_str(), &[]).unwrap();
@@ -152,7 +166,7 @@ impl Config {
         }
     
     }
-    pub async fn nuke_async() -> Result<(), Error>{
+    pub async fn nuke_async() -> Result<()>{
         let config = crate::sam::memory::Config::new();
         // Get a copy of the master key and postgres info
         let postgres = config.postgres.clone();
@@ -211,7 +225,7 @@ impl Config {
     
         Ok(())
     }
-    pub fn pg_select(table_name: String, coulmns: Option<String>, limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<String>, Error>{
+    pub fn pg_select(table_name: String, coulmns: Option<String>, limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<String>>{
       
         let mut client = Config::client()?;
 
@@ -417,7 +431,7 @@ impl Config {
     
         Ok(parsed_rows)
     }
-    pub fn client() -> Result<crate::postgres::Client, Error> {
+    pub fn client() -> Result<crate::postgres::Client> {
         let config = Config::new();
         
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
@@ -465,7 +479,7 @@ impl CachedWikipediaSummary {
             "",
         ]
     }
-    pub fn save(object: Self) -> Result<Self, Error>{
+    pub fn save(object: Self) -> Result<Self>{
         let mut client = Config::client()?;
         
         let mut pg_query = PostgresQueries::default();
@@ -524,7 +538,7 @@ impl CachedWikipediaSummary {
         }
         
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -536,7 +550,7 @@ impl CachedWikipediaSummary {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
 
         let mut topics: Vec<String> = Vec::new();
@@ -564,7 +578,7 @@ impl CachedWikipediaSummary {
             timestamp: row.get("timestamp"),
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("cached_wikipedia_summaries"));
     }
 }
@@ -628,7 +642,7 @@ impl Human {
             "ALTER TABLE public.humans ADD COLUMN updated_at BIGINT NULL;"
         ]
     }
-    pub fn count() -> Result<i64, Error>{
+    pub fn count() -> Result<i64>{
 
         let mut client = Config::client()?;
 
@@ -649,7 +663,7 @@ impl Human {
 
         Ok(counter)
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
         let mut client = Config::client()?;
         
         // Search for OID matches
@@ -762,7 +776,7 @@ impl Human {
     
    
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -774,7 +788,7 @@ impl Human {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
         let sql_email: Option<String> = row.get("email");
 
@@ -796,7 +810,7 @@ impl Human {
             updated_at: row.get("updated_at")
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("humans"));
     }
 }
@@ -839,7 +853,7 @@ impl HumanFaceEncoding {
             "ALTER TABLE public.human_face_encodings ADD COLUMN timestamp BIGINT NULL;"
         ]
     }
-    pub fn save(object: Self) -> Result<Self, Error>{
+    pub fn save(object: Self) -> Result<Self>{
 
         let mut client = Config::client()?;
 
@@ -879,7 +893,7 @@ impl HumanFaceEncoding {
     
         Ok(object)
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -891,7 +905,7 @@ impl HumanFaceEncoding {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
 
 
@@ -904,7 +918,7 @@ impl HumanFaceEncoding {
             timestamp: row.get("timestamp"),
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("human_face_encodings"));
     }
 }
@@ -966,7 +980,7 @@ impl Location {
             "ALTER TABLE public.locations ADD COLUMN zip_code VARCHAR NULL;"
         ]
     }
-    pub fn count() -> Result<i64, Error>{
+    pub fn count() -> Result<i64>{
 
         let mut client = Config::client()?;
 
@@ -985,7 +999,7 @@ impl Location {
 
         Ok(counter)
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
 
         let mut client = Config::client()?;
 
@@ -1063,7 +1077,7 @@ impl Location {
         
 
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -1075,7 +1089,7 @@ impl Location {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
 
         return Ok(Self {
@@ -1091,7 +1105,7 @@ impl Location {
             updated_at: row.get("updated_at")
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("locations"));
     }
 }
@@ -1142,7 +1156,7 @@ impl Notification {
             "",
         ]
     }
-    pub fn save(&self) -> Result<Self, Error>{
+    pub fn save(&self) -> Result<Self>{
         let mut client = Config::client()?;
         
         let mut pg_query = PostgresQueries::default();
@@ -1200,7 +1214,7 @@ impl Notification {
         }
         
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -1212,7 +1226,7 @@ impl Notification {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
         return Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
@@ -1223,7 +1237,7 @@ impl Notification {
             timestamp: row.get("timestamp")
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("notifications"));
     }
 }
@@ -1279,7 +1293,7 @@ impl Room {
             "ALTER TABLE public.rooms ADD COLUMN updated_at BIGINT NULL;"
         ]
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
 
         let mut client = Config::client()?;
         
@@ -1317,7 +1331,7 @@ impl Room {
         return Ok(self);
         
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -1329,7 +1343,7 @@ impl Room {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
         let mut icon: String = format!("fa fa-solid fa-cube");
 
@@ -1350,7 +1364,7 @@ impl Room {
             updated_at: row.get("updated_at")
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("rooms"));
     }
 }
@@ -1420,7 +1434,7 @@ impl Service {
             updated_at BIGINT NULL,
             CONSTRAINT services_pkey PRIMARY KEY (id));"
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
 
         let mut client = Config::client()?;
 
@@ -1479,7 +1493,7 @@ impl Service {
         }
         
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -1491,7 +1505,7 @@ impl Service {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
 
         let mut settings: Vec<ServiceSetting> = Vec::new();
@@ -1517,7 +1531,7 @@ impl Service {
             updated_at: row.get("updated_at"),
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("services"));
     }
 }
@@ -1584,7 +1598,7 @@ impl Thing {
             "ALTER TABLE public.things ADD COLUMN updated_at BIGINT NULL;"
         ]
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
 
         let mut client = Config::client()?;
         
@@ -1638,7 +1652,7 @@ impl Thing {
     
         Ok(self)
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -1650,7 +1664,7 @@ impl Thing {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
         let mut online_identifiers: Vec<String> = Vec::new();
         let sql_online_identifiers: Option<String> = row.get("online_identifiers");
         match sql_online_identifiers{
@@ -1698,7 +1712,7 @@ impl Thing {
             updated_at: row.get("updated_at")
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("things"));
     }
 }
@@ -1768,7 +1782,7 @@ impl Observation {
             web_session_id varchar NULL,
             CONSTRAINT observations_pkey PRIMARY KEY (id));"
     }
-    pub fn save(&self) -> Result<Self, Error>{
+    pub fn save(&self) -> Result<Self>{
 
         let mut client = Config::client()?;
 
@@ -1896,7 +1910,7 @@ impl Observation {
     
       
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -1908,7 +1922,7 @@ impl Observation {
 
         Ok(parsed_rows)
     }
-    pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = Config::pg_select(Self::sql_table_name(), Some(format!("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json")), limit, offset, order, query)?;
 
@@ -1920,7 +1934,7 @@ impl Observation {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
         let mut deep_vision: Vec<DeepVisionResult> = Vec::new();
 
@@ -2028,7 +2042,7 @@ impl Observation {
             web_session: None,
         });
     }
-    fn from_row_lite(row: &Row) -> Result<Self, Error> {
+    fn from_row_lite(row: &Row) -> Result<Self> {
 
         let mut deep_vision: Vec<DeepVisionResult> = Vec::new();
 
@@ -2136,7 +2150,7 @@ impl Observation {
             web_session: None,
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("observations"));
     }
 }
@@ -2183,7 +2197,7 @@ impl Setting {
             "ALTER TABLE public.settings ADD COLUMN updated_at BIGINT NULL;"
         ]
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
 
         let mut client = Config::client()?;
         
@@ -2235,7 +2249,7 @@ impl Setting {
         
 
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -2247,7 +2261,7 @@ impl Setting {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
      
 
            
@@ -2275,7 +2289,7 @@ impl Setting {
             updated_at: row.get("updated_at")
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("settings"));
     }
 }
@@ -2326,7 +2340,7 @@ impl StorageLocation {
             "ALTER TABLE public.storage_locations ADD COLUMN updated_at BIGINT NULL;"
         ]
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
 
         let mut client = Config::client()?;
 
@@ -2380,7 +2394,7 @@ impl StorageLocation {
         
 
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -2392,7 +2406,7 @@ impl StorageLocation {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
         return Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
@@ -2404,7 +2418,7 @@ impl StorageLocation {
             updated_at: row.get("updated_at")
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("storage_locations"));
     }
 }
@@ -2471,7 +2485,7 @@ impl FileStorage {
             "ALTER TABLE public.file_storage ADD COLUMN updated_at BIGINT NULL;"
         ]
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
 
         let mut client = Config::client()?;
         
@@ -2550,7 +2564,7 @@ impl FileStorage {
 
 
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -2562,7 +2576,7 @@ impl FileStorage {
 
         Ok(parsed_rows)
     }
-    pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = Config::pg_select(Self::sql_table_name(), Some(format!("id, oid, file_name, file_type, file_folder_tree, storage_location_oid, created_at, updated_at")), limit, offset, order, query)?;
 
@@ -2574,7 +2588,7 @@ impl FileStorage {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
         let mut file_folder_tree: Option<Vec<String>> = None;
         let sql_file_folder_tree: Option<String> = row.get("file_folder_tree");
@@ -2603,7 +2617,7 @@ impl FileStorage {
             updated_at: row.get("updated_at")
         });
     }
-    fn from_row_lite(row: &Row) -> Result<Self, Error> {
+    fn from_row_lite(row: &Row) -> Result<Self> {
 
         let mut file_folder_tree: Option<Vec<String>> = None;
         let sql_file_folder_tree: Option<String> = row.get("file_folder_tree");
@@ -2633,10 +2647,10 @@ impl FileStorage {
             updated_at: row.get("updated_at")
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("file_storage"));
     }
-    pub fn cache_all() -> Result<(), Error>{
+    pub fn cache_all() -> Result<()>{
         let files_without_data = FileStorage::select_lite(None, None, None, None)?;
 
         for file in files_without_data{
@@ -2662,8 +2676,13 @@ impl FileStorage {
 
         return Ok(());
     }
-    pub fn cache(&self) -> Result<(), Error>{
-        std::fs::write(self.path_on_disk().clone(), self.file_data.clone().unwrap()).unwrap();
+    pub fn cache(&self) -> Result<()>{
+        match self.file_data.clone(){
+            Some(data) => {
+                std::fs::write(self.path_on_disk().clone(), data)?;
+            },
+            None => {}
+        }
         return Ok(());
     }
     pub fn path_on_disk(&self) -> String{
@@ -2715,7 +2734,7 @@ impl WebSessions {
             timestamp BIGINT NULL,
             CONSTRAINT web_sessions_pkey PRIMARY KEY (id));"
     }
-    pub fn save(&self) -> Result<&Self, Error>{
+    pub fn save(&self) -> Result<&Self>{
         
         let mut client = Config::client()?;
 
@@ -2753,7 +2772,7 @@ impl WebSessions {
     
         Ok(self)
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>, Error>{
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
 
@@ -2765,7 +2784,7 @@ impl WebSessions {
 
         Ok(parsed_rows)
     }
-    fn from_row(row: &Row) -> Result<Self, Error> {
+    fn from_row(row: &Row) -> Result<Self> {
 
 
         return Ok(Self {
@@ -2778,7 +2797,7 @@ impl WebSessions {
             timestamp: row.get("timestamp"),
         });
     }
-    pub fn destroy(oid: String) -> Result<bool, Error>{
+    pub fn destroy(oid: String) -> Result<bool>{
         return crate::sam::memory::Config::destroy_row(oid, format!("web_sessions"));
     }
 }
@@ -2866,7 +2885,7 @@ impl fmt::Display for ObservationType {
 }
 impl std::str::FromStr for ObservationType {
     type Err = ();
-    fn from_str(input: &str) -> Result<ObservationType, Self::Err> {
+    fn from_str(input: &str) -> std::result::Result<ObservationType, Self::Err> {
         match input {
             "UNKNOWN"  => Ok(ObservationType::UNKNOWN),
             "SEEN"  => Ok(ObservationType::SEEN),
@@ -3048,7 +3067,7 @@ impl fmt::Display for ObservationObjects {
 }
 impl std::str::FromStr for ObservationObjects {
     type Err = ();
-    fn from_str(input: &str) -> Result<ObservationObjects, Self::Err> {
+    fn from_str(input: &str) -> std::result::Result<ObservationObjects, Self::Err> {
         match input {
             "QR_CODE"  => Ok(ObservationObjects::QR_CODE),
             "PERSON"  => Ok(ObservationObjects::PERSON),

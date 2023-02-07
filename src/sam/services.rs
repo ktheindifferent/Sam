@@ -17,6 +17,7 @@ error_chain! {
         PostError(rouille::input::post::PostError);
         ParseFloatError(std::num::ParseFloatError);
         TchError(tch::TchError);
+        SamMemoryError(crate::sam::memory::Error);
     }
 }
 

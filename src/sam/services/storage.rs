@@ -13,6 +13,8 @@ use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
 use std::{thread, time::Duration};
+use std::fs::File;
+use std::path::Path;
 
 pub fn sql_get(){
 
@@ -112,24 +114,31 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
 
     if request.url().contains("/api/services/storage/file/") {
+        // Get file:oid
         let url = request.url();
         let split = url.split("/");
         let vec: Vec<&str> = split.collect();
         let oid = vec[5];
+
+        // TODO: check cache first
+        if Path::new(format!("/opt/sam/files/{}", oid).as_str()).exists(){
+            let file = File::open(format!("/opt/sam/files/{}", oid).as_str()).unwrap();
+            return Ok(Response::from_file("", file));
+        }
 
         // Build query
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(oid.clone().to_string()));
         pg_query.query_coulmns.push(format!("oid ="));
 
-        // Select project by oid 
+        // Select file by oid using query
         let files = crate::sam::memory::FileStorage::select(None, None, None, Some(pg_query)).unwrap();
+        
+        // Clone file into memory
         let file = files[0].clone();
 
-        let response = Response::from_data(file.file_type, file.file_data.unwrap());
-
-
-        return Ok(response);
+        // Return file to client
+        return Ok(Response::from_data(file.file_type, file.file_data.unwrap()));
     }
 
     return Ok(Response::empty_404());

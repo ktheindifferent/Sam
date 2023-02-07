@@ -182,39 +182,6 @@ function failedToLoadAdMob(){
   console.log("Ad mob failed");
 }
 
-function monitizeShowInterstitial(){
-
-  if(localStorage.interstitialCounter === undefined){
-    localStorage.interstitialCounter = 0;
-  } else {
-    if(parseInt(localStorage.interstitialCounter) < 8){
-      localStorage.interstitialCounter = parseInt(localStorage.interstitialCounter) + 1;
-      return;
-    } else {
-      localStorage.interstitialCounter = 0;
-    }
-  }
-  
-
-  if(advertisingIds.admob.enable_interstitial){
-    if(cordova.platformId === "android" || cordova.platformId === "ios"){
-      // preppare and load ad resource in background, e.g. at begining of game level
-      if(localStorage.runAds === undefined || localStorage.runAds !== "false"){
-        if(AdMob){
-          AdMob.prepareInterstitial( {adId: advertisingIds.admob.interstitial, autoShow:true} );
-        } 
-      }
-
-    }
-  }
-  if(advertisingIds.amazon_mobile_ad.enable_interstitial){
-    amazonads.showInterstitialAd(function() {
-      console.log('now that is a big ole interstitial');
-    }, function(err) {
-      console.error(['oh crap', err]);
-    });
-  }
-}
 
 
 

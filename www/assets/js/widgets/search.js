@@ -41,11 +41,37 @@ class SearchWidget {
         let search_input = $("#search_input");
 
         $("#search_results").html(" ");
+
+
+        // /api/services/media/games/games
+
+        $.get(`/api/services/media/games/games}`, function( data ) {
+            $(data).each(function(i, obj) {
+
+
+                var gid = `game${obj.name.replace(" ", "")}`;
+    
+
+                html += `<div class='game-result' id="${gid}">
+                    
+                    <img src='${obj.icon}' class='image'></img>
+                    <p>${obj.name}</p>
+                    <div class="middle">
+                        <button onclick="" class='btn btn-primary'><i class="fas fa-play"></i></button>
+                    </div>
+
+                </div>`;
+                
+                if($(`#${gid}`).length === 0){
+                    $("#search_results").append(html);
+                }
+                
+                
+            });
+        });
+
     
         $.get(`/api/services/media/youtube?q=${search_input.val()}`, function( data ) {
-
-            $("#search_results").html(" ");
-   
             $(data).each(function(i, obj) {
                 if(i >= ref.result_limit) {
                    
@@ -67,9 +93,6 @@ class SearchWidget {
                     $("#search_results").append(html);
                 }
             });
-
-
-            
         });
     }
 

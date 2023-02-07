@@ -30,6 +30,7 @@ error_chain! {
         PostError(rouille::input::post::PostError);
         RustTubeError(rustube::Error);
         InternalServiceError(crate::sam::services::Error);
+        SamMemoryError(crate::sam::memory::Error);
     }
 }
 
@@ -220,7 +221,7 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
 
         }
 
-        if request.url().contains("/files") || request.url().contains("/tmp"){
+        if request.url().contains("/files") || request.url().contains("/tmp") || request.url().contains("/games"){
             let xresponse = rouille::match_assets(&request, "/opt/sam/");
             if xresponse.is_success() {
                 return Ok(xresponse.with_additional_header("Access-Control-Allow-Origin", "*").with_no_cache());

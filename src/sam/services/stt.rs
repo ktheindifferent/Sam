@@ -20,7 +20,7 @@ use std::fs::File;
 use std::io::Write;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct STTPrediction {
@@ -42,12 +42,12 @@ pub fn process(file_path: String) -> Result<STTPrediction, crate::sam::services:
     });
 }
 
-// /opt/sam/bin/whisper -m /opt/sam/models/ggml-base.en.bin -f ./output.wav -otxt
+// /opt/sam/bin/whisper -m /opt/sam/models/ggml-* -f ./output.wav -otxt
 pub fn whisper(file_path: String) -> Result<String, crate::sam::services::Error> {
    
     crate::sam::tools::linux_cmd(format!("ffmpeg -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav", file_path, file_path));
 
-    crate::sam::tools::linux_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-base.en.bin -f {}.16.wav -otxt", file_path));
+    crate::sam::tools::linux_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -otxt", file_path));
     
     let data = std::fs::read_to_string(format!("{}.16.wav.txt", file_path).as_str())?;
 
@@ -69,14 +69,12 @@ pub fn patch_whisper_wts(file_path: String) -> Result<(), crate::sam::services::
 
 // TODO: Compile whisper for raspi and patch installer
 pub fn install() -> std::io::Result<()> {
-    let data = include_bytes!("../../../packages/whisper/models/ggml-base.en.bin");
+    if !Path::new("/opt/sam/models/ggml-base.en.bin").exists(){
+        crate::sam::tools::linux_cmd(format!("wget -O /opt/sam/models/ggml-base.en.bin https://huggingface.co/datasets/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"));
+    }
 
-    let mut pos = 0;
-    let mut buffer = File::create("/opt/sam/models/ggml-base.en.bin")?;
-
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..])?;
-        pos += bytes_written;
+    if !Path::new("/opt/sam/models/ggml-large.bin").exists(){
+        crate::sam::tools::linux_cmd(format!("wget -O /opt/sam/models/ggml-large.bin https://huggingface.co/datasets/ggerganov/whisper.cpp/resolve/main/ggml-large.bin"));
     }
 
     let data = include_bytes!("../../../packages/whisper/main-amd64");

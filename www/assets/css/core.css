@@ -221,6 +221,58 @@ Licensed under GPLv3....see LICENSE file. */
 }
 
 
+
+
+
+
+
+
+
+
+.game-result > .middle {
+  transition: .5s ease;
+  opacity: 0;
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  -ms-transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.game-result > p {
+  font-size: 10px;
+}
+
+.game-result {
+  height: 250px;
+  width: 23%;
+  float: left;
+  margin: 1%;
+  position: relative;
+
+  /* padding-top: 200px; */
+}
+
+.game-result:hover > img {
+  opacity: 0.3 !important;
+}
+
+.game-result:hover .middle {
+  opacity: 1;
+}
+
+
+.game-result > img {
+  width: 50%;
+}
+
+
+
+
+
+
+
 .search-input{
   position: fixed;
   width: 80%;

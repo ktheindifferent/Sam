@@ -241,7 +241,7 @@
       hiscore = (hiscore ? hiscore : score);
       hiscore = (score > parseInt(hiscore, 10) ? score : hiscore);
       localStorage.flappy_high_score = hiscore;
-      refreshUpdateHighScore();
+  
       gameOverText.setText(i18n("GAMEOVER") + "\n\n" + i18n("HIGH SCORE") + "\n\n" + hiscore);
       gameOverText.renderable = true;
       // Stop all tubes
@@ -261,7 +261,7 @@
         });
       });
       hurtSnd.play();
-      monitizeShowInterstitial();
+      // monitizeShowInterstitial();
     };
     flap = function() {
       var tween;

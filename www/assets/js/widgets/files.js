@@ -180,10 +180,14 @@ class StoredFiles {
         if(this.virtual_path !== "/Dropbox/" && this.virtual_path.includes("/Dropbox/") && this.opened_file.open){
 
             html += `
-                <tr onclick="returnToPreviousPath()">
+                <tr>
                     <td class='no-controller-select'>
-                        <button class="btn btn-sm btn-secondary">
+                        <button onclick="returnToPreviousPath()" class="btn btn-sm btn-secondary">
                             <i class="fas fa-arrow-left"></i>
+                        </button>
+
+                        <button onclick="nst()" class="btn btn-sm btn-primary">
+                            <i class="fas fa-paint-brush"></i>
                         </button>
 
                         <button class="btn btn-sm btn-danger">
@@ -230,10 +234,14 @@ class StoredFiles {
 
 
             html += `
-                <tr onclick="returnToPreviousPath()">
+                <tr >
                     <td class='no-controller-select'>
-                        <button class="btn btn-sm btn-secondary">
+                        <button onclick="returnToPreviousPath()" class="btn btn-sm btn-secondary">
                             <i class="fas fa-arrow-left"></i>
+                        </button>
+
+                        <button onclick="nst()" class="btn btn-sm btn-primary">
+                            <i class="fas fa-paint-brush"></i>
                         </button>
 
                         <button class="btn btn-sm btn-danger">
@@ -469,4 +477,44 @@ function iconFromName(name){
     if(name.includes(".png") || name.includes(".jpg") || name.includes(".jpeg")){
         return `<i style="font-size: 20px;" class="fas fa-file-image"></i>`;
     }
+}
+
+
+function nst(){
+    // 
+    $.get("/api/services/media/image/nst/styles", function( styles ) {
+
+        var style_html = "";
+        $(styles).each(function() {
+            style_html += `<option value="${this.name}">${this.name}</option>`;
+        });
+
+        Swal.fire({
+            title: 'Nural Style Transfer (NST)',
+            showCancelButton: true,
+            showConfirmButton: false,
+            html: `
+                <p>Repaint the selected image with NST.</p>
+                <form action="/api/services/media/image/nst/run" method="post" >
+    
+                    <input type="hidden" name="image_id" id="image_id" value="${stored_files.virtual_path}" />
+    
+                    <div class="form-group">
+                        <label for="nst_style">Style</label>
+            
+                        <select name="nst_style" id="nst_style">
+                            ${style_html}
+                        </select>
+                    
+                    </div>
+    
+    
+                    <button type="submit" class="btn btn-primary">Run</button>
+    
+                </form>
+            
+            `
+          });
+    });
+
 }
