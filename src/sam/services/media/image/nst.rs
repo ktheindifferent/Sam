@@ -123,7 +123,7 @@ pub fn run(style_img: &str, content_img: &str, oid: String, style: String) -> Re
             file.read_to_end(&mut buf);
 
             let mut file = crate::sam::memory::FileStorage::new();
-            file.file_name = format!("{}-{}-{}", oid, style, step_idx);
+            file.file_name = format!("{}-{}-{}.jpg", oid, style, step_idx);
             file.file_type = format!("image/jpeg");
             file.file_data = Some(buf);
             // file.file_folder_tree = input.file_folder_tree;

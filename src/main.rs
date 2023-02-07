@@ -65,7 +65,7 @@ async fn main() {
     crate::sam::services::storage::init();
 
 
-
+    crate::sam::services::dropbox::destroy_empty_directories();
 
     
 
