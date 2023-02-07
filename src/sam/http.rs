@@ -16,6 +16,7 @@
 // 3. Sam web console app (DONE)
 // 4. User management api
 
+use tch::{Device};
 
 use rouille::Request;
 use rouille::Response;
@@ -205,6 +206,12 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
 
 
         // API Functions
+
+  
+        if request.url().contains("/is_cuda"){
+            let device = Device::cuda_if_available();
+            return Ok(Response::text(device.is_cuda().to_string()));
+        }
 
         if request.url().contains("/api"){
             return Ok(api::handle_api_request(current_session, request)?);
