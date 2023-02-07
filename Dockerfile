@@ -1,7 +1,7 @@
 FROM rust:latest
 MAINTAINER caleb <calebsmithwoolrich@gmail.com>
 
-RUN echo "0.0.000029"
+RUN echo "0.0.000031"
 
 RUN apt update
 RUN apt upgrade -y
