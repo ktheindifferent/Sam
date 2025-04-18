@@ -83,26 +83,20 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
             service.secret = input.secret;
             service.endpoint = input.endpoint;
 
-            match input.username{
-                Some(username) => {
-                    service.username = username;
-                },
-                None => {}
+            if let Some(username) = input.username {
+                service.username = username;
             }
-            match input.password{
-                Some(password) => {
-                    service.password = password;
-                },
-                None => {}
+            if let Some(password) = input.password {
+                service.password = password;
             }
 
             service.save()?;
 
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(service.oid.clone()));
-            pg_query.query_coulmns.push(format!("oid ="));
+            pg_query.query_coulmns.push("oid =".to_string());
             let objects = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
-            if objects.len() > 0 {
+            if !objects.is_empty() {
                 if request.url().contains(".json"){
                     return Ok(Response::json(&objects[0]));
                 } else {
@@ -124,6 +118,6 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
     }
 
 
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
     
 }

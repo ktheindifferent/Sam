@@ -47,7 +47,7 @@ pub fn handle(request: &Request) -> Result<Response> {
     // Asset Pre Router
     if request.url().contains("setup.html") || request.url().contains(".webmanifest") || request.url().contains(".svg") || request.url().contains(".gif") || request.url().contains(".wav") || request.url().contains(".mp4") || request.url().contains(".css") || request.url().contains(".js") || request.url().contains(".min.js") || request.url().contains(".map") || request.url().contains(".png") || request.url().contains(".jpg") || request.url().contains(".svg") || request.url().contains(".ico") || request.url().contains(".tff") || request.url().contains(".woff") || request.url().contains(".woff2") {
         #[cfg(debug_assertions)]{
-            let xresponse = rouille::match_assets(&request, "./www/");
+            let xresponse = rouille::match_assets(request, "./www/");
             if xresponse.is_success() {
                 return Ok(xresponse.with_additional_header("Access-Control-Allow-Origin", "*").with_no_cache());
             } 
@@ -78,11 +78,11 @@ pub fn handle(request: &Request) -> Result<Response> {
 
         match handle_with_session(current_session, request){
             Ok(x) => {
-                return x;
+                x
             },
             Err(err) => {
                 log::error!("HTTP_SESSION_ERROR: {}", err);
-                return Response::empty_404();
+                Response::empty_404()
             }
         }
     }));
@@ -158,7 +158,7 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
 
             let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
 
-            if humans.len() > 0 {
+            if !humans.is_empty() {
                 editable_session.authenticated = true;
                 editable_session.human_oid = humans[0].oid.clone();
                 for header in request.headers(){
@@ -183,13 +183,13 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
 
         // Is Setup?
         let locations: Vec<crate::sam::memory::Location> = crate::sam::memory::Location::select(None, None, None, None)?;
-        if !(request.url() == "/setup.html") && locations.len() == 0{
+        if request.url() != "/setup.html" && locations.is_empty(){
             let response = Response::redirect_302("/setup.html");
             return Ok(response);
         }
 
         // Is Authenticated?
-        if !(request.url() == "/login.html") && !current_session.authenticated{
+        if request.url() != "/login.html" && !current_session.authenticated{
             let response = Response::redirect_302("/login.html");
             return Ok(response);
         }
@@ -227,12 +227,12 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
         
 
         if request.url().contains("/api"){
-            return Ok(api::handle_api_request(current_session, request)?);
+            return api::handle_api_request(current_session, request);
         }
 
         if request.url().contains("/streams"){
   
-                let xresponse = rouille::match_assets(&request, "/opt/sam/");
+                let xresponse = rouille::match_assets(request, "/opt/sam/");
                 if xresponse.is_success() {
                     return Ok(xresponse.with_additional_header("Access-Control-Allow-Origin", "*").with_no_cache());
                 } 
@@ -242,7 +242,7 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
         }
 
         if request.url().contains("/files") || request.url().contains("/tmp") || request.url().contains("/games"){
-            let xresponse = rouille::match_assets(&request, "/opt/sam/");
+            let xresponse = rouille::match_assets(request, "/opt/sam/");
             if xresponse.is_success() {
                 return Ok(xresponse.with_additional_header("Access-Control-Allow-Origin", "*").with_no_cache());
             } 
@@ -250,7 +250,7 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
 
 
         #[cfg(debug_assertions)]{
-            let xresponse = rouille::match_assets(&request, "./www/");
+            let xresponse = rouille::match_assets(request, "./www/");
             if xresponse.is_success() {
                 return Ok(xresponse.with_additional_header("Access-Control-Allow-Origin", "*").with_no_cache());
             } 
@@ -264,7 +264,7 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
         }
             
         let response = Response::redirect_302("/index.html");
-        return Ok(response);
+        Ok(response)
         
     
 }

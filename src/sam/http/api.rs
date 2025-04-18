@@ -27,7 +27,7 @@ pub fn handle_api_request(current_session: crate::sam::memory::WebSessions, requ
         // Search for OID matches
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
 
         let human = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
         return Ok(Response::json(&human[0]));
@@ -35,37 +35,37 @@ pub fn handle_api_request(current_session: crate::sam::memory::WebSessions, requ
 
     // IO: GET
     if request.url().contains("/api/io"){
-        return Ok(io::handle(current_session, request)?);
+        return io::handle(current_session, request);
     }
 
     if request.url().contains("/api/humans"){
-        return Ok(humans::handle(current_session, request)?);
+        return humans::handle(current_session, request);
     }
 
     if request.url().contains("/api/locations"){
-        return Ok(locations::handle(current_session, request)?);
+        return locations::handle(current_session, request);
     }
 
     if request.url().contains("/api/observations"){
-        return Ok(observations::handle(current_session, request)?);
+        return observations::handle(current_session, request);
     }
 
     if request.url().contains("/api/rooms"){
-        return Ok(rooms::handle(current_session, request)?);
+        return rooms::handle(current_session, request);
     }
 
     if request.url().contains("/api/services"){
-        return Ok(services::handle(current_session, request)?);
+        return services::handle(current_session, request);
     }
 
     if request.url().contains("/api/settings"){
-        return Ok(settings::handle(current_session, request)?);
+        return settings::handle(current_session, request);
     }
 
     if request.url().contains("/api/things"){
-        return Ok(things::handle(current_session, request)?);
+        return things::handle(current_session, request);
     }
     
 
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }

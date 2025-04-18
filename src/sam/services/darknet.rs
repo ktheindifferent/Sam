@@ -38,11 +38,11 @@ pub fn darknet_image_with_gpu(file_path: String) -> Result<String, String> {
         .expect("failed to wait on child");
     let darknet = String::from_utf8_lossy(&output.stdout).to_string().replace("\n", "");
 
-    if darknet.to_lowercase().contains("error") || darknet.len() == 0 {
+    if darknet.to_lowercase().contains("error") || darknet.is_empty() {
         return Err(format!("deepvision_scan_image_with_cpu_error: {}", darknet))
     }
 
-    return Ok(darknet);
+    Ok(darknet)
 
 }
 

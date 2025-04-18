@@ -2,11 +2,7 @@ pub mod nst;
 pub mod srgan;
 
 
-use std::fs;
-use std::fs::File;
-use std::io::{Write};
 
-use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
 
@@ -29,5 +25,5 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
     if request.url().contains("/nst"){
         return nst::handle(current_session, request);
     }
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }

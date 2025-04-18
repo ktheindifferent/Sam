@@ -30,8 +30,8 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         
 
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
-            pg_query.queries.push(crate::sam::memory::PGCol::String(location_oid.clone().to_string()));
-            pg_query.query_coulmns.push(format!("location_oid ="));
+            pg_query.queries.push(crate::sam::memory::PGCol::String(location_oid.to_string()));
+            pg_query.query_coulmns.push("location_oid =".to_string());
 
             let rooms = crate::sam::memory::Room::select(None, None, None, Some(pg_query))?;
         
@@ -51,10 +51,10 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(room.oid.clone()));
-            pg_query.query_coulmns.push(format!("oid ="));
+            pg_query.query_coulmns.push("oid =".to_string());
 
             let objects = crate::sam::memory::Room::select(None, None, None, Some(pg_query))?;
-            if objects.len() > 0 {
+            if !objects.is_empty() {
                 if request.url().contains(".json"){
                     return Ok(Response::json(&objects[0]));
                 } else {
@@ -70,5 +70,5 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         }
     }
 
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }

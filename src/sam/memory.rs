@@ -20,7 +20,6 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::{Row};
 use std::path::Path;
-use crate::sam;
 
 use error_chain::error_chain;
 error_chain! {
@@ -46,6 +45,12 @@ pub struct Config {
     pub version_installed: String
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Config {
     pub fn new() -> Config {
         Config{
@@ -69,15 +74,15 @@ impl Config {
         let _config = self.clone();
         thread::spawn(move || {
 
-            rouille::start_server(format!("0.0.0.0:8000").as_str(), move |request| {
+            rouille::start_server("0.0.0.0:8000".to_string().as_str(), move |request| {
             
                 match crate::sam::http::handle(request){
                     Ok(request) => {
-                        return request;
+                        request
                     },
                     Err(err) => {
                         log::error!("HTTP_ERROR: {}", err);
-                        return Response::empty_404();
+                        Response::empty_404()
                     }
                 }
 
@@ -473,6 +478,12 @@ pub struct CachedWikipediaSummary {
     pub summary: String,
     pub timestamp: i64
 }
+impl Default for CachedWikipediaSummary {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CachedWikipediaSummary {
     pub fn new() -> CachedWikipediaSummary {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
@@ -480,14 +491,14 @@ impl CachedWikipediaSummary {
         let topics: Vec<String> = Vec::new();
         CachedWikipediaSummary { 
             id: 0,
-            oid: oid,
+            oid,
             topics,
             summary: String::new(),
             timestamp
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("cached_wikipedia_summaries")
+        "cached_wikipedia_summaries".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.cached_wikipedia_summaries (
@@ -508,7 +519,7 @@ impl CachedWikipediaSummary {
         
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(object.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
 
 
         // Search for OID matches
@@ -519,7 +530,7 @@ impl CachedWikipediaSummary {
             Some(pg_query.clone())
         ).unwrap();
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
 
 
             client.execute("INSERT INTO cached_wikipedia_summaries (oid, topics, summary, timestamp) VALUES ($1, $2, $3, $4)",
@@ -538,7 +549,7 @@ impl CachedWikipediaSummary {
                 Some(pg_query)
             ).unwrap();
 
-            return Ok(rows_two[0].clone());
+            Ok(rows_two[0].clone())
         
         } else {
             let ads = rows[0].clone();
@@ -558,7 +569,7 @@ impl CachedWikipediaSummary {
                 &object.oid, 
             ])?;
 
-            return Ok(Self::from_row(&rows_two[0])?);
+            Self::from_row(&rows_two[0])
         }
         
     }
@@ -579,31 +590,28 @@ impl CachedWikipediaSummary {
 
         let mut topics: Vec<String> = Vec::new();
         let sql_topics: Option<String> = row.get("topics");
-        match sql_topics {
-            Some(ts) => {
-                let split = ts.split(',');
-                let vec = split.collect::<Vec<&str>>();
-                let mut newvec: Vec<String> = Vec::new();
-                for v in vec{
-                    newvec.push(v.to_string());
-                }
-                topics = newvec;
-            },
-            None => {}
+        if let Some(ts) = sql_topics {
+            let split = ts.split(',');
+            let vec = split.collect::<Vec<&str>>();
+            let mut newvec: Vec<String> = Vec::new();
+            for v in vec{
+                newvec.push(v.to_string());
+            }
+            topics = newvec;
         }
    
 
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
-            topics: topics, 
+            topics, 
             summary: row.get("summary"),
             timestamp: row.get("timestamp"),
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("cached_wikipedia_summaries"));
+        crate::sam::memory::Config::destroy_row(oid, "cached_wikipedia_summaries".to_string())
     }
 }
 
@@ -624,6 +632,12 @@ pub struct Human {
     pub created_at: i64,
     pub updated_at: i64
 }
+impl Default for Human {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Human {
     pub fn new() -> Human {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
@@ -642,7 +656,7 @@ impl Human {
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("humans")
+        "humans".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.humans (
@@ -693,7 +707,7 @@ impl Human {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
 
 
         // Search for OID matches
@@ -704,7 +718,7 @@ impl Human {
             Some(pg_query.clone())
         ).unwrap();
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
 
 
             client.execute("INSERT INTO humans (oid, name, heard_count, seen_count, authorization_level, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
@@ -744,7 +758,7 @@ impl Human {
     
    
             
-            return Ok(self);
+            Ok(self)
         
          
         } else {
@@ -793,7 +807,7 @@ impl Human {
             }
 
 
-            return Ok(self);
+            Ok(self)
 
         }
         
@@ -820,7 +834,7 @@ impl Human {
 
         let sql_phone_number: Option<String> = row.get("phone_number");
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             name: row.get("name"), 
@@ -832,10 +846,10 @@ impl Human {
             authorization_level: row.get("authorization_level"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at")
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("humans"));
+        crate::sam::memory::Config::destroy_row(oid, "humans".to_string())
     }
 }
 
@@ -848,20 +862,26 @@ pub struct HumanFaceEncoding {
     pub human_oid: String,
     pub timestamp: i64
 }
+impl Default for HumanFaceEncoding {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HumanFaceEncoding {
     pub fn new() -> HumanFaceEncoding {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         let encoding: Vec<u8> = Vec::new();
         HumanFaceEncoding { 
             id: 0,
-            oid: oid,
-            encoding: encoding, 
+            oid,
+            encoding, 
             human_oid: String::new(),
             timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("human_face_encodings")
+        "human_face_encodings".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.human_face_encodings (
@@ -884,7 +904,7 @@ impl HumanFaceEncoding {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(object.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
 
 
         // Search for OID matches
@@ -895,7 +915,7 @@ impl HumanFaceEncoding {
             Some(pg_query.clone())
         ).unwrap();
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
             client.execute("INSERT INTO human_face_encodings (oid, encoding, human_oid, timestamp) VALUES ($1, $2, $3, $4)",
                 &[&object.oid.clone(),
                 &object.encoding,
@@ -934,16 +954,16 @@ impl HumanFaceEncoding {
 
 
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             encoding: row.get("encoding"), 
             human_oid:  row.get("human_oid"),
             timestamp: row.get("timestamp"),
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("human_face_encodings"));
+        crate::sam::memory::Config::destroy_row(oid, "human_face_encodings".to_string())
     }
 }
 
@@ -961,12 +981,18 @@ pub struct Location {
     pub created_at: i64,
     pub updated_at: i64
 }
+impl Default for Location {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Location {
     pub fn new() -> Location {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         Location { 
             id: 0,
-            oid: oid,
+            oid,
             name: String::new(), 
             address: String::new(),
             city: String::new(),
@@ -978,7 +1004,7 @@ impl Location {
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("locations")
+        "locations".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.locations (
@@ -1034,7 +1060,7 @@ impl Location {
             &self.name,
         ])?;
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
             client.execute("INSERT INTO locations (oid, name, address, city, state, zip_code, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);",
                 &[&self.oid.clone(),
                 &self.name,
@@ -1061,7 +1087,7 @@ impl Location {
                 &self.oid, 
             ])?;
         
-            return Ok(self);
+            Ok(self)
         
         } else {
             let ads = Self::from_row(&rows[0]).unwrap();
@@ -1096,7 +1122,7 @@ impl Location {
                 &self.oid, 
             ])?;
 
-            return Ok(self);
+            Ok(self)
         }
         
 
@@ -1116,7 +1142,7 @@ impl Location {
     fn from_row(row: &Row) -> Result<Self> {
 
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             name: row.get("name"), 
@@ -1127,10 +1153,10 @@ impl Location {
             lifx_api_key: row.get("lifx_api_key"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at")
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("locations"));
+        crate::sam::memory::Config::destroy_row(oid, "locations".to_string())
     }
 }
 
@@ -1147,13 +1173,19 @@ pub struct Notification {
     pub seen: bool,
     pub timestamp: i64
 }
+impl Default for Notification {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Notification {
     pub fn new() -> Notification {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
         Notification { 
             id: 0,
-            oid: oid,
+            oid,
             sid: String::new(),
             human_oid: String::new(),
             message: String::new(),
@@ -1162,7 +1194,7 @@ impl Notification {
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("notifications")
+        "notifications".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.notifications (
@@ -1185,7 +1217,7 @@ impl Notification {
         
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
 
 
         // Search for OID matches
@@ -1196,7 +1228,7 @@ impl Notification {
             Some(pg_query.clone())
         ).unwrap();
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
 
             client.execute("INSERT INTO notifications (oid, sid, human_oid, message, seen, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
                 &[&self.oid.clone(),
@@ -1216,7 +1248,7 @@ impl Notification {
                 Some(pg_query)
             ).unwrap();
 
-            return Ok(rows_two[0].clone());
+            Ok(rows_two[0].clone())
         
         } else {
             let ads = rows[0].clone();
@@ -1234,7 +1266,7 @@ impl Notification {
                 &self.oid, 
             ])?;
 
-            return Ok(Self::from_row(&rows_two[0])?);
+            Self::from_row(&rows_two[0])
         }
         
     }
@@ -1251,7 +1283,7 @@ impl Notification {
         Ok(parsed_rows)
     }
     fn from_row(row: &Row) -> Result<Self> {
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             sid: row.get("sid"),
@@ -1259,10 +1291,10 @@ impl Notification {
             message: row.get("message"),
             seen: row.get("seen"),
             timestamp: row.get("timestamp")
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("notifications"));
+        crate::sam::memory::Config::destroy_row(oid, "notifications".to_string())
     }
 }
 
@@ -1283,21 +1315,27 @@ pub struct Room {
     pub created_at: i64,
     pub updated_at: i64
 }
+impl Default for Room {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Room {
     pub fn new() -> Room {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         Room { 
             id: 0,
-            oid: oid,
+            oid,
             name: String::new(), 
-            icon: format!("fa fa-solid fa-cube"),
+            icon: "fa fa-solid fa-cube".to_string(),
             location_oid: String::new(),
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
             updated_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("rooms")
+        "rooms".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.rooms (
@@ -1329,7 +1367,7 @@ impl Room {
             &self.name,
         ])?;
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
             client.execute("INSERT INTO rooms (oid, name, icon, location_oid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
                 &[&self.oid.clone(),
                 &self.name,
@@ -1352,7 +1390,7 @@ impl Room {
                 ])?;
             }
         }
-        return Ok(self);
+        Ok(self)
         
     }
     pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
@@ -1369,27 +1407,24 @@ impl Room {
     }
     fn from_row(row: &Row) -> Result<Self> {
 
-        let mut icon: String = format!("fa fa-solid fa-cube");
+        let mut icon: String = "fa fa-solid fa-cube".to_string();
 
-        match row.get("icon"){
-            Some(val) => {
-                icon = val;
-            },
-            None => {}
+        if let Some(val) = row.get("icon") {
+            icon = val;
         }
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             name: row.get("name"), 
-            icon: icon, 
+            icon, 
             location_oid: row.get("location_oid"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at")
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("rooms"));
+        crate::sam::memory::Config::destroy_row(oid, "rooms".to_string())
     }
 }
 
@@ -1414,20 +1449,26 @@ pub struct Service {
     pub created_at: i64,
     pub updated_at: i64
 }
+impl Default for Service {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Service {
     pub fn new() -> Service {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         let settings: Vec<ServiceSetting> = Vec::new();
         Service { 
             id: 0,
-            oid: oid,
+            oid,
             identifier: String::new(),
             key: String::new(),
             secret: String::new(),
             username: String::new(),
             password: String::new(),
             endpoint: String::new(),
-            settings: settings,
+            settings,
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
             updated_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
 
@@ -1443,7 +1484,7 @@ impl Service {
         ]
     }
     pub fn sql_table_name() -> String {
-        return format!("services")
+        "services".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.services (
@@ -1465,9 +1506,9 @@ impl Service {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.identifier.clone()));
-        pg_query.query_coulmns.push(format!(" OR identifier ="));
+        pg_query.query_coulmns.push(" OR identifier =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -1476,7 +1517,7 @@ impl Service {
         ).unwrap();
 
         // Save New Service
-        if rows.len() == 0 {
+        if rows.is_empty() {
             let settings = serde_json::to_string(&self.settings).unwrap();
             client.execute("INSERT INTO services (oid, identifier, key, secret, username, password, endpoint, settings, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                 &[&self.oid.clone(),
@@ -1491,7 +1532,7 @@ impl Service {
                 &self.updated_at]
             ).unwrap();
         
-            return Ok(self);
+            Ok(self)
         
         } 
         // Update existing service
@@ -1511,7 +1552,7 @@ impl Service {
             
 
 
-            return Ok(self);
+            Ok(self)
 
 
         }
@@ -1534,14 +1575,11 @@ impl Service {
 
         let mut settings: Vec<ServiceSetting> = Vec::new();
 
-        match row.get("settings"){
-            Some(settings_str) => {
-                settings = serde_json::from_str(settings_str).unwrap();  
-            },
-            None => {}
+        if let Some(settings_str) = row.get("settings") {
+            settings = serde_json::from_str(settings_str).unwrap();  
         }
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid:  row.get("oid"),
             identifier: row.get("identifier"),
@@ -1550,13 +1588,13 @@ impl Service {
             username: row.get("username"),
             password: row.get("password"),
             endpoint: row.get("endpoint"),
-            settings: settings,
+            settings,
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("services"));
+        crate::sam::memory::Config::destroy_row(oid, "services".to_string())
     }
 }
 
@@ -1575,13 +1613,19 @@ pub struct Thing {
     pub created_at: i64,
     pub updated_at: i64
 }
+impl Default for Thing {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Thing {
     pub fn new() -> Thing {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         let empty_vec: Vec<String> = Vec::new();
         Thing { 
             id: 0,
-            oid: oid,
+            oid,
             name: String::new(), 
             room_oid: String::new(),
             thing_type: String::new(),
@@ -1595,7 +1639,7 @@ impl Thing {
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("things")
+        "things".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.things (
@@ -1629,7 +1673,7 @@ impl Thing {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
 
         let rows = Self::select(
             None, 
@@ -1638,7 +1682,7 @@ impl Thing {
             Some(pg_query)
         ).unwrap();
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
             client.execute("INSERT INTO things (oid, name, room_oid, thing_type, username, password, ip_address, online_identifiers, local_identifiers, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
                 &[&self.oid.clone(),
                 &self.name,
@@ -1691,37 +1735,31 @@ impl Thing {
     fn from_row(row: &Row) -> Result<Self> {
         let mut online_identifiers: Vec<String> = Vec::new();
         let sql_online_identifiers: Option<String> = row.get("online_identifiers");
-        match sql_online_identifiers{
-            Some(ts) => {
-                let split = ts.split(',');
-                let vec = split.collect::<Vec<&str>>();
-                let mut newvec: Vec<String> = Vec::new();
-                for v in vec{
-                    newvec.push(v.to_string());
-                }
-                online_identifiers = newvec;
-            },
-            None => {}
+        if let Some(ts) = sql_online_identifiers {
+            let split = ts.split(',');
+            let vec = split.collect::<Vec<&str>>();
+            let mut newvec: Vec<String> = Vec::new();
+            for v in vec{
+                newvec.push(v.to_string());
+            }
+            online_identifiers = newvec;
         }  
             
 
            
         let mut local_identifiers: Vec<String> = Vec::new();
         let sql_local_identifiers: Option<String> = row.get("local_identifiers");
-        match sql_local_identifiers{
-            Some(ts) => {
-                let split = ts.split(',');
-                let vec = split.collect::<Vec<&str>>();
-                let mut newvec: Vec<String> = Vec::new();
-                for v in vec{
-                    newvec.push(v.to_string());
-                }
-                local_identifiers = newvec;
-            },
-            None => {}
+        if let Some(ts) = sql_local_identifiers {
+            let split = ts.split(',');
+            let vec = split.collect::<Vec<&str>>();
+            let mut newvec: Vec<String> = Vec::new();
+            for v in vec{
+                newvec.push(v.to_string());
+            }
+            local_identifiers = newvec;
         }  
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             name: row.get("name"), 
@@ -1730,14 +1768,14 @@ impl Thing {
             username: row.get("username"),
             password: row.get("password"),
             ip_address: row.get("ip_address"),
-            online_identifiers: online_identifiers,
-            local_identifiers: local_identifiers,
+            online_identifiers,
+            local_identifiers,
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at")
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("things"));
+        crate::sam::memory::Config::destroy_row(oid, "things".to_string())
     }
 }
 
@@ -1757,6 +1795,12 @@ pub struct Observation {
     pub thing: Option<Thing>,
     pub web_session: Option<WebSessions>,
 }
+impl Default for Observation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Observation {
     pub fn new() -> Observation {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
@@ -1767,12 +1811,12 @@ impl Observation {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
         Observation { 
             id: 0,
-            oid: oid,
-            timestamp: timestamp,
+            oid,
+            timestamp,
             observation_type: ObservationType::UNKNOWN,
-            observation_objects: observation_objects,
-            observation_humans: observation_humans,
-            observation_notes: observation_notes,
+            observation_objects,
+            observation_humans,
+            observation_notes,
             observation_file: None,
             deep_vision,
             deep_vision_json: None,
@@ -1781,7 +1825,7 @@ impl Observation {
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("observations")
+        "observations".to_string()
     }
     pub fn migrations() -> Vec<&'static str> {
         vec![
@@ -1813,7 +1857,7 @@ impl Observation {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -1821,33 +1865,27 @@ impl Observation {
             Some(pg_query)
         ).unwrap();
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
 
             let mut obb_obv_str = String::new();
             for obv in &self.observation_objects{
-                obb_obv_str += format!("{},", obv.to_string()).as_str();
+                obb_obv_str += format!("{},", obv).as_str();
             }
 
             let mut obb_humans_str = String::new();
             for hum in &self.observation_humans{
-                obb_humans_str += format!("{},", hum.oid.to_string()).as_str();
+                obb_humans_str += format!("{},", hum.oid).as_str();
             }
 
 
             let mut obb_thing_str = String::new();
-            match &self.thing{
-                Some(thing) => {
-                    obb_thing_str = thing.oid.clone();
-                },
-                None => {}
+            if let Some(thing) = &self.thing {
+                obb_thing_str = thing.oid.clone();
             }
 
             let mut obb_web_session_str = String::new();
-            match &self.web_session{
-                Some(web_session) => {
-                    obb_web_session_str = web_session.sid.clone();
-                },
-                None => {}
+            if let Some(web_session) = &self.web_session {
+                obb_web_session_str = web_session.sid.clone();
             }
 
             client.execute("INSERT INTO observations (oid, timestamp, observation_type, thing_oid, web_session_id, observation_objects, observation_humans, observation_notes, observation_file) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
@@ -1874,7 +1912,7 @@ impl Observation {
 
             let mut pg_query = PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-            pg_query.query_coulmns.push(format!("oid ="));
+            pg_query.query_coulmns.push("oid =".to_string());
              let rows_two = Self::select(
                 None, 
                 None, 
@@ -1882,7 +1920,7 @@ impl Observation {
                 Some(pg_query)
             ).unwrap();
         
-            return Ok(rows_two[0].clone());
+            Ok(rows_two[0].clone())
         
         } else {
 
@@ -1892,12 +1930,12 @@ impl Observation {
 
             let mut obb_obv_str = String::new();
             for obv in &self.observation_objects{
-                obb_obv_str += format!("{},", obv.to_string()).as_str();
+                obb_obv_str += format!("{},", obv).as_str();
             }
 
             let mut obb_humans_str = String::new();
             for hum in &self.observation_humans{
-                obb_humans_str += format!("{},", hum.oid.to_string()).as_str();
+                obb_humans_str += format!("{},", hum.oid).as_str();
             }
 
 
@@ -1927,7 +1965,7 @@ impl Observation {
                 &self.oid, 
             ])?;
 
-            return Ok(Self::from_row(&rows_two[0])?);
+            Self::from_row(&rows_two[0])
 
         }
         
@@ -1948,7 +1986,7 @@ impl Observation {
     }
     pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = Config::pg_select(Self::sql_table_name(), Some(format!("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json")), limit, offset, order, query)?;
+        let jsons = Config::pg_select(Self::sql_table_name(), Some("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json".to_string()), limit, offset, order, query)?;
 
         for j in jsons{
             let object: Self = serde_json::from_str(&j).unwrap();
@@ -1964,109 +2002,92 @@ impl Observation {
 
         let deep_vision_json = row.get("deep_vision_json");
 
-        match deep_vision_json{
-            Some(deep_vision_json_val) => {
-                deep_vision = serde_json::from_str(deep_vision_json_val).unwrap();
-            },
-            None => {
-                
-            }
+        if let Some(deep_vision_json_val) = deep_vision_json {
+            deep_vision = serde_json::from_str(deep_vision_json_val).unwrap();
         }
 
 
     
         let mut observation_type = ObservationType::UNKNOWN;
         let sql_observation_type: Option<String> = row.get("observation_type");
-        match sql_observation_type {
-            Some(object) => {
-                let obj = ObservationType::from_str(&object).unwrap();
-                observation_type = obj.clone();
-            }, 
-            None => {}
+        if let Some(object) = sql_observation_type {
+            let obj = ObservationType::from_str(&object).unwrap();
+            observation_type = obj.clone();
         }
         
 
 
         let mut observation_objects: Vec<ObservationObjects> = Vec::new();
         let sql_observation_objects: Option<String> = row.get("observation_objects");
-        match sql_observation_objects {
-            Some(object) => {
-                let split = object.split(",");
-                for s in split {
-                    if s.len() > 0 {
-                        let obj = ObservationObjects::from_str(&s);
-                        match obj{
-                            Ok(obj) => observation_objects.push(obj),
-                            Err(err) => log::error!("sql_observation_objects: {:?}: {:?}",observation_objects.clone(), err)
-                        }
+        if let Some(object) = sql_observation_objects {
+            let split = object.split(",");
+            for s in split {
+                if !s.is_empty() {
+                    let obj = ObservationObjects::from_str(s);
+                    match obj{
+                        Ok(obj) => observation_objects.push(obj),
+                        Err(err) => log::error!("sql_observation_objects: {:?}: {:?}",observation_objects.clone(), err)
                     }
                 }
-            }, 
-            None => {}
+            }
         }
         
 
         let mut observation_humans: Vec<Human> = Vec::new();
         let sql_observation_humans: Option<String> = row.get("observation_humans");
-        match sql_observation_humans {
-            Some(object) => {
-                let split = object.split(",");
-                let vec = split.collect::<Vec<&str>>();
-                for oidx in vec {
+        if let Some(object) = sql_observation_humans {
+            let split = object.split(",");
+            let vec = split.collect::<Vec<&str>>();
+            for oidx in vec {
 
-                    // Search for OID matches
-                    let mut pg_query = PostgresQueries::default();
-                    pg_query.queries.push(crate::sam::memory::PGCol::String(oidx.clone().to_string()));
-                    pg_query.query_coulmns.push(format!("oid ilike"));
+                // Search for OID matches
+                let mut pg_query = PostgresQueries::default();
+                pg_query.queries.push(crate::sam::memory::PGCol::String(oidx.to_string()));
+                pg_query.query_coulmns.push("oid ilike".to_string());
 
 
-                    let observation_humansx = Human::select(
-                        None, 
-                        None, 
-                        None, 
-                        Some(pg_query)
-                    ).unwrap(); 
+                let observation_humansx = Human::select(
+                    None, 
+                    None, 
+                    None, 
+                    Some(pg_query)
+                ).unwrap(); 
 
-                    for human in observation_humansx{
-                        observation_humans.push(human);
-                    }
-
-                    // if rows.len() > 0 {
-                    //     observation_humans.push(rows[0].clone());
-                    // }
+                for human in observation_humansx{
+                    observation_humans.push(human);
                 }
-            }, 
-            None => {}
+
+                // if rows.len() > 0 {
+                //     observation_humans.push(rows[0].clone());
+                // }
+            }
         }
         
 
         let mut observation_notes: Vec<String> = Vec::new();
         let sql_observation_notes: Option<String> = row.get("observation_notes");
-        match sql_observation_notes {
-            Some(object) => {
-                let split = object.split(",");
-                for s in split {
-                    observation_notes.push(s.to_string());
-                }
-            }, 
-            None => {}
+        if let Some(object) = sql_observation_notes {
+            let split = object.split(",");
+            for s in split {
+                observation_notes.push(s.to_string());
+            }
         }
         
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             timestamp: row.get("timestamp"), 
-            observation_type: observation_type,
-            observation_objects: observation_objects,
-            observation_humans: observation_humans,
-            observation_notes: observation_notes,
+            observation_type,
+            observation_objects,
+            observation_humans,
+            observation_notes,
             observation_file: row.get("observation_file"),
             deep_vision,
             deep_vision_json: row.get("deep_vision_json"),
             thing: None,
             web_session: None,
-        });
+        })
     }
     fn from_row_lite(row: &Row) -> Result<Self> {
 
@@ -2074,96 +2095,79 @@ impl Observation {
 
         let deep_vision_json = row.get("deep_vision_json");
 
-        match deep_vision_json{
-            Some(deep_vision_json_val) => {
-                deep_vision = serde_json::from_str(deep_vision_json_val).unwrap();
-            },
-            None => {
-                
-            }
+        if let Some(deep_vision_json_val) = deep_vision_json {
+            deep_vision = serde_json::from_str(deep_vision_json_val).unwrap();
         }
 
 
     
         let mut observation_type = ObservationType::UNKNOWN;
         let sql_observation_type: Option<String> = row.get("observation_type");
-        match sql_observation_type {
-            Some(object) => {
-                let obj = ObservationType::from_str(&object).unwrap();
-                observation_type = obj.clone();
-            }, 
-            None => {}
+        if let Some(object) = sql_observation_type {
+            let obj = ObservationType::from_str(&object).unwrap();
+            observation_type = obj.clone();
         }
         
 
 
         let mut observation_objects: Vec<ObservationObjects> = Vec::new();
         let sql_observation_objects: Option<String> = row.get("observation_objects");
-        match sql_observation_objects {
-            Some(object) => {
-                let split = object.split(",");
-                for s in split {
-                    if s.len() > 0 {
-                        let obj = ObservationObjects::from_str(&s);
-                        match obj{
-                            Ok(obj) => observation_objects.push(obj),
-                            Err(err) => log::error!("sql_observation_objects2: {:?}: {:?}",observation_objects.clone(), err)
-                        }
+        if let Some(object) = sql_observation_objects {
+            let split = object.split(",");
+            for s in split {
+                if !s.is_empty() {
+                    let obj = ObservationObjects::from_str(s);
+                    match obj{
+                        Ok(obj) => observation_objects.push(obj),
+                        Err(err) => log::error!("sql_observation_objects2: {:?}: {:?}",observation_objects.clone(), err)
                     }
                 }
-            }, 
-            None => {}
+            }
         }
         
 
         let mut observation_humans: Vec<Human> = Vec::new();
         let sql_observation_humans: Option<String> = row.get("observation_humans");
-        match sql_observation_humans {
-            Some(object) => {
-                let split = object.split(",");
-                let vec = split.collect::<Vec<&str>>();
-                for oidx in vec {
-                    if oidx.len() > 0 {
-                        let mut xperson = Human::new();
-                        xperson.oid = oidx.to_string();
-                        observation_humans.push(xperson);
-                    }
+        if let Some(object) = sql_observation_humans {
+            let split = object.split(",");
+            let vec = split.collect::<Vec<&str>>();
+            for oidx in vec {
+                if !oidx.is_empty() {
+                    let mut xperson = Human::new();
+                    xperson.oid = oidx.to_string();
+                    observation_humans.push(xperson);
                 }
-            }, 
-            None => {}
+            }
         }
         
 
         let mut observation_notes: Vec<String> = Vec::new();
         let sql_observation_notes: Option<String> = row.get("observation_notes");
-        match sql_observation_notes {
-            Some(object) => {
-                let split = object.split(",");
-                for s in split {
-                    observation_notes.push(s.to_string());
-                }
-            }, 
-            None => {}
+        if let Some(object) = sql_observation_notes {
+            let split = object.split(",");
+            for s in split {
+                observation_notes.push(s.to_string());
+            }
         }
         
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             timestamp: row.get("timestamp"), 
-            observation_type: observation_type,
-            observation_objects: observation_objects,
-            observation_humans: observation_humans,
-            observation_notes: observation_notes,
+            observation_type,
+            observation_objects,
+            observation_humans,
+            observation_notes,
             observation_file: None,
             deep_vision,
             deep_vision_json: row.get("deep_vision_json"),
             thing: None,
             web_session: None,
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("observations"));
+        crate::sam::memory::Config::destroy_row(oid, "observations".to_string())
     }
 }
 
@@ -2177,13 +2181,19 @@ pub struct Setting {
     pub created_at: i64,
     pub updated_at: i64
 }
+impl Default for Setting {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Setting {
     pub fn new() -> Setting {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         let empty_vec: Vec<String> = Vec::new();
         Setting { 
             id: 0,
-            oid: oid,
+            oid,
             key: String::new(), 
             values: empty_vec,
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
@@ -2191,7 +2201,7 @@ impl Setting {
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("settings")
+        "settings".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.settings (
@@ -2216,9 +2226,9 @@ impl Setting {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.key.clone()));
-        pg_query.query_coulmns.push(format!(" OR key ="));
+        pg_query.query_coulmns.push(" OR key =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -2226,7 +2236,7 @@ impl Setting {
             Some(pg_query)
         ).unwrap();
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
             client.execute("INSERT INTO settings (oid, key, values, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)",
                 &[&self.oid.clone(),
                 &self.key,
@@ -2234,7 +2244,7 @@ impl Setting {
                 &self.created_at,
                 &self.updated_at]
             )?;        
-            return Ok(self);
+            Ok(self)
         
         } else {
             let ads = rows[0].clone();
@@ -2254,7 +2264,7 @@ impl Setting {
             }
 
    
-            return Ok(self);
+            Ok(self)
 
         }
         
@@ -2279,30 +2289,27 @@ impl Setting {
            
         let mut values: Vec<String> = Vec::new();
         let sql_values: Option<String> = row.get("values");
-        match sql_values{
-            Some(ts) => {
-                let split = ts.split(',');
-                let vec = split.collect::<Vec<&str>>();
-                let mut newvec: Vec<String> = Vec::new();
-                for v in vec{
-                    newvec.push(v.to_string());
-                }
-                values = newvec;
-            },
-            None => {}
+        if let Some(ts) = sql_values {
+            let split = ts.split(',');
+            let vec = split.collect::<Vec<&str>>();
+            let mut newvec: Vec<String> = Vec::new();
+            for v in vec{
+                newvec.push(v.to_string());
+            }
+            values = newvec;
         }  
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             key: row.get("key"), 
-            values: values,
+            values,
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at")
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("settings"));
+        crate::sam::memory::Config::destroy_row(oid, "settings".to_string())
     }
 }
 
@@ -2317,12 +2324,18 @@ pub struct StorageLocation {
     pub created_at: i64,
     pub updated_at: i64
 }
+impl Default for StorageLocation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StorageLocation {
     pub fn new() -> StorageLocation {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         StorageLocation { 
             id: 0,
-            oid: oid,
+            oid,
             storage_type: String::new(), 
             endpoint: String::new(), 
             username: String::new(), 
@@ -2332,7 +2345,7 @@ impl StorageLocation {
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("storage_locations")
+        "storage_locations".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.storage_locations (
@@ -2359,7 +2372,7 @@ impl StorageLocation {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -2367,7 +2380,7 @@ impl StorageLocation {
             Some(pg_query)
         ).unwrap();
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
             client.execute("INSERT INTO storage_locations (oid, storage_type, endpoint, username, password, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
                 &[&self.oid.clone(),
                 &self.storage_type,
@@ -2377,7 +2390,7 @@ impl StorageLocation {
                 &self.created_at,
                 &self.updated_at]
             )?;        
-            return Ok(self);
+            Ok(self)
         
         } else {
             let ads = rows[0].clone();
@@ -2399,7 +2412,7 @@ impl StorageLocation {
             }
 
    
-            return Ok(self);
+            Ok(self)
 
         }
         
@@ -2419,7 +2432,7 @@ impl StorageLocation {
         Ok(parsed_rows)
     }
     fn from_row(row: &Row) -> Result<Self> {
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             storage_type: row.get("storage_type"), 
@@ -2428,10 +2441,10 @@ impl StorageLocation {
             password: row.get("password"), 
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at")
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("storage_locations"));
+        crate::sam::memory::Config::destroy_row(oid, "storage_locations".to_string())
     }
 }
 
@@ -2460,12 +2473,18 @@ pub struct FileStorage {
     pub created_at: i64,
     pub updated_at: i64
 }
+impl Default for FileStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileStorage {
     pub fn new() -> FileStorage {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         FileStorage { 
             id: 0,
-            oid: oid,
+            oid,
             file_name: String::new(), 
             file_type: String::new(), 
             file_data: None, 
@@ -2476,7 +2495,7 @@ impl FileStorage {
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("file_storage")
+        "file_storage".to_string()
     }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.file_storage (
@@ -2504,7 +2523,7 @@ impl FileStorage {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -2512,7 +2531,7 @@ impl FileStorage {
             Some(pg_query.clone())
         )?;
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
             client.execute("INSERT INTO file_storage (oid, file_name, file_type, storage_location_oid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
                 &[&self.oid.clone(),
                 &self.file_name,
@@ -2548,31 +2567,25 @@ impl FileStorage {
         )?;
         let ads = rows[0].clone();
 
-        match self.file_folder_tree.clone(){
-            Some(folder_tree) => {
-                client.execute("UPDATE file_storage SET file_folder_tree = $1, updated_at = $2 WHERE oid = $3;", 
-                &[
-                    &folder_tree.join("/"),
-                    &self.updated_at,
-                    &ads.oid
-                ])?;  
-            },
-            None => {}
+        if let Some(folder_tree) = self.file_folder_tree.clone() {
+            client.execute("UPDATE file_storage SET file_folder_tree = $1, updated_at = $2 WHERE oid = $3;", 
+            &[
+                &folder_tree.join("/"),
+                &self.updated_at,
+                &ads.oid
+            ])?;  
         }
 
-        match self.file_data.clone(){
-            Some(file_data) => {
-                client.execute("UPDATE file_storage SET file_data = $1, updated_at = $2 WHERE oid = $3;", 
-                &[
-                    &file_data,
-                    &self.updated_at,
-                    &ads.oid
-                ])?;  
-            },
-            None => {}
+        if let Some(file_data) = self.file_data.clone() {
+            client.execute("UPDATE file_storage SET file_data = $1, updated_at = $2 WHERE oid = $3;", 
+            &[
+                &file_data,
+                &self.updated_at,
+                &ads.oid
+            ])?;  
         }
 
-        return Ok(self);
+        Ok(self)
 
 
     }
@@ -2590,7 +2603,7 @@ impl FileStorage {
     }
     pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = Config::pg_select(Self::sql_table_name(), Some(format!("id, oid, file_name, file_type, file_folder_tree, storage_location_oid, created_at, updated_at")), limit, offset, order, query)?;
+        let jsons = Config::pg_select(Self::sql_table_name(), Some("id, oid, file_name, file_type, file_folder_tree, storage_location_oid, created_at, updated_at".to_string()), limit, offset, order, query)?;
 
         for j in jsons{
             let object: Self = serde_json::from_str(&j).unwrap();
@@ -2604,63 +2617,57 @@ impl FileStorage {
 
         let mut file_folder_tree: Option<Vec<String>> = None;
         let sql_file_folder_tree: Option<String> = row.get("file_folder_tree");
-        match sql_file_folder_tree {
-            Some(ts) => {
-                let split = ts.split('/');
-                let vec = split.collect::<Vec<&str>>();
-                let mut newvec: Vec<String> = Vec::new();
-                for v in vec{
-                    newvec.push(v.to_string());
-                }
-                file_folder_tree = Some(newvec);
-            },
-            None => {}
+        if let Some(ts) = sql_file_folder_tree {
+            let split = ts.split('/');
+            let vec = split.collect::<Vec<&str>>();
+            let mut newvec: Vec<String> = Vec::new();
+            for v in vec{
+                newvec.push(v.to_string());
+            }
+            file_folder_tree = Some(newvec);
         }
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             file_name: row.get("file_name"), 
             file_type: row.get("file_type"), 
             file_data: row.get("file_data"), 
-            file_folder_tree: file_folder_tree, 
+            file_folder_tree, 
             storage_location_oid: row.get("storage_location_oid"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at")
-        });
+        })
     }
     fn from_row_lite(row: &Row) -> Result<Self> {
 
         let mut file_folder_tree: Option<Vec<String>> = None;
         let sql_file_folder_tree: Option<String> = row.get("file_folder_tree");
-        match sql_file_folder_tree {
-            Some(ts) => {
-                let split = ts.split('/');
-                let vec = split.collect::<Vec<&str>>();
-                let mut newvec: Vec<String> = Vec::new();
-                for v in vec{
-                    newvec.push(v.to_string());
-                }
-                file_folder_tree = Some(newvec);
-            },
-            None => {}
+        if let Some(ts) = sql_file_folder_tree {
+            let split = ts.split('/');
+            let vec = split.collect::<Vec<&str>>();
+            let mut newvec: Vec<String> = Vec::new();
+            for v in vec{
+                newvec.push(v.to_string());
+            }
+            file_folder_tree = Some(newvec);
         }
 
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             file_name: row.get("file_name"), 
             file_type: row.get("file_type"), 
             file_data: None, 
-            file_folder_tree: file_folder_tree, 
+            file_folder_tree, 
             storage_location_oid: row.get("storage_location_oid"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at")
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("file_storage"));
+        crate::sam::memory::Config::destroy_row(oid, "file_storage".to_string())
     }
     pub fn cache_all() -> Result<()>{
         let files_without_data = FileStorage::select_lite(None, None, None, None)?;
@@ -2670,15 +2677,15 @@ impl FileStorage {
             if !Path::new(file.path_on_disk().as_str()).exists(){
 
 
-                if file.storage_location_oid == format!("SQL"){
+                if file.storage_location_oid == *"SQL"{
                     let mut pg_query = PostgresQueries::default();
                     pg_query.queries.push(crate::sam::memory::PGCol::String(file.oid.clone()));
-                    pg_query.query_coulmns.push(format!("oid ="));
+                    pg_query.query_coulmns.push("oid =".to_string());
         
                     let files_with_data = FileStorage::select(None, None, None, Some(pg_query))?;
                     let ffile = files_with_data[0].clone();
                     ffile.cache()?;
-                } else if file.storage_location_oid == format!("DROPBOX"){
+                } else if file.storage_location_oid == *"DROPBOX"{
                     // crate::sam::services::dropbox::download_file("/Sam/test.png", file.path_on_disk().as_str());
                 }
         
@@ -2686,19 +2693,16 @@ impl FileStorage {
 
         }
 
-        return Ok(());
+        Ok(())
     }
     pub fn cache(&self) -> Result<()>{
-        match self.file_data.clone(){
-            Some(data) => {
-                std::fs::write(self.path_on_disk().clone(), data)?;
-            },
-            None => {}
+        if let Some(data) = self.file_data.clone() {
+            std::fs::write(self.path_on_disk().clone(), data)?;
         }
-        return Ok(());
+        Ok(())
     }
     pub fn path_on_disk(&self) -> String{
-        return format!("/opt/sam/files/{}", self.oid.clone());
+        format!("/opt/sam/files/{}", self.oid.clone())
     }
 }
 
@@ -2719,16 +2723,16 @@ impl WebSessions {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
         WebSessions { 
             id: 0,
-            oid: oid,
-            sid: sid,
+            oid,
+            sid,
             human_oid: String::new(), 
             ip_address: String::new(),
             authenticated: false,
-            timestamp: timestamp,
+            timestamp,
         }
     }
     pub fn sql_table_name() -> String {
-        return format!("web_sessions")
+        "web_sessions".to_string()
     }
     pub fn migrations() -> Vec<&'static str> {
         vec![
@@ -2753,9 +2757,9 @@ impl WebSessions {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.sid.clone()));
-        pg_query.query_coulmns.push(format!(" OR sid ="));
+        pg_query.query_coulmns.push(" OR sid =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -2763,7 +2767,7 @@ impl WebSessions {
             Some(pg_query)
         )?;
 
-        if rows.len() == 0 {
+        if rows.is_empty() {
 
 
 
@@ -2799,7 +2803,7 @@ impl WebSessions {
     fn from_row(row: &Row) -> Result<Self> {
 
 
-        return Ok(Self {
+        Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
             sid: row.get("sid"),
@@ -2807,10 +2811,10 @@ impl WebSessions {
             ip_address: row.get("ip_address"), 
             authenticated: row.get("authenticated"),
             timestamp: row.get("timestamp"),
-        });
+        })
     }
     pub fn destroy(oid: String) -> Result<bool>{
-        return crate::sam::memory::Config::destroy_row(oid, format!("web_sessions"));
+        crate::sam::memory::Config::destroy_row(oid, "web_sessions".to_string())
     }
 }
 
@@ -2821,6 +2825,12 @@ pub struct PostgresServer {
     pub password: String,
 	pub address: String
 }
+impl Default for PostgresServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PostgresServer {
     pub fn new() -> PostgresServer {
 

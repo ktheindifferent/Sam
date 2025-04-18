@@ -10,7 +10,7 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::os::unix::fs::PermissionsExt; // Added for `from_mode`
 use error_chain::error_chain;
 use crate::sam::tools; // Add missing import for tools module
@@ -35,7 +35,7 @@ pub fn python3(command: &str) -> Result<String> {
     let output = Command::new("python3")
         .arg(command)
         .output()
-        .map_err(|e| Error::from(e))?;
+        .map_err(Error::from)?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -45,7 +45,7 @@ pub fn cmd(command: &str) -> Result<String> {
         .arg("-c")
         .arg(command)
         .output()
-        .map_err(|e| Error::from(e))?;
+        .map_err(Error::from)?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 

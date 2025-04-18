@@ -11,15 +11,13 @@ use std::fs::File;
 use std::io::{Write};
 use titlecase::titlecase;
 use serde::{Serialize, Deserialize};
-use std::process::{Command, Stdio};
 use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
 use std::thread;
 
-use std::io::BufReader;
 use std::io::prelude::*;
-use crate::sam::tools; // Add missing import for tools module
+ // Add missing import for tools module
 
 const STYLE_WEIGHT: f64 = 1e6;
 const LEARNING_RATE: f64 = 1e-1;
@@ -40,7 +38,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
             nst_style: String, // Fra Angelico, Vincent Van Gogh
         })?;
 
-        let mut selected_style = format!("/opt/sam/models/nst/vincent_van_gogh.jpg");
+        let mut selected_style = "/opt/sam/models/nst/vincent_van_gogh.jpg".to_string();
         for style in styles()?{
             if style.name == input.nst_style.as_str() {
                 selected_style = style.file_path.to_string();
@@ -61,7 +59,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
 
         // return Ok(Response::json(&styles().unwrap()));
     }
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }
 
 // fn gram_matrix(m: &Tensor) -> Tensor {
@@ -153,13 +151,13 @@ pub fn styles() -> Result<Vec<Style>, crate::sam::services::Error> {
         let pth = path.unwrap().path().display().to_string();
 
         let style = Style{
-            name: titlecase(&format!("{}", pth.clone()).replace("/opt/sam/models/nst/", "").replace(".jpg", "").replace("_", " ")),
+            name: titlecase(&pth.clone().to_string().replace("/opt/sam/models/nst/", "").replace(".jpg", "").replace("_", " ")),
             file_path: pth.clone(),
         };
 
         styles.push(style);
     }
-    return Ok(styles);
+    Ok(styles)
 }
 
 pub fn install() -> Result<(), crate::sam::services::Error> {
@@ -199,5 +197,5 @@ pub fn install() -> Result<(), crate::sam::services::Error> {
         pos += bytes_written;
     }
 
-    return Ok(());
+    Ok(())
 }

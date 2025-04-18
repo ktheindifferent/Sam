@@ -25,11 +25,11 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
                 return Ok(Response::json(&j));
             },
             Err(e) => {
-                return Ok(Response::text(&e.to_string()));
+                return Ok(Response::text(e.to_string()));
             }
         }
     }
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }
 
 
@@ -38,7 +38,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 pub fn get() -> Result<Packages, crate::sam::services::Error> { 
     let request = reqwest::blocking::Client::new().get("https://osf.opensam.foundation/api/packages").send()?;
     let json = request.json::<Packages>()?;
-    return Ok(json);
+    Ok(json)
 }
 
 pub type Packages = Vec<Package>;

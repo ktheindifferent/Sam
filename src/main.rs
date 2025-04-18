@@ -18,7 +18,6 @@
 pub mod sam;
 pub mod cli; // New CLI module
 
-use std::env;
 
 // External crates
 extern crate wikipedia;

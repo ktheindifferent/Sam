@@ -1,7 +1,5 @@
 use std::io::{self, Write};
 use std::env;
-use log::{info, error, warn, debug};
-use std::sync::{Arc, Mutex};
 
 /// Global flag for error display
 static mut SHOW_ERRORS: bool = false;
@@ -111,7 +109,7 @@ fn show_help() {
     println!("version               - Show SAM version information");
     println!("errors                - Show/hide error output in CLI");
     println!("exit, quit            - Exit the command prompt");
-    println!("");
+    println!();
 }
 
 /// Handle HTTP service commands
@@ -157,7 +155,7 @@ async fn handle_debug(args: Vec<String>) {
     }
 
     println!("Setting debug level for {} to {}",
-        args.get(0).unwrap_or(&"all".to_string()),
+        args.first().unwrap_or(&"all".to_string()),
         args.get(1).unwrap_or(&"info".to_string()));
 
     println!("Debug settings updated");

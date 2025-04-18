@@ -323,7 +323,6 @@ pub fn s2_init() {
 }
 
 
-use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
 
 // Stage Three - 
 /// Stage Three: Processes stitched audio files for speech-to-text (STT) and observation.

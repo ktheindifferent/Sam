@@ -10,7 +10,7 @@
 // Required dependencies
 use serde::{Serialize, Deserialize};
 use error_chain::error_chain;
-use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
+use opencl3::device::{get_all_devices, CL_DEVICE_TYPE_GPU};
 
 // Define error handling
 error_chain! {

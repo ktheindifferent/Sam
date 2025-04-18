@@ -1,11 +1,8 @@
-use std::path::Path;
 use std::fs;
 use std::fs::File;
 use std::io::{Write};
 use titlecase::titlecase;
 use serde::{Serialize, Deserialize};
-use std::process::{Command, Stdio};
-use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
 
@@ -33,8 +30,8 @@ pub fn games() -> Result<Vec<Game>, crate::sam::services::Error> {
 
 
         if !pth.contains(".zip") {
-            let mut game = Game{
-                name: titlecase(&format!("{}", pth.clone()).replace("/opt/sam/games/", "").replace("_", " ")),
+            let game = Game{
+                name: titlecase(&pth.clone().to_string().replace("/opt/sam/games/", "").replace("_", " ")),
                 launch: format!("{}/index.html", pth.clone().replace("/opt/sam", "")),
                 icon: format!("{}/icon.png", pth.clone().replace("/opt/sam", "")),
             };
@@ -42,7 +39,7 @@ pub fn games() -> Result<Vec<Game>, crate::sam::services::Error> {
         }
         
     }
-    return Ok(games);
+    Ok(games)
 }
 
 pub fn install() -> Result<(), crate::sam::services::Error> {
@@ -57,5 +54,5 @@ pub fn install() -> Result<(), crate::sam::services::Error> {
     crate::sam::tools::extract_zip("/opt/sam/games/Flappy_Kitty.zip", "/opt/sam/games/");
 
 
-    return Ok(());
+    Ok(())
 }

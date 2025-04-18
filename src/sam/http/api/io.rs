@@ -38,14 +38,14 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
                     let io = IOReply{
                         text: rs,
                         timestamp: 0,
-                        response_type: format!("io")
+                        response_type: "io".to_string()
                     };
                 
-                    return Ok(Response::json(&io));
+                    Ok(Response::json(&io))
                 },
                 Err(_e) => {
                     let response = Response::text("RiveScript error").with_status_code(500);
-                    return Ok(response);
+                    Ok(response)
                 }
             }
         
@@ -53,7 +53,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         },
         None => {
             let response = Response::text("IO input malformed").with_status_code(500);
-            return Ok(response);
+            Ok(response)
         }
     }
    

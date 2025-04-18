@@ -13,29 +13,26 @@
 
 use rouille::Request;
 use rouille::Response;
-use serde::{Serialize, Deserialize};
 use rouille::post_input;
 
 pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     
     
     
-    if request.url() == "/api/services/notifications/unseen" {
-        if request.method() == "GET" {
-            let mut pg_query = crate::sam::memory::PostgresQueries::default();
-            pg_query.queries.push(crate::sam::memory::PGCol::Boolean(false));
-            pg_query.query_coulmns.push(format!("seen ="));
+    if request.url() == "/api/services/notifications/unseen" && request.method() == "GET" {
+        let mut pg_query = crate::sam::memory::PostgresQueries::default();
+        pg_query.queries.push(crate::sam::memory::PGCol::Boolean(false));
+        pg_query.query_coulmns.push("seen =".to_string());
 
-            pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid));
-            pg_query.query_coulmns.push(format!(" AND human_oid ="));
+        pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid));
+        pg_query.query_coulmns.push(" AND human_oid =".to_string());
 
-            pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.sid));
-            pg_query.query_coulmns.push(format!(" AND sid ="));
+        pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.sid));
+        pg_query.query_coulmns.push(" AND sid =".to_string());
 
-            let notifications = crate::sam::memory::Notification::select(None, None, Some(format!("timestamp DESC")), Some(pg_query))?;
-            
-            return Ok(Response::json(&notifications));
-        }
+        let notifications = crate::sam::memory::Notification::select(None, None, Some("timestamp DESC".to_string()), Some(pg_query))?;
+        
+        return Ok(Response::json(&notifications));
     }
 
     if request.url() == "/api/services/notifications/seen" {
@@ -44,9 +41,9 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         })?;
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(input.oid.clone()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.query_coulmns.push("oid =".to_string());
 
-        let notifications = crate::sam::memory::Notification::select(Some(20), None, Some(format!("timestamp DESC")), Some(pg_query))?;
+        let notifications = crate::sam::memory::Notification::select(Some(20), None, Some("timestamp DESC".to_string()), Some(pg_query))?;
         let mut notification = notifications[0].clone();
         notification.seen = true;
         notification.save().unwrap();
@@ -61,9 +58,9 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
 
             pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid));
-            pg_query.query_coulmns.push(format!("human_oid ="));
+            pg_query.query_coulmns.push("human_oid =".to_string());
 
-            let notifications = crate::sam::memory::Notification::select(Some(20), None, Some(format!("timestamp DESC")), Some(pg_query))?;
+            let notifications = crate::sam::memory::Notification::select(Some(20), None, Some("timestamp DESC".to_string()), Some(pg_query))?;
             
             return Ok(Response::json(&notifications));
         }
@@ -86,5 +83,5 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
 
 
     }
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }

@@ -19,8 +19,8 @@ use std::thread;
 pub fn init(){
     thread::spawn(move || {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(format!("lifx")));
-        pg_query.query_coulmns.push(format!("identifier ="));
+        pg_query.queries.push(crate::sam::memory::PGCol::String("lifx".to_string()));
+        pg_query.query_coulmns.push("identifier =".to_string());
         let services = crate::sam::memory::Service::select(None, None, None, Some(pg_query));
 
         match services {
@@ -70,10 +70,10 @@ pub fn init_server(key: String) {
 
 pub fn get_lifx_service_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
-    pg_query.queries.push(crate::sam::memory::PGCol::String(format!("lifx")));
-    pg_query.query_coulmns.push(format!("identifier ="));
+    pg_query.queries.push(crate::sam::memory::PGCol::String("lifx".to_string()));
+    pg_query.query_coulmns.push("identifier =".to_string());
     let service = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
-    return Ok(service[0].clone());
+    Ok(service[0].clone())
 }
 
 pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
@@ -149,11 +149,11 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
                     public = true;
                 }
 
-                let objects = crate::sam::services::lifx::set(service.secret.clone(), input.selector.clone(), public, Some(input.power.clone()), None);
+                crate::sam::services::lifx::set(service.secret.clone(), input.selector.clone(), public, Some(input.power.clone()), None);
 
 
                 
-                return Ok(Response::json(&objects));
+                return Ok(Response::json(&()));
             },
             Err(e) => {
                 log::error!("{}", e);
@@ -193,12 +193,12 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
     }
 
     
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }
 
 pub fn get_lifx_endpoint() -> String {
     if check(Some(3)).is_ok(){
-        return format!("https://api.lifx.com");
+        return "https://api.lifx.com".to_string();
     } else {
         match get_lifx_service_db_obj(){
             Ok(service) => {
@@ -209,12 +209,12 @@ pub fn get_lifx_endpoint() -> String {
             }
         }
     }
-    return format!("https://api.lifx.com");
+    "https://api.lifx.com".to_string()
 }
 
 pub fn select_lifx_endpoint(public: bool) -> String {
     if public {
-        return format!("https://api.lifx.com");
+        "https://api.lifx.com".to_string()
     } else {
 
         match get_lifx_service_db_obj(){
@@ -226,7 +226,7 @@ pub fn select_lifx_endpoint(public: bool) -> String {
             }
         }
 
-        return format!("https://api.lifx.com");
+        "https://api.lifx.com".to_string()
     }
 }
 
@@ -236,10 +236,10 @@ pub fn get_all(key: String) -> Result<lifx::Lights, crate::sam::services::Error>
 
     let config = lifx::LifxConfig{
         access_token: key.clone(),
-        api_endpoints: api_endpoints
+        api_endpoints
     };
 
-    return Ok(lifx::Light::list_all(config.clone())?);
+    Ok(lifx::Light::list_all(config.clone())?)
 }
 
 pub fn get(key: String, public: bool) -> Result<lifx::Lights, crate::sam::services::Error>{
@@ -248,10 +248,10 @@ pub fn get(key: String, public: bool) -> Result<lifx::Lights, crate::sam::servic
 
     let config = lifx::LifxConfig{
         access_token: key.clone(),
-        api_endpoints: api_endpoints
+        api_endpoints
     };
 
-    return Ok(lifx::Light::list_all(config.clone())?);
+    Ok(lifx::Light::list_all(config.clone())?)
 }
 
 
@@ -261,7 +261,7 @@ pub fn set(key: String, selector: String, public: bool, power: Option<String>, c
 
     let lifx_config = lifx::LifxConfig{
         access_token: key.clone(),
-        api_endpoints: api_endpoints
+        api_endpoints
     };
 
     let mut state = lifx::State::new();
@@ -281,7 +281,7 @@ pub fn set_state(key: String, selector: String, power: Option<String>, color: Op
 
     let lifx_config = lifx::LifxConfig{
         access_token: key.clone(),
-        api_endpoints: api_endpoints
+        api_endpoints
     };
 
     let mut state = lifx::State::new();
@@ -298,11 +298,11 @@ pub fn set_state(key: String, selector: String, power: Option<String>, color: Op
 pub fn sync(key: String){
 
     let mut api_endpoints: Vec<String> = Vec::new();
-    api_endpoints.push(format!("https://api.lifx.com"));
+    api_endpoints.push("https://api.lifx.com".to_string());
 
     let lifx_config = lifx::LifxConfig{
         access_token: key.clone(),
-        api_endpoints: api_endpoints
+        api_endpoints
     };
 
     let _storable_thing_vec: Vec<crate::sam::memory::Thing> = Vec::new();
@@ -327,14 +327,14 @@ pub fn sync(key: String){
 
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(location.name.clone()));
-        pg_query.query_coulmns.push(format!("name ilike"));
+        pg_query.query_coulmns.push("name ilike".to_string());
 
         let matching_locations = crate::sam::memory::Location::select(None, None, None, Some(pg_query)).unwrap();
         
         
         
         
-        if matching_locations.len() > 0 {
+        if !matching_locations.is_empty() {
             for matching_location in matching_locations{
                 let mut room = crate::sam::memory::Room::new();
                 room.name = group.name.clone();
@@ -346,18 +346,18 @@ pub fn sync(key: String){
         // Get location oid
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(location.name.clone()));
-        pg_query.query_coulmns.push(format!("name ilike"));
+        pg_query.query_coulmns.push("name ilike".to_string());
         let locations = crate::sam::memory::Location::select(None, None, None, Some(pg_query)).unwrap();
-        if locations.len() > 0 {
+        if !locations.is_empty() {
             let location_oid = locations[0].oid.clone();
               // Get room oid
               let mut pg_query = crate::sam::memory::PostgresQueries::default();
               pg_query.queries.push(crate::sam::memory::PGCol::String(location_oid.clone()));
-              pg_query.query_coulmns.push(format!("location_oid ="));
+              pg_query.query_coulmns.push("location_oid =".to_string());
               pg_query.queries.push(crate::sam::memory::PGCol::String(group.name.clone()));
-              pg_query.query_coulmns.push(format!(" AND name ilike"));
+              pg_query.query_coulmns.push(" AND name ilike".to_string());
             let rooms = crate::sam::memory::Room::select(None, None, None, Some(pg_query)).unwrap();
-            if rooms.len() > 0 {
+            if !rooms.is_empty() {
                 thing.room_oid = rooms[0].oid.clone();
             }
         }
@@ -440,7 +440,7 @@ pub fn sync_local(key: String){
 
     let lifx_config = lifx::LifxConfig{
         access_token: key.clone(),
-        api_endpoints: api_endpoints
+        api_endpoints
     };
 
     let _storable_thing_vec: Vec<crate::sam::memory::Thing> = Vec::new();

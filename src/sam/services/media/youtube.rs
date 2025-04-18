@@ -1,6 +1,5 @@
 use rouille::Request;
 use rouille::Response;
-use serde::{Serialize, Deserialize};
 
 
 use invidious::reqwest::blocking::Client;
@@ -86,15 +85,15 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
 
 
         let mut file_folder_tree: Vec<String> = Vec::new();
-        file_folder_tree.push(format!("Videos"));
-        file_folder_tree.push(format!("Youtube"));
+        file_folder_tree.push("Videos".to_string());
+        file_folder_tree.push("Youtube".to_string());
 
         let mut file = crate::sam::memory::FileStorage::new();
         file.file_name = format!("{}.mp4", tube_id.clone());
-        file.file_type = format!("video/mp4");
+        file.file_type = "video/mp4".to_string();
         file.file_data = Some(data);
         file.file_folder_tree = Some(file_folder_tree);
-        file.storage_location_oid = format!("SQL");
+        file.storage_location_oid = "SQL".to_string();
         file.save()?;
 
 
@@ -139,5 +138,5 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         }
     }
 
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }

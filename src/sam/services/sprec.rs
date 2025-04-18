@@ -11,9 +11,8 @@ use std::thread;
 use std::fs::File;
 use std::io::{Write};
 use std::path::Path;
-use std::str::FromStr;
 use serde::{Serialize, Deserialize};
-use crate::sam::tools; // Add missing import for tools module
+ // Add missing import for tools module
 
 /// Initializes the SPREC service (currently a placeholder).
 pub fn init() {
@@ -61,7 +60,7 @@ pub fn build() {
                     full_pg_query.query_coulmns.push("oid =".to_string());
 
                     if let Ok(full_observations) = crate::sam::memory::Observation::select(None, None, None, Some(full_pg_query)) {
-                        if let Some(full_observation) = full_observations.get(0) {
+                        if let Some(full_observation) = full_observations.first() {
                             if let Some(file_data) = &full_observation.observation_file {
                                 if let Err(e) = std::fs::write(&audio_file, file_data) {
                                     log::error!("Failed to write audio file {}: {:?}", audio_file, e);

@@ -17,10 +17,10 @@ use serde::{Serialize, Deserialize};
 
 pub fn get_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
-    pg_query.queries.push(crate::sam::memory::PGCol::String(format!("jupiter")));
-    pg_query.query_coulmns.push(format!("identifier ="));
+    pg_query.queries.push(crate::sam::memory::PGCol::String("jupiter".to_string()));
+    pg_query.query_coulmns.push("identifier =".to_string());
     let service = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
-    return Ok(service[0].clone());
+    Ok(service[0].clone())
 }
 
 pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
@@ -31,11 +31,11 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
                 return Ok(Response::json(&j));
             },
             Err(e) => {
-                return Ok(Response::text(&e.to_string()));
+                return Ok(Response::text(e.to_string()));
             }
         }
     }
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }
 
 /// curl -X GET "https://jupiter.alpha.opensam.foundation/" -H "Authorization: xxx"
@@ -43,7 +43,7 @@ pub fn get() -> Result<CachedWeatherData, crate::sam::services::Error> {
     let jupiter_config = get_db_obj()?;    
     let request = reqwest::blocking::Client::new().get(jupiter_config.endpoint).header("Authorization", format!("Bearer {}", jupiter_config.secret)).send()?;
     let json = request.json::<CachedWeatherData>()?;
-    return Ok(json);
+    Ok(json)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

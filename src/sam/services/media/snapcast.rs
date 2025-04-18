@@ -49,7 +49,7 @@ pub fn init(){
 // /etc/snapserver.conf
 pub fn configure(){
 
-    let cfg = format!("[server]
+    let cfg = "[server]
 threads = -1
 pidfile = /var/run/snapserver/pid
 
@@ -69,7 +69,7 @@ bind_to_address = 0.0.0.0
 port = 1704
 source = librespot:///bin/librespot?name=Sam&username=calebsmithdev&password=Nofear1234&devicename=Sam&bitrate=320&nomalize=true
 source = pipe:///tmp/snapfifo?name=samfifo
-[logging]");
+[logging]".to_string();
     log::info!("cfg: {:?}", cfg);
     std::fs::write("/etc/snapserver.conf", &cfg).expect("Unable to write file");
 
@@ -90,7 +90,7 @@ pub fn install() -> std::io::Result<()> {
     }
 
     #[cfg(target_arch = "x86_64")]{
-        return install_snapcast_server_amd64();
+        install_snapcast_server_amd64()
     }
 
     #[cfg(target_arch = "x86")]{
@@ -109,7 +109,7 @@ pub fn install_snapcast_server_arm64() -> std::io::Result<()> {
 
     crate::sam::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
     crate::sam::tools::uinx_cmd("service snapserver start");
-    return Ok(());
+    Ok(())
 }
 
 pub fn install_snapcast_server_arm() -> std::io::Result<()> {
@@ -123,7 +123,7 @@ pub fn install_snapcast_server_arm() -> std::io::Result<()> {
 
     crate::sam::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
     crate::sam::tools::uinx_cmd("service snapserver start");
-    return Ok(());
+    Ok(())
 }
 
 
@@ -139,5 +139,5 @@ pub fn install_snapcast_server_amd64() -> std::io::Result<()> {
 
     crate::sam::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
     crate::sam::tools::uinx_cmd("service snapserver start");
-    return Ok(());
+    Ok(())
 }

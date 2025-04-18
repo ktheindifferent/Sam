@@ -20,7 +20,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
             skip_number = skip.unwrap().parse::<usize>().unwrap();
         }
 
-        let objects = crate::sam::memory::Observation::select_lite(Some(1), Some(skip_number), Some(format!("timestamp DESC")), None)?;
+        let objects = crate::sam::memory::Observation::select_lite(Some(1), Some(skip_number), Some("timestamp DESC".to_string()), None)?;
         return Ok(Response::json(&objects));
     }
 
@@ -33,8 +33,8 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
         // Build query
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.clone().to_string()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
+        pg_query.query_coulmns.push("oid =".to_string());
 
         // Select project by oid 
         let observations = crate::sam::memory::Observation::select(None, None, None, Some(pg_query)).unwrap();
@@ -54,8 +54,8 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
         // Build query
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.clone().to_string()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
+        pg_query.query_coulmns.push("oid =".to_string());
 
         // Select project by oid 
         let observations = crate::sam::memory::Observation::select(None, None, None, Some(pg_query)).unwrap();
@@ -114,5 +114,5 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
 
 
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }

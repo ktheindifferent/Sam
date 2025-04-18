@@ -19,13 +19,13 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         return Ok(Response::from_data("audio/wav", crate::sam::services::tts::get(input).unwrap()));
         
     }
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }
 
 pub fn init(){
 
     let tts_thead = thread::Builder::new().name("mozillatts".to_string()).spawn(move || {
-        crate::sam::tools::uinx_cmd(&format!("docker run -p 5002:5002 synesthesiam/mozillatts"));
+        crate::sam::tools::uinx_cmd("docker run -p 5002:5002 synesthesiam/mozillatts");
     });
     match tts_thead{
         Ok(_) => {
@@ -41,16 +41,16 @@ pub fn get(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
 
     match fetch_online(text.clone()) {
         Ok(x) => {
-            return Ok(x);
+            Ok(x)
         },
         Err(_e) => {
 
             match fetch_local(text.clone()) {
                 Ok(x) => {
-                    return Ok(x);
+                    Ok(x)
                 },
                 Err(e) => {
-                    return Err(e);
+                    Err(e)
                 }
             }
 

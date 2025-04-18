@@ -22,8 +22,8 @@ pub fn init(){
     // TODO - Customizable Port and Path
     thread::spawn(move || {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(format!("rtsp")));
-        pg_query.query_coulmns.push(format!("thing_type ="));
+        pg_query.queries.push(crate::sam::memory::PGCol::String("rtsp".to_string()));
+        pg_query.query_coulmns.push("thing_type =".to_string());
         let rtsp_things = crate::sam::memory::Thing::select(None, None, None, Some(pg_query));
 
         match rtsp_things {
@@ -67,13 +67,13 @@ pub fn init(){
 }
 
 pub fn gen_rtsp_to_http_stream_script(address: String, identifier: String) -> String{
-    let mut script = format!("#!/bin/bash\n");
+    let mut script = "#!/bin/bash\n".to_string();
     script = format!("{}VIDSOURCE=\"{}\"\n", script, address);
     script = format!("{}AUDIO_OPTS=\"-c:a aac -b:a 160000 -ac 2\"\n", script);
     script = format!("{}VIDEO_OPTS=\"-s 854x480 -c:v libx264 -b:v 800000\"\n", script);
     script = format!("{}OUTPUT_HLS=\"-hls_time 10 -hls_list_size 10 -start_number 1\"\n", script);
     script = format!("{}ffmpeg -i \"$VIDSOURCE\" -y $AUDIO_OPTS $VIDEO_OPTS $OUTPUT_HLS /opt/sam/streams/{}.m3u8", script, identifier);
-    return script;
+    script
 }
 
 pub fn gen_rtsp_to_wav_script(address: String, identifier: String) -> String{
@@ -83,10 +83,10 @@ pub fn gen_rtsp_to_wav_script(address: String, identifier: String) -> String{
     }
 
 
-    let mut script = format!("#!/bin/bash\n");
+    let mut script = "#!/bin/bash\n".to_string();
     script = format!("{}VIDSOURCE=\"{}\"\n", script, address);
     script = format!("{}ffmpeg -i \"$VIDSOURCE\" -f segment -segment_time 1 -reset_timestamps 1 -strftime 1 -map 0:a /opt/sam/tmp/sound/{}/s1/%Y%m%d-%H%M%S.wav", script, identifier);
-    return script;
+    script
 }
 
 

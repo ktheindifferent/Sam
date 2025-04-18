@@ -121,7 +121,7 @@ pub fn handle(
             pg_query.query_coulmns.push("oid =".to_string());
 
             let files = crate::sam::memory::FileStorage::select(None, None, None, Some(pg_query))?;
-            if let Some(file) = files.get(0) {
+            if let Some(file) = files.first() {
                 return Ok(Response::from_data(file.file_type.clone(), file.file_data.clone().unwrap()));
             } else {
                 return Ok(Response::empty_404());

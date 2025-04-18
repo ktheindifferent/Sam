@@ -8,15 +8,14 @@ use rouille::Request;
 use rouille::Response;
 use serde::{Serialize, Deserialize};
 
-use std::fs::File;
 use std::io::prelude::*;
 
 pub fn get_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
-    pg_query.queries.push(crate::sam::memory::PGCol::String(format!("dropbox")));
-    pg_query.query_coulmns.push(format!("identifier ="));
+    pg_query.queries.push(crate::sam::memory::PGCol::String("dropbox".to_string()));
+    pg_query.query_coulmns.push("identifier =".to_string());
     let service = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
-    return Ok(service[0].clone());
+    Ok(service[0].clone())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -28,13 +27,13 @@ pub struct DropboxAuth {
 
 pub fn get_auth_url() -> DropboxAuth {
     let pkce = dropbox_sdk::oauth2::PkceCode::new();
-    let client_id = format!("ogyeqdms81svfke");
+    let client_id = "ogyeqdms81svfke".to_string();
     let oauth2_flow = dropbox_sdk::oauth2::Oauth2Type::PKCE(pkce.clone());
     let url = dropbox_sdk::oauth2::AuthorizeUrlBuilder::new(&client_id, &oauth2_flow).build();
-    return DropboxAuth{
+    DropboxAuth{
         url: url.to_string(),
         pkce: pkce.code.to_string(),
-    };
+    }
 }
 
 
@@ -42,7 +41,7 @@ pub fn finish_auth(pkce: String, auth_code: String) -> dropbox_sdk::oauth2::Auth
 
     let pkcee = dropbox_sdk::oauth2::PkceCode{code: pkce};
 
-    let client_id = format!("ogyeqdms81svfke");
+    let client_id = "ogyeqdms81svfke".to_string();
     let oauth2_flow = dropbox_sdk::oauth2::Oauth2Type::PKCE(pkcee);
 
     let auth = dropbox_sdk::oauth2::Authorization::from_auth_code(
@@ -54,12 +53,12 @@ pub fn finish_auth(pkce: String, auth_code: String) -> dropbox_sdk::oauth2::Auth
 
 
 
-    return auth;
+    auth
 }
 
 pub fn update_key(key: String, refresh: Option<String>){
     let mut service = crate::sam::memory::Service::new();
-    service.identifier = format!("dropbox");
+    service.identifier = "dropbox".to_string();
     match refresh{
         Some(refr) => {
             if refr.len() > 2 {
@@ -75,7 +74,7 @@ pub fn update_key(key: String, refresh: Option<String>){
         }
     }
     service.secret = key;
-    service.endpoint = format!("");
+    service.endpoint = String::new();
     service.save().unwrap();
 }
 
@@ -138,7 +137,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
 
 
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }
 
 
@@ -169,25 +168,25 @@ pub fn create_sam_folder(){
 
 pub fn create_folder(path: &str){
     let obj = get_db_obj().unwrap();
-    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
-    dropbox_sdk::files::create_folder_v2(&client, &dropbox_sdk::files::CreateFolderArg::new(path.clone().to_string()));
+    dropbox_sdk::files::create_folder_v2(&client, &dropbox_sdk::files::CreateFolderArg::new(path.to_string()));
 
 }
 
 // TODO: Cache Files
 pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
     let obj = get_db_obj().unwrap();
-    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
-    let dropbox_file = dropbox_sdk::files::download(&client, &dropbox_sdk::files::DownloadArg::new(dropbox_path.clone().to_string()), None, None);
+    let dropbox_file = dropbox_sdk::files::download(&client, &dropbox_sdk::files::DownloadArg::new(dropbox_path.to_string()), None, None);
     
     let mut body = dropbox_file.unwrap().unwrap().body.unwrap();
 
     let mut data = Vec::new();
     body.read_to_end(&mut data).expect("Unable to read data");
 
-    return Ok(data);
+    Ok(data)
     
 
     // log::info!("dropbox_file: {:?}", );
@@ -195,9 +194,9 @@ pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
 
 pub fn delete(path: &str){
     let obj = get_db_obj().unwrap();
-    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
-    dropbox_sdk::files::delete_v2(&client, &dropbox_sdk::files::DeleteArg::new(path.clone().to_string()));
+    dropbox_sdk::files::delete_v2(&client, &dropbox_sdk::files::DeleteArg::new(path.to_string()));
 }
 
 
@@ -210,7 +209,7 @@ pub struct DropboxObject {
 
 pub fn get_paths(path: &str) -> Vec<DropboxObject>{
     let obj = get_db_obj().unwrap();
-    let mut auth = dropbox_sdk::oauth2::Authorization::from_refresh_token(format!("ogyeqdms81svfke"), obj.key);
+    let auth = dropbox_sdk::oauth2::Authorization::from_refresh_token("ogyeqdms81svfke".to_string(), obj.key);
     let client = UserAuthDefaultClient::new(auth.clone());
 
     let mut paths: Vec<DropboxObject> = Vec::new();
@@ -222,16 +221,16 @@ pub fn get_paths(path: &str) -> Vec<DropboxObject>{
                     Ok(Ok(files::Metadata::Folder(_entry))) => {
                         let path = _entry.path_display.unwrap_or(_entry.name);
                         let obj = DropboxObject {
-                            path: path,
-                            object_type: format!("folder"),
+                            path,
+                            object_type: "folder".to_string(),
                         };
                         paths.push(obj);
                     },
                     Ok(Ok(files::Metadata::File(_entry))) => {
                         let path = _entry.path_display.unwrap_or(_entry.name);
                         let obj = DropboxObject {
-                            path: path,
-                            object_type: format!("file"),
+                            path,
+                            object_type: "file".to_string(),
                         };
                         paths.push(obj);
                     },
@@ -257,13 +256,13 @@ pub fn get_paths(path: &str) -> Vec<DropboxObject>{
         }
     }
 
-    return paths;
+    paths
 }
 
 
 pub fn empty_directories() -> Vec<String>{
     let obj = get_db_obj().unwrap();
-    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
 
 
@@ -305,17 +304,17 @@ pub fn empty_directories() -> Vec<String>{
         }
     }
 
-    return empty_directories;
+    empty_directories
 
 }
 
 
 pub fn is_path_empty(path: &str) -> bool{
 
-    log::info!("deleting dropbox path: {}", path.clone());
+    log::info!("deleting dropbox path: {}", path);
     
     let obj = get_db_obj().unwrap();
-    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
     
 
@@ -353,7 +352,7 @@ pub fn is_path_empty(path: &str) -> bool{
         }
     }
 
-    return empty;
+    empty
 
 }
 
@@ -365,7 +364,7 @@ pub fn get_auth_from_env_or_prompt() -> dropbox_sdk::oauth2::Authorization {
 
 
 
-    let client_id = format!("");
+    let client_id = String::new();
 
     let oauth2_flow = dropbox_sdk::oauth2::Oauth2Type::PKCE(dropbox_sdk::oauth2::PkceCode::new());
     let url = dropbox_sdk::oauth2::AuthorizeUrlBuilder::new(&client_id, &oauth2_flow)
@@ -373,7 +372,7 @@ pub fn get_auth_from_env_or_prompt() -> dropbox_sdk::oauth2::Authorization {
     eprintln!("Open this URL in your browser:");
     eprintln!("{}", url);
     eprintln!();
-    let auth_code = format!("");
+    let auth_code = String::new();
 
     dropbox_sdk::oauth2::Authorization::from_auth_code(
         client_id,
@@ -432,7 +431,7 @@ impl<'a, T: UserAuthClient> Iterator for DirectoryIterator<'a, T> {
         } else if let Some(cursor) = self.cursor.take() {
             match files::list_folder_continue(self.client, &files::ListFolderContinueArg::new(cursor)) {
                 Ok(Ok(result)) => {
-                    self.buffer.extend(result.entries.into_iter());
+                    self.buffer.extend(result.entries);
                     if result.has_more {
                         self.cursor = Some(result.cursor);
                     }

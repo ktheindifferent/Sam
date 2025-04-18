@@ -14,8 +14,7 @@ use std::io::Write;
 use std::path::Path;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-use opencl3::device::CL_DEVICE_TYPE_GPU;
-use crate::sam::tools; // Add missing import for tools module
+ // Add missing import for tools module
 
 /// Represents the result of an STT prediction.
 #[derive(Serialize, Deserialize, Debug, Clone)]
