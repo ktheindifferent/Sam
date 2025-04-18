@@ -1,7 +1,7 @@
 FROM rust:latest
 MAINTAINER caleb <calebsmithwoolrich@gmail.com>
 
-RUN echo "0.0.000033"
+RUN echo "0.0.000037"
 
 RUN apt update
 RUN apt upgrade -y
@@ -22,8 +22,6 @@ RUN mkdir -p /app && git clone https://git.opensam.foundation/sam/sam.git /app \
 RUN wget -O /app/libtorch.zip https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-1.13.1%2Bcpu.zip
 
 RUN unzip /app/libtorch.zip -d /app/libtorch
-
-
 
 # RUN echo "<<<<debug>>>>"
 # RUN echo $LD_LIBRARY_PATH

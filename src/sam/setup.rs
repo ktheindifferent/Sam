@@ -3,12 +3,16 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
+// Required dependencies
 use serde::{Serialize, Deserialize};
 use error_chain::error_chain;
+use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
+
+// Define error handling
 error_chain! {
     foreign_links {
         Io(std::io::Error);
@@ -18,136 +22,104 @@ error_chain! {
     }
 }
 
-// TODO - Install CUDA
-// TODO - Install Snapcast Server
-// TODO - Build rust library for communication with Snapcast API
-// TODO - cargo install librespot
-// cp /home/kal/.cargo/bin/librespot /bin/librespot
+// Main installation function
 pub async fn install() {
+    // Pre-installation setup
+    pre_install();
 
-    match update().await{
-        Ok(_) => {
-            log::info!("Successfully updated!");
-        },
-        Err(e) => {
-            log::error!("Failed to update! {:?}", e);
-        }
-    }
+    // Check for GPU devices
+    check_gpu_devices();
 
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam"));
-    crate::sam::tools::linux_cmd("chmod -R 777 /opt/sam".to_string());
-    crate::sam::tools::linux_cmd("chown 1000 -R /opt/sam".to_string());
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/bin"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/dat"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/streams"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/models"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/models/nst"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/files"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/fonts"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/games"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/rivescript"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/who.io"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/who.io/dataset"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/sprec"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/sprec/audio"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/sprec/noise"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/sprec/noise/_background_noise_"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/scripts/sprec/noise/other"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/tmp"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/tmp/youtube"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/tmp/youtube/downloads"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/tmp/sound"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/tmp/observations"));
-    crate::sam::tools::linux_cmd(format!("mkdir /opt/sam/tmp/observations/vwav"));
-    match crate::sam::services::darknet::install(){
-        Ok(_) => {
-            log::info!("darknet installed successfully");
-        },
-        Err(e) => {
-            log::error!("Failed to install darknet: {}", e);
-        }
-    }
+    // Install various services
+    install_services();
 
-    match crate::sam::services::sprec::install(){
-        Ok(_) => {
-            log::info!("sprec installed successfully");
-        },
-        Err(e) => {
-            log::error!("Failed to install sprec: {}", e);
-        }
-    }
+    // Initialize default settings
+    crate::sam::http::api::settings::set_defaults();
 
-    match crate::sam::services::rivescript::install(){
-        Ok(_) => {
-            log::info!("rivescript installed successfully");
-        },
-        Err(e) => {
-            log::error!("Failed to install rivescript: {}", e);
-        }
-    }
-
-    match crate::sam::services::who::install(){
-        Ok(_) => {
-            log::info!("who.io installed successfully");
-        },
-        Err(e) => {
-            log::error!("Failed to install who.io: {}", e);
-        }
-    }
-
-
-    match crate::sam::services::stt::install(){
-        Ok(_) => {
-            log::info!("STT server installed successfully");
-        },
-        Err(e) => {
-            log::error!("Failed to install STT server: {}", e);
-        }
-    }
-
-    match crate::sam::services::media::install(){
-        Ok(_) => {
-            log::info!("Media service installed successfully");
-        },
-        Err(e) => {
-            log::error!("Failed to install image service: {}", e);
-        }
-    }
-
-
-    #[cfg(not(debug_assertions))]{
-        match crate::sam::http::install(){
-            Ok(_) => {
-                log::info!("HTTP server installed successfully");
-            },
-            Err(e) => {
-                log::error!("Failed to install HTTP server: {}", e);
-            }
-        }
-    }
-
+    // Configure Snapcast
+    crate::sam::services::media::snapcast::configure();
 }
 
+// Pre-installation setup: Install required packages and create directories
+fn pre_install() {
+    // Install system dependencies
+    crate::sam::tools::uinx_cmd("apt install libx264-dev libssl-dev unzip libavcodec-extra58 python3 pip git git-lfs wget libboost-dev libopencv-dev python3-opencv ffmpeg iputils-ping libasound2-dev libpulse-dev libvorbisidec-dev libvorbis-dev libopus-dev libflac-dev libsoxr-dev alsa-utils libavahi-client-dev avahi-daemon libexpat1-dev libfdk-aac-dev -y".to_string());
+    crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect".to_string());
 
-// Check: https://osf.opensam.foundation/api/packages for updates
-pub async fn update() -> Result<()>{
-   
-    let request = reqwest::Client::new().get("https://osf.opensam.foundation/api/packages").send().await?;
+    // Create necessary directories
+    let directories = vec![
+        "/opt/sam", "/opt/sam/bin", "/opt/sam/dat", "/opt/sam/streams", "/opt/sam/models",
+        "/opt/sam/models/nst", "/opt/sam/files", "/opt/sam/fonts", "/opt/sam/games",
+        "/opt/sam/scripts", "/opt/sam/scripts/rivescript", "/opt/sam/scripts/who.io",
+        "/opt/sam/scripts/who.io/dataset", "/opt/sam/scripts/sprec", "/opt/sam/scripts/sprec/audio",
+        "/opt/sam/scripts/sprec/noise", "/opt/sam/scripts/sprec/noise/_background_noise_",
+        "/opt/sam/scripts/sprec/noise/other", "/opt/sam/tmp", "/opt/sam/tmp/youtube",
+        "/opt/sam/tmp/youtube/downloads", "/opt/sam/tmp/sound", "/opt/sam/tmp/observations",
+        "/opt/sam/tmp/observations/vwav",
+    ];
+    for dir in directories {
+        crate::sam::tools::uinx_cmd(format!("mkdir -p {}", dir));
+    }
+
+    // Set permissions
+    crate::sam::tools::uinx_cmd("chmod -R 777 /opt/sam".to_string());
+    crate::sam::tools::uinx_cmd("chown 1000 -R /opt/sam".to_string());
+}
+
+// Check for GPU devices and create a marker file if found
+fn check_gpu_devices() {
+    let devices = get_all_devices(CL_DEVICE_TYPE_GPU);
+    if devices.is_err() {
+        log::info!("No GPU devices found!");
+    } else {
+        crate::sam::tools::uinx_cmd("touch /opt/sam/gpu".to_string());
+    }
+}
+
+// Install various services and log their status
+fn install_services() {
+    let services = vec![
+        ("darknet", crate::sam::services::darknet::install),
+        ("sprec", crate::sam::services::sprec::install),
+        ("rivescript", crate::sam::services::rivescript::install),
+        ("who.io", crate::sam::services::who::install),
+        ("STT server", crate::sam::services::stt::install),
+        ("Media service", crate::sam::services::media::install),
+    ];
+
+    for (name, install_fn) in services {
+        match install_fn() {
+            Ok(_) => log::info!("{} installed successfully", name),
+            Err(e) => log::error!("Failed to install {}: {}", name, e),
+        }
+    }
+
+    // Install HTTP server in release mode
+    #[cfg(not(debug_assertions))]
+    match crate::sam::http::install() {
+        Ok(_) => log::info!("HTTP server installed successfully"),
+        Err(e) => log::error!("Failed to install HTTP server: {}", e),
+    }
+}
+
+// Check for updates from the Open Sam Foundation API
+pub async fn update() -> Result<()> {
+    let request = reqwest::Client::new()
+        .get("https://osf.opensam.foundation/api/packages")
+        .send()
+        .await?;
     let packages = request.json::<Packages>().await?;
-    
-    for package in packages{
-        if package.latest_version != crate::VERSION.ok_or("0.0.0")? && package.name == "sam"{
+
+    for package in packages {
+        if package.latest_version != crate::VERSION.ok_or("0.0.0")? && package.name == "sam" {
             log::warn!("UPDATE_CHECK: S.A.M. needs an update");
-        } 
+        }
     }
 
-    return Ok(());
-
+    Ok(())
 }
 
-
-
+// Data structures for package information
 pub type Packages = Vec<Package>;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -161,8 +133,7 @@ pub struct Package {
     pub latest_oid: String,
 }
 
-
-pub fn uninstall(){
-
+// Placeholder for uninstall functionality
+pub fn uninstall() {
+    // TODO: Implement uninstall logic
 }
-

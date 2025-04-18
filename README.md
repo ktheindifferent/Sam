@@ -29,11 +29,19 @@ TODO:
 - Keep exsting TTS/STT methods to be used as a backup
 - Add metadata to file storage api
 
+- PS1 emulation and native file support (.ps1) https://github.com/js-emulators/WASMpsx
+
+- NES emulation and native file support (.nes) https://github.com/takahirox/nes-rust
+
+- Gameboy emulation https://github.com/andrewimm/wasm-gb
+
+- Chip-8 Emulation (.ch8)
+
 0.0.3:
 - Fix file browser (dropbox, deleting files, moving files, etc.)
 - Add support for visual RSTP observations
 - amd64 support for ffmpeg and whisper packages
-- Copy fonts file to sam directory during setup
+- Copy fonts file to sam directory during setup (DONE)
 - Finish package installer (search, install, uninstall)
 - Fix settings to actually do something
 - Redesign humans page with avatar support

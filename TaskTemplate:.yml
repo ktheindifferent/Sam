@@ -1,0 +1,29 @@
+"TaskTemplate": {
+  "Resources": {
+    "Limits": {
+      "NanoCPUs": 4000000000,
+      "MemoryBytes": 8272408576,
+      "GenericResources": [
+        {
+          "NamedResourceSpec": {
+            "Kind": "GPU",
+            "Value": "GPU-d829dc20-e51d-c150-4f3c-a211174bd3a3"
+          }
+        }
+      ]
+    },
+    "Reservations": {
+      "NanoCPUs": 4000000000,
+      "MemoryBytes": 8272408576,
+      "GenericResources": [
+        {
+        "NamedResourceSpec": {
+          "Kind": "GPU",
+          "Value": "GPU-d829dc20-e51d-c150-4f3c-a211174bd3a3"
+          }
+        }
+      ]
+    }
+  },
+  "Runtime": "nvidia"
+}

@@ -3,53 +3,43 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
 use std::fs::File;
-use std::io::{Write};
+use std::io::{Write, Result};
 
-pub fn install() -> std::io::Result<()> {
-
-    let data = include_bytes!("../../../scripts/who.io/who2.py");
+/// Writes the provided data to the specified file path.
+fn write_file(data: &[u8], path: &str) -> Result<()> {
     let mut pos = 0;
-    let mut buffer = File::create("/opt/sam/scripts/who.io/who2.py")?;
+    let mut buffer = File::create(path)?;
     while pos < data.len() {
         let bytes_written = buffer.write(&data[pos..])?;
         pos += bytes_written;
     }
+    Ok(())
+}
 
+/// Installs necessary scripts and datasets for the "who" service.
+pub fn install() -> Result<()> {
+    // Write the Python script
+    write_file(include_bytes!("../../../scripts/who.io/who2.py"), "/opt/sam/scripts/who.io/who2.py")?;
 
-    let data = include_bytes!("../../../scripts/who.io/trained_knn_model.clf");
-    let mut pos = 0;
-    let mut buffer = File::create("/opt/sam/scripts/who.io/trained_knn_model.clf")?;
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..])?;
-        pos += bytes_written;
-    }
+    // Write the trained KNN model
+    write_file(include_bytes!("../../../scripts/who.io/trained_knn_model.clf"), "/opt/sam/scripts/who.io/trained_knn_model.clf")?;
 
-    let data = include_bytes!("../../../scripts/who.io/dataset/barack_obama.zip");
-    let mut pos = 0;
-    let mut buffer = File::create("/opt/sam/scripts/who.io/dataset/barack_obama.zip")?;
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..])?;
-        pos += bytes_written;
-    }
+    // Write and extract Barack Obama dataset
+    let obama_zip = "/opt/sam/scripts/who.io/dataset/barack_obama.zip";
+    write_file(include_bytes!("../../../scripts/who.io/dataset/barack_obama.zip"), obama_zip)?;
+    crate::sam::tools::extract_zip(obama_zip, "/opt/sam/scripts/who.io/dataset/".to_string());
+    crate::sam::tools::uinx_cmd(format!("rm -rf {}", obama_zip));
 
-    let data = include_bytes!("../../../scripts/who.io/dataset/donald_trump.zip");
-    let mut pos = 0;
-    let mut buffer = File::create("/opt/sam/scripts/who.io/dataset/donald_trump.zip")?;
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..])?;
-        pos += bytes_written;
-    }
-
-    crate::sam::tools::extract_zip("/opt/sam/scripts/who.io/dataset/barack_obama.zip", format!("/opt/sam/scripts/who.io/dataset/"));
-    crate::sam::tools::extract_zip("/opt/sam/scripts/who.io/dataset/donald_trump.zip", format!("/opt/sam/scripts/who.io/dataset/"));
-    crate::sam::tools::linux_cmd(format!("rm -rf /opt/sam/scripts/who.io/dataset/barack_obama.zip"));
-    crate::sam::tools::linux_cmd(format!("rm -rf /opt/sam/scripts/who.io/dataset/donald_trump.zip"));
+    // Write and extract Donald Trump dataset
+    let trump_zip = "/opt/sam/scripts/who.io/dataset/donald_trump.zip";
+    write_file(include_bytes!("../../../scripts/who.io/dataset/donald_trump.zip"), trump_zip)?;
+    crate::sam::tools::extract_zip(trump_zip, "/opt/sam/scripts/who.io/dataset/".to_string());
+    crate::sam::tools::uinx_cmd(format!("rm -rf {}", trump_zip));
 
     Ok(())
-
 }

@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -76,25 +76,27 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
         std::fs::write(tmp_file_path.clone(), wav_data)?;
 
-        crate::sam::tools::linux_cmd(format!("ffmpeg -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav", tmp_file_path.clone(), tmp_file_path.clone()));
+        // TODO: Fix 8000 vs 16000
+        crate::sam::tools::uinx_cmd(format!("ffmpeg -y -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav", tmp_file_path.clone(), tmp_file_path.clone()));
+        // crate::sam::tools::uinx_cmd(format!("cp {} {}.16.wav", tmp_file_path.clone(), tmp_file_path.clone()));
 
-        crate::sam::tools::linux_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts", tmp_file_path.clone()));
+        crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts", tmp_file_path.clone()));
     
         crate::sam::services::stt::patch_whisper_wts(format!("{}.16.wav.wts", tmp_file_path.clone()))?;
 
-        crate::sam::tools::linux_cmd(format!("chmod +x {}.16.wav.wts", tmp_file_path.clone()));
+        crate::sam::tools::uinx_cmd(format!("chmod +x {}.16.wav.wts", tmp_file_path.clone()));
 
-        crate::sam::tools::linux_cmd(format!("{}.16.wav.wts", tmp_file_path.clone()));
+        crate::sam::tools::uinx_cmd(format!("{}.16.wav.wts", tmp_file_path.clone()));
 
         let data = std::fs::read(format!("{}.16.wav.mp4", tmp_file_path.clone()).as_str())?;
 
         let response = Response::from_data("video/mp4", data);
 
         // Cleanup
-        crate::sam::tools::linux_cmd(format!("rm {}", tmp_file_path.clone()));
-        crate::sam::tools::linux_cmd(format!("rm {}.16.wav", tmp_file_path.clone()));
-        crate::sam::tools::linux_cmd(format!("rm {}.16.wav.wts", tmp_file_path.clone()));
-        // crate::sam::tools::linux_cmd(format!("rm {}.16.wav.mp4", tmp_file_path.clone()));
+        crate::sam::tools::uinx_cmd(format!("rm {}", tmp_file_path.clone()));
+        crate::sam::tools::uinx_cmd(format!("rm {}.16.wav", tmp_file_path.clone()));
+        crate::sam::tools::uinx_cmd(format!("rm {}.16.wav.wts", tmp_file_path.clone()));
+        // crate::sam::tools::uinx_cmd(format!("rm {}.16.wav.mp4", tmp_file_path.clone()));
 
         return Ok(response);
     }

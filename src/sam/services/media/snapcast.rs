@@ -3,9 +3,14 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
+
+// TODO: Install librespot in the root bin folder
+// cargo install librespot
+// cp $HOME/.cargo/bin/librespot /bin/librespot
+// cp $HOME/.cargo/bin/librespot /usr/bin/librespot
 
 
 use std::fs::File;
@@ -27,7 +32,7 @@ pub fn init(){
     // Snapserver sevice doesn't work for debian bullsye so we need to launch manually.
     // Attempt to launch snapserver in new thread.....will fail if port are already in use by snapserver
     let snap_cast_thread = thread::Builder::new().name("snapserver".to_string()).spawn(move || {
-        crate::sam::tools::linux_cmd(format!("snapserver"));
+        crate::sam::tools::uinx_cmd(format!("snapserver"));
     });
     
     match snap_cast_thread{
@@ -62,10 +67,8 @@ port = 1705
 [stream]
 bind_to_address = 0.0.0.0
 port = 1704
+source = librespot:///bin/librespot?name=Sam&username=calebsmithdev&password=Nofear1234&devicename=Sam&bitrate=320&nomalize=true
 source = pipe:///tmp/snapfifo?name=samfifo
-source = spotify:///librespot?name=Spotify&bitrate=160
-# source = librespot:///librespot?name=Sam&username=calebsmithdev&password=Nofear1234&devicename=Sam
-
 [logging]");
     log::info!("cfg: {:?}", cfg);
     std::fs::write("/etc/snapserver.conf", &cfg).expect("Unable to write file");
@@ -104,8 +107,8 @@ pub fn install_snapcast_server_arm64() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::linux_cmd(format!("dpkg -i /opt/sam/tmp/snapserver.deb"));
-    crate::sam::tools::linux_cmd(format!("service snapserver start"));
+    crate::sam::tools::uinx_cmd(format!("dpkg --force-all -i /opt/sam/tmp/snapserver.deb"));
+    crate::sam::tools::uinx_cmd(format!("service snapserver start"));
     return Ok(());
 }
 
@@ -118,13 +121,15 @@ pub fn install_snapcast_server_arm() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::linux_cmd(format!("dpkg -i /opt/sam/tmp/snapserver.deb"));
-    crate::sam::tools::linux_cmd(format!("service snapserver start"));
+    crate::sam::tools::uinx_cmd(format!("dpkg --force-all -i /opt/sam/tmp/snapserver.deb"));
+    crate::sam::tools::uinx_cmd(format!("service snapserver start"));
     return Ok(());
 }
 
+
+// Backup: https://github.com/badaix/snapcast/releases/download/v0.27.0/snapserver_0.27.0-1_amd64.deb
 pub fn install_snapcast_server_amd64() -> std::io::Result<()> {
-    let data = include_bytes!("../../../../packages/snapcast/0.26.0/snapserver_0.26.0-1_amd64.deb");
+    let data = include_bytes!("../../../../packages/snapcast/0.27.0/snapserver_0.27.0-1_amd64.deb");
     let mut pos = 0;
     let mut buffer = File::create("/opt/sam/tmp/snapserver.deb")?;
     while pos < data.len() {
@@ -132,7 +137,7 @@ pub fn install_snapcast_server_amd64() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::linux_cmd(format!("dpkg -i /opt/sam/tmp/snapserver.deb"));
-    crate::sam::tools::linux_cmd(format!("service snapserver start"));
+    crate::sam::tools::uinx_cmd(format!("dpkg --force-all -i /opt/sam/tmp/snapserver.deb"));
+    crate::sam::tools::uinx_cmd(format!("service snapserver start"));
     return Ok(());
 }

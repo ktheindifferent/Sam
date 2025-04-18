@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -209,9 +209,22 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
 
   
         if request.url().contains("/is_cuda"){
-            let device = Device::cuda_if_available();
-            return Ok(Response::text(device.is_cuda().to_string()));
+            let device = tch::Cuda::is_available();
+            return Ok(Response::text(device.to_string()));
         }
+
+        if request.url().contains("/is_cuda2"){
+            let device = tch::Cuda::cudnn_is_available();
+            return Ok(Response::text(device.to_string()));
+        }
+
+        if request.url().contains("/cudac"){
+            let device = tch::Cuda::device_count();
+            return Ok(Response::text(device.to_string()));
+        }
+
+
+        
 
         if request.url().contains("/api"){
             return Ok(api::handle_api_request(current_session, request)?);

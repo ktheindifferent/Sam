@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -38,11 +38,14 @@ error_chain! {
 // store application version as a const
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
+
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     pub postgres: PostgresServer,
     pub version_installed: String
 }
+
 impl Config {
     pub fn new() -> Config {
         Config{
@@ -81,363 +84,384 @@ impl Config {
             });
         });
     }
+    
     pub async fn build_tables(&self) -> Result<()>{
-    
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
         let connector = MakeTlsConnector::new(builder.build());
-    
+
         let (client, connection) = tokio_postgres::connect(format!("postgresql://{}:{}@{}/{}?sslmode=prefer", &self.postgres.username, &self.postgres.password, &self.postgres.address, &self.postgres.db_name).as_str(), connector).await?;
-        
-        // The connection object performs the actual communication with the database,
-        // so spawn it off to run on its own.
+
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 log::error!("connection error: {}", e);
             }
         });
 
-        // TODO - Build tables
-        let c1 = Self::build_table(client, CachedWikipediaSummary::sql_table_name(), CachedWikipediaSummary::sql_build_statement(), CachedWikipediaSummary::migrations()).await;
-        let c2 = Self::build_table(c1, Human::sql_table_name(), Human::sql_build_statement(), Human::migrations()).await;
-        let c3 = Self::build_table(c2, HumanFaceEncoding::sql_table_name(), HumanFaceEncoding::sql_build_statement(), HumanFaceEncoding::migrations()).await;
-        let c4 = Self::build_table(c3, Location::sql_table_name(), Location::sql_build_statement(), Location::migrations()).await;
-        let c5 = Self::build_table(c4, Room::sql_table_name(), Room::sql_build_statement(), Room::migrations()).await;
-        let c6 = Self::build_table(c5, Service::sql_table_name(), Service::sql_build_statement(), Service::migrations()).await;
-        let c7 = Self::build_table(c6, Thing::sql_table_name(), Thing::sql_build_statement(), Thing::migrations()).await;
-        let c8 = Self::build_table(c7, Observation::sql_table_name(), Observation::sql_build_statement(), Observation::migrations()).await;
-        let c9 = Self::build_table(c8, Setting::sql_table_name(), Setting::sql_build_statement(), Setting::migrations()).await;
-        let c10 = Self::build_table(c9, WebSessions::sql_table_name(), WebSessions::sql_build_statement(), WebSessions::migrations()).await;
-        let c11 = Self::build_table(c10, StorageLocation::sql_table_name(), StorageLocation::sql_build_statement(), StorageLocation::migrations()).await;
-        let c12 = Self::build_table(c11, FileStorage::sql_table_name(), FileStorage::sql_build_statement(), FileStorage::migrations()).await;
-        let _c13 = Self::build_table(c12, Notification::sql_table_name(), Notification::sql_build_statement(), Notification::migrations()).await;
+        // Build all tables in sequence
+        let tables = [
+            (CachedWikipediaSummary::sql_table_name(), CachedWikipediaSummary::sql_build_statement(), CachedWikipediaSummary::migrations()),
+            (Human::sql_table_name(), Human::sql_build_statement(), Human::migrations()),
+            (HumanFaceEncoding::sql_table_name(), HumanFaceEncoding::sql_build_statement(), HumanFaceEncoding::migrations()),
+            (Location::sql_table_name(), Location::sql_build_statement(), Location::migrations()),
+            (Room::sql_table_name(), Room::sql_build_statement(), Room::migrations()),
+            (Service::sql_table_name(), Service::sql_build_statement(), Service::migrations()),
+            (Thing::sql_table_name(), Thing::sql_build_statement(), Thing::migrations()),
+            (Observation::sql_table_name(), Observation::sql_build_statement(), Observation::migrations()),
+            (Setting::sql_table_name(), Setting::sql_build_statement(), Setting::migrations()),
+            (WebSessions::sql_table_name(), WebSessions::sql_build_statement(), WebSessions::migrations()),
+            (StorageLocation::sql_table_name(), StorageLocation::sql_build_statement(), StorageLocation::migrations()),
+            (FileStorage::sql_table_name(), FileStorage::sql_build_statement(), FileStorage::migrations()),
+            (Notification::sql_table_name(), Notification::sql_build_statement(), Notification::migrations()),
+        ];
 
-        
-        return Ok(());
-    }    
-    pub async fn create_db(&self) -> Result<()>{
+        let mut current_client = client;
+        for (table_name, build_statement, migrations) in tables {
+            current_client = Self::build_table(current_client, table_name, build_statement, migrations).await;
+        }
 
+        Ok(())
+    }
+
+    /// Attempts to create the configured PostgreSQL database if it does not exist.
+    /// 
+    /// Connects to the PostgreSQL server (without specifying a database), then issues a
+    /// `CREATE DATABASE` statement for the configured database name. If the database already
+    /// exists, this will return an error.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails or the database cannot be created.
+    pub async fn create_db(&self) -> Result<()> {
+        // Build a TLS connector that skips certificate verification (for self-signed certs)
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
         let connector = MakeTlsConnector::new(builder.build());
-    
-        let (client, connection) = tokio_postgres::connect(format!("postgresql://{}:{}@{}?sslmode=prefer", &self.postgres.username, &self.postgres.password, &self.postgres.address).as_str(), connector).await?;
-        
-        // The connection object performs the actual communication with the database,
-        // so spawn it off to run on its own.
+
+        // Connect to the server without specifying a database
+        let conn_str = format!(
+            "postgresql://{}:{}@{}?sslmode=prefer",
+            self.postgres.username, self.postgres.password, self.postgres.address
+        );
+        let (client, connection) = tokio_postgres::connect(&conn_str, connector).await?;
+
+        // Spawn the connection handler
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                log::error!("connection error: {}", e);
+                log::error!("Postgres connection error: {}", e);
             }
         });
-        
-        client.batch_execute(format!("CREATE DATABASE {}", self.postgres.db_name).as_str()).await?;
-    
+
+        // Attempt to create the database
+        let create_db_sql = format!("CREATE DATABASE {}", self.postgres.db_name);
+        match client.batch_execute(&create_db_sql).await {
+            Ok(_) => log::info!("Database '{}' created successfully", self.postgres.db_name),
+            Err(e) => {
+                // If the database already exists, log and ignore the error
+                if e.to_string().contains("already exists") {
+                    log::info!("Database '{}' already exists", self.postgres.db_name);
+                } else {
+                    log::error!("Failed to create database '{}': {}", self.postgres.db_name, e);
+                    return Err(e.into());
+                }
+            }
+        }
+
         Ok(())
     }
-    pub async fn build_table(client: tokio_postgres::Client, table_name: String, build_statement: &str, migrations: Vec<&str>) -> tokio_postgres::Client{
-        let db = client.batch_execute(build_statement.clone()).await;
-        match db {
-            Ok(_v) => log::info!("POSTGRES: CREATED '{}' TABLE", table_name.clone()),
-            Err(e) => log::error!("POSTGRES: {:?}", e),
+
+    /// Builds a table in the PostgreSQL database and applies any migrations.
+    ///
+    /// This function executes the provided `build_statement` to create the table if it does not exist,
+    /// and then sequentially applies each migration in the `migrations` vector.
+    ///
+    /// # Arguments
+    /// * `client` - The PostgreSQL client to use for executing statements.
+    /// * `table_name` - The name of the table being created/migrated (for logging).
+    /// * `build_statement` - The SQL statement to create the table.
+    /// * `migrations` - A vector of SQL migration statements to apply after table creation.
+    ///
+    /// # Returns
+    /// Returns the same `tokio_postgres::Client` for further use.
+    pub async fn build_table(
+        client: tokio_postgres::Client,
+        table_name: String,
+        build_statement: &str,
+        migrations: Vec<&str>,
+    ) -> tokio_postgres::Client {
+        // Attempt to create the table
+        match client.batch_execute(build_statement).await {
+            Ok(_) => log::info!("POSTGRES: CREATED '{}' TABLE", table_name),
+            Err(e) => log::error!("POSTGRES: Failed to create '{}': {:?}", table_name, e),
         }
+
+        // Apply migrations in order
         for migration in migrations {
-            let migrations_db = client.batch_execute(migration).await;
-            match migrations_db {
-                Ok(_v) => log::info!("POSTGRES: MIGRATED '{}' TABLE", table_name.clone()),
-                Err(e) => log::error!("POSTGRES: {:?}", e),
+            // Skip empty migration strings
+            if migration.trim().is_empty() {
+                continue;
+            }
+            match client.batch_execute(migration).await {
+                Ok(_) => log::info!("POSTGRES: MIGRATED '{}' TABLE", table_name),
+                Err(e) => log::error!("POSTGRES: Migration failed for '{}': {:?}", table_name, e),
             }
         }
-        return client;
+
+        client
     }
-    pub fn destroy_row(oid: String, table_name: String) -> Result<bool>{
+
+    /// Deletes a row from the specified table by OID.
+    ///
+    /// # Arguments
+    /// * `oid` - The OID of the row to delete.
+    /// * `table_name` - The name of the table from which to delete the row.
+    ///
+    /// # Returns
+    /// Returns `Ok(true)` if the row was deleted (no longer exists), `Ok(false)` if the row still exists,
+    /// or an error if the operation failed.
+    pub fn destroy_row(oid: String, table_name: String) -> Result<bool> {
         let mut client = Config::client()?;
 
-        let _destroy_rows = client.query(format!("DELETE FROM {} WHERE oid = '{}' ", table_name, oid).as_str(), &[]).unwrap();
-        let rows = client.query(format!("SELECT * FROM {} WHERE oid = '{}'", table_name, oid).as_str(), &[]).unwrap();
-    
-        if rows.len() == 0 {
-           
-            return Ok(true);
-        
-        } else {
-            return Ok(false);
-        
-        }
-    
+        // Use parameterized queries to prevent SQL injection
+        client.execute(
+            &format!("DELETE FROM {} WHERE oid = $1", table_name),
+            &[&oid],
+        )?;
+
+        let rows = client.query(
+            &format!("SELECT 1 FROM {} WHERE oid = $1", table_name),
+            &[&oid],
+        )?;
+
+        Ok(rows.is_empty())
     }
-    pub async fn nuke_async() -> Result<()>{
+
+    /// Drops all tables in the current PostgreSQL schema asynchronously.
+    ///
+    /// This function connects to the configured PostgreSQL database and executes a
+    /// DO block that iterates over all tables in the current schema, dropping each one.
+    /// This is a destructive operation and should be used with caution.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` if all tables were dropped successfully, or an error otherwise.
+    pub async fn nuke_async() -> Result<()> {
+        // Load configuration and get PostgreSQL connection info
         let config = crate::sam::memory::Config::new();
-        // Get a copy of the master key and postgres info
         let postgres = config.postgres.clone();
-    
-    
-        // Build SQL adapter that skips verification for self signed certificates
+
+        // Build a TLS connector that skips certificate verification (for self-signed certs)
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
-    
-        // Build connector with the adapter from above
         let connector = MakeTlsConnector::new(builder.build());
-    
-        let (client, connection) = tokio_postgres::connect(format!("postgresql://{}:{}@{}/{}?sslmode=prefer", &postgres.username, &postgres.password, &postgres.address, &postgres.db_name).as_str(), connector).await?;
-        
-        // The connection object performs the actual communication with the database,
-        // so spawn it off to run on its own.
+
+        // Connect to the PostgreSQL database
+        let (client, connection) = tokio_postgres::connect(
+            &format!(
+                "postgresql://{}:{}@{}/{}?sslmode=prefer",
+                &postgres.username, &postgres.password, &postgres.address, &postgres.db_name
+            ),
+            connector,
+        )
+        .await?;
+
+        // Spawn the connection handler
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 log::error!("connection error: {}", e);
             }
         });
-        
-    
-    
-        
-        client.batch_execute("DO $$ 
-        DECLARE 
-        r RECORD;
-        BEGIN
-            FOR r IN 
-            (
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema=current_schema()
-            ) 
-            LOOP
-            EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.table_name) || ' CASCADE';
-            END LOOP;
-        END $$ ;").await?;
-    
-    
-        client.query("DO $$ 
-        DECLARE 
-        r RECORD;
-        BEGIN
-            FOR r IN 
-            (
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema=current_schema()
-            ) 
-            LOOP
-            EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.table_name) || ' CASCADE';
-            END LOOP;
-        END $$ ;", &[]).await?;
-    
+
+        // Drop all tables in the current schema
+        client
+            .batch_execute(
+                r#"
+                DO $$
+                DECLARE
+                    r RECORD;
+                BEGIN
+                    FOR r IN (
+                        SELECT table_name
+                        FROM information_schema.tables
+                        WHERE table_schema = current_schema()
+                    )
+                    LOOP
+                        EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.table_name) || ' CASCADE';
+                    END LOOP;
+                END
+                $$;
+                "#,
+            )
+            .await?;
+
         Ok(())
     }
-    pub fn pg_select(table_name: String, coulmns: Option<String>, limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<String>>{
-      
+
+
+    /// Executes a SELECT query on the specified PostgreSQL table with optional filtering, ordering, and pagination.
+    ///
+    /// # Arguments
+    /// * `table_name` - The name of the table to query.
+    /// * `columns` - Optional comma-separated list of columns to select. If `None`, selects all columns.
+    /// * `limit` - Optional maximum number of rows to return.
+    /// * `offset` - Optional number of rows to skip.
+    /// * `order` - Optional ORDER BY clause (e.g., "id DESC").
+    /// * `query` - Optional `PostgresQueries` for WHERE clause and parameterized values.
+    ///
+    /// # Returns
+    /// Returns a `Result` containing a vector of JSON strings, each representing a row.
+    pub fn pg_select(
+        table_name: String,
+        columns: Option<String>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<String>> {
         let mut client = Config::client()?;
 
-        let mut execquery = format!("SELECT * FROM {}", table_name);
-    
-        if coulmns.is_some(){
-            execquery  = format!("SELECT {} FROM {}", coulmns.clone().unwrap(), table_name);
-        }
-    
-    
-        match query.clone() {
-            Some(pg_query) => {
-    
-                let mut counter = 1;
-    
-                for col in pg_query.query_coulmns{
-                    if counter == 1 {
-                        execquery = format!("{} {} {} ${}", execquery, "WHERE", col, counter);
-                    } else {
-                        execquery = format!("{} {} ${}", execquery, col, counter);
-                    }
-                    counter = counter + 1;
-                }
-            },
-            None => {
-    
-            }
-        }
-    
-        match order {
-            Some(order_val) => {
-                execquery = format!("{} {} {}", execquery, "ORDER BY", order_val);
-            },
-            None => {
-                execquery = format!("{} {} {}", execquery, "ORDER BY", "id DESC");
-            }
-        }
-        match limit {
-            Some(limit_val) => {
-                execquery = format!("{} {} {}", execquery, "LIMIT", limit_val);
-            },
-            None => {}
-        }
-        match offset {
-            Some(offset_val) => {
-                execquery = format!("{} {} {}", execquery, "OFFSET", offset_val);
-            },
-            None => {}
-        }
-    
-        let mut parsed_rows: Vec<String> = Vec::new();
-        match query {
-            Some(pg_query) => {
-    
-                let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
-                    match x {
-                        PGCol::String(y) => y as &(dyn postgres::types::ToSql + Sync),
-                        PGCol::Number(y) => y as &(dyn postgres::types::ToSql + Sync),
-                        PGCol::Boolean(y) => y as &(dyn postgres::types::ToSql + Sync)
-                    }
-                }).collect();
+        // Build SELECT clause
+        let mut execquery = if let Some(cols) = &columns {
+            format!("SELECT {} FROM {}", cols, table_name)
+        } else {
+            format!("SELECT * FROM {}", table_name)
+        };
 
-                
-                for row in client.query(execquery.as_str(), query_values.as_slice())? {
-                    if table_name == CachedWikipediaSummary::sql_table_name(){
-                        let j = serde_json::to_string(&CachedWikipediaSummary::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Human::sql_table_name(){
-                        let j = serde_json::to_string(&Human::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == HumanFaceEncoding::sql_table_name(){
-                        let j = serde_json::to_string(&HumanFaceEncoding::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Location::sql_table_name(){
-                        let j = serde_json::to_string(&Location::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Notification::sql_table_name(){
-                        let j = serde_json::to_string(&Notification::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Room::sql_table_name(){
-                        let j = serde_json::to_string(&Room::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Service::sql_table_name(){
-                        let j = serde_json::to_string(&Service::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Thing::sql_table_name(){
-                        let j = serde_json::to_string(&Thing::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Observation::sql_table_name() && coulmns.is_none(){
-                        let j = serde_json::to_string(&Observation::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Observation::sql_table_name() && coulmns.is_some(){
-                        let j = serde_json::to_string(&Observation::from_row_lite(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Setting::sql_table_name(){
-                        let j = serde_json::to_string(&Setting::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == WebSessions::sql_table_name(){
-                        let j = serde_json::to_string(&WebSessions::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == StorageLocation::sql_table_name(){
-                        let j = serde_json::to_string(&StorageLocation::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == FileStorage::sql_table_name() && coulmns.is_none(){
-                        let j = serde_json::to_string(&FileStorage::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == FileStorage::sql_table_name() && coulmns.is_some(){
-                        let j = serde_json::to_string(&FileStorage::from_row_lite(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
+        // Build WHERE clause if query is provided
+        if let Some(pg_query) = query.clone() {
+            let mut counter = 1;
+            for col in pg_query.query_coulmns {
+                if counter == 1 {
+                    execquery = format!("{} WHERE {} ${}", execquery, col, counter);
+                } else {
+                    execquery = format!("{} {} ${}", execquery, col, counter);
                 }
-    
-            },
-            None => {
-    
-                for row in client.query(execquery.as_str(), &[])? {
-                    if table_name == CachedWikipediaSummary::sql_table_name(){
-                        let j = serde_json::to_string(&CachedWikipediaSummary::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Human::sql_table_name(){
-                        let j = serde_json::to_string(&Human::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == HumanFaceEncoding::sql_table_name(){
-                        let j = serde_json::to_string(&HumanFaceEncoding::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Location::sql_table_name(){
-                        let j = serde_json::to_string(&Location::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Notification::sql_table_name(){
-                        let j = serde_json::to_string(&Notification::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Room::sql_table_name(){
-                        let j = serde_json::to_string(&Room::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Service::sql_table_name(){
-                        let j = serde_json::to_string(&Service::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Thing::sql_table_name(){
-                        let j = serde_json::to_string(&Thing::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Observation::sql_table_name() && coulmns.is_none(){
-                        let j = serde_json::to_string(&Observation::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Observation::sql_table_name() && coulmns.is_some(){
-                        let j = serde_json::to_string(&Observation::from_row_lite(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == Setting::sql_table_name(){
-                        let j = serde_json::to_string(&Setting::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == WebSessions::sql_table_name(){
-                        let j = serde_json::to_string(&WebSessions::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == StorageLocation::sql_table_name(){
-                        let j = serde_json::to_string(&StorageLocation::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == FileStorage::sql_table_name() && coulmns.is_none(){
-                        let j = serde_json::to_string(&FileStorage::from_row(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                    if table_name == FileStorage::sql_table_name() && coulmns.is_some(){
-                        let j = serde_json::to_string(&FileStorage::from_row_lite(&row)?).unwrap();
-                        parsed_rows.push(j);
-                    }
-                }
+                counter += 1;
             }
         }
-    
-    
-        match client.close(){
-            Ok(_) => {},
-            Err(e) => log::error!("Failed to close PG-SQL Client: {}", e),
+
+        // Add ORDER BY clause
+        execquery = match order {
+            Some(order_val) => format!("{} ORDER BY {}", execquery, order_val),
+            None => format!("{} ORDER BY id DESC", execquery),
+        };
+
+        // Add LIMIT and OFFSET
+        if let Some(limit_val) = limit {
+            execquery = format!("{} LIMIT {}", execquery, limit_val);
         }
-    
-        // std::mem::drop(client);
-        // std::mem::drop(connector);
-    
+        if let Some(offset_val) = offset {
+            execquery = format!("{} OFFSET {}", execquery, offset_val);
+        }
+
+        // Prepare to collect results
+        let mut parsed_rows: Vec<String> = Vec::new();
+
+        // Execute query with or without parameters
+        if let Some(pg_query) = query {
+            let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
+                match x {
+                    PGCol::String(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Number(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Boolean(y) => y as &(dyn postgres::types::ToSql + Sync),
+                }
+            }).collect();
+
+            for row in client.query(execquery.as_str(), query_values.as_slice())? {
+                Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+            }
+        } else {
+            for row in client.query(execquery.as_str(), &[])? {
+                Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+            }
+        }
+
+        // Close the client connection
+        if let Err(e) = client.close() {
+            log::error!("Failed to close PG-SQL Client: {}", e);
+        }
+
         Ok(parsed_rows)
     }
-    pub fn client() -> Result<crate::postgres::Client> {
+
+    /// Helper function to serialize a row to JSON based on table and columns.
+    /// Serializes a database row into a JSON string and pushes it to the parsed_rows vector.
+    ///
+    /// # Arguments
+    /// * `table_name` - The name of the table to determine the struct type for deserialization.
+    /// * `columns` - Optional comma-separated list of columns; if `None`, full struct is serialized.
+    /// * `row` - The database row to serialize.
+    /// * `parsed_rows` - The vector to which the resulting JSON string will be appended.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` on success, or an error if serialization fails.
+    fn serialize_row(
+        table_name: &str,
+        columns: &Option<String>,
+        row: &Row,
+        parsed_rows: &mut Vec<String>,
+    ) -> Result<()> {
+        macro_rules! push_json {
+            ($ty:ty, $from_row:ident) => {
+                parsed_rows.push(serde_json::to_string(&<$ty>::$from_row(row)?).unwrap());
+            };
+        }
+
+        match table_name {
+            t if t == CachedWikipediaSummary::sql_table_name() => push_json!(CachedWikipediaSummary, from_row),
+            t if t == Human::sql_table_name() => push_json!(Human, from_row),
+            t if t == HumanFaceEncoding::sql_table_name() => push_json!(HumanFaceEncoding, from_row),
+            t if t == Location::sql_table_name() => push_json!(Location, from_row),
+            t if t == Notification::sql_table_name() => push_json!(Notification, from_row),
+            t if t == Room::sql_table_name() => push_json!(Room, from_row),
+            t if t == Service::sql_table_name() => push_json!(Service, from_row),
+            t if t == Thing::sql_table_name() => push_json!(Thing, from_row),
+            t if t == Observation::sql_table_name() => {
+                if columns.is_none() {
+                    push_json!(Observation, from_row)
+                } else {
+                    push_json!(Observation, from_row_lite)
+                }
+            }
+            t if t == Setting::sql_table_name() => push_json!(Setting, from_row),
+            t if t == WebSessions::sql_table_name() => push_json!(WebSessions, from_row),
+            t if t == StorageLocation::sql_table_name() => push_json!(StorageLocation, from_row),
+            t if t == FileStorage::sql_table_name() => {
+                if columns.is_none() {
+                    push_json!(FileStorage, from_row)
+                } else {
+                    push_json!(FileStorage, from_row_lite)
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    
+    /// Creates and returns a synchronous PostgreSQL client using the current configuration.
+    ///
+    /// This function builds a TLS connector (with certificate verification disabled for self-signed certs)
+    /// and connects to the configured PostgreSQL database using the `postgres` crate.
+    ///
+    /// # Returns
+    /// Returns a `Result` containing a `postgres::Client` on success, or an error otherwise.
+    pub fn client() -> Result<postgres::Client> {
         let config = Config::new();
-        
+
+        // Build a TLS connector that skips certificate verification (for self-signed certs)
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
         let connector = MakeTlsConnector::new(builder.build());
-        return Ok(crate::postgres::Client::connect(format!("postgresql://{}:{}@{}/{}?sslmode=prefer", &config.postgres.username, &config.postgres.password, &config.postgres.address, &config.postgres.db_name).as_str(), connector)?);
+
+        // Construct the connection string
+        let conn_str = format!(
+            "postgresql://{}:{}@{}/{}?sslmode=prefer",
+            config.postgres.username,
+            config.postgres.password,
+            config.postgres.address,
+            config.postgres.db_name
+        );
+
+        // Connect and return the client
+        Ok(postgres::Client::connect(&conn_str, connector)?)
     }
 }
 
@@ -1112,7 +1136,7 @@ impl Location {
 
 
 
-
+// TODO: Add progress_bar {}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Notification {
     pub id: i32,
@@ -1969,10 +1993,12 @@ impl Observation {
             Some(object) => {
                 let split = object.split(",");
                 for s in split {
-                    let obj = ObservationObjects::from_str(&s);
-                    match obj{
-                        Ok(obj) => observation_objects.push(obj),
-                        Err(err) => log::error!("{:?}", err)
+                    if s.len() > 0 {
+                        let obj = ObservationObjects::from_str(&s);
+                        match obj{
+                            Ok(obj) => observation_objects.push(obj),
+                            Err(err) => log::error!("sql_observation_objects: {:?}: {:?}",observation_objects.clone(), err)
+                        }
                     }
                 }
             }, 
@@ -2077,10 +2103,12 @@ impl Observation {
             Some(object) => {
                 let split = object.split(",");
                 for s in split {
-                    let obj = ObservationObjects::from_str(&s);
-                    match obj{
-                        Ok(obj) => observation_objects.push(obj),
-                        Err(err) => log::error!("{:?}", err)
+                    if s.len() > 0 {
+                        let obj = ObservationObjects::from_str(&s);
+                        match obj{
+                            Ok(obj) => observation_objects.push(obj),
+                            Err(err) => log::error!("sql_observation_objects2: {:?}: {:?}",observation_objects.clone(), err)
+                        }
                     }
                 }
             }, 
@@ -2095,27 +2123,11 @@ impl Observation {
                 let split = object.split(",");
                 let vec = split.collect::<Vec<&str>>();
                 for oidx in vec {
-
-                    // Search for OID matches
-                    let mut pg_query = PostgresQueries::default();
-                    pg_query.queries.push(crate::sam::memory::PGCol::String(oidx.clone().to_string()));
-                    pg_query.query_coulmns.push(format!("oid ilike"));
-
-
-                    let observation_humansx = Human::select(
-                        None, 
-                        None, 
-                        None, 
-                        Some(pg_query)
-                    ).unwrap(); 
-
-                    for human in observation_humansx{
-                        observation_humans.push(human);
+                    if oidx.len() > 0 {
+                        let mut xperson = Human::new();
+                        xperson.oid = oidx.to_string();
+                        observation_humans.push(xperson);
                     }
-
-                    // if rows.len() > 0 {
-                    //     observation_humans.push(rows[0].clone());
-                    // }
                 }
             }, 
             None => {}

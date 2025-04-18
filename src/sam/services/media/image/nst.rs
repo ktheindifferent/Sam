@@ -22,7 +22,7 @@ use std::io::prelude::*;
 
 const STYLE_WEIGHT: f64 = 1e6;
 const LEARNING_RATE: f64 = 1e-1;
-const TOTAL_STEPS: i64 = 3000;
+const TOTAL_STEPS: i64 = 10000;
 const STYLE_INDEXES: [usize; 5] = [0, 2, 5, 7, 10];
 const CONTENT_INDEXES: [usize; 1] = [7];
 
@@ -113,7 +113,7 @@ pub fn run(style_img: &str, content_img: &str, oid: String, style: String) -> Re
         let loss = style_loss * STYLE_WEIGHT + content_loss;
         opt.backward_step(&loss);
         log::info!("{} {}", step_idx, f64::from(loss.clone(&loss)));
-        if step_idx % 100 == 0 {
+        if step_idx % 1000 == 0 {
             log::info!("{} {}", step_idx, f64::from(loss));
             imagenet::save_image(&input_var, &format!("/opt/sam/files/out{}.jpg", step_idx))?;
 
@@ -163,7 +163,7 @@ pub fn styles() -> Result<Vec<Style>, crate::sam::services::Error> {
 
 pub fn install() -> Result<(), crate::sam::services::Error> {
     if !Path::new("/opt/sam/models/vgg16.ot").exists(){
-        crate::sam::tools::linux_cmd(format!("wget -O /opt/sam/models/vgg16.ot https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot"));
+        crate::sam::tools::uinx_cmd(format!("wget -O /opt/sam/models/vgg16.ot https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot"));
     }
 
     let data = include_bytes!("../../../../../packages/nst/fra_angelico.jpg");

@@ -3,71 +3,104 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
-// sam
+//! # Smart Artificial Mind (SAM) Main Entry Point
+//!
+//! This is the main executable for the SAM project. It initializes logging, environment variables,
+//! configuration, and all core services (websocket, RTSP, STT, sound, Lifx, Snapcast, storage).
+//! 
+//! ## Modules
+//! - `sam`: Core SAM logic and services.
+
 pub mod sam;
 
-// import external crates
+use std::env;
+
+// External crates
 extern crate wikipedia;
 extern crate hound;
 extern crate postgres;
+extern crate threadpool;
 
-// store application version as a const
+// Store application version as a const, set at compile time
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-// main
+/// Main entry point for the SAM application.
+/// Initializes logging, environment variables, configuration, and all core services.
 #[tokio::main]
 async fn main() {
-    log::info!("███████     █████     ███    ███    ");
-    log::info!("██         ██   ██    ████  ████    ");
-    log::info!("███████    ███████    ██ ████ ██    ");
-    log::info!("     ██    ██   ██    ██  ██  ██    ");
-    log::info!("███████ ██ ██   ██ ██ ██      ██ ██ ");
-    log::info!("Smart Artificial Mind");
-    log::info!("VERSION: {:?}", VERSION);
+    // Print ASCII art banner and version
+    println!("███████     █████     ███    ███    ");
+    println!("██         ██   ██    ████  ████    ");
+    println!("███████    ███████    ██ ████ ██    ");
+    println!("     ██    ██   ██    ██  ██  ██    ");
+    println!("███████ ██ ██   ██ ██ ██      ██ ██ ");
+    println!("Smart Artificial Mind");
+    println!("VERSION: {:?}", VERSION);
 
-    sudo::with_env(&["LIBTORCH", "LD_LIBRARY_PATH", "PG_DBNAME", "PG_USER", "PG_PASS", "PG_ADDRESS"]).unwrap();
+    // Initialize logger with color, warning level, and timestamps
+    simple_logger::SimpleLogger::new()
+        .with_colors(true)
+        .with_level(log::LevelFilter::Warn)
+        .with_timestamps(true)
+        .init()
+        .unwrap();
+
+    // Optionally set environment variables for libraries (uncomment if needed)
+    // env::set_var("LIBTORCH", "/app/libtorch/libtorch");
+    // env::set_var("LD_LIBRARY_PATH", "${LIBTORCH}/lib:$LD_LIBRARY_PATH");
+
+    // Ensure required environment variables are available for sudo context
+    sudo::with_env(&[
+        "LIBTORCH",
+        "LD_LIBRARY_PATH",
+        "PG_DBNAME",
+        "PG_USER",
+        "PG_PASS",
+        "PG_ADDRESS",
+    ])
+    .unwrap();
+    // Optionally escalate privileges if needed
     // sudo::escalate_if_needed().unwrap();
 
-    simple_logger::SimpleLogger::new().with_colors(true).init().unwrap();
-
+    // Run setup/install if required (e.g., on first run or specific path exists)
+    // if Path::new("/opt/sam").exists() {
     crate::sam::setup::install().await;
+    // }
 
+    // Initialize configuration and memory
     let config = crate::sam::memory::Config::new();
-
     config.init().await;
 
-    // Initialize Snapcast Server
-    crate::sam::services::media::snapcast::init();
+    // --- Service Initializations ---
 
-    // Initialize Web Socket Server
+    // Start WebSocket server for real-time communication
     crate::sam::services::socket::init();
 
-    // Initialize RTSP Service
+    // Start RTSP service for streaming
     crate::sam::services::rtsp::init();
 
-    // Initialize Sound Service
+    // Start Speech-to-Text (STT) service
+    crate::sam::services::stt::init();
+
+    // Start sound service for audio output/input
     crate::sam::services::sound::init();
-    
-    // Syncs database with Lifx API
-    crate::sam::services::lifx::ssync();
 
-    // Initialize default settings
-    crate::sam::http::api::settings::set_defaults();
-    
-    // Configure Snapcast
-    crate::sam::services::media::snapcast::configure();
+    // Initialize and sync database with Lifx API (smart lighting)
+    crate::sam::services::lifx::init();
 
-    // Initialize Storage Service
+    // Start Snapcast server for multi-room audio
+    crate::sam::services::media::snapcast::init();
+
+    // Start storage service for persistent data
     crate::sam::services::storage::init();
 
+    // Experimental: Clean up Dropbox directories (uncomment if needed)
+    // crate::sam::services::dropbox::destroy_empty_directories();
 
-    crate::sam::services::dropbox::destroy_empty_directories();
-
-    
-
+    // Keep the application running indefinitely
     loop {}
 }

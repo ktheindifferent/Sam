@@ -1,0 +1,87 @@
+FROM nvidia/cuda:11.7.0-base-ubuntu22.04
+MAINTAINER caleb <calebsmithwoolrich@gmail.com>
+
+RUN echo "0.0.000047"
+
+# Update default packages
+RUN apt-get update
+
+# Update new packages
+RUN apt-get upgrade -y
+
+# tzdata bug fix
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
+
+# Get Ubuntu packages
+RUN apt-get install -y \
+    build-essential \
+    curl xz-utils pkg-config \
+    libssl-dev zlib1g-dev libtinfo-dev \
+    libxml2-dev wget libx264-dev libssl-dev \
+    unzip libavcodec-extra58 python3 pip git \
+    git-lfs wget libboost-dev libopencv-dev python3-opencv \
+    ffmpeg iputils-ping libasound2-dev libpulse-dev libvorbisidec-dev \
+    libvorbis-dev libopus-dev libflac-dev libsoxr-dev alsa-utils \
+    libavahi-client-dev avahi-daemon libexpat1-dev
+
+RUN echo "0.0.000034"
+
+# Install Libtorch GPU packages
+RUN mkdir -p /app && git clone https://git.opensam.foundation/sam/sam.git /app
+RUN wget -O /app/libtorch.zip https://download.pytorch.org/libtorch/cu117/libtorch-cxx11-abi-shared-with-deps-1.13.1%2Bcu117.zip
+RUN unzip /app/libtorch.zip -d /app/libtorch
+ENV LIBTORCH=/app/libtorch/libtorch
+ENV LD_LIBRARY_PATH=${LIBTORCH}/lib:$LD_LIBRARY_PATH
+
+# Get Rust
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
+
+
+# get prebuilt llvm
+RUN curl -O https://releases.llvm.org/7.0.1/clang+llvm-7.0.1-x86_64-linux-gnu-ubuntu-18.04.tar.xz &&\
+    xz -d /clang+llvm-7.0.1-x86_64-linux-gnu-ubuntu-18.04.tar.xz &&\
+    tar xf /clang+llvm-7.0.1-x86_64-linux-gnu-ubuntu-18.04.tar &&\
+    rm /clang+llvm-7.0.1-x86_64-linux-gnu-ubuntu-18.04.tar &&\
+    mv /clang+llvm-7.0.1-x86_64-linux-gnu-ubuntu-18.04 /root/llvm
+
+# set env
+ENV LLVM_CONFIG=/root/llvm/bin/llvm-config
+ENV CUDA_ROOT=/usr/local/cuda
+ENV CUDA_PATH=$CUDA_ROOT
+ENV LLVM_LINK_STATIC=1
+ENV RUST_LOG=info
+ENV PATH=$CUDA_ROOT/nvvm/lib64:/root/.cargo/bin:$PATH
+
+# make ld aware of necessary *.so libraries
+RUN echo $CUDA_ROOT/lib64 >> /etc/ld.so.conf &&\
+    echo $CUDA_ROOT/compat >> /etc/ld.so.conf &&\
+    echo $CUDA_ROOT/nvvm/lib64 >> /etc/ld.so.conf &&\
+    ldconfig
+
+# RUN apt install 
+RUN pip3 install rivescript pexpect
+RUN pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/gpu
+
+# git clone and compile sam
+RUN cd /app \
+    && cargo build --release  \
+    && rm -Rf /app/src  /app/target/release/build /app/target/release/deps /app/target/release/examples/ /app/target/release/incremental/ /app/target/release/native
+
+
+# RUN echo "<<<<debug>>>>"
+# RUN echo $LD_LIBRARY_PATH
+
+# Web Port
+EXPOSE 8000
+
+# Web Socker Port
+EXPOSE 2794
+
+# Snapcast API Port
+EXPOSE 1780
+EXPOSE 1705
+EXPOSE 1704
+
+WORKDIR /app/target/release
+
+CMD ["./sam"]

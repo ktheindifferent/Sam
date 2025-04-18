@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -15,6 +15,31 @@ use rouille::Request;
 use rouille::Response;
 use rouille::post_input;
 use std::thread;
+
+pub fn init(){
+    thread::spawn(move || {
+        let mut pg_query = crate::sam::memory::PostgresQueries::default();
+        pg_query.queries.push(crate::sam::memory::PGCol::String(format!("lifx")));
+        pg_query.query_coulmns.push(format!("identifier ="));
+        let services = crate::sam::memory::Service::select(None, None, None, Some(pg_query));
+
+        match services {
+            Ok(services) => {
+
+                // Start LiFx Server on port 7084
+                crate::sam::services::lifx::init_server(services[0].secret.clone());
+     
+                crate::sam::services::lifx::sync(services[0].secret.clone());
+                
+            },
+            Err(e) => {
+                log::error!("{}", e);
+            }
+        }
+    });
+}
+
+
 
 pub fn init_server(key: String) {
     let lifx_thread = thread::Builder::new().name("lifx_api_server".to_string()).spawn(move || {
@@ -39,27 +64,6 @@ pub fn init_server(key: String) {
             log::error!("failed to initialize lifx api server: {}", e);
         }
     }
-}
-
-pub fn ssync(){
-    thread::spawn(move || {
-        let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(format!("lifx")));
-        pg_query.query_coulmns.push(format!("identifier ="));
-        let services = crate::sam::memory::Service::select(None, None, None, Some(pg_query));
-
-        match services {
-            Ok(services) => {
-                // crate::sam::services::lifx::init_server(services[0].secret.clone());
-     
-                crate::sam::services::lifx::sync(services[0].secret.clone());
-                
-            },
-            Err(e) => {
-                log::error!("{}", e);
-            }
-        }
-    });
 }
 
 

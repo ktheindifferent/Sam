@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -32,7 +32,7 @@ pub fn install() -> std::io::Result<()> {
     }
 
     crate::sam::tools::extract_zip("/opt/sam/scripts/rivescript/eg.zip", format!("/opt/sam/scripts/rivescript/"));
-    crate::sam::tools::linux_cmd(format!("rm -rf /opt/sam/scripts/rivescript/eg.zip"));
+    crate::sam::tools::uinx_cmd(format!("rm -rf /opt/sam/scripts/rivescript/eg.zip"));
 
     Ok(())
 }

@@ -876,7 +876,8 @@ function deleteClient(id) {
     }
 }
 window.onload = function () {
-    snapcontrol = new SnapControl(config.baseUrl);
+    // snapcontrol = new SnapControl(config.baseUrl);
+    snapcontrol = new SnapControl("ws://"+window.location.host.split(":")[0]+":1780");
 };
 // When the user clicks anywhere outside of the modal, close it
 window.onclick = function (event) {

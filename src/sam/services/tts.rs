@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -25,7 +25,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 pub fn init(){
 
     let tts_thead = thread::Builder::new().name("mozillatts".to_string()).spawn(move || {
-        crate::sam::tools::linux_cmd(format!("docker run -p 5002:5002 synesthesiam/mozillatts"));
+        crate::sam::tools::uinx_cmd(format!("docker run -p 5002:5002 synesthesiam/mozillatts"));
     });
     match tts_thead{
         Ok(_) => {

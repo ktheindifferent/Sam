@@ -3,13 +3,13 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
 use std::fs;
 use std::io;
-use std::path::{Path};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use error_chain::error_chain;
 
@@ -22,156 +22,89 @@ error_chain! {
     }
 }
 
-pub fn python3(command: String) -> String{
-    let cmd = Command::new("python3")
-    .arg(command.clone())
-    .output()
-    .unwrap();
-    return String::from_utf8_lossy(&cmd.stdout).to_string();
+/// Executes a Python 3 command and returns its output as a `String`.
+pub fn python3(command: &str) -> Result<String> {
+    let output = Command::new("python3")
+        .arg(command)
+        .output()
+        .map_err(|e| Error::from(e))?;
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-pub fn idfk(command: &str) -> String {
-    let child = Command::new("/bin/python3")
-    .arg(command)
-    .stdout(Stdio::piped())
-    .spawn()
-    .expect("failed to execute child");
-
-    let output = child
-        .wait_with_output()
-        .expect("failed to wait on child");
-
-    return String::from_utf8_lossy(&output.stdout).to_string();
+/// Executes a shell command and returns its output as a `String`.
+pub fn cmd(command: &str) -> Result<String> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .output()
+        .map_err(|e| Error::from(e))?;
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-pub fn pip3(command: &str) -> String {
-    let child = Command::new("/bin/pip3")
-    .arg(command)
-    .stdout(Stdio::piped())
-    .spawn()
-    .expect("failed to execute child");
+/// Executes a Linux shell command and logs the result.
+pub fn uinx_cmd(command: &str) {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .output();
 
-    let output = child
-        .wait_with_output()
-        .expect("failed to wait on child");
-
-    return String::from_utf8_lossy(&output.stdout).to_string();
-}
-
-pub fn cmd(command: String) -> String{
-    let cmd = Command::new("sh")
-    .arg("-c")
-    .arg(command.clone())
-    .output()
-    .unwrap();
-    return String::from_utf8_lossy(&cmd.stdout).to_string();
-}
-
-
-pub fn linux_cmd(command: String){
-    let cmd = Command::new("sh")
-    .arg("-c")
-    .arg(command.clone())
-    .output()
-    .expect("failed to execute process");
-    if cmd.status.success() {
-        let er = String::from_utf8_lossy(&cmd.stdout);
-        log::info!("{}:{}",command,  er);
-    } else {
-        let er = String::from_utf8_lossy(&cmd.stderr);
-        log::error!("{}:{}",command,  er);
+    match output {
+        Ok(cmd) if cmd.status.success() => {
+            log::info!("{}:{}", command, String::from_utf8_lossy(&cmd.stdout));
+        }
+        Ok(cmd) => {
+            log::error!("{}:{}", command, String::from_utf8_lossy(&cmd.stderr));
+        }
+        Err(e) => {
+            log::error!("Failed to execute command '{}': {}", command, e);
+        }
     }
 }
 
-pub fn does_wav_have_sounds(audio_filename: String) -> Result<bool>{
+/// Checks if a WAV file contains sounds above a certain threshold.
+pub fn does_wav_have_sounds(audio_filename: &str) -> Result<bool> {
+    let threshold = 14000_i16;
     let mut has_sounds = false;
-	let threshold = 14000 as i16;
 
-	let mut audio_file = hound::WavReader::open(audio_filename)?;
+    let audio_file = hound::WavReader::open(audio_filename)?;
+    let raw_samples = audio_file.samples::<i16>().filter_map(Result::ok);
 
-	let raw_samples = audio_file.samples::<i16>().into_iter().map(|x| x.unwrap()).collect::<Vec<i16>>();
-
-	let mut samples: Vec<i16> = Vec::new();
-
-	for i in 0..=raw_samples.len() - 1 {
-		if i % 100 == 0 {
-	
-
-			if raw_samples[i as usize] > threshold || raw_samples[i as usize] < -threshold{
-				has_sounds = true;
-			}
-
-			samples.push(raw_samples[i as usize]);
-		}
-	}
-
-    return Ok(has_sounds);
-}
-
-
-pub fn extract_zip(zip_path: &str, extract_path: String) -> i32 {
-
-    let fname = std::path::Path::new(zip_path);
-    let file = fs::File::open(&fname).unwrap();
-
-    let mut archivew = zip::ZipArchive::new(file);
-
-    match archivew{
-        Ok(mut archive) => {
-            for i in 0..archive.len() {
-                let mut file = archive.by_index(i).unwrap();
-                let outpath_end = match file.enclosed_name() {
-                    Some(path) => path.to_owned(),
-                    None => continue,
-                };
-        
-                let out_mend = extract_path.to_owned() + outpath_end.to_str().unwrap();
-        
-                let outpath = Path::new(&(out_mend));
-        
-                {
-                    let comment = file.comment();
-                    if !comment.is_empty() {
-                        // log::info!("File {} comment: {}", i, comment);
-                    }
-                }
-        
-                if (&*file.name()).ends_with('/') {
-                    log::info!("File {} extracted to \"{}\"", i, outpath.display());
-                    fs::create_dir_all(&outpath).unwrap();
-                } else {
-                    log::info!(
-                        "File {} extracted to \"{}\" ({} bytes)",
-                        i,
-                        outpath.display(),
-                        file.size()
-                    );
-                    if let Some(p) = outpath.parent() {
-                        if !p.exists() {
-                            fs::create_dir_all(&p).unwrap();
-                        }
-                    }
-                    let mut outfile = fs::File::create(&outpath).unwrap();
-                    io::copy(&mut file, &mut outfile).unwrap();
-                }
-        
-                // Get and Set permissions
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-        
-                    if let Some(mode) = file.unix_mode() {
-                        fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
-                    }
-                }
-            }
-        },
-        Err(err) => {
-            log::error!("{}", err);
-            return -1;
+    for (i, sample) in raw_samples.enumerate() {
+        if i % 100 == 0 && (sample > threshold || sample < -threshold) {
+            has_sounds = true;
+            break;
         }
     }
 
+    Ok(has_sounds)
+}
 
-    0
+/// Extracts a ZIP file to the specified directory.
+pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
+    let file = fs::File::open(zip_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let outpath = Path::new(extract_path).join(file.enclosed_name().ok_or("Invalid path")?);
+
+        if file.name().ends_with('/') {
+            fs::create_dir_all(&outpath)?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                if !parent.exists() {
+                    fs::create_dir_all(parent)?;
+                }
+            }
+            let mut outfile = fs::File::create(&outpath)?;
+            io::copy(&mut file, &mut outfile)?;
+
+            #[cfg(unix)]
+            if let Some(mode) = file.unix_mode() {
+                fs::set_permissions(&outpath, fs::Permissions::from_mode(mode))?;
+            }
+        }
+    }
+
+    Ok(())
 }

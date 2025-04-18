@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -59,7 +59,7 @@ class LifXThing {
         this.private_obj = undefined;
     }
   
-    init(expectations = undefined) {
+    init(expectations = undefined, loops = 0) {
         lifx_things.add(this);
         this.status = "initialization";
         this.update_html();
@@ -82,14 +82,16 @@ class LifXThing {
                         
                         if(expectations !== undefined){
                             if(expectations == "power:on"){
-                                if(this.power == "off"){
-                                    setTimeout(modelref.init(expectations), 100);
+                                if(this.power == "off" && loops < 5){
+                                    loops+=1;
+                                    setTimeout(modelref.init(expectations, loops), 300);
                                     return modelref;
                                 }
                             }
                             if(expectations == "power:off"){
-                                if(this.power == "on"){
-                                    setTimeout(modelref.init(expectations), 100);
+                                if(this.power == "on" && loops < 5){
+                                    loops+=1;
+                                    setTimeout(modelref.init(expectations, loops), 300);
                                     return modelref;
                                 }
                             }
@@ -130,14 +132,16 @@ class LifXThing {
                                   
                                     if(expectations !== undefined){
                                         if(expectations == "power:on"){
-                                            if(this.power == "off"){
-                                                setTimeout(modelref.init(expectations), 100);
+                                            if(this.power == "off" && loops < 5){
+                                                loops+=1;
+                                                setTimeout(modelref.init(expectations, loops), 100);
                                                 return modelref;
                                             }
                                         }
                                         if(expectations == "power:off"){
-                                            if(this.power == "on"){
-                                                setTimeout(modelref.init(expectations), 100);
+                                            if(this.power == "on" && loops < 5){
+                                                loops+=1;
+                                                setTimeout(modelref.init(expectations, loops), 100);
                                                 return modelref;
                                             }
                                         }
@@ -186,14 +190,16 @@ class LifXThing {
                         
                         if(expectations !== undefined){
                             if(expectations == "power:on"){
-                                if(this.power == "off"){
-                                    setTimeout(modelref.init(expectations), 100);
+                                if(this.power == "off" && loops < 5){
+                                    loops+=1;
+                                    setTimeout(modelref.init(expectations, loops), 100);
                                     return modelref;
                                 }
                             }
                             if(expectations == "power:off"){
-                                if(this.power == "on"){
-                                    setTimeout(modelref.init(expectations), 100);
+                                if(this.power == "on" && loops < 5){
+                                    loops+=1;
+                                    setTimeout(modelref.init(expectations, loops), 100);
                                     return modelref;
                                 }
                             }
@@ -229,14 +235,16 @@ class LifXThing {
     
                                     if(expectations !== undefined){
                                         if(expectations == "power:on"){
-                                            if(this.power == "off"){
-                                                setTimeout(modelref.init(expectations), 100);
+                                            if(this.power == "off" && loops < 5){
+                                                loops+=1;
+                                                setTimeout(modelref.init(expectations, loops), 100);
                                                 return modelref;
                                             }
                                         }
                                         if(expectations == "power:off"){
-                                            if(this.power == "on"){
-                                                setTimeout(modelref.init(expectations), 100);
+                                            if(this.power == "on" && loops < 5){
+                                                loops+=1;
+                                                setTimeout(modelref.init(expectations, loops), 100);
                                                 return modelref;
                                             }
                                         }
@@ -263,11 +271,23 @@ class LifXThing {
         var kelvin = $(`#lifx_kelvin`).val();
         console.log("set_kelvin");
         if(this.group_mode){
-            $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `group_id:${this.public_obj.group.id}`, color: `kelvin:${kelvin}` } );
+            // Set Private (faster if object exists)
+            if(this.private_obj !== undefined){
+                $.post( "/api/services/lifx/set_color", { use_public: "false", selector: `group_id:${this.private_obj.group.id}`, color: `kelvin:${kelvin}` } );
+            } 
+
+            // Set Public (faster if object doesn't exist)
+            if(this.public_obj !== undefined){
+                $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `group_id:${this.public_obj.group.id}`, color: `kelvin:${kelvin}` } );
+            }
         } else {
+            // Set Private (faster if object exists)
             if(this.private_obj !== undefined){
                 $.post( "/api/services/lifx/set_color", { use_public: "false", selector: `id:${this.private_obj.id}`, color: `kelvin:${kelvin}` } );
-            } else if(this.public_obj !== undefined){
+            } 
+            
+            // Set Public (faster if object doesn't exist)
+            if(this.public_obj !== undefined){
                 $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `id:${this.public_obj.id}`, color: `kelvin:${kelvin}` } );
             }
         }
@@ -278,9 +298,27 @@ class LifXThing {
         var color = $(`#lifx_colorpicker`).val();
     
         if(this.group_mode){
-            $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `group_id:${this.public_obj.group.id}`, color: color } );
+
+            // Set Private (faster if object exists)
+            if(this.private_obj !== undefined){
+                $.post( "/api/services/lifx/set_color", { use_public: "false", selector: `group_id:${this.private_obj.group.id}`, color: color } );
+            } 
+
+            // Set Public (faster if object doesn't exist)
+            if(this.public_obj !== undefined){
+                $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `group_id:${this.public_obj.group.id}`, color: color } );
+            }
+
         } else {
-            $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `id:${this.public_obj.id}`, color: color } );
+            // Set Private (faster if object exists)
+            if(this.private_obj !== undefined){
+                $.post( "/api/services/lifx/set_color", { use_public: "false", selector: `id:${this.private_obj.id}`, color: color } );
+            } 
+
+            // Set Public (faster if object doesn't exist)
+            if(this.public_obj !== undefined){
+                $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `id:${this.public_obj.id}`, color: color } );
+            }
         }
         
     }
@@ -296,8 +334,18 @@ class LifXThing {
 
  
         if(this.group_mode){
-            $.post( "/api/services/lifx/set_state", { use_public: "true", selector: `group_id:${this.public_obj.group.id}`, power: power } );
-        
+
+            // Set Private (faster if object exists)
+            if(this.private_obj !== undefined){
+                $.post( "/api/services/lifx/set_state", { use_public: "false", selector: `group_id:${this.private_obj.group.id}`, power: power } );
+            } 
+
+            // Set Public (faster if object doesn't exist)
+            if(this.public_obj !== undefined){
+                $.post( "/api/services/lifx/set_state", { use_public: "true", selector: `group_id:${this.public_obj.group.id}`, power: power } );
+            }
+
+
             var mod = this;
             // re-initialize group members
             $(lifx_things.things).each(function() {
@@ -319,7 +367,9 @@ class LifXThing {
         } else {
             if(this.private_obj !== undefined){
                 $.post( "/api/services/lifx/set_state", { use_public: "false", selector: `id:${this.private_obj.id}`, power: power } );
-            } else if(this.public_obj !== undefined){
+            } 
+            
+            if(this.public_obj !== undefined){
                 $.post( "/api/services/lifx/set_state", { use_public: "true", selector: `id:${this.public_obj.id}`, power: power } );
             }
            

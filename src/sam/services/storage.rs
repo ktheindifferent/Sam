@@ -3,65 +3,59 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
 // Files can be stored in many places: Local(SQL), Local(NAS), Cloud(Dropbox, OneDrive, Etc.)
 
-use rouille::post_input;
-use rouille::Request;
-use rouille::Response;
-use std::{thread, time::Duration};
-use std::fs::File;
-use std::path::Path;
+use rouille::{post_input, Request, Response};
+use std::{fs::File, path::Path, thread, time::Duration};
 
-pub fn sql_get(){
+/// Initializes the storage service by setting up cache and creating necessary folders.
+pub fn init() {
+    let storage_init_thread = thread::Builder::new()
+        .name("storage_init".to_string())
+        .spawn(move || {
+            init_cache();
+            crate::sam::services::dropbox::create_folder("/Sam");
+        });
 
-}
-
-pub fn sql_store(){
-
-}
-
-pub fn init(){
-    let storage_init_thread = thread::Builder::new().name("storage_init".to_string()).spawn(move || {
-        init_cache();
-        crate::sam::services::dropbox::create_folder("/Sam");
-    });
-    
-    match storage_init_thread{
-        Ok(_) => {
-            log::info!("storage_init started successfully");
-        },
-        Err(e) => {
-            log::error!("failed to initialize storage_init: {}", e);
-        }
+    match storage_init_thread {
+        Ok(_) => log::info!("storage_init started successfully"),
+        Err(e) => log::error!("failed to initialize storage_init: {}", e),
     }
 }
 
-pub fn init_cache(){
-    let cache_thread = thread::Builder::new().name("cache".to_string()).spawn(move || {
-        loop{
-            crate::sam::memory::FileStorage::cache_all();
-            thread::sleep(Duration::from_millis(4000));
-        }
-    });
-    
-    match cache_thread{
-        Ok(_) => {
-            log::info!("cache started successfully");
-        },
-        Err(e) => {
-            log::error!("failed to initialize cache: {}", e);
-        }
+/// Initializes the cache system for file storage.
+pub fn init_cache() {
+    let cache_thread = thread::Builder::new()
+        .name("cache".to_string())
+        .spawn(move || {
+            loop {
+                crate::sam::memory::FileStorage::cache_all();
+                thread::sleep(Duration::from_secs(100)); // Adjusted to seconds for clarity
+            }
+        });
+
+    match cache_thread {
+        Ok(_) => log::info!("cache started successfully"),
+        Err(e) => log::error!("failed to initialize cache: {}", e),
     }
 }
 
-
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+/// Handles storage-related API requests.
+///
+/// Supported endpoints:
+/// - `/api/services/storage/locations`
+/// - `/api/services/storage/files`
+/// - `/api/services/storage/file/{oid}`
+pub fn handle(
+    _current_session: crate::sam::memory::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/storage/locations" {
-
+        // Handle storage locations
         if request.method() == "GET" {
             let locations = crate::sam::memory::StorageLocation::select(None, None, None, None)?;
             return Ok(Response::json(&locations));
@@ -69,14 +63,14 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
         if request.method() == "POST" {
             let input = post_input!(request, {
-                storge_type: String,
+                storage_type: String,
                 endpoint: String,
                 username: String,
                 password: String,
             })?;
 
             let mut location = crate::sam::memory::StorageLocation::new();
-            location.storge_type = input.storge_type;
+            location.storage_type = input.storage_type;
             location.endpoint = input.endpoint;
             location.username = input.username;
             location.password = input.password;
@@ -87,7 +81,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
     }
 
     if request.url() == "/api/services/storage/files" {
-
+        // Handle file storage
         if request.method() == "GET" {
             let files = crate::sam::memory::FileStorage::select_lite(None, None, None, None)?;
             return Ok(Response::json(&files));
@@ -101,45 +95,40 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
             })?;
 
             let mut file = crate::sam::memory::FileStorage::new();
-            file.file_name = input.file_data.filename.ok_or("unknown")?;
+            file.file_name = input.file_data.filename.ok_or("unknown filename")?;
             file.file_type = input.file_data.mime;
             file.file_data = Some(input.file_data.data);
             file.file_folder_tree = input.file_folder_tree;
-            file.storage_location_oid = format!("SQL");
+            file.storage_location_oid = input.storage_location_oid.unwrap_or_else(|| "SQL".to_string());
             file.save()?;
 
             return Ok(Response::json(&file));
         }
     }
 
-
     if request.url().contains("/api/services/storage/file/") {
-        // Get file:oid
-        let url = request.url();
-        let split = url.split("/");
-        let vec: Vec<&str> = split.collect();
-        let oid = vec[5];
+        // Handle file retrieval by OID
+        let oid = request.url().split('/').nth(5).ok_or("Invalid URL format")?;
 
-        // TODO: check cache first
-        if Path::new(format!("/opt/sam/files/{}", oid).as_str()).exists(){
-            let file = File::open(format!("/opt/sam/files/{}", oid).as_str()).unwrap();
+        // Check cache first
+        let file_path = format!("/opt/sam/files/{}", oid);
+        if Path::new(&file_path).exists() {
+            let file = File::open(&file_path)?;
             return Ok(Response::from_file("", file));
         }
 
-        // Build query
+        // Query file from database
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.clone().to_string()));
-        pg_query.query_coulmns.push(format!("oid ="));
+        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
+        pg_query.query_coulmns.push("oid =".to_string());
 
-        // Select file by oid using query
-        let files = crate::sam::memory::FileStorage::select(None, None, None, Some(pg_query)).unwrap();
-        
-        // Clone file into memory
-        let file = files[0].clone();
-
-        // Return file to client
-        return Ok(Response::from_data(file.file_type, file.file_data.unwrap()));
+        let files = crate::sam::memory::FileStorage::select(None, None, None, Some(pg_query))?;
+        if let Some(file) = files.get(0) {
+            return Ok(Response::from_data(file.file_type.clone(), file.file_data.clone().unwrap()));
+        } else {
+            return Ok(Response::empty_404());
+        }
     }
 
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }

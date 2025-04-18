@@ -3,7 +3,7 @@
 // ███████    ███████    ██ ████ ██    
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
-// Copyright 2021-2023 The Open Sam Foundation (OSF)
+// Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
@@ -14,10 +14,12 @@ error_chain! {
         HttpRequest(reqwest::Error);
         Postgres(postgres::Error);
         Hound(hound::Error);
+        TchError(tch::TchError);
         PostError(rouille::input::post::PostError);
         ParseFloatError(std::num::ParseFloatError);
-        TchError(tch::TchError);
+    
         SamMemoryError(crate::sam::memory::Error);
+        // ClError(opencl3::error_codes::ClError);
     }
 }
 
@@ -36,4 +38,5 @@ pub mod sprec;
 pub mod storage;
 pub mod stt;
 pub mod tts;
+// pub mod whisper;
 pub mod who;
