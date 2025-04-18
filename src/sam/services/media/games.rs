@@ -10,11 +10,11 @@ use rouille::Request;
 use rouille::Response;
 
 
-pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
-    if request.url().contains("/games"){
-        return Ok(Response::json(&games().unwrap()));
+pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+    if request.url().contains("/games") {
+        return Ok(Response::json(&games()?)); // Simplified unwrap
     }
-    return Ok(Response::empty_404());
+    Ok(Response::empty_404())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -54,7 +54,7 @@ pub fn install() -> Result<(), crate::sam::services::Error> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::extract_zip("/opt/sam/games/Flappy_Kitty.zip", format!("/opt/sam/games/"));
+    crate::sam::tools::extract_zip("/opt/sam/games/Flappy_Kitty.zip", "/opt/sam/games/");
 
 
     return Ok(());

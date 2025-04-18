@@ -37,7 +37,7 @@ pub fn init(){
                     thread::spawn(move || {
                         let rtsp_address = format!("rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0", rtsp_http_thing.username, rtsp_http_thing.password, rtsp_http_thing.ip_address);
                         let script = crate::sam::services::rtsp::gen_rtsp_to_http_stream_script(rtsp_address, rtsp_http_thing.oid);
-                        crate::sam::tools::uinx_cmd(script);
+                        crate::sam::tools::uinx_cmd(&script);
                     });
 
 
@@ -46,7 +46,7 @@ pub fn init(){
                     thread::spawn(move || {
                         let rtsp_address = format!("rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0", rtsp_wav_thing.username, rtsp_wav_thing.password, rtsp_wav_thing.ip_address);
                         let script = crate::sam::services::rtsp::gen_rtsp_to_wav_script(rtsp_address, rtsp_wav_thing.oid);
-                        crate::sam::tools::uinx_cmd(script);
+                        crate::sam::tools::uinx_cmd(&script);
                     });
 
 
@@ -78,11 +78,8 @@ pub fn gen_rtsp_to_http_stream_script(address: String, identifier: String) -> St
 
 pub fn gen_rtsp_to_wav_script(address: String, identifier: String) -> String{
     let p = format!("/opt/sam/tmp/sound/{}", identifier);
-    if !Path::new(p.as_str()).exists(){
-        crate::sam::tools::uinx_cmd(format!("mkdir /opt/sam/tmp/sound/{}", identifier));
-        crate::sam::tools::uinx_cmd(format!("mkdir /opt/sam/tmp/sound/{}/s1", identifier));
-        crate::sam::tools::uinx_cmd(format!("mkdir /opt/sam/tmp/sound/{}/s2", identifier));
-        crate::sam::tools::uinx_cmd(format!("mkdir /opt/sam/tmp/sound/{}/s3", identifier));
+    if !Path::new(&p).exists() {
+        crate::sam::tools::uinx_cmd(&format!("mkdir -p {}/s1 {}/s2 {}/s3", p, p, p)); // Fixed path creation
     }
 
 

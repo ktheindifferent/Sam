@@ -2,7 +2,6 @@ use dropbox_sdk::{files, UserAuthClient};
 use dropbox_sdk::default_client::UserAuthDefaultClient;
 use dropbox_sdk::default_client::NoauthDefaultClient;
 use std::collections::VecDeque;
-use std::io::{self, Read};
 use std::thread;
 use rouille::post_input;
 use rouille::Request;
@@ -128,7 +127,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         let mut auth = finish_auth(input.pkce, input.auth_code);
      
 
-        let mut noc = NoauthDefaultClient::default();
+        let noc = NoauthDefaultClient::default();
         let new = auth.obtain_access_token(noc).unwrap();
         update_key(auth.save().unwrap(), Some(new.refresh_token));
 
@@ -170,7 +169,7 @@ pub fn create_sam_folder(){
 
 pub fn create_folder(path: &str){
     let obj = get_db_obj().unwrap();
-    let mut auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
     dropbox_sdk::files::create_folder_v2(&client, &dropbox_sdk::files::CreateFolderArg::new(path.clone().to_string()));
 
@@ -179,7 +178,7 @@ pub fn create_folder(path: &str){
 // TODO: Cache Files
 pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
     let obj = get_db_obj().unwrap();
-    let mut auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
     let dropbox_file = dropbox_sdk::files::download(&client, &dropbox_sdk::files::DownloadArg::new(dropbox_path.clone().to_string()), None, None);
     
@@ -196,7 +195,7 @@ pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
 
 pub fn delete(path: &str){
     let obj = get_db_obj().unwrap();
-    let mut auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
     dropbox_sdk::files::delete_v2(&client, &dropbox_sdk::files::DeleteArg::new(path.clone().to_string()));
 }
@@ -220,23 +219,23 @@ pub fn get_paths(path: &str) -> Vec<DropboxObject>{
         Ok(Ok(iterator)) => {
             for entry_result in iterator {
                 match entry_result {
-                    Ok(Ok(files::Metadata::Folder(entry))) => {
-                        let path = entry.path_display.unwrap_or(entry.name);
+                    Ok(Ok(files::Metadata::Folder(_entry))) => {
+                        let path = _entry.path_display.unwrap_or(_entry.name);
                         let obj = DropboxObject {
                             path: path,
                             object_type: format!("folder"),
                         };
                         paths.push(obj);
                     },
-                    Ok(Ok(files::Metadata::File(entry))) => {
-                        let path = entry.path_display.unwrap_or(entry.name);
+                    Ok(Ok(files::Metadata::File(_entry))) => {
+                        let path = _entry.path_display.unwrap_or(_entry.name);
                         let obj = DropboxObject {
                             path: path,
                             object_type: format!("file"),
                         };
                         paths.push(obj);
                     },
-                    Ok(Ok(files::Metadata::Deleted(entry))) => {
+                    Ok(Ok(files::Metadata::Deleted(_entry))) => {
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
                     Ok(Err(e)) => {
@@ -264,7 +263,7 @@ pub fn get_paths(path: &str) -> Vec<DropboxObject>{
 
 pub fn empty_directories() -> Vec<String>{
     let obj = get_db_obj().unwrap();
-    let mut auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
 
 
@@ -274,17 +273,17 @@ pub fn empty_directories() -> Vec<String>{
         Ok(Ok(iterator)) => {
             for entry_result in iterator {
                 match entry_result {
-                    Ok(Ok(files::Metadata::Folder(entry))) => {
-                        let path = entry.path_display.unwrap_or(entry.name);
+                    Ok(Ok(files::Metadata::Folder(_entry))) => {
+                        let path = _entry.path_display.unwrap_or(_entry.name);
 
                         if is_path_empty(&path.clone()){
                             empty_directories.push(path.clone());
                         }
                     },
-                    Ok(Ok(files::Metadata::File(entry))) => {
+                    Ok(Ok(files::Metadata::File(_entry))) => {
                         // println!("File: {}", entry.path_display.unwrap_or(entry.name));
                     },
-                    Ok(Ok(files::Metadata::Deleted(entry))) => {
+                    Ok(Ok(files::Metadata::Deleted(_entry))) => {
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
                     Ok(Err(e)) => {
@@ -316,7 +315,7 @@ pub fn is_path_empty(path: &str) -> bool{
     log::info!("deleting dropbox path: {}", path.clone());
     
     let obj = get_db_obj().unwrap();
-    let mut auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
+    let auth = dropbox_sdk::oauth2::Authorization::load(format!("ogyeqdms81svfke"), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
     
 
@@ -325,14 +324,14 @@ pub fn is_path_empty(path: &str) -> bool{
         Ok(Ok(iterator)) => {
             for entry_result in iterator {
                 match entry_result {
-                    Ok(Ok(files::Metadata::Folder(entry))) => {
+                    Ok(Ok(files::Metadata::Folder(_entry))) => {
                         // empty = false;
                     },
-                    Ok(Ok(files::Metadata::File(entry))) => {
+                    Ok(Ok(files::Metadata::File(_entry))) => {
                         empty = false;
                         return empty;
                     },
-                    Ok(Ok(files::Metadata::Deleted(entry))) => {
+                    Ok(Ok(files::Metadata::Deleted(_entry))) => {
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
                     Ok(Err(e)) => {

@@ -43,8 +43,13 @@ pub async fn install() {
 // Pre-installation setup: Install required packages and create directories
 fn pre_install() {
     // Install system dependencies
-    crate::sam::tools::uinx_cmd("apt install libx264-dev libssl-dev unzip libavcodec-extra58 python3 pip git git-lfs wget libboost-dev libopencv-dev python3-opencv ffmpeg iputils-ping libasound2-dev libpulse-dev libvorbisidec-dev libvorbis-dev libopus-dev libflac-dev libsoxr-dev alsa-utils libavahi-client-dev avahi-daemon libexpat1-dev libfdk-aac-dev -y".to_string());
-    crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect".to_string());
+    // Install system dependencies based on OS
+    #[cfg(target_os = "linux")]
+    crate::sam::tools::uinx_cmd("apt install libx264-dev libssl-dev unzip libavcodec-extra58 python3 pip git git-lfs wget libboost-dev libopencv-dev python3-opencv ffmpeg iputils-ping libasound2-dev libpulse-dev libvorbisidec-dev libvorbis-dev libopus-dev libflac-dev libsoxr-dev alsa-utils libavahi-client-dev avahi-daemon libexpat1-dev libfdk-aac-dev -y");
+
+    #[cfg(target_os = "macos")]
+    crate::sam::tools::uinx_cmd("brew install x264 openssl unzip ffmpeg python3 git git-lfs wget boost opencv ffmpeg libsndfile pulseaudio opus flac soxr alsa-lib avahi expat fdk-aac");
+    crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect");
 
     // Create necessary directories
     let directories = vec![
@@ -58,12 +63,12 @@ fn pre_install() {
         "/opt/sam/tmp/observations/vwav",
     ];
     for dir in directories {
-        crate::sam::tools::uinx_cmd(format!("mkdir -p {}", dir));
+        crate::sam::tools::uinx_cmd(&format!("mkdir -p {}", dir));
     }
 
     // Set permissions
-    crate::sam::tools::uinx_cmd("chmod -R 777 /opt/sam".to_string());
-    crate::sam::tools::uinx_cmd("chown 1000 -R /opt/sam".to_string());
+    crate::sam::tools::uinx_cmd("chmod -R 777 /opt/sam");
+    crate::sam::tools::uinx_cmd("chown 1000 -R /opt/sam");
 }
 
 // Check for GPU devices and create a marker file if found
@@ -72,19 +77,19 @@ fn check_gpu_devices() {
     if devices.is_err() {
         log::info!("No GPU devices found!");
     } else {
-        crate::sam::tools::uinx_cmd("touch /opt/sam/gpu".to_string());
+        crate::sam::tools::uinx_cmd("touch /opt/sam/gpu");
     }
 }
 
 // Install various services and log their status
 fn install_services() {
     let services = vec![
-        ("darknet", crate::sam::services::darknet::install),
-        ("sprec", crate::sam::services::sprec::install),
-        ("rivescript", crate::sam::services::rivescript::install),
-        ("who.io", crate::sam::services::who::install),
-        ("STT server", crate::sam::services::stt::install),
-        ("Media service", crate::sam::services::media::install),
+        ("darknet", crate::sam::services::darknet::install as fn() -> std::result::Result<(), std::io::Error>),
+        ("sprec", crate::sam::services::sprec::install as fn() -> std::result::Result<(), std::io::Error>),
+        ("rivescript", crate::sam::services::rivescript::install as fn() -> std::result::Result<(), std::io::Error>),
+        ("who.io", crate::sam::services::who::install as fn() -> std::result::Result<(), std::io::Error>),
+        ("STT server", crate::sam::services::stt::install as fn() -> std::result::Result<(), std::io::Error>),
+        ("Media service", crate::sam::services::media::install as fn() -> std::result::Result<(), std::io::Error>),
     ];
 
     for (name, install_fn) in services {

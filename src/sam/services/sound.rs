@@ -37,19 +37,20 @@ pub fn cache_vwavs() {
         pg_query.query_coulmns.push(" AND observation_objects ilike".to_string());
 
         let observations = crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)).unwrap();
-
+        let observations_len = observations.len();
         for (xrows, observation) in observations.iter().enumerate() {
             for human in &observation.observation_humans {
-                let th_obsv = observation.clone();
+                let human_oid = human.oid.clone(); // Fix unresolved variable
+                let th_obsv = observation.clone(); // Clone observation inside the closure scope
                 pool.execute(move || {
-                    log::info!("CACHE VWAV build processed observation {}/{}", xrows + 1, observations.len());
+                    log::info!("CACHE VWAV build processed observation {}/{}", xrows + 1, observations_len);
                     let tmp_file_path = format!("/opt/sam/tmp/observations/vwav/{}.wav", th_obsv.oid);
                     let cache_path = format!("{}.16.wav.mp4", tmp_file_path);
 
                     if !Path::new(&cache_path).exists() {
-                        let xpath = format!("/opt/sam/scripts/sprec/audio/{}/{}.wav", human.oid, th_obsv.oid);
+                        let xpath = format!("/opt/sam/scripts/sprec/audio/{}/{}.wav", human_oid, th_obsv.oid);
                         if Path::new(&xpath).exists() {
-                            crate::sam::tools::uinx_cmd(format!("cp {} {}", xpath, tmp_file_path));
+                            crate::sam::tools::uinx_cmd(format!("cp {} {}", xpath, tmp_file_path).as_str());
                         } else {
                             let mut full_pg_query = crate::sam::memory::PostgresQueries::default();
                             full_pg_query.queries.push(crate::sam::memory::PGCol::String(th_obsv.oid.clone()));
@@ -58,18 +59,18 @@ pub fn cache_vwavs() {
                             std::fs::write(&tmp_file_path, full_observation.observation_file.unwrap()).unwrap();
                         }
 
-                        crate::sam::tools::uinx_cmd(format!("ffmpeg -y -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav", tmp_file_path, tmp_file_path));
-                        crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts", tmp_file_path));
+                        crate::sam::tools::uinx_cmd(format!("ffmpeg -y -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav", tmp_file_path, tmp_file_path).as_str());
+                        crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts", tmp_file_path).as_str());
                         crate::sam::services::stt::patch_whisper_wts(format!("{}.16.wav.wts", tmp_file_path)).unwrap();
-                        crate::sam::tools::uinx_cmd(format!("chmod +x {}.16.wav.wts", tmp_file_path));
-                        crate::sam::tools::uinx_cmd(format!("{}.16.wav.wts", tmp_file_path));
-                        crate::sam::tools::uinx_cmd(format!("rm {} {}.16.wav {}.16.wav.wts", tmp_file_path, tmp_file_path, tmp_file_path));
+                        crate::sam::tools::uinx_cmd(format!("chmod +x {}.16.wav.wts", tmp_file_path).as_str());
+                        crate::sam::tools::uinx_cmd(format!("{}.16.wav.wts", tmp_file_path).as_str());
+                        crate::sam::tools::uinx_cmd(format!("rm {} {}.16.wav {}.16.wav.wts", tmp_file_path, tmp_file_path, tmp_file_path).as_str());
                     }
                 });
             }
         }
 
-        crate::sam::tools::uinx_cmd("python3 /opt/sam/scripts/sprec/build.py".to_string());
+        crate::sam::tools::uinx_cmd("python3 /opt/sam/scripts/sprec/build.py");
     });
 }
 

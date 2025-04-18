@@ -108,25 +108,24 @@ pub fn handle(
 
     if request.url().contains("/api/services/storage/file/") {
         // Handle file retrieval by OID
-        let oid = request.url().split('/').nth(5).ok_or("Invalid URL format")?;
+        if let Some(oid) = request.url().split('/').nth(5) { // Fixed lifetime issue
+            let file_path = format!("/opt/sam/files/{}", oid);
+            if Path::new(&file_path).exists() {
+                let file = File::open(&file_path)?;
+                return Ok(Response::from_file("", file));
+            }
 
-        // Check cache first
-        let file_path = format!("/opt/sam/files/{}", oid);
-        if Path::new(&file_path).exists() {
-            let file = File::open(&file_path)?;
-            return Ok(Response::from_file("", file));
-        }
+            // Query file from database
+            let mut pg_query = crate::sam::memory::PostgresQueries::default();
+            pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
+            pg_query.query_coulmns.push("oid =".to_string());
 
-        // Query file from database
-        let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
-        pg_query.query_coulmns.push("oid =".to_string());
-
-        let files = crate::sam::memory::FileStorage::select(None, None, None, Some(pg_query))?;
-        if let Some(file) = files.get(0) {
-            return Ok(Response::from_data(file.file_type.clone(), file.file_data.clone().unwrap()));
-        } else {
-            return Ok(Response::empty_404());
+            let files = crate::sam::memory::FileStorage::select(None, None, None, Some(pg_query))?;
+            if let Some(file) = files.get(0) {
+                return Ok(Response::from_data(file.file_type.clone(), file.file_data.clone().unwrap()));
+            } else {
+                return Ok(Response::empty_404());
+            }
         }
     }
 

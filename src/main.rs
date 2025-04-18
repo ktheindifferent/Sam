@@ -16,6 +16,7 @@
 //! - `sam`: Core SAM logic and services.
 
 pub mod sam;
+pub mod cli; // New CLI module
 
 use std::env;
 
@@ -63,6 +64,12 @@ async fn main() {
         "PG_ADDRESS",
     ])
     .unwrap();
+
+
+    // Check for missing Postgres credentials and prompt user if missing
+    cli::check_postgres_env();
+
+
     // Optionally escalate privileges if needed
     // sudo::escalate_if_needed().unwrap();
 
@@ -101,6 +108,7 @@ async fn main() {
     // Experimental: Clean up Dropbox directories (uncomment if needed)
     // crate::sam::services::dropbox::destroy_empty_directories();
 
-    // Keep the application running indefinitely
-    loop {}
+    // Start interactive CLI prompt instead of empty loop
+    println!("SAM initialized and ready. Starting command prompt...");
+    cli::start_prompt().await;
 }

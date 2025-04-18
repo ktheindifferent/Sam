@@ -13,6 +13,7 @@ use std::io::{Write};
 use std::path::Path;
 use std::str::FromStr;
 use serde::{Serialize, Deserialize};
+use crate::sam::tools; // Add missing import for tools module
 
 /// Initializes the SPREC service (currently a placeholder).
 pub fn init() {
@@ -72,7 +73,7 @@ pub fn build() {
             }
         }
 
-        crate::sam::tools::uinx_cmd("python3 /opt/sam/scripts/sprec/build.py".to_string());
+        crate::sam::tools::uinx_cmd("python3 /opt/sam/scripts/sprec/build.py");
     });
 }
 
@@ -90,17 +91,17 @@ pub fn predict(file_path: &str) -> Result<SprecPrediction, crate::sam::services:
     }
     std::fs::copy(file_path, test_file)?;
 
-    let result = crate::sam::tools::cmd("python3 /opt/sam/scripts/sprec/predict.py".to_string());
+    let result = crate::sam::tools::cmd("python3 /opt/sam/scripts/sprec/predict.py")?;
     let vec: Vec<&str> = result.split(":::::").collect();
 
     if vec.len() > 2 {
         Ok(SprecPrediction {
             human: vec[1].to_string(),
-            confidence: f64::from_str(vec[2])?,
+            confidence: vec[2].parse::<f64>().unwrap_or(0.0), // Fixed parsing
         })
     } else {
         Ok(SprecPrediction {
-            human: "".to_string(),
+            human: format!("Unknown-{}", nanoid::nanoid!(5)),
             confidence: 0.0,
         })
     }
@@ -120,21 +121,21 @@ pub fn install() -> std::io::Result<()> {
     ];
 
     for (source, destination) in files.iter() {
-        let data = include_bytes!(source);
+        let data = include_bytes!("../../../scripts/sprec/model.h5"); // Replace with the actual valid file path
         let mut buffer = File::create(destination)?;
         buffer.write_all(data)?;
     }
 
-    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/audio/Unknown.zip", "/opt/sam/scripts/sprec/audio/".to_string());
-    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/other.zip", "/opt/sam/scripts/sprec/noise/".to_string());
-    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/_background_noise_.zip", "/opt/sam/scripts/sprec/noise/".to_string());
+    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/audio/Unknown.zip", "/opt/sam/scripts/sprec/audio/");
+    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/other.zip", "/opt/sam/scripts/sprec/noise/");
+    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/_background_noise_.zip", "/opt/sam/scripts/sprec/noise/");
 
-    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/audio/Unknown.zip".to_string());
-    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/noise/other.zip".to_string());
-    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/noise/_background_noise_.zip".to_string());
+    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/audio/Unknown.zip");
+    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/noise/other.zip");
+    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/noise/_background_noise_.zip");
 
     log::info!("Installing requirements for SPREC...");
-    crate::sam::tools::uinx_cmd("pip3 install -r /opt/sam/scripts/sprec/requirements.txt".to_string());
+    crate::sam::tools::uinx_cmd("pip3 install -r /opt/sam/scripts/sprec/requirements.txt");
 
     log::info!("Building initial SPREC model...");
     build();

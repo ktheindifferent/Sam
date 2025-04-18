@@ -16,7 +16,7 @@
 // 3. Sam web console app (DONE)
 // 4. User management api
 
-use tch::{Device};
+// use tch::{Device};
 
 use rouille::Request;
 use rouille::Response;
@@ -152,9 +152,9 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
             // Search for OID matches
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(input.email.clone()));
-            pg_query.query_coulmns.push(format!("email ilike"));
+            pg_query.query_coulmns.push("email ilike".to_string());
             pg_query.queries.push(crate::sam::memory::PGCol::String(input.password.clone()));
-            pg_query.query_coulmns.push(format!(" AND password ="));
+            pg_query.query_coulmns.push(" AND password =".to_string());
 
             let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
 
@@ -208,20 +208,20 @@ pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, req
         // API Functions
 
   
-        if request.url().contains("/is_cuda"){
-            let device = tch::Cuda::is_available();
-            return Ok(Response::text(device.to_string()));
-        }
+        // if request.url().contains("/is_cuda"){
+        //     let device = tch::Cuda::is_available();
+        //     return Ok(Response::text(device.to_string()));
+        // }
 
-        if request.url().contains("/is_cuda2"){
-            let device = tch::Cuda::cudnn_is_available();
-            return Ok(Response::text(device.to_string()));
-        }
+        // if request.url().contains("/is_cuda2"){
+        //     let device = tch::Cuda::cudnn_is_available();
+        //     return Ok(Response::text(device.to_string()));
+        // }
 
-        if request.url().contains("/cudac"){
-            let device = tch::Cuda::device_count();
-            return Ok(Response::text(device.to_string()));
-        }
+        // if request.url().contains("/cudac"){
+        //     let device = tch::Cuda::device_count();
+        //     return Ok(Response::text(device.to_string()));
+        // }
 
 
         
@@ -285,7 +285,7 @@ pub fn install() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::extract_zip("/opt/sam/www.zip", format!("/opt/sam/"));
+    crate::sam::tools::extract_zip("/opt/sam/www.zip", "/opt/sam/");
 
     Ok(())
 }

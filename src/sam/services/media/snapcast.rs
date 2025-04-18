@@ -32,7 +32,7 @@ pub fn init(){
     // Snapserver sevice doesn't work for debian bullsye so we need to launch manually.
     // Attempt to launch snapserver in new thread.....will fail if port are already in use by snapserver
     let snap_cast_thread = thread::Builder::new().name("snapserver".to_string()).spawn(move || {
-        crate::sam::tools::uinx_cmd(format!("snapserver"));
+        crate::sam::tools::uinx_cmd("snapserver");
     });
     
     match snap_cast_thread{
@@ -107,8 +107,8 @@ pub fn install_snapcast_server_arm64() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::uinx_cmd(format!("dpkg --force-all -i /opt/sam/tmp/snapserver.deb"));
-    crate::sam::tools::uinx_cmd(format!("service snapserver start"));
+    crate::sam::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
+    crate::sam::tools::uinx_cmd("service snapserver start");
     return Ok(());
 }
 
@@ -121,8 +121,8 @@ pub fn install_snapcast_server_arm() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::uinx_cmd(format!("dpkg --force-all -i /opt/sam/tmp/snapserver.deb"));
-    crate::sam::tools::uinx_cmd(format!("service snapserver start"));
+    crate::sam::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
+    crate::sam::tools::uinx_cmd("service snapserver start");
     return Ok(());
 }
 
@@ -137,7 +137,7 @@ pub fn install_snapcast_server_amd64() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::uinx_cmd(format!("dpkg --force-all -i /opt/sam/tmp/snapserver.deb"));
-    crate::sam::tools::uinx_cmd(format!("service snapserver start"));
+    crate::sam::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
+    crate::sam::tools::uinx_cmd("service snapserver start");
     return Ok(());
 }

@@ -57,8 +57,8 @@ pub fn install() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::extract_zip("/opt/sam/bin/darknet.zip", format!("/opt/sam/bin/"));
-    crate::sam::tools::uinx_cmd(format!("rm -rf /opt/sam/bin/darknet.zip"));
-    crate::sam::tools::uinx_cmd(format!("chmod +x /opt/sam/bin/darknet/darknet"));
+    crate::sam::tools::extract_zip("/opt/sam/bin/darknet.zip", "/opt/sam/bin/");
+    crate::sam::tools::uinx_cmd("/bin/rm -rf /opt/sam/bin/darknet.zip");
+    crate::sam::tools::uinx_cmd("chmod +x /opt/sam/bin/darknet/darknet");
     Ok(())
 }

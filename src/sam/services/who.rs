@@ -32,14 +32,14 @@ pub fn install() -> Result<()> {
     // Write and extract Barack Obama dataset
     let obama_zip = "/opt/sam/scripts/who.io/dataset/barack_obama.zip";
     write_file(include_bytes!("../../../scripts/who.io/dataset/barack_obama.zip"), obama_zip)?;
-    crate::sam::tools::extract_zip(obama_zip, "/opt/sam/scripts/who.io/dataset/".to_string());
-    crate::sam::tools::uinx_cmd(format!("rm -rf {}", obama_zip));
+    crate::sam::tools::extract_zip(obama_zip, "/opt/sam/scripts/who.io/dataset/");
+    crate::sam::tools::uinx_cmd(&format!("rm -rf {}", obama_zip));
 
     // Write and extract Donald Trump dataset
     let trump_zip = "/opt/sam/scripts/who.io/dataset/donald_trump.zip";
     write_file(include_bytes!("../../../scripts/who.io/dataset/donald_trump.zip"), trump_zip)?;
-    crate::sam::tools::extract_zip(trump_zip, "/opt/sam/scripts/who.io/dataset/".to_string());
-    crate::sam::tools::uinx_cmd(format!("rm -rf {}", trump_zip));
+    crate::sam::tools::extract_zip(trump_zip, "/opt/sam/scripts/who.io/dataset/");
+    crate::sam::tools::uinx_cmd(&format!("rm -rf {}", trump_zip));
 
     Ok(())
 }

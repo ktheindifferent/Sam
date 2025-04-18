@@ -26,19 +26,30 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
     match input{
         Some(iput) => {
             
-            let rivescript_reply = crate::sam::tools::cmd(format!("python3 /opt/sam/scripts/rivescript/brain.py \"{}\"", iput));
+            let rivescript_reply = crate::sam::tools::cmd(format!("python3 /opt/sam/scripts/rivescript/brain.py \"{}\"", iput).as_str());
+
+            // Match on the reply before responding
+            match rivescript_reply {
+                Ok(rs) => {
+                    if rs.contains(":::::"){
+                        // TODO - Parse Command
+                    } 
+                
+                    let io = IOReply{
+                        text: rs,
+                        timestamp: 0,
+                        response_type: format!("io")
+                    };
+                
+                    return Ok(Response::json(&io));
+                },
+                Err(_e) => {
+                    let response = Response::text("RiveScript error").with_status_code(500);
+                    return Ok(response);
+                }
+            }
         
-            if rivescript_reply.contains(":::::"){
-                // TODO - Parse Command
-            } 
-        
-            let io = IOReply{
-                text: rivescript_reply,
-                timestamp: 0,
-                response_type: format!("io")
-            };
-        
-            return Ok(Response::json(&io));
+          
         },
         None => {
             let response = Response::text("IO input malformed").with_status_code(500);

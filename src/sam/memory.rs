@@ -31,7 +31,7 @@ error_chain! {
         Hound(hound::Error);
         PostError(rouille::input::post::PostError);
         ParseFloatError(std::num::ParseFloatError);
-        TchError(tch::TchError);
+        // TchError(tch::TchError);
     }
 }
 
@@ -2310,7 +2310,7 @@ impl Setting {
 pub struct StorageLocation {
     pub id: i32,
     pub oid: String,
-    pub storge_type: String, // unique
+    pub storage_type: String, // unique
     pub endpoint: String,
     pub username: String,
     pub password: String,
@@ -2323,7 +2323,7 @@ impl StorageLocation {
         StorageLocation { 
             id: 0,
             oid: oid,
-            storge_type: String::new(), 
+            storage_type: String::new(), 
             endpoint: String::new(), 
             username: String::new(), 
             password: String::new(), 
@@ -2338,7 +2338,7 @@ impl StorageLocation {
         "CREATE TABLE public.storage_locations (
             id serial NOT NULL,
             oid varchar NOT NULL UNIQUE,
-            storge_type varchar NULL,
+            storage_type varchar NULL,
             endpoint varchar NULL,
             username varchar NULL,
             password varchar NULL,
@@ -2368,9 +2368,9 @@ impl StorageLocation {
         ).unwrap();
 
         if rows.len() == 0 {
-            client.execute("INSERT INTO storage_locations (oid, storge_type, endpoint, username, password, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            client.execute("INSERT INTO storage_locations (oid, storage_type, endpoint, username, password, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
                 &[&self.oid.clone(),
-                &self.storge_type,
+                &self.storage_type,
                 &self.endpoint,
                 &self.username,
                 &self.password,
@@ -2384,9 +2384,9 @@ impl StorageLocation {
 
             // Only save if newer than stored information
             if self.updated_at > ads.updated_at {
-                client.execute("UPDATE storage_locations SET storge_type = $1, endpoint = $2, username = $3, password = $4, updated_at = $5 WHERE oid = $6;", 
+                client.execute("UPDATE storage_locations SET storage_type = $1, endpoint = $2, username = $3, password = $4, updated_at = $5 WHERE oid = $6;", 
                 &[
-                    &self.storge_type,
+                    &self.storage_type,
                     &self.endpoint,
                     &self.username,
                     &self.password,
@@ -2422,7 +2422,7 @@ impl StorageLocation {
         return Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
-            storge_type: row.get("storge_type"), 
+            storage_type: row.get("storage_type"), 
             endpoint: row.get("endpoint"), 
             username: row.get("username"), 
             password: row.get("password"), 

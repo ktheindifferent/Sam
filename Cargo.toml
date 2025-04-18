@@ -38,11 +38,12 @@ dasp = "0.11.0"
 dropbox-sdk = { git = "https://github.com/PixelCoda/dropbox-sdk-rust.git", version = "0.16.2", features = ["dbx_files"] }
 invidious = "0.4.0"
 rustube = { version = "0.6.0", features = ["blocking"] }
-tch = "0.10.1"
+
 anyhow = "1.0.66"
 titlecase = "2.2.1"
 opencl3 = "0.9.3"
-#whisper-rs = "0.7.0"
+
+nanoid = "0.4"
 
 [features]
 default = ["reqwest/default-tls", "trust-dns-resolver/dns-over-native-tls"]

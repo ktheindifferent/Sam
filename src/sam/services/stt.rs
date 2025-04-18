@@ -15,6 +15,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use opencl3::device::CL_DEVICE_TYPE_GPU;
+use crate::sam::tools; // Add missing import for tools module
 
 /// Represents the result of an STT prediction.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -68,7 +69,7 @@ pub fn deep_speech_process(file_path: String) -> Result<STTPrediction, crate::sa
 // Runs Whisper on the provided audio file.
 pub fn whisper(file_path: String) -> Result<String, crate::sam::services::Error> {
     prepare_audio(&file_path)?;
-    crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -otxt", file_path))?;
+    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -otxt", file_path))?;
     let data = read_and_cleanup(file_path)?;
     Ok(data)
 }
@@ -76,7 +77,7 @@ pub fn whisper(file_path: String) -> Result<String, crate::sam::services::Error>
 // Runs Whisper in quick mode with a smaller model.
 pub fn whisper_quick(file_path: String) -> Result<String, crate::sam::services::Error> {
     prepare_audio(&file_path)?;
-    crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-tiny.bin -f {}.16.wav -otxt -t 4", file_path))?;
+    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-tiny.bin -f {}.16.wav -otxt -t 4", file_path))?;
     let data = read_and_cleanup(file_path)?;
     Ok(data)
 }
@@ -84,14 +85,14 @@ pub fn whisper_quick(file_path: String) -> Result<String, crate::sam::services::
 // Runs Whisper on GPU for faster processing.
 pub fn whisper_gpu(file_path: String) -> Result<String, crate::sam::services::Error> {
     prepare_audio(&file_path)?;
-    crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper-gpu -m /opt/sam/models/ggml-tiny.bin -f {}.16.wav -otxt -t 8", file_path))?;
+    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper-gpu -m /opt/sam/models/ggml-tiny.bin -f {}.16.wav -otxt -t 8", file_path))?;
     let data = read_and_cleanup(file_path)?;
     Ok(data)
 }
 
 // Prepares audio for processing by converting or copying it.
 fn prepare_audio(file_path: &String) -> Result<(), crate::sam::services::Error> {
-    crate::sam::tools::uinx_cmd(format!("cp {} {}.16.wav", file_path, file_path))?;
+    crate::sam::tools::cmd(&format!("cp {} {}.16.wav", file_path, file_path))?;
     Ok(())
 }
 
@@ -125,7 +126,7 @@ pub fn install() -> std::io::Result<()> {
 
     for (file, url) in models {
         if !Path::new(&format!("/opt/sam/models/{}", file)).exists() {
-            crate::sam::tools::uinx_cmd(format!("wget -O /opt/sam/models/{} {}", file, url));
+            crate::sam::tools::uinx_cmd(&format!("wget -O /opt/sam/models/{} {}", file, url));
         }
     }
 
@@ -138,9 +139,10 @@ pub fn install() -> std::io::Result<()> {
     ];
 
     for (source, destination) in binaries {
-        let data = include_bytes!(source);
-        let mut buffer = File::create(destination)?;
-        buffer.write_all(data)?;
+        // Since include_bytes! requires a string literal, you cannot use it with a variable.
+        // Instead, copy the file at runtime.
+        std::fs::create_dir_all(std::path::Path::new(destination).parent().unwrap())?;
+        std::fs::copy(source, destination)?;
     }
 
     crate::sam::tools::uinx_cmd("chmod +x /opt/sam/bin/ffmpeg");
@@ -154,7 +156,14 @@ pub fn install() -> std::io::Result<()> {
 pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/stt" {
         let data = post_input!(request, { audio_data: rouille::input::post::BufferedFile })?;
-        let tmp_file_path = format!("/opt/sam/tmp/{}.wav", SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs());
+        let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_secs(),
+            Err(e) => {
+                log::error!("Failed to get system time: {}", e);
+                return Ok(Response::text("Internal server error").with_status_code(500));
+            }
+        };
+        let tmp_file_path = format!("/opt/sam/tmp/{}.wav", timestamp);
         let mut file = File::create(&tmp_file_path)?;
         file.write_all(&data.audio_data.data)?;
         let mut idk = upload(tmp_file_path)?;
@@ -170,7 +179,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 // Initializes the STT service by starting the Docker container.
 pub fn init() {
     if let Err(e) = thread::Builder::new().name("stt".to_string()).spawn(|| {
-        crate::sam::tools::uinx_cmd("docker run -p 8002:8000 p0indexter/stt".to_string());
+        crate::sam::tools::uinx_cmd("docker run -p 8002:8000 p0indexter/stt");
     }) {
         log::error!("Failed to initialize STT server: {}", e);
     } else {
@@ -185,3 +194,9 @@ pub fn upload(tmp_file_path: String) -> Result<STTReply, crate::sam::services::E
     let response = client.post("http://192.168.86.28:8050/api/services/whisper").multipart(form).send()?.json()?;
     Ok(response)
 }
+
+// impl From<crate::sam::tools::Error> for crate::sam::services::Error {
+//     fn from(err: crate::sam::tools::Error) -> Self {
+//         crate::sam::services::Error::from(err.to_string())
+//     }
+// }

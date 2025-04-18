@@ -11,7 +11,9 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::os::unix::fs::PermissionsExt; // Added for `from_mode`
 use error_chain::error_chain;
+use crate::sam::tools; // Add missing import for tools module
 
 error_chain! {
     foreign_links {
@@ -19,6 +21,12 @@ error_chain! {
         HttpRequest(reqwest::Error);
         Postgres(postgres::Error);
         Hound(hound::Error);
+    }
+}
+
+impl From<zip::result::ZipError> for tools::Error {
+    fn from(err: zip::result::ZipError) -> Self {
+        tools::Error::from(err.to_string())
     }
 }
 
@@ -66,8 +74,8 @@ pub fn does_wav_have_sounds(audio_filename: &str) -> Result<bool> {
     let threshold = 14000_i16;
     let mut has_sounds = false;
 
-    let audio_file = hound::WavReader::open(audio_filename)?;
-    let raw_samples = audio_file.samples::<i16>().filter_map(Result::ok);
+    let mut audio_file = hound::WavReader::open(audio_filename)?; // Add `mut` to fix borrow issue
+    let raw_samples = audio_file.samples::<i16>().filter_map(|result| result.ok()); // Fixed closure type
 
     for (i, sample) in raw_samples.enumerate() {
         if i % 100 == 0 && (sample > threshold || sample < -threshold) {
