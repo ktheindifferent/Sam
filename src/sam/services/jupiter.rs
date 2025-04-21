@@ -18,7 +18,7 @@ use serde::{Serialize, Deserialize};
 pub fn get_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String("jupiter".to_string()));
-    pg_query.query_coulmns.push("identifier =".to_string());
+    pg_query.query_columns.push("identifier =".to_string());
     let service = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
     Ok(service[0].clone())
 }

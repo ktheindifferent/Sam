@@ -94,7 +94,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
 
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(service.oid.clone()));
-            pg_query.query_coulmns.push("oid =".to_string());
+            pg_query.query_columns.push("oid =".to_string());
             let objects = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
             if !objects.is_empty() {
                 if request.url().contains(".json"){

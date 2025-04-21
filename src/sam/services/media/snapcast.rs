@@ -75,27 +75,26 @@ source = pipe:///tmp/snapfifo?name=samfifo
 
 }
 
+// Only one install() definition per compilation
+#[cfg(not(target_os = "linux"))]
 pub fn install() -> std::io::Result<()> {
-    #[cfg(not(target_os = "linux"))]{
-        log::info!("OS not supported");
-        return Ok(());
-    }
+    log::info!("OS not supported");
+    Ok(())
+}
 
-    #[cfg(target_arch = "aarch64")]{
-        return install_snapcast_server_arm64();
-    }
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+pub fn install() -> std::io::Result<()> {
+    install_snapcast_server_arm64()
+}
 
-    #[cfg(target_arch = "arm")]{
-        return install_snapcast_server_arm();
-    }
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
+pub fn install() -> std::io::Result<()> {
+    install_snapcast_server_arm()
+}
 
-    #[cfg(target_arch = "x86_64")]{
-        install_snapcast_server_amd64()
-    }
-
-    #[cfg(target_arch = "x86")]{
-        return install_snapcast_server_amd64();
-    }
+#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "x86")))]
+pub fn install() -> std::io::Result<()> {
+    install_snapcast_server_amd64()
 }
 
 pub fn install_snapcast_server_arm64() -> std::io::Result<()> {

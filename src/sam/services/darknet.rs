@@ -8,7 +8,6 @@
 // Licensed under GPLv3....see LICENSE file.
 
 use std::fs::{self};
-use std::io::Write;
 use tokio::fs as async_fs;
 use tokio::io::AsyncWriteExt;
 
@@ -295,6 +294,6 @@ pub async fn install() -> std::io::Result<()> {
     download_yolov3_model().await.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     download_yolov3_cfg().await.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     download_cfg_index().await.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    crate::sam::tools::uinx_cmd("chmod +x /opt/sam/bin/darknet");
+    let _ = crate::sam::tools::uinx_cmd("chmod +x /opt/sam/bin/darknet");
     Ok(())
 }

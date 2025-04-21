@@ -51,14 +51,9 @@ impl<T> RefreshableData<T> {
     fn update(&mut self, data: T) {
         self.data = Some(data);
         self.last_updated = Instant::now();
-
-
     }
     fn needs_refresh(&self) -> bool {
         self.data.is_none() || self.last_updated.elapsed() > self.max_age
-    }
-    fn as_ref(&self) -> Option<&T> {
-        self.data.as_ref()
     }
 }
 
@@ -637,11 +632,10 @@ pub fn start(config: Config) {
                     // }
             
                     mgr.refresh();
-                    std::mem::drop(mgr);
+                    let _ = mgr;
                     std::mem::drop(lock);
                     thread::sleep(Duration::from_millis(1000));
                 }
-        
             });
         
         
@@ -693,7 +687,7 @@ pub fn start(config: Config) {
                         bulbs_vec.push(bulb);
                     }
         
-                    selector == "all";
+                    let _ = selector == "all";
         
                     if selector.contains("group_id:"){
                         bulbs_vec.retain(|b| b.lifx_group.as_ref().unwrap().id.contains(&selector.replace("group_id:", "")));
@@ -736,13 +730,13 @@ pub fn start(config: Config) {
                             let power = input.power.unwrap();
                             if power == *"on"{
                                 for bulb in &bulbs_vec {
-                                    bulb.set_power(&mgr.sock, PowerLevel::Enabled);
+                                    let _ = bulb.set_power(&mgr.sock, PowerLevel::Enabled);
                                 }
                             } 
                 
                             if power == *"off"{
                                 for bulb in &bulbs_vec {
-                                    bulb.set_power(&mgr.sock, PowerLevel::Standby);
+                                    let _ = bulb.set_power(&mgr.sock, PowerLevel::Standby);
                                 }
                             } 
                         }
@@ -781,7 +775,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("red"){
@@ -791,7 +785,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("orange"){
@@ -801,7 +795,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("yellow"){
@@ -811,7 +805,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("cyan"){
@@ -821,7 +815,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("green"){
@@ -831,7 +825,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("blue"){
@@ -841,7 +835,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("purple"){
@@ -851,7 +845,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("pink"){
@@ -861,7 +855,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
         
@@ -876,7 +870,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("saturation:"){
@@ -890,7 +884,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("brightness:"){
@@ -904,7 +898,7 @@ pub fn start(config: Config) {
                                         brightness: new_brightness,
                                         kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("kelvin:"){
@@ -917,7 +911,7 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin: new_kelvin,
                                     };
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
         
                                 if cc.contains("rgb:"){
@@ -954,7 +948,7 @@ pub fn start(config: Config) {
                                     };
 
         
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
         
                                 }
         
@@ -1004,7 +998,7 @@ pub fn start(config: Config) {
         
         
         
-                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
         
                                 }
         
@@ -1043,7 +1037,7 @@ pub fn start(config: Config) {
                                     brightness: new_brightness,
                                     kelvin,
                                 };
-                                bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
         
                             }
         
@@ -1054,13 +1048,13 @@ pub fn start(config: Config) {
                             let new_brightness: u16 = (f64::from(65535) * input.infrared.unwrap()) as u16;
         
                             for bulb in &bulbs_vec {
-                                bulb.set_infrared(&mgr.sock, new_brightness);
+                                let _ = bulb.set_infrared(&mgr.sock, new_brightness);
                             }
                         }
         
         
                         // std::mem::drop(mgr);
-                        // std::mem::drop(lock);
+                        let _ = mgr;
                         // TODO - Send Results
                         // {
                         //     "results": [
@@ -1087,9 +1081,8 @@ pub fn start(config: Config) {
         
                     // Drop mutex locks
                     std::mem::drop(bulbs);
-                    std::mem::drop(mgr);
-                    std::mem::drop(lock);
-        
+                    let _ = mgr;
+
                     response
                 });
             });

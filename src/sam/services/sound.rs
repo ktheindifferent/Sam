@@ -32,9 +32,9 @@ pub fn cache_vwavs() {
         let pool = ThreadPool::new(12); // Configurable thread pool size
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String("HEARD".to_string()));
-        pg_query.query_coulmns.push("observation_type =".to_string());
+        pg_query.query_columns.push("observation_type =".to_string());
         pg_query.queries.push(crate::sam::memory::PGCol::String("%PERSON%".to_string()));
-        pg_query.query_coulmns.push(" AND observation_objects ilike".to_string());
+        pg_query.query_columns.push(" AND observation_objects ilike".to_string());
 
         let observations = crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)).unwrap();
         let observations_len = observations.len();
@@ -54,7 +54,7 @@ pub fn cache_vwavs() {
                         } else {
                             let mut full_pg_query = crate::sam::memory::PostgresQueries::default();
                             full_pg_query.queries.push(crate::sam::memory::PGCol::String(th_obsv.oid.clone()));
-                            full_pg_query.query_coulmns.push("oid =".to_string());
+                            full_pg_query.query_columns.push("oid =".to_string());
                             let full_observation = crate::sam::memory::Observation::select(None, None, None, Some(full_pg_query)).unwrap()[0].clone();
                             std::fs::write(&tmp_file_path, full_observation.observation_file.unwrap()).unwrap();
                         }
@@ -94,7 +94,7 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
     } else {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(prediction.human.clone()));
-        pg_query.query_coulmns.push("oid ilike".to_string());
+        pg_query.query_columns.push("oid ilike".to_string());
         let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query)).unwrap();
         if !humans.is_empty() {
             observation.observation_humans.push(humans[0].clone());

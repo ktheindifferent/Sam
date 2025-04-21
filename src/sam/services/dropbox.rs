@@ -13,7 +13,7 @@ use std::io::prelude::*;
 pub fn get_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String("dropbox".to_string()));
-    pg_query.query_coulmns.push("identifier =".to_string());
+    pg_query.query_columns.push("identifier =".to_string());
     let service = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
     Ok(service[0].clone())
 }
@@ -170,7 +170,7 @@ pub fn create_folder(path: &str){
     let obj = get_db_obj().unwrap();
     let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
-    dropbox_sdk::files::create_folder_v2(&client, &dropbox_sdk::files::CreateFolderArg::new(path.to_string()));
+    let _ = dropbox_sdk::files::create_folder_v2(&client, &dropbox_sdk::files::CreateFolderArg::new(path.to_string()));
 
 }
 
@@ -196,7 +196,7 @@ pub fn delete(path: &str){
     let obj = get_db_obj().unwrap();
     let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret).unwrap();
     let client = UserAuthDefaultClient::new(auth.clone());
-    dropbox_sdk::files::delete_v2(&client, &dropbox_sdk::files::DeleteArg::new(path.to_string()));
+    let _ = dropbox_sdk::files::delete_v2(&client, &dropbox_sdk::files::DeleteArg::new(path.to_string()));
 }
 
 
@@ -237,22 +237,22 @@ pub fn get_paths(path: &str) -> Vec<DropboxObject>{
                     Ok(Ok(files::Metadata::Deleted(_entry))) => {
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
-                    Ok(Err(e)) => {
-                        // eprintln!("Error from files/list_folder_continue: {}", e);
+                    Ok(Err(_e)) => {
+                        // eprintln!("Error from files/list_folder_continue: {}", _e);
                         break;
                     },
-                    Err(e) => {
-                        // eprintln!("API request error: {}", e);
+                    Err(_e) => {
+                        // eprintln!("API request error: {}", _e);
                         break;
                     },
                 }
             }
         },
-        Ok(Err(e)) => {
-            eprintln!("Error from files/list_folder: {}", e);
+        Ok(Err(_e)) => {
+            eprintln!("Error from files/list_folder");
         },
-        Err(e) => {
-            eprintln!("API request error: {}", e);
+        Err(_e) => {
+            eprintln!("API request error");
         }
     }
 
@@ -285,22 +285,22 @@ pub fn empty_directories() -> Vec<String>{
                     Ok(Ok(files::Metadata::Deleted(_entry))) => {
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
-                    Ok(Err(e)) => {
-                        // eprintln!("Error from files/list_folder_continue: {}", e);
+                    Ok(Err(_e)) => {
+                        // eprintln!("Error from files/list_folder_continue: {}", _e);
                         break;
                     },
-                    Err(e) => {
-                        // eprintln!("API request error: {}", e);
+                    Err(_e) => {
+                        // eprintln!("API request error: {}", _e);
                         break;
                     },
                 }
             }
         },
-        Ok(Err(e)) => {
-            eprintln!("Error from files/list_folder: {}", e);
+        Ok(Err(_e)) => {
+            eprintln!("Error from files/list_folder");
         },
-        Err(e) => {
-            eprintln!("API request error: {}", e);
+        Err(_e) => {
+            eprintln!("API request error");
         }
     }
 
@@ -333,22 +333,22 @@ pub fn is_path_empty(path: &str) -> bool{
                     Ok(Ok(files::Metadata::Deleted(_entry))) => {
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
-                    Ok(Err(e)) => {
-                        // eprintln!("Error from files/list_folder_continue: {}", e);
+                    Ok(Err(_e)) => {
+                        // eprintln!("Error from files/list_folder_continue: {}", _e);
                         // break;
                     },
-                    Err(e) => {
-                        // eprintln!("API request error: {}", e);
+                    Err(_e) => {
+                        // eprintln!("API request error: {}", _e);
                         // break;
                     },
                 }
             }
         },
-        Ok(Err(e)) => {
-            // eprintln!("Error from files/list_folder: {}", e);
+        Ok(Err(_e)) => {
+            // eprintln!("Error from files/list_folder: {}", _e);
         },
-        Err(e) => {
-            // eprintln!("API request error: {}", e);
+        Err(_e) => {
+            // eprintln!("API request error: {}", _e);
         }
     }
 

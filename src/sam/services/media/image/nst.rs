@@ -16,17 +16,16 @@ use rouille::Request;
 use rouille::Response;
 use std::thread;
 
-use std::io::prelude::*;
  // Add missing import for tools module
 
-const STYLE_WEIGHT: f64 = 1e6;
-const LEARNING_RATE: f64 = 1e-1;
-const TOTAL_STEPS: i64 = 10000;
-const STYLE_INDEXES: [usize; 5] = [0, 2, 5, 7, 10];
-const CONTENT_INDEXES: [usize; 1] = [7];
+const _STYLE_WEIGHT: f64 = 1e6;
+const _LEARNING_RATE: f64 = 1e-1;
+const _TOTAL_STEPS: i64 = 10000;
+const _STYLE_INDEXES: [usize; 5] = [0, 2, 5, 7, 10];
+const _CONTENT_INDEXES: [usize; 1] = [7];
 
 
-pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url().contains("/styles"){
         return Ok(Response::json(&styles().unwrap()));
     }
@@ -49,8 +48,8 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         if input.image_id.contains("oid:") {
             let oid = input.image_id.replace("oid:", "");
             if Path::new(format!("/opt/sam/files/{}", oid).as_str()).exists(){
-                thread::Builder::new().name("nst_thread".to_string()).spawn(move || {
-                    run(&selected_style, format!("/opt/sam/files/{}", oid).as_str(), oid, input.nst_style);
+                let _ = thread::Builder::new().name("nst_thread".to_string()).spawn(move || {
+                    let _ = run(&selected_style, format!("/opt/sam/files/{}", oid).as_str(), oid, input.nst_style);
                 });
             }
         }
@@ -73,7 +72,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
 //     gram_matrix(m1).mse_loss(&gram_matrix(m2), tch::Reduction::Mean)
 // }
 
-pub fn run(style_img: &str, content_img: &str, oid: String, style: String) -> Result<(), crate::sam::services::Error> {
+pub fn run(_style_img: &str, _content_img: &str, _oid: String, _style: String) -> Result<(), crate::sam::services::Error> {
 
     // log::info!("NST");
     // log::info!("style image: {:?}", style_img);

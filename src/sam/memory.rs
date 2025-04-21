@@ -20,7 +20,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio_postgres::{Row};
+use tokio_postgres::Row;
 use std::path::Path;
 use std::process::Command;
 
@@ -338,7 +338,7 @@ impl Config {
         // Build WHERE clause if query is provided
         if let Some(pg_query) = query.clone() {
             let mut counter = 1;
-            for col in pg_query.query_coulmns {
+            for col in pg_query.query_columns {
                 if counter == 1 {
                     execquery = format!("{} WHERE {} ${}", execquery, col, counter);
                 } else {
@@ -411,41 +411,41 @@ impl Config {
     ) -> Result<()> {
         macro_rules! push_json {
             ($ty:ty, $from_row:ident) => {
-                parsed_rows.push(serde_json::to_string(&<$ty>::$from_row(row)?).unwrap());
+                parsed_rows.push(serde_json::to_string(&<$ty>::$from_row(row)?).unwrap())
             };
         }
 
         match table_name {
-            t if t == CachedWikipediaSummary::sql_table_name() => push_json!(CachedWikipediaSummary, from_row),
-            t if t == Human::sql_table_name() => push_json!(Human, from_row),
-            t if t == HumanFaceEncoding::sql_table_name() => push_json!(HumanFaceEncoding, from_row),
-            t if t == Location::sql_table_name() => push_json!(Location, from_row),
-            t if t == Notification::sql_table_name() => push_json!(Notification, from_row),
-            t if t == Room::sql_table_name() => push_json!(Room, from_row),
-            t if t == Service::sql_table_name() => push_json!(Service, from_row),
-            t if t == Thing::sql_table_name() => push_json!(Thing, from_row),
+            t if t == CachedWikipediaSummary::sql_table_name() => { push_json!(CachedWikipediaSummary, from_row); },
+            t if t == Human::sql_table_name() => { push_json!(Human, from_row); },
+            t if t == HumanFaceEncoding::sql_table_name() => { push_json!(HumanFaceEncoding, from_row); },
+            t if t == Location::sql_table_name() => { push_json!(Location, from_row); },
+            t if t == Notification::sql_table_name() => { push_json!(Notification, from_row); },
+            t if t == Room::sql_table_name() => { push_json!(Room, from_row); },
+            t if t == Service::sql_table_name() => { push_json!(Service, from_row); },
+            t if t == Thing::sql_table_name() => { push_json!(Thing, from_row); },
             t if t == Observation::sql_table_name() => {
                 if columns.is_none() {
-                    push_json!(Observation, from_row)
+                    push_json!(Observation, from_row);
                 } else {
-                    push_json!(Observation, from_row_lite)
+                    push_json!(Observation, from_row_lite);
                 }
-            }
-            t if t == Setting::sql_table_name() => push_json!(Setting, from_row),
-            t if t == WebSessions::sql_table_name() => push_json!(WebSessions, from_row),
-            t if t == StorageLocation::sql_table_name() => push_json!(StorageLocation, from_row),
+            },
+            t if t == Setting::sql_table_name() => { push_json!(Setting, from_row); },
+            t if t == WebSessions::sql_table_name() => { push_json!(WebSessions, from_row); },
+            t if t == StorageLocation::sql_table_name() => { push_json!(StorageLocation, from_row); },
             t if t == FileStorage::sql_table_name() => {
                 if columns.is_none() {
-                    push_json!(FileStorage, from_row)
+                    push_json!(FileStorage, from_row);
                 } else {
-                    push_json!(FileStorage, from_row_lite)
+                    push_json!(FileStorage, from_row_lite);
                 }
-            }
+            },
             _ => {}
         }
         Ok(())
     }
-    
+
     /// Creates and returns a synchronous PostgreSQL client using the current configuration.
     ///
     /// This function builds a TLS connector (with certificate verification disabled for self-signed certs)
@@ -595,7 +595,7 @@ impl CachedWikipediaSummary {
         
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(object.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
 
 
         // Search for OID matches
@@ -783,7 +783,7 @@ impl Human {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
 
 
         // Search for OID matches
@@ -980,7 +980,7 @@ impl HumanFaceEncoding {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(object.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
 
 
         // Search for OID matches
@@ -1293,7 +1293,7 @@ impl Notification {
         
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
 
 
         // Search for OID matches
@@ -1582,9 +1582,9 @@ impl Service {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.identifier.clone()));
-        pg_query.query_coulmns.push(" OR identifier =".to_string());
+        pg_query.query_columns.push(" OR identifier =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -1749,7 +1749,7 @@ impl Thing {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
 
         let rows = Self::select(
             None, 
@@ -1933,7 +1933,7 @@ impl Observation {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -1988,7 +1988,7 @@ impl Observation {
 
             let mut pg_query = PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-            pg_query.query_coulmns.push("oid =".to_string());
+            pg_query.query_columns.push("oid =".to_string());
              let rows_two = Self::select(
                 None, 
                 None, 
@@ -2119,7 +2119,7 @@ impl Observation {
                 // Search for OID matches
                 let mut pg_query = PostgresQueries::default();
                 pg_query.queries.push(crate::sam::memory::PGCol::String(oidx.to_string()));
-                pg_query.query_coulmns.push("oid ilike".to_string());
+                pg_query.query_columns.push("oid ilike".to_string());
 
 
                 let observation_humansx = Human::select(
@@ -2302,9 +2302,9 @@ impl Setting {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.key.clone()));
-        pg_query.query_coulmns.push(" OR key =".to_string());
+        pg_query.query_columns.push(" OR key =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -2448,7 +2448,7 @@ impl StorageLocation {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -2599,7 +2599,7 @@ impl FileStorage {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -2756,7 +2756,7 @@ impl FileStorage {
                 if file.storage_location_oid == *"SQL"{
                     let mut pg_query = PostgresQueries::default();
                     pg_query.queries.push(crate::sam::memory::PGCol::String(file.oid.clone()));
-                    pg_query.query_coulmns.push("oid =".to_string());
+                    pg_query.query_columns.push("oid =".to_string());
         
                     let files_with_data = FileStorage::select(None, None, None, Some(pg_query))?;
                     let ffile = files_with_data[0].clone();
@@ -2833,9 +2833,9 @@ impl WebSessions {
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.sid.clone()));
-        pg_query.query_coulmns.push(" OR sid =".to_string());
+        pg_query.query_columns.push(" OR sid =".to_string());
         let rows = Self::select(
             None, 
             None, 
@@ -2926,18 +2926,11 @@ impl PostgresServer {
 }
 
 // Not tracked in SQL
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct PostgresQueries {
     pub queries: Vec<PGCol>, 
-    pub query_coulmns: Vec<String>,
+    pub query_columns: Vec<String>,
     pub append: Option<String>
-}
-impl Default for PostgresQueries {
-    fn default () -> PostgresQueries {
-        let queries: Vec<PGCol> = Vec::new();
-        let query_coulmns: Vec<String> = Vec::new();
-        PostgresQueries{queries, query_coulmns, append: None }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -3067,8 +3060,6 @@ pub enum ObservationObjects {
     KITE,
     #[allow(non_camel_case_types)]
     BASEBALL_BAT,
-    #[allow(non_camel_case_types)]
-    BASEBALL_GLOVE,
     #[allow(non_camel_case_types)]
     SKATEBOARD,
     #[allow(non_camel_case_types)]

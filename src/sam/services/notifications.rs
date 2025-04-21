@@ -22,13 +22,13 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
     if request.url() == "/api/services/notifications/unseen" && request.method() == "GET" {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::Boolean(false));
-        pg_query.query_coulmns.push("seen =".to_string());
+        pg_query.query_columns.push("seen =".to_string());
 
         pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid));
-        pg_query.query_coulmns.push(" AND human_oid =".to_string());
+        pg_query.query_columns.push(" AND human_oid =".to_string());
 
         pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.sid));
-        pg_query.query_coulmns.push(" AND sid =".to_string());
+        pg_query.query_columns.push(" AND sid =".to_string());
 
         let notifications = crate::sam::memory::Notification::select(None, None, Some("timestamp DESC".to_string()), Some(pg_query))?;
         
@@ -41,7 +41,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         })?;
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(input.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
 
         let notifications = crate::sam::memory::Notification::select(Some(20), None, Some("timestamp DESC".to_string()), Some(pg_query))?;
         let mut notification = notifications[0].clone();
@@ -58,7 +58,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
 
             pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid));
-            pg_query.query_coulmns.push("human_oid =".to_string());
+            pg_query.query_columns.push("human_oid =".to_string());
 
             let notifications = crate::sam::memory::Notification::select(Some(20), None, Some("timestamp DESC".to_string()), Some(pg_query))?;
             

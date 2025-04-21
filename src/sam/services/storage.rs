@@ -33,7 +33,7 @@ pub fn init_cache() {
         .name("cache".to_string())
         .spawn(move || {
             loop {
-                crate::sam::memory::FileStorage::cache_all();
+                let _ = crate::sam::memory::FileStorage::cache_all();
                 thread::sleep(Duration::from_secs(100)); // Adjusted to seconds for clarity
             }
         });
@@ -118,7 +118,7 @@ pub fn handle(
             // Query file from database
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
-            pg_query.query_coulmns.push("oid =".to_string());
+            pg_query.query_columns.push("oid =".to_string());
 
             let files = crate::sam::memory::FileStorage::select(None, None, None, Some(pg_query))?;
             if let Some(file) = files.first() {

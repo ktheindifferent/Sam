@@ -22,7 +22,7 @@ pub fn init(){
     thread::spawn(move || {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String("lifx".to_string()));
-        pg_query.query_coulmns.push("identifier =".to_string());
+        pg_query.query_columns.push("identifier =".to_string());
         let services = crate::sam::memory::Service::select(None, None, None, Some(pg_query));
 
         match services {
@@ -73,7 +73,7 @@ pub fn init_server(key: String) {
 pub fn get_lifx_service_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String("lifx".to_string()));
-    pg_query.query_coulmns.push("identifier =".to_string());
+    pg_query.query_columns.push("identifier =".to_string());
     let service = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
     Ok(service[0].clone())
 }
@@ -329,7 +329,7 @@ pub fn sync(key: String){
 
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(location.name.clone()));
-        pg_query.query_coulmns.push("name ilike".to_string());
+        pg_query.query_columns.push("name ilike".to_string());
 
         let matching_locations = crate::sam::memory::Location::select(None, None, None, Some(pg_query)).unwrap();
         
@@ -348,16 +348,16 @@ pub fn sync(key: String){
         // Get location oid
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(location.name.clone()));
-        pg_query.query_coulmns.push("name ilike".to_string());
+        pg_query.query_columns.push("name ilike".to_string());
         let locations = crate::sam::memory::Location::select(None, None, None, Some(pg_query)).unwrap();
         if !locations.is_empty() {
             let location_oid = locations[0].oid.clone();
               // Get room oid
               let mut pg_query = crate::sam::memory::PostgresQueries::default();
               pg_query.queries.push(crate::sam::memory::PGCol::String(location_oid.clone()));
-              pg_query.query_coulmns.push("location_oid =".to_string());
+              pg_query.query_columns.push("location_oid =".to_string());
               pg_query.queries.push(crate::sam::memory::PGCol::String(group.name.clone()));
-              pg_query.query_coulmns.push(" AND name ilike".to_string());
+              pg_query.query_columns.push(" AND name ilike".to_string());
             let rooms = crate::sam::memory::Room::select(None, None, None, Some(pg_query)).unwrap();
             if !rooms.is_empty() {
                 thing.room_oid = rooms[0].oid.clone();

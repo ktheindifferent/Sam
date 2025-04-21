@@ -60,7 +60,7 @@ pub fn install() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::extract_zip("/opt/sam/scripts/rivescript/eg.zip", "/opt/sam/scripts/rivescript/");
+    let _ = crate::sam::tools::extract_zip("/opt/sam/scripts/rivescript/eg.zip", "/opt/sam/scripts/rivescript/");
     crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/rivescript/eg.zip");
 
     Ok(())

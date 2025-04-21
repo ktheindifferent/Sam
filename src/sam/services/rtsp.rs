@@ -23,7 +23,7 @@ pub fn init(){
     thread::spawn(move || {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String("rtsp".to_string()));
-        pg_query.query_coulmns.push("thing_type =".to_string());
+        pg_query.query_columns.push("thing_type =".to_string());
         let rtsp_things = crate::sam::memory::Thing::select(None, None, None, Some(pg_query));
 
         match rtsp_things {

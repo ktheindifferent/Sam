@@ -17,15 +17,6 @@ use crossterm::{
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::thread;
-/// Global flag for error display
-static mut SHOW_ERRORS: bool = false;
-
-/// Represents a CLI command with name and arguments
-#[derive(Debug)]
-struct Command {
-    name: String,
-    args: Vec<String>,
-}
 
 /// Starts the interactive command prompt
 ///
@@ -58,7 +49,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         "Press Ctrl+C or type 'exit' to quit.".to_string(),
     ]));
 
-    let mut tui_state = TuiWidgetState::new();
+    let tui_state = TuiWidgetState::new();
     let human_name = get_human_name();
     let mut current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let mut scroll_offset: u16 = 0;
@@ -92,7 +83,6 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
 
                 let output: Vec<Spans> = output_lines_guard.iter().map(|l| Spans::from(Span::raw(l))).collect();
                 output_height = left_chunks[0].height.max(1) as usize;
-                let total_lines = output_lines_guard.len();
 
                 let cursor_char = if show_cursor { "_" } else { " " };
                 let input_display = format!("{}{}", input, cursor_char);
@@ -111,7 +101,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     .output_timestamp(Some("%H:%M:%S".to_string()))
                     .output_level(Some(TuiLoggerLevelOutput::Long))
                     .output_target(false)
-                    .state(&mut tui_state);
+                    .state(&tui_state);
 
                 f.render_widget(output_widget, left_chunks[0]);
                 f.render_widget(input_widget, left_chunks[1]);
@@ -200,25 +190,23 @@ async fn handle_command(
             lines.clear();
         }
         "setup" => {
-            let _ = tokio::spawn(crate::sam::setup::install());
+            tokio::spawn(crate::sam::setup::install());
         }
         "ls" => {
             match std::fs::read_dir(&current_dir) {
                 Ok(entries) => {
                     let mut files = vec![];
-                    for entry in entries {
-                        if let Ok(entry) = entry {
-                            let file_name = entry.file_name().to_string_lossy().to_string();
-                            let file_type = entry.file_type().ok();
-                            if let Some(ft) = file_type {
-                                if ft.is_dir() {
-                                    files.push(format!("{}/", file_name));
-                                } else {
-                                    files.push(file_name);
-                                }
+                    for entry in entries.flatten() {
+                        let file_name = entry.file_name().to_string_lossy().to_string();
+                        let file_type = entry.file_type().ok();
+                        if let Some(ft) = file_type {
+                            if ft.is_dir() {
+                                files.push(format!("{}/", file_name));
                             } else {
                                 files.push(file_name);
                             }
+                        } else {
+                            files.push(file_name);
                         }
                     }
                     let mut lines = vec![format!("Files in {}:", current_dir.display())];

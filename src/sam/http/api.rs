@@ -27,7 +27,7 @@ pub fn handle_api_request(current_session: crate::sam::memory::WebSessions, requ
         // Search for OID matches
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
 
         let human = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
         return Ok(Response::json(&human[0]));

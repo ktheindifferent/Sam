@@ -46,7 +46,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         if request.method() == "GET" && identifier.contains("key:") {
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(identifier.replace("key:", "")));
-            pg_query.query_coulmns.push("key =".to_string());
+            pg_query.query_columns.push("key =".to_string());
             let objects = crate::sam::memory::Setting::select(None, None, None, Some(pg_query))?;
             return Ok(Response::text(&objects[0].clone().values[0]));
         }
@@ -64,7 +64,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         if request.method() == "GET" && identifier.contains("key:") {
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(identifier.replace("key:", "")));
-            pg_query.query_coulmns.push("key =".to_string());
+            pg_query.query_columns.push("key =".to_string());
             let objects = crate::sam::memory::Setting::select(None, None, None, Some(pg_query))?;
             return Ok(Response::json(&objects[0]));
         }

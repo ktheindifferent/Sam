@@ -26,7 +26,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         if request.method() == "GET" {
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
-            pg_query.query_coulmns.push("oid =".to_string());
+            pg_query.query_columns.push("oid =".to_string());
 
             let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
         
@@ -50,7 +50,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
         if request.method() == "GET" {
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
-            pg_query.query_coulmns.push("oid =".to_string());
+            pg_query.query_columns.push("oid =".to_string());
 
             let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
         

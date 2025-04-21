@@ -42,7 +42,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(object.room_oid.clone()));
-            pg_query.query_coulmns.push("oid =".to_string());
+            pg_query.query_columns.push("oid =".to_string());
             let rooms = crate::sam::memory::Room::select(None, None, None, Some(pg_query));
             match rooms{
                 Ok(r) => {
@@ -92,7 +92,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(thing.oid.clone()));
-        pg_query.query_coulmns.push("oid =".to_string());
+        pg_query.query_columns.push("oid =".to_string());
 
         let objects = crate::sam::memory::Thing::select(None, None, None, Some(pg_query))?;
         if !objects.is_empty() {

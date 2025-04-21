@@ -24,10 +24,10 @@ pub fn build() {
     thread::spawn(move || {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String("HEARD".to_string()));
-        pg_query.query_coulmns.push("observation_type =".to_string());
+        pg_query.query_columns.push("observation_type =".to_string());
 
         pg_query.queries.push(crate::sam::memory::PGCol::String("%PERSON%".to_string()));
-        pg_query.query_coulmns.push(" AND observation_objects ilike".to_string());
+        pg_query.query_columns.push(" AND observation_objects ilike".to_string());
 
         let observations = match crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)) {
             Ok(obs) => obs,
@@ -57,7 +57,7 @@ pub fn build() {
                 if !Path::new(&audio_file).exists() {
                     let mut full_pg_query = crate::sam::memory::PostgresQueries::default();
                     full_pg_query.queries.push(crate::sam::memory::PGCol::String(observation.oid.clone()));
-                    full_pg_query.query_coulmns.push("oid =".to_string());
+                    full_pg_query.query_columns.push("oid =".to_string());
 
                     if let Ok(full_observations) = crate::sam::memory::Observation::select(None, None, None, Some(full_pg_query)) {
                         if let Some(full_observation) = full_observations.first() {
@@ -119,15 +119,15 @@ pub fn install() -> std::io::Result<()> {
         ("../../../scripts/sprec/noise/_background_noise_.zip", "/opt/sam/scripts/sprec/noise/_background_noise_.zip"),
     ];
 
-    for (source, destination) in files.iter() {
+    for (_source, destination) in files.iter() {
         let data = include_bytes!("../../../scripts/sprec/model.h5"); // Replace with the actual valid file path
         let mut buffer = File::create(destination)?;
         buffer.write_all(data)?;
     }
 
-    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/audio/Unknown.zip", "/opt/sam/scripts/sprec/audio/");
-    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/other.zip", "/opt/sam/scripts/sprec/noise/");
-    crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/_background_noise_.zip", "/opt/sam/scripts/sprec/noise/");
+    let _ = crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/audio/Unknown.zip", "/opt/sam/scripts/sprec/audio/");
+    let _ = crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/other.zip", "/opt/sam/scripts/sprec/noise/");
+    let _ = crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/_background_noise_.zip", "/opt/sam/scripts/sprec/noise/");
 
     crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/audio/Unknown.zip");
     crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/noise/other.zip");
