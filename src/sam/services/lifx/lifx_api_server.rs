@@ -153,15 +153,15 @@ impl BulbInfo {
         BulbInfo {
             id: id.to_string(),
             uuid: uuid.to_string(),
-            label: format!(""),
+            label: String::new(),
             connected: true,
-            power: format!("off"),
+            power: "off".to_string(),
             lifx_color: None,
             brightness: 0.0,
             lifx_group: None,
             lifx_location: None,
             product: None,
-            lifx_last_seen: format!(""),
+            lifx_last_seen: String::new(),
             seconds_since_seen: 0,
             last_seen: Instant::now(),
             source,
@@ -231,7 +231,7 @@ impl BulbInfo {
             source: self.source,
             ..Default::default()
         };
-        let message = RawMessage::build(&options, Message::LightSetInfrared{brightness: brightness})?;
+        let message = RawMessage::build(&options, Message::LightSetInfrared{brightness})?;
         sock.send_to(&message.pack()?, self.addr)?;
   
         Ok(())
@@ -251,7 +251,7 @@ impl BulbInfo {
             source: self.source,
             ..Default::default()
         };
-        let message = RawMessage::build(&options, Message::LightSetColor{reserved: 0, color: color, duration: duration})?;
+        let message = RawMessage::build(&options, Message::LightSetColor{reserved: 0, color, duration})?;
         sock.send_to(&message.pack()?, self.addr)?;
   
         Ok(())
@@ -429,9 +429,9 @@ impl Manager {
                 bulb.power_level.update(level);
 
                 if bulb.power_level.data.as_ref().unwrap() ==  &PowerLevel::Enabled{
-                    bulb.power = format!("on");
+                    bulb.power = "on".to_string();
                 } else {
-                    bulb.power = format!("off");
+                    bulb.power = "off".to_string();
                 }
 
                
@@ -510,7 +510,7 @@ impl Manager {
                         v
                     });
 
-                    v[index as usize + 0] = Some(color0);
+                    v[index as usize] = Some(color0);
                     v[index as usize + 1] = Some(color1);
                     v[index as usize + 2] = Some(color2);
                     v[index as usize + 3] = Some(color3);
@@ -571,19 +571,16 @@ impl Manager {
         let bytes = rawmsg.pack().unwrap();
 
         for addr in get_if_addrs().unwrap() {
-            match addr.addr {
-                IfAddr::V4(Ifv4Addr {
+            if let IfAddr::V4(Ifv4Addr {
                     broadcast: Some(bcast),
                     ..
-                }) => {
-                    if addr.ip().is_loopback() {
-                        continue;
-                    }
-                    let addr = SocketAddr::new(IpAddr::V4(bcast), 56700);
-                    log::info!("Discovering bulbs on LAN {:?}", addr);
-                    self.sock.send_to(&bytes, &addr)?;
+                }) = addr.addr {
+                if addr.ip().is_loopback() {
+                    continue;
                 }
-                _ => {}
+                let addr = SocketAddr::new(IpAddr::V4(bcast), 56700);
+                log::info!("Discovering bulbs on LAN {:?}", addr);
+                self.sock.send_to(&bytes, addr)?;
             }
         }
 
@@ -658,10 +655,8 @@ pub fn start(config: Config) {
         
                     if auth_header.is_none(){
                         return Response::empty_404();
-                    } else {
-                        if auth_header.unwrap().to_string() != format!("Bearer {}", config.secret_key){
-                            return Response::empty_404();
-                        }
+                    } else if *auth_header.unwrap() != format!("Bearer {}", config.secret_key){
+                        return Response::empty_404();
                     }
         
         
@@ -698,29 +693,18 @@ pub fn start(config: Config) {
                         bulbs_vec.push(bulb);
                     }
         
-                    if selector == "all"{
-                    
-                    }
+                    selector == "all";
         
                     if selector.contains("group_id:"){
-                        bulbs_vec = bulbs_vec
-                        .into_iter()
-                        .filter(|b| b.lifx_group.as_ref().unwrap().id.contains(&selector.replace("group_id:", "")))
-                        .collect();
+                        bulbs_vec.retain(|b| b.lifx_group.as_ref().unwrap().id.contains(&selector.replace("group_id:", "")));
                     }
         
                     if selector.contains("location_id:"){
-                        bulbs_vec = bulbs_vec
-                        .into_iter()
-                        .filter(|b| b.lifx_location.as_ref().unwrap().id.contains(&selector.replace("location_id:", "")))
-                        .collect();
+                        bulbs_vec.retain(|b| b.lifx_location.as_ref().unwrap().id.contains(&selector.replace("location_id:", "")));
                     }
         
                     if selector.contains("id:"){
-                        bulbs_vec = bulbs_vec
-                        .into_iter()
-                        .filter(|b| b.id.contains(&selector.replace("id:", "")))
-                        .collect();
+                        bulbs_vec.retain(|b| b.id.contains(&selector.replace("id:", "")));
                     }
         
         
@@ -750,13 +734,13 @@ pub fn start(config: Config) {
                         // Power
                         if input.power.is_some() {
                             let power = input.power.unwrap();
-                            if power == format!("on"){
+                            if power == *"on"{
                                 for bulb in &bulbs_vec {
                                     bulb.set_power(&mgr.sock, PowerLevel::Enabled);
                                 }
                             } 
                 
-                            if power == format!("off"){
+                            if power == *"off"{
                                 for bulb in &bulbs_vec {
                                     bulb.set_power(&mgr.sock, PowerLevel::Standby);
                                 }
@@ -794,8 +778,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 0,
                                         saturation: 0,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -804,8 +788,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 0,
                                         saturation: 65535,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -814,8 +798,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 7098,
                                         saturation: 65535,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -824,8 +808,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 10920,
                                         saturation: 65535,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -834,8 +818,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 32760,
                                         saturation: 65535,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -844,8 +828,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 21840,
                                         saturation: 65535,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -854,8 +838,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 43680,
                                         saturation: 65535,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -864,8 +848,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 50050,
                                         saturation: 65535,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -874,8 +858,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: 63700,
                                         saturation: 25000,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -888,9 +872,9 @@ pub fn start(config: Config) {
                                     let new_hue = hue_vec[1].to_string().parse::<u16>().unwrap(); 
                                     let hbsk_set = HSBK {
                                         hue: new_hue,
-                                        saturation: saturation,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        saturation,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -901,10 +885,10 @@ pub fn start(config: Config) {
                                     let new_saturation_float = saturation_vec[1].to_string().parse::<f64>().unwrap(); 
                                     let new_saturation: u16 = (f64::from(100) * new_saturation_float) as u16;
                                     let hbsk_set = HSBK {
-                                        hue: hue,
+                                        hue,
                                         saturation: new_saturation,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -915,10 +899,10 @@ pub fn start(config: Config) {
                                     let new_brightness_float = brightness_vec[1].to_string().parse::<f64>().unwrap(); 
                                     let new_brightness: u16 = (f64::from(65535) * new_brightness_float) as u16;
                                     let hbsk_set = HSBK {
-                                        hue: hue,
-                                        saturation: saturation,
+                                        hue,
+                                        saturation,
                                         brightness: new_brightness,
-                                        kelvin: kelvin,
+                                        kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
@@ -928,9 +912,9 @@ pub fn start(config: Config) {
                                     let kelvin_vec: Vec<&str> = kelvin_split.collect();
                                     let new_kelvin = kelvin_vec[1].to_string().parse::<u16>().unwrap(); 
                                     let hbsk_set = HSBK {
-                                        hue: hue,
+                                        hue,
                                         saturation: 0,
-                                        brightness: brightness,
+                                        brightness,
                                         kelvin: new_kelvin,
                                     };
                                     bulb.set_color(&mgr.sock, hbsk_set, duration);
@@ -965,8 +949,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: (hcc.hue.to_positive_degrees() * 182.0) as u16,
                                         saturation: (hcc.saturation.to_degrees() * 1000.0) as u16,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
 
         
@@ -1012,8 +996,8 @@ pub fn start(config: Config) {
                                     let hbsk_set = HSBK {
                                         hue: (hcc.hue.to_positive_degrees() * 182.0) as u16,
                                         saturation: (hcc.saturation.to_degrees() * 1000.0) as u16,
-                                        brightness: brightness,
-                                        kelvin: kelvin,
+                                        brightness,
+                                        kelvin,
                                     };
 
                                     log::info!("hbsk_set: {:?}", hbsk_set);
@@ -1054,10 +1038,10 @@ pub fn start(config: Config) {
                                 let new_brightness_float = brightness.to_string().parse::<f64>().unwrap(); 
                                 let new_brightness: u16 = (f64::from(65535) * new_brightness_float) as u16;
                                 let hbsk_set = HSBK {
-                                    hue: hue,
-                                    saturation: saturation,
+                                    hue,
+                                    saturation,
                                     brightness: new_brightness,
-                                    kelvin: kelvin,
+                                    kelvin,
                                 };
                                 bulb.set_color(&mgr.sock, hbsk_set, duration);
         
@@ -1106,7 +1090,7 @@ pub fn start(config: Config) {
                     std::mem::drop(mgr);
                     std::mem::drop(lock);
         
-                    return response;
+                    response
                 });
             });
 

@@ -7,7 +7,7 @@
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
-use std::fs::{self, File};
+use std::fs::{self};
 use std::io::Write;
 use tokio::fs as async_fs;
 use tokio::io::AsyncWriteExt;

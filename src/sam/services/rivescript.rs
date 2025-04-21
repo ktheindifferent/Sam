@@ -36,7 +36,7 @@ pub fn query(input: &str) -> Result<IOReply> {
         response_type: "io".to_string()
     };
 
-    return Ok(io);
+    Ok(io)
 }
 
 pub fn install() -> std::io::Result<()> {

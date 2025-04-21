@@ -127,37 +127,34 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if event::poll(std::time::Duration::from_millis(100))? {
-            match event::read()? {
-                Event::Key(key) => match key.code {
-                    KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => break,
-                    KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
-                    KeyCode::PageDown => scroll_offset = scroll_offset.saturating_add(5),
-                    KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
-                    KeyCode::Down => scroll_offset = scroll_offset.saturating_add(1),
-                    KeyCode::Enter => {
-                        let cmd = input.trim().to_string();
-                        if cmd == "exit" || cmd == "quit" {
-                            break;
-                        }
-                        if !cmd.is_empty() {
-                            append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd));
-                            handle_command(
-                                &cmd,
-                                &output_lines,
-                                &mut current_dir,
-                                &human_name,
-                                output_height,
-                                &mut scroll_offset,
-                            ).await;
-                        }
-                        input.clear();
+            if let Event::Key(key) = event::read()? { match key.code {
+                KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => break,
+                KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
+                KeyCode::PageDown => scroll_offset = scroll_offset.saturating_add(5),
+                KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
+                KeyCode::Down => scroll_offset = scroll_offset.saturating_add(1),
+                KeyCode::Enter => {
+                    let cmd = input.trim().to_string();
+                    if cmd == "exit" || cmd == "quit" {
+                        break;
                     }
-                    KeyCode::Char(c) => input.push(c),
-                    KeyCode::Backspace => { input.pop(); },
-                    _ => {}
-                },
+                    if !cmd.is_empty() {
+                        append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd));
+                        handle_command(
+                            &cmd,
+                            &output_lines,
+                            &mut current_dir,
+                            &human_name,
+                            output_height,
+                            &mut scroll_offset,
+                        ).await;
+                    }
+                    input.clear();
+                }
+                KeyCode::Char(c) => input.push(c),
+                KeyCode::Backspace => { input.pop(); },
                 _ => {}
-            }
+            } }
         }
     }
 
@@ -256,13 +253,13 @@ async fn handle_command(
             let cpu_usage = process.map(|proc| proc.cpu_usage()).unwrap_or(0.0);
             let mem_proc = process.map(|proc| proc.memory()).unwrap_or(0);
             let os = sysinfo::System::name().unwrap_or_else(|| "Unknown".to_string());
-            let os_ver = sysinfo::System::os_version().unwrap_or_else(|| "".to_string());
-            let kernel = sysinfo::System::kernel_version().unwrap_or_else(|| "".to_string());
+            let os_ver = sysinfo::System::os_version().unwrap_or_default();
+            let kernel = sysinfo::System::kernel_version().unwrap_or_default();
             let arch = std::env::consts::ARCH;
             let exe = std::env::current_exe().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).unwrap_or_else(|| "Unknown".to_string());
             let version = format!("{:?}", crate::VERSION);
 
-            let mut lines = vec![
+            let lines = vec![
                 format!("Executable: {}", exe),
                 format!("User: {}", human_name),
                 format!("Current Directory: {}", current_dir.display()),
@@ -370,7 +367,7 @@ async fn handle_command(
     }
     // Scroll to bottom if needed
     let output_window_height = output_height;
-    let mut lines = output_lines.lock().unwrap();
+    let lines = output_lines.lock().unwrap();
     *scroll_offset = 0;
     if lines.len() > output_window_height {
         *scroll_offset = lines.len() as u16 - output_window_height as u16 + 2;
@@ -422,7 +419,7 @@ async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
     if parts.len() == 2 {
         let image_path = parts[1].trim().to_string();
-        let spinner_chars = vec!["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         let spinner_running = Arc::new(Mutex::new(true));
         let spinner_flag = spinner_running.clone();
         let output_lines_clone = output_lines.clone();
@@ -512,7 +509,7 @@ pub fn check_postgres_env() {
                 let mut val = String::new();
                 if io::stdin().read_line(&mut val).is_ok() {
                     let val = val.trim();
-                    if (!val.is_empty()) {
+                    if !val.is_empty() {
                         env::set_var(v, val);
                         break;
                     }

@@ -13,9 +13,8 @@ use std::time::Duration;
 use std::process::Command;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::env::temp_dir;
 use rand::{distributions::Alphanumeric, Rng};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
@@ -200,7 +199,7 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
             .collect();
         let tmp_path = Path::new(TTS_TMP_DIR).join(format!("{}.wav", rand_name));
         Command::new("say")
-            .args(&["-o", tmp_path.to_str().unwrap(), "--data-format=LEF32@22050", text])
+            .args(["-o", tmp_path.to_str().unwrap(), "--data-format=LEF32@22050", text])
             .output()?;
         let mut file = File::open(&tmp_path)?;
         let mut buf = Vec::new();

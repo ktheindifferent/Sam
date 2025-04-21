@@ -20,7 +20,7 @@ pub fn install(){
 pub fn install_docker() {
     // Uses Homebrew to install Docker Desktop via cask
     std::process::Command::new("brew")
-        .args(&["install", "--cask", "docker"])
+        .args(["install", "--cask", "docker"])
         .status()
         .expect("Failed to install Docker via Homebrew");
 }

@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 pub struct LlamaService;
@@ -40,12 +40,12 @@ impl LlamaService {
         fs::create_dir_all("/opt/sam/bin")?;
 
         // Copy to /opt/sam/bin/llama
-        fs::copy(&built_bin, &llama_bin)?;
+        fs::copy(&built_bin, llama_bin)?;
 
         // Make sure it's executable
         let _ = Command::new("chmod")
             .arg("+x")
-            .arg(&llama_bin)
+            .arg(llama_bin)
             .status();
 
         Ok(())

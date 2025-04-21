@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::io::{self, Write};
+use std::io::{self};
 
 /*
 This Rust code provides functions to install and configure PostgreSQL on Windows, Linux, and macOS.
@@ -103,7 +103,7 @@ pub fn start_postgres(user: &str) -> io::Result<()> {
     {
         // Try to start the Postgres server if it's not running (macOS Homebrew typical path)
         let status = Command::new("sudo")
-            .args(&["-u", user, "brew", "services", "start", "postgresql"])
+            .args(["-u", user, "brew", "services", "start", "postgresql"])
             .status()?;
         if !status.success() {
             println!("Warning: Could not start PostgreSQL service on macOS.");
