@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::io::{self};
+use std::io;
 
 /*
 This Rust code provides functions to install and configure PostgreSQL on Windows, Linux, and macOS.
@@ -45,13 +45,13 @@ pub fn create_sam_user_and_db() -> io::Result<()> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn install_postgres(user: &str) -> io::Result<()> {
+pub fn install_postgres(_user: &str) -> io::Result<()> {
     println!("Please download and run the PostgreSQL installer from https://www.postgresql.org/download/windows/");
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
-pub fn install_postgres(user: &str) -> io::Result<()> {
+pub fn install_postgres(_user: &str) -> io::Result<()> {
     // Try apt-get (Debian/Ubuntu)
     let status = Command::new("sudo")
         .arg("apt-get")
