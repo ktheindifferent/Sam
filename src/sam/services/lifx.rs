@@ -16,50 +16,114 @@ use online::check;
 use rouille::Request;
 use rouille::Response;
 use rouille::post_input;
-use std::thread;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use once_cell::sync::Lazy;
 
-pub fn init(){
-    thread::spawn(move || {
+// Add a static for the StopHandle
+static LIFX_SERVER_STOP_HANDLE: Lazy<Arc<Mutex<Option<crate::sam::services::lifx::lifx_api_server::StopHandle>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+static LIFX_SERVER_HANDLE: Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+static LIFX_SERVER_RUNNING: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| Arc::new(Mutex::new(false)));
+
+/// Start the LIFX service (server and sync)
+pub fn start_service() {
+    let mut running = LIFX_SERVER_RUNNING.lock().unwrap();
+    if *running {
+        log::info!("LIFX service already running");
+        return;
+    }
+    *running = true;
+    let handle = thread::spawn(move || {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String("lifx".to_string()));
         pg_query.query_columns.push("identifier =".to_string());
         let services = crate::sam::memory::Service::select(None, None, None, Some(pg_query));
-
         match services {
             Ok(services) => {
-
-                // Start LiFx Server on port 7084
                 crate::sam::services::lifx::init_server(services[0].secret.clone());
-     
                 crate::sam::services::lifx::sync(services[0].secret.clone());
-                
             },
             Err(e) => {
                 log::error!("{}", e);
             }
         }
+        // Keep thread alive until stopped
+        while *LIFX_SERVER_RUNNING.lock().unwrap() {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+        log::info!("LIFX service thread exiting");
     });
+    let mut handle_slot = LIFX_SERVER_HANDLE.lock().unwrap();
+    *handle_slot = Some(handle);
+    log::info!("LIFX service started");
 }
 
+/// Stop the LIFX service
+pub fn stop_service() {
+    let mut running = LIFX_SERVER_RUNNING.lock().unwrap();
+    if !*running {
+        log::info!("LIFX service is not running");
+        return;
+    }
+    *running = false;
+    drop(running); // Release lock before joining thread to avoid deadlock
 
+    // Stop the HTTP server via StopHandle
+    let mut stop_handle_slot = LIFX_SERVER_STOP_HANDLE.lock().unwrap();
+    if let Some(stop_handle) = stop_handle_slot.take() {
+        stop_handle.stop(); // now consumes the handle and joins the thread
+    }
+
+    // Join the background thread
+    let mut handle_slot = LIFX_SERVER_HANDLE.lock().unwrap();
+    if let Some(handle) = handle_slot.take() {
+        let _ = handle.join();
+        log::info!("LIFX service stopped");
+    }
+}
+
+/// Get the status of the LIFX service
+pub fn status_service() -> &'static str {
+    let running = LIFX_SERVER_RUNNING.lock().unwrap();
+    if *running {
+        "running"
+    } else {
+        "stopped"
+    }
+}
+
+// Refactor init to use start_service
+pub fn init() {
+    start_service();
+}
 
 pub fn init_server(key: String) {
+    let stop_handle_slot = LIFX_SERVER_STOP_HANDLE.clone();
     let lifx_thread = thread::Builder::new().name("lifx_api_server".to_string()).spawn(move || {
         let config = lifx_api_server::Config { 
             secret_key: key,
             port: 7084
         };
 
-        lifx_api_server::start(config);
+        // Start the lifx_api_server and store the StopHandle
+        let server_stop_handle = lifx_api_server::start(config);
 
-        loop {
-            
+        // Store the StopHandle in the global static for later control (e.g., stop)
+        {
+            let mut slot = stop_handle_slot.lock().unwrap();
+            *slot = Some(server_stop_handle);
         }
 
+        // Keep thread alive until service is stopped
+        while *LIFX_SERVER_RUNNING.lock().unwrap() {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
     });
 
     match lifx_thread{
-        Ok(_) => {
+        Ok(handle) => {
+            let mut handle_slot = LIFX_SERVER_HANDLE.lock().unwrap();
+            *handle_slot = Some(handle);
             log::info!("lifx api server started successfully");
         },
         Err(e) => {

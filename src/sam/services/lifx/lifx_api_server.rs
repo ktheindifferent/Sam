@@ -15,6 +15,7 @@ use rouille::try_or_400;
 use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 use std::thread;
+use std::thread::JoinHandle;
 
 use rouille::Response;
 use rouille::post_input;
@@ -26,6 +27,7 @@ use palette::FromColor;
 
 use colors_transform::{Rgb, Color};
 
+use std::sync::atomic::{AtomicBool, Ordering};
 
 
 const HOUR: Duration = Duration::from_secs(60 * 60);
@@ -51,9 +53,14 @@ impl<T> RefreshableData<T> {
     fn update(&mut self, data: T) {
         self.data = Some(data);
         self.last_updated = Instant::now();
+
+
     }
     fn needs_refresh(&self) -> bool {
         self.data.is_none() || self.last_updated.elapsed() > self.max_age
+    }
+    fn as_ref(&self) -> Option<&T> {
+        self.data.as_ref()
     }
 }
 
@@ -607,101 +614,105 @@ pub struct Config {
     pub port: u16,
 }
 
-pub fn start(config: Config) {
+pub struct StopHandle {
+    stop_flag: Arc<AtomicBool>,
+    http_thread: Option<JoinHandle<()>>,
+}
 
+impl StopHandle {
+    pub fn stop(self) {
+        self.stop_flag.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.http_thread {
+            let _ = handle.join();
+        }
+    }
+}
 
+pub fn start(config: Config) -> StopHandle {
     sudo::with_env(&["SECRET_KEY"]).unwrap();
     sudo::escalate_if_needed().unwrap();
 
-
     let mgr = Manager::new();
+
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let stop_flag_bg = stop_flag.clone();
+    let stop_flag_http = stop_flag.clone();
 
     match mgr {
         Ok(mgr) => {
             let mgr_arc = Arc::new(Mutex::new(mgr));
 
             let th_arc_mgr = Arc::clone(&mgr_arc);
+            let stop_flag_bg2 = stop_flag_bg.clone();
 
+            // Background thread
             thread::spawn(move || {
-                loop{
+                while !stop_flag_bg2.load(Ordering::SeqCst) {
                     let mut lock = th_arc_mgr.lock().unwrap();
                     let mgr = &mut *lock;  
-                
-                    // if Instant::now() - mgr.last_discovery > Duration::from_secs(300) {
-                    //     mgr.discover().unwrap();
-                    // }
-            
                     mgr.refresh();
-                    let _ = mgr;
+                    std::mem::drop(mgr);
                     std::mem::drop(lock);
                     thread::sleep(Duration::from_millis(1000));
                 }
             });
-        
-        
+
             let th2_arc_mgr = Arc::clone(&mgr_arc);
-        
-            thread::spawn(move || {
-                rouille::start_server(format!("0.0.0.0:{}", config.port).as_str(), move |request| {
-        
-        
+            let stop_flag_http2 = stop_flag_http.clone();
+
+            // HTTP server thread
+            let http_thread = thread::spawn(move || {
+                let stop_flag_http2_clone = stop_flag_http2.clone();
+                let server = rouille::Server::new(format!("0.0.0.0:{}", config.port).as_str(), move |request| {
+                    if stop_flag_http2.load(Ordering::SeqCst) {
+                        return Response::empty_404();
+                    }
                     let auth_header = request.header("Authorization");
-        
                     if auth_header.is_none(){
                         return Response::empty_404();
                     } else if *auth_header.unwrap() != format!("Bearer {}", config.secret_key){
                         return Response::empty_404();
                     }
-        
-        
-        
-        
                     let mut response = Response::text("hello world");
-        
+
                     let mut lock = th2_arc_mgr.lock().unwrap();
                     let mgr = &mut *lock;  
-        
-                
+
                     mgr.refresh();
-        
-        
+
                     let urls = request.url().to_string();
                     let split = urls.split("/");
                     let vec: Vec<&str> = split.collect();
-        
+
                     let mut selector = "";
-        
+
                     if vec.len() >= 3 {
                         selector = vec[3];
                     }
-            
-        
-        
+
                     let mut bulbs_vec: Vec<&BulbInfo> = Vec::new();
-        
+
                     let bulbs = mgr.bulbs.lock().unwrap();
                     
-                        
                     for bulb in bulbs.values() {
                         log::info!("{:?}", *bulb);
                         bulbs_vec.push(bulb);
                     }
-        
+
                     let _ = selector == "all";
-        
+
                     if selector.contains("group_id:"){
                         bulbs_vec.retain(|b| b.lifx_group.as_ref().unwrap().id.contains(&selector.replace("group_id:", "")));
                     }
-        
+
                     if selector.contains("location_id:"){
                         bulbs_vec.retain(|b| b.lifx_location.as_ref().unwrap().id.contains(&selector.replace("location_id:", "")));
                     }
-        
+
                     if selector.contains("id:"){
                         bulbs_vec.retain(|b| b.id.contains(&selector.replace("id:", "")));
                     }
-        
-        
+
                     // (PUT) SetStates
                     // TODO - Implement
                     // https://api.lifx.com/v1/lights/states
@@ -710,11 +721,10 @@ pub fn start(config: Config) {
                         // std::mem::drop(mgr);
                         // std::mem::drop(lock);
                     }
-        
+
                     // (PUT) SetState
                     // https://api.lifx.com/v1/lights/:selector/state
                     if request.url().contains("/state"){
-        
                         let input = try_or_400!(post_input!(request, {
                             power: Option<String>,
                             color: Option<String>,
@@ -723,43 +733,36 @@ pub fn start(config: Config) {
                             infrared: Option<f64>,
                             fast: Option<bool>
                         }));
-        
-        
+
                         // Power
                         if input.power.is_some() {
                             let power = input.power.unwrap();
                             if power == *"on"{
                                 for bulb in &bulbs_vec {
-                                    let _ = bulb.set_power(&mgr.sock, PowerLevel::Enabled);
+                                    bulb.set_power(&mgr.sock, PowerLevel::Enabled);
                                 }
                             } 
-                
                             if power == *"off"{
                                 for bulb in &bulbs_vec {
-                                    let _ = bulb.set_power(&mgr.sock, PowerLevel::Standby);
+                                    bulb.set_power(&mgr.sock, PowerLevel::Standby);
                                 }
                             } 
                         }
-        
+
                         // Color
                         if input.color.is_some() {
                             let cc = input.color.unwrap();
-        
-        
-        
                             for bulb in &bulbs_vec {
-        
-        
                                 let mut kelvin = 6500;
                                 let mut brightness = 65535;
                                 let mut saturation = 0;
                                 let mut hue = 0;
-        
+
                                 let mut duration = 0;
                                 if input.duration.is_some(){
                                     duration = input.duration.unwrap() as u32;
                                 }
-        
+
                                 if bulb.lifx_color.is_some() {
                                     let lifxc = bulb.lifx_color.as_ref().unwrap();
                                     kelvin = lifxc.kelvin;
@@ -775,9 +778,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("red"){
                                     let hbsk_set = HSBK {
                                         hue: 0,
@@ -785,9 +788,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("orange"){
                                     let hbsk_set = HSBK {
                                         hue: 7098,
@@ -795,9 +798,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("yellow"){
                                     let hbsk_set = HSBK {
                                         hue: 10920,
@@ -805,9 +808,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("cyan"){
                                     let hbsk_set = HSBK {
                                         hue: 32760,
@@ -815,9 +818,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("green"){
                                     let hbsk_set = HSBK {
                                         hue: 21840,
@@ -825,9 +828,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("blue"){
                                     let hbsk_set = HSBK {
                                         hue: 43680,
@@ -835,9 +838,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("purple"){
                                     let hbsk_set = HSBK {
                                         hue: 50050,
@@ -845,9 +848,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("pink"){
                                     let hbsk_set = HSBK {
                                         hue: 63700,
@@ -855,12 +858,10 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
-        
+
                                 if cc.contains("hue:"){
-        
                                     let hue_split = cc.split("hue:");
                                     let hue_vec: Vec<&str> = hue_split.collect();
                                     let new_hue = hue_vec[1].to_string().parse::<u16>().unwrap(); 
@@ -870,9 +871,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("saturation:"){
                                     let saturation_split = cc.split("saturation:");
                                     let saturation_vec: Vec<&str> = saturation_split.collect();
@@ -884,9 +885,9 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("brightness:"){
                                     let brightness_split = cc.split("brightness:");
                                     let brightness_vec: Vec<&str> = brightness_split.collect();
@@ -898,9 +899,9 @@ pub fn start(config: Config) {
                                         brightness: new_brightness,
                                         kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("kelvin:"){
                                     let kelvin_split = cc.split("kelvin:");
                                     let kelvin_vec: Vec<&str> = kelvin_split.collect();
@@ -911,28 +912,28 @@ pub fn start(config: Config) {
                                         brightness,
                                         kelvin: new_kelvin,
                                     };
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
                                 }
-        
+
                                 if cc.contains("rgb:"){
-        
-        
+
+
                                     let rgb_split = cc.split("rgb:");
                                     let rgb_vec: Vec<&str> = rgb_split.collect();
                                     let rgb_parts = rgb_vec[1].to_string();
-        
+
                                     let rgb_part_split = rgb_parts.split(",");
                                     let rgb_parts_vec: Vec<&str> = rgb_part_split.collect();
-        
+
                                     let red_int = rgb_parts_vec[0].to_string().parse::<i64>().unwrap(); 
                                     let red_float: f32 = (red_int) as f32;
-        
+
                                     let green_int = rgb_parts_vec[1].to_string().parse::<i64>().unwrap(); 
                                     let green_float: f32 = (green_int) as f32;
-        
+
                                     let blue_int = rgb_parts_vec[2].to_string().parse::<i64>().unwrap(); 
                                     let blue_float: f32 = (blue_int) as f32;
-        
+
                                     let hcc = palette::Hsv::from_rgb(palette::Rgb{
                                         red: red_float,
                                         green: green_float,
@@ -948,35 +949,35 @@ pub fn start(config: Config) {
                                     };
 
         
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
-        
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+
                                 }
-        
+
                                 if cc.contains("#"){
                                     log::info!("!CC!");
                                     let hex_split = cc.split("#");
                                     let hex_vec: Vec<&str> = hex_split.collect();
                                     let hex = hex_vec[1].to_string();
-        
+
                                     let rgb2 = Rgb::from_hex_str(format!("#{}", hex).as_str()).unwrap();
                                     // Rgb { r: 255.0, g: 204.0, b: 0.0 }
-        
+
                                     log::info!("{:?}", rgb2);
-        
+
                                     let red_int = rgb2.get_red().to_string().parse::<i64>().unwrap(); 
                                     let red_float: f32 = (red_int) as f32;
-        
+
                                     let green_int = rgb2.get_green().to_string().parse::<i64>().unwrap(); 
                                     let green_float: f32 = (green_int) as f32;
-        
+
                                     let blue_int = rgb2.get_blue().to_string().parse::<i64>().unwrap(); 
                                     let blue_float: f32 = (blue_int) as f32;
-        
-        
+
+
                                     log::info!("red_float: {:?}", red_float);
                                     log::info!("green_float: {:?}", green_float);
                                     log::info!("blue_float: {:?}", blue_float);
-        
+
                     
                                     let hcc = palette::Hsv::from_rgb(palette::Rgb{
                                         red: red_float,
@@ -998,30 +999,30 @@ pub fn start(config: Config) {
         
         
         
-                                    let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
-        
+                                    bulb.set_color(&mgr.sock, hbsk_set, duration);
+
                                 }
-        
+
                             }
                         }
-        
-        
+
+
                         // Brightness
                         if input.brightness.is_some() {
                             let brightness = input.brightness.unwrap();
-        
+
                             for bulb in &bulbs_vec {
-        
-        
+
+
                                 let mut kelvin = 6500;
                                 let mut saturation = 0;
                                 let mut hue = 0;
-        
+
                                 let mut duration = 0;
                                 if input.duration.is_some(){
                                     duration = input.duration.unwrap() as u32;
                                 }
-        
+
                                 if bulb.lifx_color.is_some() {
                                     let lifxc = bulb.lifx_color.as_ref().unwrap();
                                     kelvin = lifxc.kelvin;
@@ -1037,22 +1038,22 @@ pub fn start(config: Config) {
                                     brightness: new_brightness,
                                     kelvin,
                                 };
-                                let _ = bulb.set_color(&mgr.sock, hbsk_set, duration);
-        
+                                bulb.set_color(&mgr.sock, hbsk_set, duration);
+
                             }
-        
+
                         }
-        
+
                         // Infrared
                         if input.infrared.is_some() {
                             let new_brightness: u16 = (f64::from(65535) * input.infrared.unwrap()) as u16;
-        
+
                             for bulb in &bulbs_vec {
-                                let _ = bulb.set_infrared(&mgr.sock, new_brightness);
+                                bulb.set_infrared(&mgr.sock, new_brightness);
                             }
                         }
-        
-        
+
+
                         // std::mem::drop(mgr);
                         let _ = mgr;
                         // TODO - Send Results
@@ -1065,42 +1066,44 @@ pub fn start(config: Config) {
                         //       }
                         //     ]
                         //   }
-        
-        
+
+
                         response = Response::text("done");
-        
+
                     }
-        
-        
+
+
                     // ListLights
                     // https://api.lifx.com/v1/lights/:selector
                     if request.url().contains("/v1/lights/") && !request.url().contains("/state"){
                         response = Response::json(&bulbs_vec.clone());
                     }
-        
-        
+
+
                     // Drop mutex locks
                     std::mem::drop(bulbs);
                     let _ = mgr;
 
                     response
-                });
-            });
-
-
-        },
+                }).expect("Failed to bind LIFX API server");
+                while !stop_flag_http2_clone.load(Ordering::SeqCst) {
+                    server.poll();
+                    thread::sleep(Duration::from_millis(10));
+                }
+            }); // <-- this is the correct closing for thread::spawn
+        // <-- this closes the Ok(mgr) arm
+            return StopHandle {
+                stop_flag,
+                http_thread: Some(http_thread),
+            };
+        }
         Err(e) => {
             log::info!("{:?}", e);
         }
     }
 
-
-
-
-
-
-
-
-
-
+    StopHandle {
+        stop_flag,
+        http_thread: None,
+    }
 }

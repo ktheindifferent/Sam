@@ -17,6 +17,8 @@ use crossterm::{
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::thread;
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::process;
 
 /// Starts the interactive command prompt
 ///
@@ -36,11 +38,34 @@ pub async fn start_prompt() {
 ///
 /// Handles user input, command execution, and UI rendering.
 async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
+    // Set a panic hook to print panics to stderr
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("\nSAM TUI PANIC: {info}");
+        // Try to restore terminal state
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        // Flush to ensure message is visible
+        let _ = io::stdout().flush();
+        let _ = io::stderr().flush();
+    }));
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+
+    // Ensure terminal is restored even if panic or error
+    struct DropGuard;
+    impl Drop for DropGuard {
+        fn drop(&mut self) {
+            let _ = disable_raw_mode();
+            let _ = execute!(io::stdout(), LeaveAlternateScreen);
+            let _ = io::stdout().flush();
+            let _ = io::stderr().flush();
+        }
+    }
+    let _guard = DropGuard;
 
     let mut input = String::new();
     let output_lines = Arc::new(Mutex::new(vec![
@@ -59,97 +84,139 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     let mut show_cursor = true;
     let mut cursor_tick: u8 = 0;
 
-    loop {
-        {
-            let output_lines_guard = output_lines.lock().unwrap();
-            terminal.draw(|f| {
-                let size = f.size();
-                let main_chunks = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .margin(1)
-                    .constraints([
-                        Constraint::Percentage(66),
-                        Constraint::Percentage(34),
-                    ].as_ref())
-                    .split(size);
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        loop {
+            let draw_result = catch_unwind(AssertUnwindSafe(|| {
+                let output_lines_guard = output_lines.lock().unwrap();
+                let mut local_output_height = output_height;
+                let input_ref = &input;
+                let tui_state_ref = &tui_state;
+                terminal.draw(|f| {
+                    let size = f.size();
+                    let main_chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .margin(1)
+                        .constraints([
+                            Constraint::Percentage(66),
+                            Constraint::Percentage(34),
+                        ].as_ref())
+                        .split(size);
 
-                let left_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Min(3),
-                        Constraint::Length(3),
-                    ].as_ref())
-                    .split(main_chunks[0]);
+                    let left_chunks = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([
+                            Constraint::Min(3),
+                            Constraint::Length(3),
+                        ].as_ref())
+                        .split(main_chunks[0]);
 
-                let output: Vec<Spans> = output_lines_guard.iter().map(|l| Spans::from(Span::raw(l))).collect();
-                output_height = left_chunks[0].height.max(1) as usize;
+                    local_output_height = left_chunks[0].height.max(1) as usize;
 
-                let cursor_char = if show_cursor { "_" } else { " " };
-                let input_display = format!("{}{}", input, cursor_char);
+                    let cursor_char = if show_cursor { "_" } else { " " };
+                    let input_display = format!("{}{}", input_ref, cursor_char);
 
-                let output_widget = Paragraph::new(output)
-                    .block(Block::default().borders(Borders::ALL).title("Output"))
-                    .scroll((scroll_offset, 0))
-                    .wrap(tui::widgets::Wrap { trim: false });
+                    let output: Vec<Spans> = output_lines_guard.iter().map(|l| Spans::from(Span::raw(l))).collect();
 
-                let input_widget = Paragraph::new(input_display)
-                    .block(Block::default().borders(Borders::ALL).title("Command"));
+                    let output_widget = Paragraph::new(output)
+                        .block(Block::default().borders(Borders::ALL).title("Output"))
+                        .scroll((scroll_offset, 0))
+                        .wrap(tui::widgets::Wrap { trim: false });
 
-                let system_widget = TuiLoggerWidget::default()
-                    .block(Block::default().borders(Borders::ALL).title("System"))
-                    .output_separator('│')
-                    .output_timestamp(Some("%H:%M:%S".to_string()))
-                    .output_level(Some(TuiLoggerLevelOutput::Long))
-                    .output_target(false)
-                    .state(&tui_state);
+                    let input_widget = Paragraph::new(input_display)
+                        .block(Block::default().borders(Borders::ALL).title("Command"));
 
-                f.render_widget(output_widget, left_chunks[0]);
-                f.render_widget(input_widget, left_chunks[1]);
-                f.render_widget(system_widget, main_chunks[1]);
-            })?;
-        }
+                    let system_widget = TuiLoggerWidget::default()
+                        .block(Block::default().borders(Borders::ALL).title("System"))
+                        .output_separator('│')
+                        .output_timestamp(Some("%H:%M:%S".to_string()))
+                        .output_level(Some(TuiLoggerLevelOutput::Long))
+                        .output_target(false)
+                        .state(tui_state_ref);
 
-        // Blinking cursor: toggle every 5 ticks (~500ms if poll is 100ms)
-        cursor_tick = cursor_tick.wrapping_add(1);
-        if cursor_tick >= 5 {
-            show_cursor = !show_cursor;
-            cursor_tick = 0;
-        }
+                    f.render_widget(output_widget, left_chunks[0]);
+                    f.render_widget(input_widget, left_chunks[1]);
+                    f.render_widget(system_widget, main_chunks[1]);
+                })?;
+                output_height = local_output_height;
+                Ok::<(), std::io::Error>(())
+            }));
 
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? { match key.code {
-                KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => break,
-                KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
-                KeyCode::PageDown => scroll_offset = scroll_offset.saturating_add(5),
-                KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
-                KeyCode::Down => scroll_offset = scroll_offset.saturating_add(1),
-                KeyCode::Enter => {
-                    let cmd = input.trim().to_string();
-                    if cmd == "exit" || cmd == "quit" {
-                        break;
-                    }
-                    if !cmd.is_empty() {
-                        append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd));
-                        handle_command(
-                            &cmd,
-                            &output_lines,
-                            &mut current_dir,
-                            &human_name,
-                            output_height,
-                            &mut scroll_offset,
-                        ).await;
-                    }
-                    input.clear();
+            if let Err(e) = draw_result {
+                let mut lines = output_lines.lock().unwrap();
+                lines.push(format!("TUI draw panic: {:?}", e));
+                eprintln!("TUI draw panic: {:?}", e);
+                break;
+            }
+
+            cursor_tick = cursor_tick.wrapping_add(1);
+            if cursor_tick >= 5 {
+                show_cursor = !show_cursor;
+                cursor_tick = 0;
+            }
+
+            let poll_result = catch_unwind(AssertUnwindSafe(|| {
+                event::poll(std::time::Duration::from_millis(100))
+            }));
+
+            if let Err(e) = poll_result {
+                let mut lines = output_lines.lock().unwrap();
+                lines.push(format!("TUI poll panic: {:?}", e));
+                eprintln!("TUI poll panic: {:?}", e);
+                break;
+            }
+
+            if let Ok(Ok(true)) = poll_result {
+                let read_result = catch_unwind(AssertUnwindSafe(|| event::read()));
+                if let Err(e) = read_result {
+                    let mut lines = output_lines.lock().unwrap();
+                    lines.push(format!("TUI read panic: {:?}", e));
+                    eprintln!("TUI read panic: {:?}", e);
+                    break;
                 }
-                KeyCode::Char(c) => input.push(c),
-                KeyCode::Backspace => { input.pop(); },
-                _ => {}
-            } }
+                if let Ok(Ok(Event::Key(key))) = read_result {
+                    match key.code {
+                        KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => break,
+                        KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
+                        KeyCode::PageDown => scroll_offset = scroll_offset.saturating_add(5),
+                        KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
+                        KeyCode::Down => scroll_offset = scroll_offset.saturating_add(1),
+                        KeyCode::Enter => {
+                            let cmd = input.trim().to_string();
+                            if cmd == "exit" || cmd == "quit" {
+                                break;
+                            }
+                            if !cmd.is_empty() {
+                                append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd));
+                                futures::executor::block_on(handle_command(
+                                    &cmd,
+                                    &output_lines,
+                                    &mut current_dir,
+                                    &human_name,
+                                    output_height,
+                                    &mut scroll_offset,
+                                ));
+                            }
+                            input.clear();
+                        }
+                        KeyCode::Char(c) => input.push(c),
+                        KeyCode::Backspace => { input.pop(); },
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }));
+
+    match result {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("TUI main loop panic: {:?}", e);
+            let mut lines = output_lines.lock().unwrap();
+            lines.push(format!("TUI main loop panic: {:?}", e));
         }
     }
 
-    disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen)?;
+    // DropGuard will restore terminal state here
     Ok(())
 }
 
@@ -329,6 +396,19 @@ async fn handle_command(
                 });
             }
         }
+        // LIFX service CLI commands
+        "lifx start" => {
+            crate::sam::services::lifx::start_service();
+            append_line(output_lines, "LIFX service started.".to_string());
+        }
+        "lifx stop" => {
+            crate::sam::services::lifx::stop_service();
+            append_line(output_lines, "LIFX service stopped.".to_string());
+        }
+        "lifx status" => {
+            let status = crate::sam::services::lifx::status_service();
+            append_line(output_lines, format!("LIFX service status: {}", status));
+        }
         _ => {
             match crate::sam::services::rivescript::query(cmd) {
                 Ok(reply) => {
@@ -378,6 +458,9 @@ fn get_help_lines() -> Vec<String> {
         "cd <dir>              - Change current directory".to_string(),
         "tts <text>            - Convert text to speech and play it".to_string(),
         "llama <model_path> <prompt> - Query a Llama.cpp model".to_string(),
+        "lifx start            - Start the LIFX service".to_string(),
+        "lifx stop             - Stop the LIFX service".to_string(),
+        "lifx status           - Show LIFX service status".to_string(),
     ]
 }
 

@@ -218,7 +218,7 @@ async fn main() {
     crate::sam::services::tts::init();
 
     // // // Initialize and sync database with Lifx API (smart lighting)
-    crate::sam::services::lifx::init();
+    // crate::sam::services::lifx::init();
 
     // // // Start Snapcast server for multi-room audio
     // // crate::sam::services::media::snapcast::init();
