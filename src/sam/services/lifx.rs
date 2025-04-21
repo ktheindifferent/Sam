@@ -7,8 +7,10 @@
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
-extern crate lifx_api_server;
+// extern crate lifx_api_server;
 extern crate lifx_rs as lifx;
+
+pub mod lifx_api_server;
 
 use online::check;
 use rouille::Request;

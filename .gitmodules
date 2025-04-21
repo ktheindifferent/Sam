@@ -1,0 +1,6 @@
+[submodule "scripts/Darknet"]
+	path = scripts/Darknet
+	url = https://github.com/ktheindifferent/Darknet.git
+[submodule "scripts/llama.cpp"]
+	path = scripts/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git

@@ -9,6 +9,35 @@
 
 use std::fs::File;
 use std::io::{Write};
+use error_chain::error_chain;
+use crate::sam::http::api::io::IOReply;
+
+error_chain! {
+    foreign_links {
+        Io(std::io::Error);
+        Json(serde_json::Error);
+        HttpRequest(reqwest::Error);
+        Postgres(postgres::Error);
+        SamMemoryError(crate::sam::memory::Error);
+        ToolkitError(crate::sam::tools::Error);
+    }
+}
+
+pub fn query(input: &str) -> Result<IOReply> {
+    let rivescript_reply = crate::sam::tools::cmd(format!("python3 /opt/sam/scripts/rivescript/brain.py \"{}\"", input).as_str())?;
+
+    if rivescript_reply.contains(":::::"){
+        // TODO - Parse Command
+    } 
+
+    let io = IOReply{
+        text: rivescript_reply,
+        timestamp: 0,
+        response_type: "io".to_string()
+    };
+
+    return Ok(io);
+}
 
 pub fn install() -> std::io::Result<()> {
     let data = include_bytes!("../../../scripts/rivescript/brain.py");

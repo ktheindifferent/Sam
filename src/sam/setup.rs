@@ -10,7 +10,7 @@
 // Required dependencies
 use serde::{Serialize, Deserialize};
 use error_chain::error_chain;
-use opencl3::device::{get_all_devices, CL_DEVICE_TYPE_GPU};
+use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
 
 // Define error handling
 error_chain! {
@@ -42,14 +42,40 @@ pub async fn install() {
 
 // Pre-installation setup: Install required packages and create directories
 fn pre_install() {
+    log::info!("Preparing your system for installation. Please wait...");
+
+
     // Install system dependencies
     // Install system dependencies based on OS
-    #[cfg(target_os = "linux")]
-    crate::sam::tools::uinx_cmd("apt install libx264-dev libssl-dev unzip libavcodec-extra58 python3 pip git git-lfs wget libboost-dev libopencv-dev python3-opencv ffmpeg iputils-ping libasound2-dev libpulse-dev libvorbisidec-dev libvorbis-dev libopus-dev libflac-dev libsoxr-dev alsa-utils libavahi-client-dev avahi-daemon libexpat1-dev libfdk-aac-dev -y");
+    #[cfg(target_os = "linux")]{
+        log::info!("Installing system dependencies for Linux...");
+        crate::sam::tools::uinx_cmd("apt install libx264-dev libssl-dev unzip libavcodec-extra58 python3 pip git git-lfs wget libboost-dev libopencv-dev python3-opencv ffmpeg iputils-ping libasound2-dev libpulse-dev libvorbisidec-dev libvorbis-dev libopus-dev libflac-dev libsoxr-dev alsa-utils libavahi-client-dev avahi-daemon libexpat1-dev libfdk-aac-dev -y");
+    }
+  
+    #[cfg(target_os = "macos")]{
+        log::info!("Installing system dependencies for MacOS...");
+        let user = std::fs::read_to_string("/opt/sam/whoismyhuman")
+            .unwrap_or_else(|_| "sam".to_string())
+            .trim()
+            .to_string();
+        crate::sam::tools::uinx_cmd(&format!(
+            "sudo -u {} brew install x264 openssl unzip ffmpeg python3 git git-lfs wget boost opencv ffmpeg libsndfile pulseaudio opus flac alsa-lib avahi expat fdk-aac",
+            user
+        ));
+    }
 
-    #[cfg(target_os = "macos")]
-    crate::sam::tools::uinx_cmd("brew install x264 openssl unzip ffmpeg python3 git git-lfs wget boost opencv ffmpeg libsndfile pulseaudio opus flac soxr alsa-lib avahi expat fdk-aac");
-    crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect");
+    #[cfg(target_os = "windows")]{
+        log::info!("Installing system dependencies for Windows...");
+        crate::sam::tools::uinx_cmd("choco install ffmpeg git git-lfs boost opencv python3");
+    }
+
+
+    
+
+
+    // Install Python packages
+    log::info!("Installing Python packages...");
+    crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect --break-system-packages");
 
     // Create necessary directories
     let directories = vec![
@@ -83,8 +109,17 @@ fn check_gpu_devices() {
 
 // Install various services and log their status
 fn install_services() {
+    // Call async darknet install separately
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        match crate::sam::services::darknet::install().await {
+            Ok(_) => log::info!("darknet installed successfully"),
+            Err(e) => log::error!("Failed to install darknet: {}", e),
+        }
+    });
+
     let services = vec![
-        ("darknet", crate::sam::services::darknet::install as fn() -> std::result::Result<(), std::io::Error>),
+        // ("darknet", crate::sam::services::darknet::install as fn() -> std::result::Result<(), std::io::Error>), // REMOVE THIS LINE
         ("sprec", crate::sam::services::sprec::install as fn() -> std::result::Result<(), std::io::Error>),
         ("rivescript", crate::sam::services::rivescript::install as fn() -> std::result::Result<(), std::io::Error>),
         ("who.io", crate::sam::services::who::install as fn() -> std::result::Result<(), std::io::Error>),

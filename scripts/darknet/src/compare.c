@@ -323,7 +323,7 @@ void BattleRoyaleWithCheese(char *filename, char *weightfile)
         sprintf(buff, "results/battle_%d.log", class);
         FILE *outfp = fopen(buff, "w");
         for(i = 0; i < N; ++i){
-            //fprintf(outfp, "%s %f\n", boxes[i].filename, boxes[i].elos[class]);
+            fprintf(outfp, "%s %f\n", boxes[i].filename, boxes[i].elos[class]);
         }
         fclose(outfp);
     }
@@ -333,7 +333,7 @@ void BattleRoyaleWithCheese(char *filename, char *weightfile)
 void run_compare(int argc, char **argv)
 {
     if(argc < 4){
-        //fprintf(stderr, "usage: %s %s [train/test/valid] [cfg] [weights (optional)]\n", argv[0], argv[1]);
+        fprintf(stderr, "usage: %s %s [train/test/valid] [cfg] [weights (optional)]\n", argv[0], argv[1]);
         return;
     }
 

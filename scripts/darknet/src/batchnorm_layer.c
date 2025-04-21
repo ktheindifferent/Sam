@@ -5,7 +5,7 @@
 
 layer make_batchnorm_layer(int batch, int w, int h, int c)
 {
-    // //fprintf(stderr, "Batch Normalization Layer: %d x %d x %d image\n", w,h,c);
+    fprintf(stderr, "Batch Normalization Layer: %d x %d x %d image\n", w,h,c);
     layer l = {0};
     l.type = BATCHNORM;
     l.batch = batch;
@@ -129,7 +129,7 @@ void normalize_delta_cpu(float *x, float *mean, float *variance, float *mean_del
 
 void resize_batchnorm_layer(layer *layer, int w, int h)
 {
-    // //fprintf(stderr, "Not implemented\n");
+    fprintf(stderr, "Not implemented\n");
 }
 
 void forward_batchnorm_layer(layer l, network net)

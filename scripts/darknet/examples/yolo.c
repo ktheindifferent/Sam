@@ -288,7 +288,7 @@ void test_yolo(char *cfgfile, char *weightfile, char *filename, float thresh)
         float *X = sized.data;
         time=clock();
         network_predict(net, X);
-        // printf("%s: Predicted in %f seconds.\n", input, sec(clock()-time));
+        printf("%s: Predicted in %f seconds.\n", input, sec(clock()-time));
 
         int nboxes = 0;
         detection *dets = get_network_boxes(net, 1, 1, thresh, 0, 0, 0, &nboxes);

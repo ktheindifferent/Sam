@@ -37,6 +37,7 @@ impl From<tools::Error> for crate::sam::services::Error {
 
 pub mod darknet;
 pub mod dropbox;
+pub mod docker;
 pub mod jupiter;
 pub mod lifx;
 pub mod media;

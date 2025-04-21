@@ -231,6 +231,53 @@ void print_imagenet_detections(FILE *fp, int id, detection *dets, int total, int
     }
 }
 
+char *detection_to_json(detection *dets, int nboxes, int classes, char **names, long long int frame_id, char *filename, int w, int h)
+{
+    const float thresh = 0.005; // function get_network_boxes() has already filtred dets by actual threshold
+
+    char *send_buf = (char *)calloc(1024, sizeof(char));
+    if (!send_buf) return 0;
+    if (filename) {
+        sprintf(send_buf, "{\n \"frame_id\":%lld, \n \"filename\":\"%s\", \n \"objects\": [ \n", frame_id, filename);
+    }
+    else {
+        sprintf(send_buf, "{\n \"frame_id\":%lld, \n \"objects\": [ \n", frame_id);
+    }
+
+    int i, j;
+    int class_id = -1;
+    for (i = 0; i < nboxes; ++i) {
+        for (j = 0; j < classes; ++j) {
+            int show = strncmp(names[j], "dont_show", 9);
+            if (dets[i].prob[j] > thresh && show)
+            {
+                if (class_id != -1) strcat(send_buf, ", \n");
+                class_id = j;
+                char *buf = (char *)calloc(2048, sizeof(char));
+                if (!buf) return 0;
+                // sprintf(buf, "{\"class_id\":%d, \"name\":%s, \"bbox\":[%f, %f, %f, %f], \"score\":%f}",
+                //    j, names[j], dets[i].bbox.x * w, dets[i].bbox.y * h, dets[i].bbox.w * w, dets[i].bbox.h * h, dets[i].prob[j]);
+
+                sprintf(buf, "  {\"class_id\":%d, \"name\":\"%s\", \"coordinates\":{\"x\":%f, \"y\":%f, \"width\":%f, \"height\":%f}, \"confidence\":%f}",
+                    j, names[j], dets[i].bbox.x * w, dets[i].bbox.y * h, dets[i].bbox.w * w, dets[i].bbox.h * h, dets[i].prob[j]);
+
+                int send_buf_len = strlen(send_buf);
+                int buf_len = strlen(buf);
+                int total_len = send_buf_len + buf_len + 100;
+                send_buf = (char *)realloc(send_buf, total_len * sizeof(char));
+                if (!send_buf) {
+                    if (buf) free(buf);
+                    return 0;// exit(-1);
+                }
+                strcat(send_buf, buf);
+                free(buf);
+            }
+        }
+    }
+    strcat(send_buf, "\n ] \n}");
+    return send_buf;
+}
+
 void validate_detector_flip(char *datacfg, char *cfgfile, char *weightfile, char *outfile)
 {
     int j;
@@ -574,47 +621,30 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
     char *input = buff;
     float nms=.45;
     while(1){
-        if(filename){
-            strncpy(input, filename, 256);
-        } else {
-            printf("Enter Image Path: ");
-            fflush(stdout);
-            input = fgets(input, 256, stdin);
-            if(!input) return;
-            strtok(input, "\n");
-        }
+      
+        strncpy(input, filename, 256);
+
         image im = load_image_color(input,0,0);
         image sized = letterbox_image(im, net->w, net->h);
-        //image sized = resize_image(im, net->w, net->h);
-        //image sized2 = resize_max(im, net->w);
-        //image sized = crop_image(sized2, -((net->w - sized2.w)/2), -((net->h - sized2.h)/2), net->w, net->h);
-        //resize_network(net, sized.w, sized.h);
         layer l = net->layers[net->n-1];
 
 
         float *X = sized.data;
         time=what_time_is_it_now();
         network_predict(net, X);
-        
+        // printf("%s: Predicted in asres %f seconds.\n", input, what_time_is_it_now()-time);
         int nboxes = 0;
         detection *dets = get_network_boxes(net, im.w, im.h, thresh, hier_thresh, 0, 1, &nboxes);
+        // printf("%s\n", dets);
+        char *json_buf = NULL;
+        int json_image_id = 0;
+        json_buf = detection_to_json(dets, nboxes, l.classes, names, json_image_id, input, im.w, im.h);
+        printf("%s\n", json_buf);
 
-        // printf("%s", dets, what_time_is_it_now()-time);
-        //printf("%d\n", nboxes);
         //if (nms) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
         if (nms) do_nms_sort(dets, nboxes, l.classes, nms);
-        draw_detections(im, dets, nboxes, thresh, names, alphabet, l.classes);
+        // draw_detections(im, dets, nboxes, thresh, names, alphabet, l.classes);
         free_detections(dets, nboxes);
-        if(outfile){
-            save_image(im, outfile);
-        }
-        else{
-            save_image(im, "predictions");
-#ifdef OPENCV
-            make_window("predictions", 512, 512, 0);
-            show_image(im, "predictions", 0);
-#endif
-        }
 
         free_image(im);
         free_image(sized);

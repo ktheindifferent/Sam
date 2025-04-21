@@ -252,12 +252,10 @@ void draw_detections(image im, detection *dets, int num, float thresh, char **na
                     strcat(labelstr, ", ");
                     strcat(labelstr, names[j]);
                 }
-                
+                printf("%s: %.0f%%\n", names[j], dets[i].prob[j]*100);
             }
         }
         if(class >= 0){
-
-            printf("{id: \"%s\", probability: %f, ", names[class], dets[i].prob[class]);
             int width = im.h * .006;
 
             /*
@@ -267,7 +265,7 @@ void draw_detections(image im, detection *dets, int num, float thresh, char **na
                }
              */
 
-            // printf("%d %s: %.0f%%\n", i, names[class], prob*100);
+            //printf("%d %s: %.0f%%\n", i, names[class], prob*100);
             int offset = class*123457 % classes;
             float red = get_color(2,offset,classes);
             float green = get_color(1,offset,classes);
@@ -280,18 +278,12 @@ void draw_detections(image im, detection *dets, int num, float thresh, char **na
             rgb[1] = green;
             rgb[2] = blue;
             box b = dets[i].bbox;
-            
-     
-
-   
+            //printf("%f %f %f %f\n", b.x, b.y, b.w, b.h);
 
             int left  = (b.x-b.w/2.)*im.w;
             int right = (b.x+b.w/2.)*im.w;
             int top   = (b.y-b.h/2.)*im.h;
             int bot   = (b.y+b.h/2.)*im.h;
-
-            printf("left: %d, right: %d, top: %d, bottom: %d}\n", left, right, top, bot);
-    
 
             if(left < 0) left = 0;
             if(right > im.w-1) right = im.w-1;
@@ -548,7 +540,7 @@ int show_image(image p, const char *name, int ms)
     int c = show_image_cv(p, name, ms);
     return c;
 #else
-    //fprintf(stderr, "Not compiled with OpenCV, saving to %s.png instead\n", name);
+    fprintf(stderr, "Not compiled with OpenCV, saving to %s.png instead\n", name);
     save_image(p, name);
     return -1;
 #endif
@@ -576,7 +568,7 @@ void save_image_options(image im, const char *name, IMTYPE f, int quality)
     else if (f == TGA) success = stbi_write_tga(buff, im.w, im.h, im.c, data);
     else if (f == JPG) success = stbi_write_jpg(buff, im.w, im.h, im.c, data, quality);
     free(data);
-    //if(!success) //fprintf(stderr, "Failed to write image %s\n", buff);
+    if(!success) fprintf(stderr, "Failed to write image %s\n", buff);
 }
 
 void save_image(image im, const char *name)
@@ -1303,7 +1295,7 @@ image load_image_stb(char *filename, int channels)
     int w, h, c;
     unsigned char *data = stbi_load(filename, &w, &h, &c, channels);
     if (!data) {
-        //fprintf(stderr, "Cannot load image \"%s\"\nSTB Reason: %s\n", filename, stbi_failure_reason());
+        fprintf(stderr, "Cannot load image \"%s\"\nSTB Reason: %s\n", filename, stbi_failure_reason());
         exit(0);
     }
     if(channels) c = channels;

@@ -7,6 +7,8 @@
 // Developed by Caleb Mitchell Smith (PixelCoda)
 // Licensed under GPLv3....see LICENSE file.
 
+pub mod pg;
+
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
 use rand::distributions::Alphanumeric;
@@ -20,6 +22,7 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::{Row};
 use std::path::Path;
+use std::process::Command;
 
 use error_chain::error_chain;
 error_chain! {
@@ -89,6 +92,8 @@ impl Config {
             });
         });
     }
+
+
     
     pub async fn build_tables(&self) -> Result<()>{
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
@@ -467,6 +472,77 @@ impl Config {
 
         // Connect and return the client
         Ok(postgres::Client::connect(&conn_str, connector)?)
+    }
+
+    /// Checks if PostgreSQL (psql) is installed and available in PATH.
+    pub fn check_postgres_installed() -> bool {
+        match Command::new("psql")
+            .arg("--version")
+            .output()
+        {
+            Ok(output) => {
+                if !output.status.success() {
+                    return false;
+                }
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                // Check for error messages indicating missing server/socket
+                let error_patterns = [
+                    "Is the server running locally",
+                    "could not connect to server",
+                ];
+                for pattern in error_patterns.iter() {
+                    if stdout.contains(pattern) || stderr.contains(pattern) {
+                        return false;
+                    }
+                }
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Creates the user 'sam' and database 'sam' if they do not exist.
+    /// Requires superuser privileges (may prompt for password).
+    pub fn create_user_and_database(user: &str) -> Result<()> {
+        // Create user 'sam' if not exists
+        let create_user = "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'sam') THEN CREATE ROLE sam LOGIN PASSWORD 'sam'; END IF; END $$;";
+        let status_user = Command::new("psql")
+            .arg("-U")
+            .arg(user)
+            .arg("-c")
+            .arg(create_user)
+            .status()?;
+        if !status_user.success() {
+            log::warn!("Could not create user 'sam' (may already exist or insufficient privileges)");
+        }
+
+        // Create database 'sam' owned by 'sam' if not exists
+        // NOTE: CREATE DATABASE cannot be run inside DO/PLPGSQL blocks.
+        // So we must check existence and run CREATE DATABASE as a separate statement.
+        let check_db = "SELECT 1 FROM pg_database WHERE datname = 'sam';";
+        let output = Command::new("psql")
+            .arg("-U")
+            .arg(user)
+            .arg("-tAc")
+            .arg(check_db)
+            .output()?;
+        let db_exists = String::from_utf8_lossy(&output.stdout).trim() == "1";
+        if !db_exists {
+            let status_db = Command::new("psql")
+                .arg("-U")
+                .arg(user)
+                .arg("-c")
+                .arg("CREATE DATABASE sam OWNER sam;")
+                .status()?;
+            if !status_db.success() {
+                log::warn!("Could not create database 'sam' (may already exist or insufficient privileges)");
+            }
+        } else {
+            log::info!("Database 'sam' already exists");
+        }
+
+        Ok(())
     }
 }
 
