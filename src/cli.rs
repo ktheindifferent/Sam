@@ -64,6 +64,10 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     let mut scroll_offset: u16 = 0;
     let mut output_height: usize = 10;
 
+    // Blinking cursor state
+    let mut show_cursor = true;
+    let mut cursor_tick: u8 = 0;
+
     loop {
         {
             let output_lines_guard = output_lines.lock().unwrap();
@@ -90,12 +94,15 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 output_height = left_chunks[0].height.max(1) as usize;
                 let total_lines = output_lines_guard.len();
 
+                let cursor_char = if show_cursor { "_" } else { " " };
+                let input_display = format!("{}{}", input, cursor_char);
+
                 let output_widget = Paragraph::new(output)
                     .block(Block::default().borders(Borders::ALL).title("Output"))
                     .scroll((scroll_offset, 0))
                     .wrap(tui::widgets::Wrap { trim: false });
 
-                let input_widget = Paragraph::new(input.as_ref())
+                let input_widget = Paragraph::new(input_display)
                     .block(Block::default().borders(Borders::ALL).title("Command"));
 
                 let system_widget = TuiLoggerWidget::default()
@@ -110,6 +117,13 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 f.render_widget(input_widget, left_chunks[1]);
                 f.render_widget(system_widget, main_chunks[1]);
             })?;
+        }
+
+        // Blinking cursor: toggle every 5 ticks (~500ms if poll is 100ms)
+        cursor_tick = cursor_tick.wrapping_add(1);
+        if cursor_tick >= 5 {
+            show_cursor = !show_cursor;
+            cursor_tick = 0;
         }
 
         if event::poll(std::time::Duration::from_millis(100))? {
@@ -295,16 +309,36 @@ async fn handle_command(
             }
         }
         _ if cmd.starts_with("llama ") => {
-            let args: Vec<&str> = cmd["llama ".len()..].splitn(2, ' ').collect();
-            if args.len() < 2 {
+            // Parse arguments as owned Strings to avoid lifetime issues
+            let rest = cmd["llama ".len()..].to_string();
+            let mut split = rest.splitn(2, ' ');
+            let model_path_str = split.next().unwrap_or("").to_string();
+            let prompt_str = split.next().unwrap_or("").to_string();
+
+            if model_path_str.is_empty() || prompt_str.is_empty() {
                 append_line(output_lines, "Usage: llama <model_path> <prompt>".to_string());
             } else {
-                let model_path = std::path::Path::new(args[0]);
-                let prompt = args[1];
+                let model_path = std::path::PathBuf::from(model_path_str);
+                let prompt = prompt_str;
                 let output_lines = output_lines.clone();
-                tokio::spawn(async move {
-                    match crate::sam::services::llama::LlamaService::query(model_path, prompt) {
-                        Ok(result) => append_line(&output_lines, format!("llama: {}", result.trim())),
+                // Run blocking code in a separate thread to avoid blocking the async runtime
+                tokio::task::spawn_blocking(move || {
+                    match crate::sam::services::llama::LlamaService::query(&model_path, &prompt) {
+                        Ok(result) => {
+                            let text = result.trim().to_string();
+                            append_line(&output_lines, format!("llama: {}", text));
+                            // TTS for llama reply
+                            match crate::sam::services::tts::get(text.clone()) {
+                                Ok(wav_bytes) => {
+                                    if let Err(e) = play_wav_from_bytes(&wav_bytes) {
+                                        append_line(&output_lines, format!("TTS playback error: {}", e));
+                                    }
+                                }
+                                Err(e) => {
+                                    append_line(&output_lines, format!("TTS error: {}", e));
+                                }
+                            }
+                        },
                         Err(e) => append_line(&output_lines, format!("llama error: {}", e)),
                     }
                 });
@@ -312,7 +346,24 @@ async fn handle_command(
         }
         _ => {
             match crate::sam::services::rivescript::query(cmd) {
-                Ok(reply) => append_line(output_lines, format!("┌─[sam]─> {}", reply.text)),
+                Ok(reply) => {
+                    let text = reply.text.clone();
+                    let output_lines = output_lines.clone();
+                    // Spawn TTS and output in one async block
+                    tokio::spawn(async move {
+                        append_line(&output_lines, format!("┌─[sam]─> {}", text));
+                        match crate::sam::services::tts::get(text.clone()) {
+                            Ok(wav_bytes) => {
+                                if let Err(e) = play_wav_from_bytes(&wav_bytes) {
+                                    append_line(&output_lines, format!("TTS playback error: {}", e));
+                                }
+                            }
+                            Err(e) => {
+                                append_line(&output_lines, format!("TTS error: {}", e));
+                            }
+                        }
+                    });
+                }
                 Err(e) => append_line(output_lines, format!("┌─[sam]─> [error: {}]", e)),
             }
         }
@@ -461,7 +512,7 @@ pub fn check_postgres_env() {
                 let mut val = String::new();
                 if io::stdin().read_line(&mut val).is_ok() {
                     let val = val.trim();
-                    if !val.is_empty() {
+                    if (!val.is_empty()) {
                         env::set_var(v, val);
                         break;
                     }

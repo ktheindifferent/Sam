@@ -51,5 +51,6 @@ pub mod sprec;
 pub mod storage;
 pub mod stt;
 pub mod tts;
+pub mod llama;
 // pub mod whisper;
 pub mod who;
