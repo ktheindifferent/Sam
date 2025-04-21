@@ -31,6 +31,17 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 #[tokio::main]
 async fn main() {
 
+    // Ensure CARGO_MANIFEST_DIR is set; if not, set it to the current directory
+    if std::env::var("CARGO_MANIFEST_DIR").is_err() {
+        if let Ok(current_dir) = std::env::current_dir() {
+            if let Some(dir_str) = current_dir.to_str() {
+                std::env::set_var("CARGO_MANIFEST_DIR", dir_str);
+            }
+        }
+    }
+
+
+
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         let opt_sam_path = Path::new("/opt/sam");

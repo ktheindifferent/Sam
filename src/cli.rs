@@ -360,6 +360,16 @@ async fn handle_command(
                 });
             }
         }
+        "llama install" => {
+            append_line(output_lines, "Starting llama model installer...".to_string());
+            let output_lines = output_lines.clone();
+            tokio::spawn(async move {
+                match crate::sam::services::llama::install().await {
+                    Ok(msg) => append_line(&output_lines, format!("llama install: {}", msg)),
+                    Err(e) => append_line(&output_lines, format!("llama install error: {}", e)),
+                }
+            });
+        }
         _ if cmd.starts_with("llama ") => {
             // Parse arguments as owned Strings to avoid lifetime issues
             let rest = cmd["llama ".len()..].to_string();
@@ -457,6 +467,7 @@ fn get_help_lines() -> Vec<String> {
         "ls                    - List files in current directory".to_string(),
         "cd <dir>              - Change current directory".to_string(),
         "tts <text>            - Convert text to speech and play it".to_string(),
+        "llama install         - Install or update Llama.cpp models".to_string(),
         "llama <model_path> <prompt> - Query a Llama.cpp model".to_string(),
         "lifx start            - Start the LIFX service".to_string(),
         "lifx stop             - Stop the LIFX service".to_string(),

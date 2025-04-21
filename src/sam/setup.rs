@@ -59,7 +59,7 @@ fn pre_install() {
             .trim()
             .to_string();
         crate::sam::tools::uinx_cmd(&format!(
-            "sudo -u {} brew install x264 openssl unzip ffmpeg python3 git git-lfs wget boost opencv ffmpeg libsndfile pulseaudio opus flac alsa-lib avahi expat fdk-aac",
+            "sudo -u {} brew install x264 openssl unzip ffmpeg python3 git git-lfs wget boost opencv ffmpeg libsndfile pulseaudio opus flac alsa-lib avahi expat fdk-aa cmake",
             user
         ));
     }

@@ -42,6 +42,13 @@ pub mod api;
 
 // TODO - Authenticate connections using a one time key and expiring Sessions
 // WW
+/// Handles an incoming HTTP request and returns a response.
+///
+/// # Arguments
+/// * `request` - Reference to the incoming `Request`.
+///
+/// # Returns
+/// * `Result<Response>` - The HTTP response or an error.
 pub fn handle(request: &Request) -> Result<Response> {
 
     // Asset Pre Router
