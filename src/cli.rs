@@ -1,14 +1,12 @@
 use std::io::{self, Write};
 use std::env;
 use colored::*;
-use tui::{
+use ratatui::{
     backend::CrosstermBackend,
     Terminal,
-    widgets::{Block, Borders, Paragraph},
     layout::{Layout, Constraint, Direction},
-    text::{Span, Spans},
+    text::{Span, Line},
 };
-use tui_logger::{TuiLoggerWidget, TuiLoggerLevelOutput, TuiWidgetState};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -18,7 +16,6 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::thread;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::process;
 use std::io::Cursor;
 use rodio::{Decoder, OutputStream, Sink};
 use std::fs;
@@ -27,7 +24,8 @@ use std::process::Command;
 use std::io::BufReader;
 use std::io::BufRead;
 use std::process::Stdio;
-use tokio::task::spawn_blocking;
+use tui_logger::{TuiLoggerWidget, TuiLoggerLevelOutput};
+use ratatui::widgets::{Widget, Block, Borders, Paragraph};
 
 /// Starts the interactive command prompt
 ///
@@ -35,6 +33,7 @@ use tokio::task::spawn_blocking;
 /// initializes the TUI logger, and launches the TUI event loop.
 pub async fn start_prompt() {
     check_postgres_env();
+    // Initialize tui-logger (new crate)
     tui_logger::init_logger(log::LevelFilter::Debug).unwrap();
     tui_logger::set_default_level(log::LevelFilter::Debug);
 
@@ -83,7 +82,6 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         "Press Ctrl+C or type 'exit' to quit.".to_string(),
     ]));
 
-    let tui_state = TuiWidgetState::new();
     let human_name = get_human_name();
     let mut current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let mut scroll_offset: u16 = 0;
@@ -98,7 +96,6 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             let output_lines_guard = output_lines.lock().unwrap();
             let mut local_output_height = output_height;
             let input_ref = &input;
-            let tui_state_ref = &tui_state;
             terminal.draw(|f| {
                 let size = f.size();
                 let main_chunks = Layout::default()
@@ -123,27 +120,27 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 let cursor_char = if show_cursor { "_" } else { " " };
                 let input_display = format!("{}{}", input_ref, cursor_char);
 
-                let output: Vec<Spans> = output_lines_guard.iter().map(|l| Spans::from(Span::raw(l))).collect();
+                let output: Vec<Line> = output_lines_guard.iter().map(|l| Line::from(Span::raw(l))).collect();
 
                 let output_widget = Paragraph::new(output)
                     .block(Block::default().borders(Borders::ALL).title("Output"))
                     .scroll((scroll_offset, 0))
-                    .wrap(tui::widgets::Wrap { trim: false });
+                    .wrap(ratatui::widgets::Wrap { trim: false });
 
                 let input_widget = Paragraph::new(input_display)
                     .block(Block::default().borders(Borders::ALL).title("Command"));
 
-                let system_widget = TuiLoggerWidget::default()
-                    .block(Block::default().borders(Borders::ALL).title("System"))
-                    .output_separator('│')
-                    .output_timestamp(Some("%H:%M:%S".to_string()))
+                // Instead of using a persistent tui_logger_widget, create it here:
+                let tui_logger_widget = TuiLoggerWidget::default()
+                    .block(Block::default().borders(Borders::ALL).title("Logs"))
+                    .output_separator('|')
                     .output_level(Some(TuiLoggerLevelOutput::Long))
-                    .output_target(false)
-                    .state(tui_state_ref);
+                    .output_target(true)
+                    .output_timestamp(Some("%H:%M:%S".to_string()));
 
                 f.render_widget(output_widget, left_chunks[0]);
                 f.render_widget(input_widget, left_chunks[1]);
-                f.render_widget(system_widget, main_chunks[1]);
+                f.render_widget(tui_logger_widget, main_chunks[1]);
             })?;
             output_height = local_output_height;
             Ok::<(), std::io::Error>(())
@@ -193,7 +190,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                         if cmd == "exit" || cmd == "quit" {
                             break;
                         }
-                        if !cmd.is_empty() {
+                        if (!cmd.is_empty()) {
                             append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd));
                             handle_command(
                                 &cmd,
@@ -328,11 +325,9 @@ async fn handle_command(
             append_lines(output_lines, lines);
         }
         "crawler start" => {
-            // Use a simple direct call instead of with_spinner if that's causing issues
-            crate::sam::crawler::start_service();
+            // Use async-friendly version to avoid runtime nesting panic
+            crate::sam::crawler::start_service_async().await;
             append_line(output_lines, "Crawler service started.".to_string());
-            
-            // OR keep with_spinner but ensure it doesn't block or create runtimes
         }
         "crawler stop" => {
             with_spinner(

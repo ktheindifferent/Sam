@@ -123,14 +123,14 @@ async fn main() {
     //         Ok(drain.log(record))
     //     ).init(); // make this the global logger
     // Early initialization of the logger
-    let drain = tui_logger::Drain::new();
-    // instead of tui_logger::init_logger, we use `env_logger`
-    env_logger::Builder::default()
-        .format(move |buf, record|
-            // patch the env-logger entry through our drain to the tui-logger
-            Ok(drain.log(record))
-        ).init(); // make this the global logger
-    // code....
+    // let drain = tui_logger::Drain::new();
+    // // instead of tui_logger::init_logger, we use `env_logger`
+    // env_logger::Builder::default()
+    //     .format(move |buf, record|
+    //         // patch the env-logger entry through our drain to the tui-logger
+    //         Ok(drain.log(record))
+    //     ).init(); // make this the global logger
+    // // code....
 
     // Optionally set environment variables for libraries (uncomment if needed)
     // env::set_var("LIBTORCH", "/app/libtorch/libtorch");
@@ -224,6 +224,14 @@ async fn main() {
     }
 
      crate::sam::services::docker::install();
+
+
+     crate::sam::services::tts::init();
+
+     // Start the crawler background service before CLI
+     crate::sam::crawler::start_service();
+ 
+
   
     let config = crate::sam::memory::Config::new();
     config.init().await;
@@ -246,11 +254,7 @@ async fn main() {
     // // // Start sound service for audio output/input
     // // crate::sam::services::sound::init();
 
-    crate::sam::services::tts::init();
-
-    // Start the crawler background service before CLI
-    crate::sam::crawler::start_service();
-
+    
     // // // Initialize and sync database with Lifx API (smart lighting)
     // crate::sam::services::lifx::init();
 

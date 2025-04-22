@@ -501,7 +501,7 @@ async fn crawl_url_inner(
             page.status_code = Some(status as i32);
             if status == 200 {
                 let html = resp.text().await.unwrap_or_default();
-                if !html.is_empty() {
+                if (!html.is_empty()) {
                     // Move HTML parsing and token extraction to a blocking thread
                     let url_clone = url.clone();
                     let (mut tokens, mut links) = tokio::task::spawn_blocking(move || {
@@ -985,16 +985,17 @@ pub async fn crawl_url(job_oid: String, url: String) -> crate::sam::memory::Resu
 
 static CRAWLER_RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// Start the crawler service in the background (call from main)
+/// Start the crawler service in the background (call from main or CLI)
 pub fn start_service() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     STARTED.call_once(|| {
-        info!("Crawler service starting...");
+        log::info!("Crawler service starting...");
         CRAWLER_RUNNING.store(true, Ordering::SeqCst);
 
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        // Only create a runtime if not already inside one
+        if tokio::runtime::Handle::try_current().is_ok() {
             // Already inside a runtime: spawn the service directly
-            handle.spawn(async {
+            tokio::spawn(async {
                 run_crawler_service().await;
             });
         } else {
@@ -1011,7 +1012,21 @@ pub fn start_service() {
         }
     });
     CRAWLER_RUNNING.store(true, Ordering::SeqCst);
-    info!("Crawler service started.");
+    log::info!("Crawler service started.");
+}
+
+/// Async-friendly version for use from async contexts (e.g., ratatui CLI)
+pub async fn start_service_async() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        log::info!("Crawler service starting...");
+        CRAWLER_RUNNING.store(true, Ordering::SeqCst);
+        tokio::spawn(async {
+            run_crawler_service().await;
+        });
+        log::info!("Crawler service started.");
+    });
+    CRAWLER_RUNNING.store(true, Ordering::SeqCst);
 }
 
 pub fn stop_service() {
