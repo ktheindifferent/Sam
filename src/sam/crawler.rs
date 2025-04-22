@@ -155,6 +155,7 @@ impl CrawlJob {
         format!("crawljob:{}", self.oid)
     }
     pub async fn save_redis(&self) -> redis::RedisResult<()> {
+        log::info!("Saving CrawlJob to Redis: {}", self.oid);
         let mut con = redis_client().await?;
         let key = self.redis_key().await;
         let val = serde_json::to_string(self).unwrap();
@@ -313,6 +314,7 @@ impl CrawledPage {
         format!("crawledpage:{}", self.oid)
     }
     pub async fn save_redis(&self) -> redis::RedisResult<()> {
+        log::info!("Saving CrawledPage to Redis: {}", self.oid);
         let mut con = redis_client().await?;
         let key = self.redis_key().await;
         let val = serde_json::to_string(self).unwrap();
@@ -349,7 +351,8 @@ impl CrawledPage {
             }
 
             // Fetch all crawled pages (could optimize with DB full-text search)
-            let pages = CrawledPage::select(None, None, Some("timestamp DESC".to_string()), None)?;
+            let pages = tokio::runtime::Handle::current()
+                .block_on(CrawledPage::select_async(None, None, Some("timestamp DESC".to_string()), None))?;
 
             // Score each page by number of query tokens present in its tokens
             let mut scored: Vec<(CrawledPage, usize)> = pages
@@ -1074,29 +1077,52 @@ async fn save_dns_cache() {
 
 // Cache all CrawlJob and CrawledPage entries from Postgres into Redis
 async fn cache_all_to_redis() {
-    // Cache CrawlJobs
-    match CrawlJob::select(None, None, None, None) {
-        Ok(jobs) => {
-            let mut count = 0;
-            for job in jobs {
-                let _ = job.save_redis().await;
-                count += 1;
+    log::info!("Caching all CrawlJob and CrawledPage entries to Redis...");
+    // Limit DB select to 100 at a time to avoid freezing with huge tables
+    let mut offset = 0;
+    let batch_size = 100;
+    loop {
+        match CrawlJob::select_async(Some(batch_size), Some(offset), None, None).await {
+            Ok(jobs) if jobs.is_empty() => break,
+            Ok(jobs) => {
+                let mut handles = Vec::new();
+                for job in &jobs {
+                    handles.push(job.save_redis());
+                }
+                for handle in handles {
+                    let _ = handle.await;
+                }
+                offset += jobs.len();
+                log::info!("Cached {}/? CrawlJob entries into Redis", offset);
+                if jobs.len() < batch_size { break; }
             }
-            log::info!("Cached {} CrawlJob entries into Redis", count);
+            Err(e) => {
+                log::warn!("Failed to cache CrawlJob entries to Redis: {}", e);
+                break;
+            }
         }
-        Err(e) => log::warn!("Failed to cache CrawlJob entries to Redis: {}", e),
     }
-    // Cache CrawledPages
-    match CrawledPage::select(None, None, None, None) {
-        Ok(pages) => {
-            let mut count = 0;
-            for page in pages {
-                let _ = page.save_redis().await;
-                count += 1;
+    offset = 0;
+    loop {
+        match CrawledPage::select_async(Some(batch_size), Some(offset), None, None).await {
+            Ok(pages) if pages.is_empty() => break,
+            Ok(pages) => {
+                let mut handles = Vec::new();
+                for page in &pages {
+                    handles.push(page.save_redis());
+                }
+                for handle in handles {
+                    let _ = handle.await;
+                }
+                offset += pages.len();
+                log::info!("Cached {}/? CrawledPage entries into Redis", offset);
+                if pages.len() < batch_size { break; }
             }
-            log::info!("Cached {} CrawledPage entries into Redis", count);
+            Err(e) => {
+                log::warn!("Failed to cache CrawledPage entries to Redis: {}", e);
+                break;
+            }
         }
-        Err(e) => log::warn!("Failed to cache CrawledPage entries to Redis: {}", e),
     }
 }
 

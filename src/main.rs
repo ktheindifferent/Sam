@@ -20,11 +20,6 @@ extern crate hound;
 extern crate postgres;
 extern crate threadpool;
 
-#[macro_use]
-extern crate log;
-//use tui_logger;
-use env_logger;
-
 use std::env;
 use std::os::unix::fs::PermissionsExt;
 
@@ -113,24 +108,15 @@ async fn main() {
     println!("Hello {}....SAM is starting up...", user);
     println!("================================================");
 
-    // // Initialize logger with color, warning level, and timestamps
-    // // Early initialization of the logger
-    // let drain = tui_logger::Drain::new();
-    // // instead of tui_logger::init_logger, we use `env_logger`
-    // tui_logger::Builder::default()
-    //     .format(move |buf, record|
-    //         // patch the env-logger entry through our drain to the tui-logger
-    //         Ok(drain.log(record))
-    //     ).init(); // make this the global logger
-    // Early initialization of the logger
-    // let drain = tui_logger::Drain::new();
-    // // instead of tui_logger::init_logger, we use `env_logger`
-    // env_logger::Builder::default()
-    //     .format(move |buf, record|
-    //         // patch the env-logger entry through our drain to the tui-logger
-    //         Ok(drain.log(record))
-    //     ).init(); // make this the global logger
-    // // code....
+    // Initialize logger with color, warning level, and timestamps
+    // simple_logger::SimpleLogger::new()
+    //     .with_colors(true)
+    //     .with_level(log::LevelFilter::Info)
+    //     .with_timestamps(true)
+    //     .init()
+    //     .unwrap();
+
+
 
     // Optionally set environment variables for libraries (uncomment if needed)
     // env::set_var("LIBTORCH", "/app/libtorch/libtorch");
@@ -225,16 +211,18 @@ async fn main() {
 
      crate::sam::services::docker::install();
 
-
      crate::sam::services::tts::init();
 
      // Start the crawler background service before CLI
-     crate::sam::crawler::start_service();
- 
+    //  crate::sam::crawler::start_service();
+
+    crate::sam::crawler::start_service_async().await;
 
   
     let config = crate::sam::memory::Config::new();
     config.init().await;
+
+   
 
     // Move blocking code BEFORE any .await
     // crate::sam::services::darknet::install().unwrap();
@@ -254,7 +242,8 @@ async fn main() {
     // // // Start sound service for audio output/input
     // // crate::sam::services::sound::init();
 
-    
+
+
     // // // Initialize and sync database with Lifx API (smart lighting)
     // crate::sam::services::lifx::init();
 
@@ -270,7 +259,13 @@ async fn main() {
 
     // // Start interactive CLI prompt instead of empty loop
     // // println!("SAM initialized and ready. Starting command prompt...");
-    cli::start_prompt().await
+    cli::start_prompt().await;
+
+    loop{
+        // Check for user input or other events
+        // You can add your own logic here to handle commands or events
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
 
     // loop {
     //     // Check for user input or other events
