@@ -75,7 +75,7 @@ impl LlamaService {
             let _ = Command::new("chmod")
                 .arg("+x")
                 .arg(&target_bin)
-                .status();
+                .output();
             found_any = true;
             output_log.push_str(&format!("Installed binary: {}\n", target_bin.display()));
         }

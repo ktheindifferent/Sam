@@ -74,13 +74,13 @@ pub fn is_docker_daemon_running() -> bool {
 #[cfg(target_os = "macos")]
 pub fn start_docker_daemon() {
     // Try to open Docker Desktop.app (starts the daemon)
-    let status = std::process::Command::new("open")
+    let output = std::process::Command::new("open")
         .arg("-a")
         .arg("Docker")
-        .status();
+        .output();
 
-    match status {
-        Ok(s) if s.success() => log::info!("Started Docker Desktop."),
+    match output {
+        Ok(o) if o.status.success() => log::info!("Started Docker Desktop."),
         _ => log::info!("Failed to start Docker Desktop. Please start it manually."),
     }
 }
@@ -88,12 +88,12 @@ pub fn start_docker_daemon() {
 #[cfg(target_os = "linux")]
 pub fn start_docker_daemon() {
     // Try to start the docker service (systemd)
-    let status = std::process::Command::new("sudo")
+    let output = std::process::Command::new("sudo")
         .args(&["systemctl", "start", "docker"])
-        .status();
+        .output();
 
-    match status {
-        Ok(s) if s.success() => log::info!("Started Docker daemon."),
+    match output {
+        Ok(o) if o.status.success() => log::info!("Started Docker daemon."),
         _ => log::info!("Failed to start Docker daemon. Please start it manually."),
     }
 }
@@ -101,15 +101,15 @@ pub fn start_docker_daemon() {
 #[cfg(target_os = "windows")]
 pub fn start_docker_daemon() {
     // Try to start Docker Desktop via PowerShell
-    let status = std::process::Command::new("powershell")
+    let output = std::process::Command::new("powershell")
         .args(&[
             "-Command",
             "Start-Process -FilePath 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'"
         ])
-        .status();
+        .output();
 
-    match status {
-        Ok(s) if s.success() => log::info!("Started Docker Desktop."),
+    match output {
+        Ok(o) if o.status.success() => log::info!("Started Docker Desktop."),
         _ => log::info!("Failed to start Docker Desktop. Please start it manually."),
     }
 }

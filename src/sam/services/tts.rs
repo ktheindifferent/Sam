@@ -4,7 +4,7 @@
 //      ██    ██   ██    ██  ██  ██    
 // ███████ ██ ██   ██ ██ ██      ██ ██ 
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
-// Developed by Caleb Mitchell Smith (PixelCoda)
+// Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
 use rouille::{Request, Response};
@@ -216,9 +216,9 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
             .collect();
         let tmp_path = Path::new(TTS_TMP_DIR).join(format!("{}.wav", rand_name));
         // Try espeak first
-        let espeak_status = Command::new("espeak")
+        let espeak_output = Command::new("espeak")
             .args(&["-w", tmp_path.to_str().unwrap(), text])
-            .status();
+            .output();
         if let Ok(status) = espeak_status {
             if status.success() {
                 let mut file = File::open(&tmp_path)?;

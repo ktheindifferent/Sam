@@ -12,7 +12,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use std::sync::Arc;
 use std::thread;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -25,7 +25,14 @@ use std::io::BufReader;
 use std::io::BufRead;
 use std::process::Stdio;
 use tui_logger::{TuiLoggerWidget, TuiLoggerLevelOutput};
-use ratatui::widgets::{Widget, Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph};
+
+// Move ServiceStatus struct to module scope and derive Debug, Default, Clone
+#[derive(Debug, Default, Clone)]
+struct ServiceStatus {
+    crawler: String,
+    redis: String,
+}
 
 /// Starts the interactive command prompt
 ///
@@ -91,11 +98,44 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     let mut show_cursor = true;
     let mut cursor_tick: u8 = 0;
 
+    // Use tokio::sync::Mutex for async compatibility
+    let service_status = Arc::new(Mutex::new(ServiceStatus {
+        crawler: "unknown".to_string(),
+        redis: "unknown".to_string(),
+    }));
+
+    // Spawn a background task to update service status every 2 seconds
+    {
+        let service_status = service_status.clone();
+        tokio::spawn(async move {
+            loop {
+                let crawler = crate::sam::crawler::service_status().to_string();
+                let redis = crate::sam::services::redis::status().to_string();
+                let mut status = service_status.lock().await;
+                status.crawler = crawler;
+                status.redis = redis;
+                drop(status);
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        });
+    }
+
     loop {
+        // Fetch service status for display (block on lock, but outside draw closure)
+        let status = service_status.lock().await.clone();
+
+        // FIX: Acquire output_lines lock asynchronously and clone before draw
+        let output_lines_snapshot = {
+            let lines = output_lines.lock().await;
+            lines.clone()
+        };
+
         let draw_result = catch_unwind(AssertUnwindSafe(|| {
-            let output_lines_guard = output_lines.lock().unwrap();
             let mut local_output_height = output_height;
             let input_ref = &input;
+            let status = status.clone();
+            let output_lines_guard = &output_lines_snapshot;
+
             terminal.draw(|f| {
                 let size = f.size();
                 let main_chunks = Layout::default()
@@ -107,18 +147,48 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     ].as_ref())
                     .split(size);
 
+                // Add a vertical split for left side: [status][output][input]
                 let left_chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
-                        Constraint::Min(3),
-                        Constraint::Length(3),
+                        Constraint::Length(3), // status block
+                        Constraint::Min(3),    // output
+                        Constraint::Length(3), // input
                     ].as_ref())
                     .split(main_chunks[0]);
 
-                local_output_height = left_chunks[0].height.max(1) as usize;
+                local_output_height = left_chunks[1].height.max(1) as usize;
 
                 let cursor_char = if show_cursor { "_" } else { " " };
                 let input_display = format!("{}{}", input_ref, cursor_char);
+
+                // Service status block
+                let status_lines = vec![
+                    Line::from(vec![
+                        Span::styled("Crawler: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+                        Span::styled(
+                            &status.crawler,
+                            match status.crawler.as_str() {
+                                "running" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
+                                "stopped" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
+                                _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
+                            }
+                        ),
+                        Span::raw("    "),
+                        Span::styled("Redis: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+                        Span::styled(
+                            &status.redis,
+                            match status.redis.as_str() {
+                                "running" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
+                                "stopped" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
+                                "not installed" => ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
+                                _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
+                            }
+                        ),
+                    ])
+                ];
+                let status_widget = Paragraph::new(status_lines)
+                    .block(Block::default().borders(Borders::ALL).title("Service Status"));
 
                 let output: Vec<Line> = output_lines_guard.iter().map(|l| Line::from(Span::raw(l))).collect();
 
@@ -138,8 +208,10 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     .output_target(true)
                     .output_timestamp(Some("%H:%M:%S".to_string()));
 
-                f.render_widget(output_widget, left_chunks[0]);
-                f.render_widget(input_widget, left_chunks[1]);
+                // Render new status block
+                f.render_widget(status_widget, left_chunks[0]);
+                f.render_widget(output_widget, left_chunks[1]);
+                f.render_widget(input_widget, left_chunks[2]);
                 f.render_widget(tui_logger_widget, main_chunks[1]);
             })?;
             output_height = local_output_height;
@@ -147,7 +219,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         }));
 
         if let Err(e) = draw_result {
-            let mut lines = output_lines.lock().unwrap();
+            let mut lines = output_lines.lock().await;
             lines.push(format!("TUI draw panic: {:?}", e));
             log::error!("TUI draw panic: {:?}", e);
             break;
@@ -164,7 +236,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         }));
 
         if let Err(e) = poll_result {
-            let mut lines = output_lines.lock().unwrap();
+            let mut lines = output_lines.lock().await;
             lines.push(format!("TUI poll panic: {:?}", e));
             log::error!("TUI poll panic: {:?}", e);
             break;
@@ -173,7 +245,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok(Ok(true)) = poll_result {
             let read_result = catch_unwind(AssertUnwindSafe(|| event::read()));
             if let Err(e) = read_result {
-                let mut lines = output_lines.lock().unwrap();
+                let mut lines = futures::executor::block_on(output_lines.lock());
                 lines.push(format!("TUI read panic: {:?}", e));
                 log::error!("TUI read panic: {:?}", e);
                 break;
@@ -190,8 +262,8 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                         if cmd == "exit" || cmd == "quit" {
                             break;
                         }
-                        if (!cmd.is_empty()) {
-                            append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd));
+                        if !cmd.is_empty() {
+                            append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd)).await;
                             handle_command(
                                 &cmd,
                                 &output_lines,
@@ -223,15 +295,93 @@ fn get_human_name() -> String {
 }
 
 /// Append a line to the output_lines (thread-safe)
-fn append_line(output_lines: &Arc<Mutex<Vec<String>>>, line: String) {
-    let mut lines = output_lines.lock().unwrap();
+async fn append_line(output_lines: &Arc<Mutex<Vec<String>>>, line: String) {
+    let mut lines = output_lines.lock().await;
     lines.push(line);
 }
 
 /// Append multiple lines to the output_lines (thread-safe)
-fn append_lines<I: IntoIterator<Item = String>>(output_lines: &Arc<Mutex<Vec<String>>>, lines: I) {
-    let mut guard = output_lines.lock().unwrap();
+async fn append_lines<I: IntoIterator<Item = String>>(output_lines: &Arc<Mutex<Vec<String>>>, lines: I) {
+    let mut guard = output_lines.lock().await;
     guard.extend(lines);
+}
+
+/// Helper to run a spinner while executing an async closure, then update output_lines with a message.
+async fn run_with_spinner<F, Fut>(
+    output_lines: &Arc<Mutex<Vec<String>>>,
+    message: &str,
+    done_message: impl FnOnce(&mut Vec<String>, &str) + Send + 'static,
+    fut: F,
+) where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = String> + Send + 'static,
+{
+    let output_lines = output_lines.clone();
+    let message = message.to_string();
+    let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let spinner_running = Arc::new(Mutex::new(true));
+    let spinner_flag = spinner_running.clone();
+
+    let spinner_index = {
+        let mut lines = output_lines.lock().await;
+        lines.push(format!("⠋ {}", message));
+        lines.len() - 1
+    };
+
+    // Spinner async task
+    let spinner_output_lines = output_lines.clone();
+    let message_clone = message.clone();
+    let spinner_flag_clone = spinner_flag.clone();
+    tokio::spawn(async move {
+        let mut i = 0;
+        loop {
+            {
+                let running = spinner_flag_clone.lock().await;
+                if !*running {
+                    break;
+                }
+                let mut lines = spinner_output_lines.lock().await;
+                if spinner_index < lines.len() {
+                    lines[spinner_index] = format!("{} {}", spinner_chars[i % spinner_chars.len()], message_clone);
+                }
+            }
+            i += 1;
+            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        }
+    });
+
+    // Execute future and update when done
+    let spinner_flag2 = spinner_running.clone();
+    let output_lines2 = output_lines.clone();
+    let done_message = Box::new(done_message);
+    let spinner_idx = spinner_index;
+
+    tokio::spawn(async move {
+        let result = fut().await;
+        {
+            let mut running = spinner_flag2.lock().await;
+            *running = false;
+        }
+        let mut lines = output_lines2.lock().await;
+        if spinner_idx < lines.len() {
+            done_message(&mut lines, &result);
+        }
+    });
+}
+
+/// Helper to append output and play TTS in a single async block
+async fn append_and_tts(output_lines: Arc<Mutex<Vec<String>>>, text: String) {
+    append_line(&output_lines, text.clone()).await;
+    match crate::sam::services::tts::get(text.clone()) {
+        Ok(wav_bytes) => {
+            if let Err(e) = play_wav_from_bytes_send(&wav_bytes) {
+                append_line(&output_lines, format!("TTS playback error: {}", e)).await;
+            }
+        }
+        Err(e) => {
+            append_line(&output_lines, format!("TTS error: {}", e)).await;
+        }
+    }
 }
 
 /// Handle a command entered by the user
@@ -244,16 +394,9 @@ async fn handle_command(
     scroll_offset: &mut u16,
 ) {
     match cmd {
-        "help" => {
-            append_lines(output_lines, get_help_lines());
-        }
-        "clear" => {
-            let mut lines = output_lines.lock().unwrap();
-            lines.clear();
-        }
-        "setup" => {
-            tokio::spawn(crate::sam::setup::install());
-        }
+        "help" => append_lines(output_lines, get_help_lines()).await,
+        "clear" => output_lines.lock().await.clear(),
+        "setup" => { tokio::spawn(crate::sam::setup::install()); }
         "ls" => {
             match std::fs::read_dir(&current_dir) {
                 Ok(entries) => {
@@ -273,9 +416,9 @@ async fn handle_command(
                     }
                     let mut lines = vec![format!("Files in {}:", current_dir.display())];
                     lines.extend(files);
-                    append_lines(output_lines, lines);
+                    append_lines(output_lines, lines).await;
                 }
-                Err(e) => append_line(output_lines, format!("ls error: {}", e)),
+                Err(e) => append_line(output_lines, format!("ls error: {}", e)).await,
             }
         }
         "version" => {
@@ -288,9 +431,9 @@ async fn handle_command(
                 "Smart Artificial Mind".to_string(),
                 format!("VERSION: {:?}", crate::VERSION),
                 "Copyright 2021-2026 The Open Sam Foundation (OSF)".to_string(),
-                "Developed by Caleb Mitchell Smith (PixelCoda)".to_string(),
+                "Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)".to_string(),
                 "Licensed under GPLv3....see LICENSE file.".to_string(),
-            ]);
+            ]).await;
         }
         "status" => {
             // Use sysinfo for cross-platform process/system info
@@ -322,15 +465,14 @@ async fn handle_command(
                 format!("System Memory: {} MiB used / {} MiB total", mem_used / 1024, mem_total / 1024),
                 format!("PID: {}", pid.map(|p| p.as_u32()).unwrap_or(0)),
             ];
-            append_lines(output_lines, lines);
+            append_lines(output_lines, lines).await;
         }
         "crawler start" => {
-            // Use async-friendly version to avoid runtime nesting panic
             crate::sam::crawler::start_service_async().await;
-            append_line(output_lines, "Crawler service started.".to_string());
+            append_line(output_lines, "Crawler service started.".to_string()).await;
         }
         "crawler stop" => {
-            with_spinner(
+            run_with_spinner(
                 output_lines,
                 "Stopping crawler service...",
                 |lines, _| lines.push("Crawler service stopped.".to_string()),
@@ -338,20 +480,20 @@ async fn handle_command(
                     crate::sam::crawler::stop_service();
                     "done".to_string()
                 },
-            );
+            ).await;
         }
         "crawler status" => {
-            with_spinner(
+            run_with_spinner(
                 output_lines,
                 "Checking crawler service status...",
                 |lines, status| lines.push(format!("Crawler service status: {}", status)),
                 || async {
                     crate::sam::crawler::service_status().to_string()
                 },
-            );
+            ).await;
         }
         "redis install" => {
-            with_spinner(
+            run_with_spinner(
                 output_lines,
                 "Installing Redis via Docker...",
                 |lines, _| lines.push("Redis install complete.".to_string()),
@@ -359,10 +501,10 @@ async fn handle_command(
                     crate::sam::services::redis::install().await;
                     "done".to_string()
                 },
-            );
+            ).await;
         }
         "redis start" => {
-            with_spinner(
+            run_with_spinner(
                 output_lines,
                 "Starting Redis via Docker...",
                 |lines, _| lines.push("Redis start command issued.".to_string()),
@@ -370,10 +512,10 @@ async fn handle_command(
                     crate::sam::services::redis::start().await;
                     "done".to_string()
                 },
-            );
+            ).await;
         }
         "redis stop" => {
-            with_spinner(
+            run_with_spinner(
                 output_lines,
                 "Stopping Redis via Docker...",
                 |lines, _| lines.push("Redis stop command issued.".to_string()),
@@ -381,20 +523,20 @@ async fn handle_command(
                     crate::sam::services::redis::stop().await;
                     "done".to_string()
                 },
-            );
+            ).await;
         }
         "redis status" => {
-            with_spinner(
+            run_with_spinner(
                 output_lines,
                 "Checking Redis service status...",
                 |lines, status| lines.push(format!("Redis service status: {}", status)),
                 || async {
                     crate::sam::services::redis::status().to_string()
                 },
-            );
+            ).await;
         }
         _ if cmd.starts_with("cd ") => {
-            handle_cd(cmd, output_lines, current_dir);
+            handle_cd(cmd, output_lines, current_dir).await;
         }
         _ if cmd.starts_with("darknet ") => {
             handle_darknet(cmd, output_lines).await;
@@ -402,30 +544,16 @@ async fn handle_command(
         _ if cmd.starts_with("tts ") => {
             let input = cmd.strip_prefix("tts ").unwrap().trim();
             if input.is_empty() {
-                append_line(output_lines, "Usage: tts <text>".to_string());
+                append_line(output_lines, "Usage: tts <text>".to_string()).await;
             } else {
-                append_line(output_lines, format!("Synthesizing speech for: '{}'", input));
+                append_line(output_lines, format!("Synthesizing speech for: '{}'", input)).await;
                 let output_lines = output_lines.clone();
                 let text = input.to_string();
-                tokio::spawn(async move {
-                    match crate::sam::services::tts::get(text.clone()) {
-                        Ok(wav_bytes) => {
-                            // Play the WAV using rodio
-                            if let Err(e) = play_wav_from_bytes(&wav_bytes) {
-                                append_line(&output_lines, format!("TTS playback error: {}", e));
-                            } else {
-                                append_line(&output_lines, "TTS playback complete.".to_string());
-                            }
-                        }
-                        Err(e) => {
-                            append_line(&output_lines, format!("TTS error: {}", e));
-                        }
-                    }
-                });
+                tokio::spawn(append_and_tts(output_lines, text));
             }
         }
         "llama install" => {
-            append_line(output_lines, "Starting llama model installer...".to_string());
+            append_line(output_lines, "Starting llama model installer...".to_string()).await;
             let output_lines = output_lines.clone();
             tokio::spawn(async move {
                 
@@ -446,12 +574,18 @@ async fn handle_command(
              
                 let output_lines2 = output_lines.clone();
                 let _ = run_command_stream_lines(cmake_cmd, move |line| {
-                    append_line(&output_lines2, format!("cmake: {}", line));
+                    let value = output_lines2.clone();
+                    tokio::spawn(async move {
+                        append_line(&value, format!("cmake: {}", line)).await;
+                    });
                 });
 
                 let output_lines3 = output_lines.clone();
                 let _ = run_command_stream_lines(build_cmd, move |line| {
-                    append_line(&output_lines3, format!("build: {}", line));
+                    let value = output_lines3.clone();
+                    tokio::spawn(async move {
+                        append_line(&value, format!("build: {}", line)).await;
+                    });
                 });
 
 
@@ -468,10 +602,10 @@ async fn handle_command(
                             let mut perms = fs::metadata(&dst).unwrap().permissions();
                             perms.set_mode(0o755);
                             fs::set_permissions(&dst, perms).unwrap();
-                            append_line(&output_lines, format!("Installed {} to {}", bin, dst.display()));
+                            append_line(&output_lines, format!("Installed {} to {}", bin, dst.display())).await;
                         }
                         Err(e) => {
-                            append_line(&output_lines, format!("Failed to install {}: {}", bin, e));
+                            append_line(&output_lines, format!("Failed to install {}: {}", bin, e)).await;
                         }
                     }
                 }
@@ -484,24 +618,24 @@ async fn handle_command(
 
                 // Add spinner line and get its index
                 let spinner_index = {
-                    let mut lines = output_lines.lock().unwrap();
+                    let mut lines = output_lines.lock().await;
                     lines.push("⠋ Downloading Llama v2 and v3 models...".to_string());
                     lines.len() - 1
                 };
 
                 // Spinner thread
                 let spinner_output_lines = output_lines.clone();
-                thread::spawn(move || {
+                tokio::spawn(async move {
                     let mut i = 0;
-                    while *spinner_flag.lock().unwrap() {
+                    while *spinner_flag.lock().await {
                         {
-                            let mut lines = spinner_output_lines.lock().unwrap();
+                            let mut lines = spinner_output_lines.lock().await;
                             if spinner_index < lines.len() {
                                 lines[spinner_index] = format!("{} Downloading Llama v2 and v3 models...", spinner_chars[i % spinner_chars.len()]);
                             }
                         }
                         i += 1;
-                        std::thread::sleep(std::time::Duration::from_millis(80));
+                        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
                     }
                 });
 
@@ -513,8 +647,8 @@ async fn handle_command(
                     let v2_result = crate::sam::services::llama::LlamaService::download_v2_model();
                     let v3_result = crate::sam::services::llama::LlamaService::download_v3_model();
 
-                    *spinner_flag2.lock().unwrap() = false;
-                    let mut lines = output_lines2.lock().unwrap();
+                    *spinner_flag2.blocking_lock() = false;
+                    let mut lines = output_lines2.blocking_lock();
                     if spinner_index2 < lines.len() {
                         if v2_result.is_ok() && v3_result.is_ok() {
                             lines[spinner_index2] = "Llama v2 and v3 models downloaded successfully.".to_string();
@@ -532,85 +666,74 @@ async fn handle_command(
                 });
 
 
-                append_line(&output_lines, "llama install: done.".to_string());
+                append_line(&output_lines, "llama install: done.".to_string()).await;
             });
         }
         _ if cmd.starts_with("llama ") => {
-            // Parse arguments as owned Strings to avoid lifetime issues
             let rest = cmd["llama ".len()..].to_string();
             let mut split = rest.splitn(2, ' ');
             let model_path_str = split.next().unwrap_or("").to_string();
             let prompt_str = split.next().unwrap_or("").to_string();
 
             if model_path_str.is_empty() || prompt_str.is_empty() {
-                append_line(output_lines, "Usage: llama <model_path> <prompt>".to_string());
+                append_line(output_lines, "Usage: llama <model_path> <prompt>".to_string()).await;
             } else {
                 let model_path = std::path::PathBuf::from(model_path_str);
                 let prompt = prompt_str;
                 let output_lines = output_lines.clone();
-                // Run blocking code in a separate thread to avoid blocking the async runtime
                 tokio::task::spawn_blocking(move || {
                     match crate::sam::services::llama::LlamaService::query(&model_path, &prompt) {
                         Ok(result) => {
                             let text = result.trim().to_string();
-                            append_line(&output_lines, format!("llama: {}", text));
-                            // TTS for llama reply
-                            match crate::sam::services::tts::get(text.clone()) {
-                                Ok(wav_bytes) => {
-                                    if let Err(e) = play_wav_from_bytes(&wav_bytes) {
-                                        append_line(&output_lines, format!("TTS playback error: {}", e));
-                                    }
-                                }
-                                Err(e) => {
-                                    append_line(&output_lines, format!("TTS error: {}", e));
-                                }
-                            }
+                            let output_lines = output_lines.clone();
+                            tokio::spawn(append_and_tts(output_lines, format!("llama: {}", text)));
                         },
-                        Err(e) => append_line(&output_lines, format!("llama error: {}", e)),
+                        Err(e) => {
+                            let output_lines = output_lines.clone();
+                            tokio::spawn(async move {
+                                append_line(&output_lines, format!("llama error: {}", e)).await;
+                            });
+                        }
                     }
                 });
             }
         }
-        // LIFX service CLI commands
         "lifx start" => {
             crate::sam::services::lifx::start_service();
-            append_line(output_lines, "LIFX service started.".to_string());
+            append_line(output_lines, "LIFX service started.".to_string()).await;
         }
         "lifx stop" => {
             crate::sam::services::lifx::stop_service();
-            append_line(output_lines, "LIFX service stopped.".to_string());
+            append_line(output_lines, "LIFX service stopped.".to_string()).await;
         }
         "lifx status" => {
             let status = crate::sam::services::lifx::status_service();
-            append_line(output_lines, format!("LIFX service status: {}", status));
+            append_line(output_lines, format!("LIFX service status: {}", status)).await;
         }
         _ if cmd.starts_with("crawl search ") => {
             let query = cmd.trim_start_matches("crawl search ").trim();
             if query.is_empty() {
-                append_line(output_lines, "Usage: crawl search <query>".to_string());
+                append_line(output_lines, "Usage: crawl search <query>".to_string()).await;
             } else {
                 let query = query.to_string();
                 let output_lines = output_lines.clone();
-                
                 tokio::spawn(async move {
                     use crate::sam::crawler::CrawledPage;
-                    
-                    // Use the async version properly with await
                     match CrawledPage::query_by_relevance_async(&query, 10).await {
                         Ok(scored_pages) if !scored_pages.is_empty() => {
-                            append_line(&output_lines, format!("Found {} results:", scored_pages.len()));
+                            append_line(&output_lines, format!("Found {} results:", scored_pages.len())).await;
                             for (page, score) in scored_pages {
-                                append_line(&output_lines, format!("URL: {}", page.url));
-                                append_line(&output_lines, format!("Score: {}", score));
+                                append_line(&output_lines, format!("URL: {}", page.url)).await;
+                                append_line(&output_lines, format!("Score: {}", score)).await;
                                 if !page.tokens.is_empty() {
                                     let snippet: String = page.tokens.iter().take(20).cloned().collect::<Vec<_>>().join(" ");
-                                    append_line(&output_lines, format!("Tokens: {}...", snippet));
+                                    append_line(&output_lines, format!("Tokens: {}...", snippet)).await;
                                 }
-                                append_line(&output_lines, "-----------------------------".to_string());
+                                append_line(&output_lines, "-----------------------------".to_string()).await;
                             }
                         }
-                        Ok(_) => append_line(&output_lines, "No results found.".to_string()),
-                        Err(e) => append_line(&output_lines, format!("Search error: {}", e)),
+                        Ok(_) => append_line(&output_lines, "No results found.".to_string()).await,
+                        Err(e) => append_line(&output_lines, format!("Search error: {}", e)).await,
                     }
                 });
             }
@@ -620,28 +743,15 @@ async fn handle_command(
                 Ok(reply) => {
                     let text = reply.text.clone();
                     let output_lines = output_lines.clone();
-                    // Spawn TTS and output in one async block
-                    tokio::spawn(async move {
-                        append_line(&output_lines, format!("┌─[sam]─> {}", text));
-                        match crate::sam::services::tts::get(text.clone()) {
-                            Ok(wav_bytes) => {
-                                if let Err(e) = play_wav_from_bytes(&wav_bytes) {
-                                    append_line(&output_lines, format!("TTS playback error: {}", e));
-                                }
-                            }
-                            Err(e) => {
-                                append_line(&output_lines, format!("TTS error: {}", e));
-                            }
-                        }
-                    });
+                    tokio::spawn(append_and_tts(output_lines, format!("┌─[sam]─> {}", text)));
                 }
-                Err(e) => append_line(output_lines, format!("┌─[sam]─> [error: {}]", e)),
+                Err(e) => append_line(output_lines, format!("┌─[sam]─> [error: {}]", e)).await,
             }
         }
     }
     // Scroll to bottom if needed
     let output_window_height = output_height;
-    let lines = output_lines.lock().unwrap();
+    let lines = output_lines.lock().await;
     *scroll_offset = 0;
     if lines.len() > output_window_height {
         *scroll_offset = lines.len() as u16 - output_window_height as u16 + 2;
@@ -680,7 +790,7 @@ fn get_help_lines() -> Vec<String> {
 }
 
 /// Handle 'cd' command
-fn handle_cd(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &mut std::path::PathBuf) {
+async fn handle_cd(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &mut std::path::PathBuf) {
     let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
     if parts.len() == 2 {
         let new_dir = parts[1].trim();
@@ -691,12 +801,12 @@ fn handle_cd(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &mu
         };
         if new_path.is_dir() {
             *current_dir = new_path.canonicalize().unwrap_or(new_path);
-            append_line(output_lines, format!("Changed directory to {}", current_dir.display()));
+            append_line(output_lines, format!("Changed directory to {}", current_dir.display())).await;
         } else {
-            append_line(output_lines, format!("cd: no such directory: {}", new_dir));
+            append_line(output_lines, format!("cd: no such directory: {}", new_dir)).await;
         }
     } else {
-        append_line(output_lines, "Usage: cd <directory>".to_string());
+        append_line(output_lines, "Usage: cd <directory>".to_string()).await;
     }
 }
 
@@ -712,7 +822,7 @@ async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 
         // Add a spinner line and get its index
         let spinner_index = {
-            let mut lines = output_lines.lock().unwrap();
+            let mut lines = output_lines.lock().await;
             lines.push(format!("Running darknet_detect on: {}", image_path));
             lines.push("⠋ Detecting...".to_string());
             lines.len() - 1
@@ -720,17 +830,17 @@ async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 
         // Spinner thread
         let spinner_output_lines = output_lines.clone();
-        thread::spawn(move || {
+        tokio::spawn(async move {
             let mut i = 0;
-            while *spinner_flag.lock().unwrap() {
+            while *spinner_flag.lock().await {
                 {
-                    let mut lines = spinner_output_lines.lock().unwrap();
+                    let mut lines = spinner_output_lines.lock().await;
                     if spinner_index < lines.len() {
                         lines[spinner_index] = format!("{} Detecting...", spinner_chars[i % spinner_chars.len()]);
                     }
                 }
                 i += 1;
-                std::thread::sleep(std::time::Duration::from_millis(80));
+                tokio::time::sleep(std::time::Duration::from_millis(80)).await;
             }
         });
 
@@ -738,8 +848,8 @@ async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         let spinner_flag2 = spinner_running.clone();
         tokio::spawn(async move {
             let output = crate::sam::services::darknet::darknet_detect(&image_path).await;
-            let mut lines = output_lines_clone.lock().unwrap();
-            *spinner_flag2.lock().unwrap() = false;
+            let mut lines = output_lines_clone.lock().await;
+            *spinner_flag2.lock().await = false;
             if spinner_index < lines.len() {
                 match output {
                     Ok(result) => {
@@ -756,7 +866,7 @@ async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             }
         });
     } else {
-        append_line(output_lines, "Usage: darknet <image_path>".to_string());
+        append_line(output_lines, "Usage: darknet <image_path>".to_string()).await;
     }
 }
 
@@ -764,6 +874,17 @@ async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 fn play_wav_from_bytes(wav_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
  
 
+    let (_stream, stream_handle) = OutputStream::try_default()?;
+    let sink = Sink::try_new(&stream_handle)?;
+    let cursor = Cursor::new(wav_bytes.to_vec());
+    let source = Decoder::new(cursor)?;
+    sink.append(source);
+    sink.sleep_until_end();
+    Ok(())
+}
+
+// Add a Send+Sync error version for play_wav_from_bytes
+fn play_wav_from_bytes_send(wav_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (_stream, stream_handle) = OutputStream::try_default()?;
     let sink = Sink::try_new(&stream_handle)?;
     let cursor = Cursor::new(wav_bytes.to_vec());
@@ -843,59 +964,4 @@ where
     }
     let status = child.wait()?;
     Ok(status.code().unwrap_or(-1))
-}
-
-fn with_spinner<F, Fut>(
-    output_lines: &Arc<Mutex<Vec<String>>>,
-    message: &str,
-    done_message: impl FnOnce(&mut Vec<String>, &str) + Send + 'static,
-    fut: F,
-) where 
-    F: FnOnce() -> Fut + Send + 'static,
-    Fut: std::future::Future<Output = String> + Send + 'static,
-{
-    let output_lines = output_lines.clone();
-    let message = message.to_string(); // Clone to owned String for thread
-    let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-    let spinner_running = Arc::new(Mutex::new(true));
-    let spinner_flag = spinner_running.clone();
-
-    let spinner_index = {
-        let mut lines = output_lines.lock().unwrap();
-        lines.push(format!("⠋ {}", message));
-        lines.len() - 1
-    };
-
-    // Spinner thread
-    let spinner_output_lines = output_lines.clone();
-    let message_clone = message.clone();
-    std::thread::spawn(move || {
-        let mut i = 0;
-        while *spinner_flag.lock().unwrap() {
-            {
-                let mut lines = spinner_output_lines.lock().unwrap();
-                if spinner_index < lines.len() {
-                    lines[spinner_index] = format!("{} {}", spinner_chars[i % spinner_chars.len()], message_clone);
-                }
-            }
-            i += 1;
-            std::thread::sleep(std::time::Duration::from_millis(80));
-        }
-    });
-
-    // Execute future and update when done
-    let spinner_flag2 = spinner_running.clone();
-    let output_lines2 = output_lines.clone();
-    let done_message = Box::new(done_message);
-    let spinner_idx = spinner_index;
-    
-    // Instead of creating a new runtime, use the existing one to execute the future
-    tokio::spawn(async move {
-        let result = fut().await;
-        *spinner_flag2.lock().unwrap() = false;
-        let mut lines = output_lines2.lock().unwrap();
-        if spinner_idx < lines.len() {
-            done_message(&mut lines, &result);
-        }
-    });
 }

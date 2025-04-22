@@ -12,12 +12,12 @@ pub async fn install() {
     info!("Pulling Redis Docker image...");
     let pull = Command::new("docker")
         .args(&["pull", "redis:7"])
-        .status();
+        .output();
 
     match pull {
-        Ok(status) if status.success() => info!("Redis Docker image pulled successfully."),
+        Ok(status) if status.status.success() => info!("Redis Docker image pulled successfully."),
         Ok(status) => {
-            error!("Failed to pull Redis image, exit code: {}", status);
+            error!("Failed to pull Redis image, exit code: {:?}", status);
             return;
         }
         Err(e) => {
@@ -44,11 +44,18 @@ pub async fn start() {
             "--restart", "unless-stopped",
             "redis:7",
         ])
-        .status();
+        .output(); // changed from .status() to .output()
 
     match run {
-        Ok(status) if status.success() => info!("Redis Docker container started as 'sam-redis'."),
-        Ok(status) => error!("Failed to start Redis container, exit code: {}", status),
+        Ok(output) if output.status.success() => {
+            info!("Redis Docker container started as 'sam-redis'.");
+            // Optionally log container id: String::from_utf8_lossy(&output.stdout)
+        }
+        Ok(output) => error!(
+            "Failed to start Redis container, exit code: {}. Stderr: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ),
         Err(e) => error!("Failed to start Redis container: {}", e),
     }
 }
@@ -62,19 +69,19 @@ pub async fn stop() {
     info!("Stopping Redis Docker container...");
     let stop = Command::new("docker")
         .args(&["stop", "sam-redis"])
-        .status();
+        .output();
 
     match stop {
-        Ok(status) if status.success() => info!("Redis Docker container stopped."),
-        Ok(status) => error!("Failed to stop Redis container, exit code: {}", status),
+        Ok(status) if status.status.success() => info!("Redis Docker container stopped."),
+        Ok(status) => error!("Failed to stop Redis container, exit code: {}", status.status),
         Err(e) => error!("Failed to stop Redis container: {}", e),
     }
     // Optionally remove the container after stopping
     let rm = Command::new("docker")
         .args(&["rm", "sam-redis"])
-        .status();
+        .output();
     match rm {
-        Ok(status) if status.success() => info!("Redis Docker container removed."),
+        Ok(status) if status.status.success() => info!("Redis Docker container removed."),
         Ok(_) => {} // ignore errors if already removed
         Err(_) => {}
     }
