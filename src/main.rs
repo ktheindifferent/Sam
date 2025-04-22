@@ -31,6 +31,12 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 #[tokio::main]
 async fn main() {
 
+    std::panic::set_hook(Box::new(|info| {
+        // Optionally log to a file or TUI logger instead
+        // e.g., log::error!("Panic: {:?}", info);
+        // Do nothing to suppress terminal output
+    }));
+
     // Ensure CARGO_MANIFEST_DIR is set; if not, set it to the current directory
     if std::env::var("CARGO_MANIFEST_DIR").is_err() {
         if let Ok(current_dir) = std::env::current_dir() {
@@ -47,9 +53,9 @@ async fn main() {
         let opt_sam_path = Path::new("/opt/sam");
         if !opt_sam_path.exists() {
             if let Err(e) = fs::create_dir_all(opt_sam_path) {
-                eprintln!("Failed to create /opt/sam: {}", e);
+                log::error!("Failed to create /opt/sam: {}", e);
             } else if let Err(e) = fs::set_permissions(opt_sam_path, fs::Permissions::from_mode(0o755)) {
-                eprintln!("Failed to set permissions on /opt/sam: {}", e);
+                log::error!("Failed to set permissions on /opt/sam: {}", e);
             }
         }
         crate::sam::tools::uinx_cmd("chmod -R 777 /opt/sam");
@@ -64,13 +70,13 @@ async fn main() {
         let file_path = opt_sam_path.join("whoismyhuman");
         if !file_path.exists() {
             if let Err(e) = fs::write(&file_path, &user) {
-                eprintln!("Failed to create whoismyhuman: {}", e);
+                log::error!("Failed to create whoismyhuman: {}", e);
             }
         }
         if opt_sam_path.exists() && opt_sam_path.is_dir() {
             let file_path = opt_sam_path.join("whoismyhuman");
             if let Err(e) = fs::write(&file_path, &user) {
-                eprintln!("Failed to write whoismyhuman: {}", e);
+                log::error!("Failed to write whoismyhuman: {}", e);
             }
         }
     }
@@ -105,7 +111,7 @@ async fn main() {
     // Initialize logger with color, warning level, and timestamps
     // simple_logger::SimpleLogger::new()
     //     .with_colors(true)
-    //     .with_level(log::LevelFilter::Warn)
+    //     .with_level(log::LevelFilter::Info)
     //     .with_timestamps(true)
     //     .init()
     //     .unwrap();
@@ -228,6 +234,9 @@ async fn main() {
 
     crate::sam::services::tts::init();
 
+    // Start the crawler background service before CLI
+    crate::sam::crawler::start_service();
+
     // // // Initialize and sync database with Lifx API (smart lighting)
     // crate::sam::services::lifx::init();
 
@@ -244,4 +253,10 @@ async fn main() {
     // // Start interactive CLI prompt instead of empty loop
     // // println!("SAM initialized and ready. Starting command prompt...");
     cli::start_prompt().await
+
+    // loop {
+    //     // Check for user input or other events
+    //     // You can add your own logic here to handle commands or events
+    //     std::thread::sleep(std::time::Duration::from_secs(1));
+    // }
 }

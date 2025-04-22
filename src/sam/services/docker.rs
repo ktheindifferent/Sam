@@ -1,18 +1,18 @@
 pub fn install(){
     // Install Docker Desktop
     if !is_docker_installed() {
-        println!("Docker is not installed. Installing...");
+        log::info!("Docker is not installed. Installing...");
         install_docker();
     } else {
-        println!("Docker is already installed.");
+        log::info!("Docker is already installed.");
     }
 
     // Check if Docker daemon is running
     if !is_docker_daemon_running() {
-        println!("Docker daemon is not running. Please start it.");
+        log::info!("Docker daemon is not running. Please start it.");
         start_docker_daemon();
     } else {
-        println!("Docker daemon is running.");
+        log::info!("Docker daemon is running.");
     }
 }
 
@@ -80,8 +80,8 @@ pub fn start_docker_daemon() {
         .status();
 
     match status {
-        Ok(s) if s.success() => println!("Started Docker Desktop."),
-        _ => println!("Failed to start Docker Desktop. Please start it manually."),
+        Ok(s) if s.success() => log::info!("Started Docker Desktop."),
+        _ => log::info!("Failed to start Docker Desktop. Please start it manually."),
     }
 }
 
@@ -93,8 +93,8 @@ pub fn start_docker_daemon() {
         .status();
 
     match status {
-        Ok(s) if s.success() => println!("Started Docker daemon."),
-        _ => println!("Failed to start Docker daemon. Please start it manually."),
+        Ok(s) if s.success() => log::info!("Started Docker daemon."),
+        _ => log::info!("Failed to start Docker daemon. Please start it manually."),
     }
 }
 
@@ -109,7 +109,7 @@ pub fn start_docker_daemon() {
         .status();
 
     match status {
-        Ok(s) if s.success() => println!("Started Docker Desktop."),
-        _ => println!("Failed to start Docker Desktop. Please start it manually."),
+        Ok(s) if s.success() => log::info!("Started Docker Desktop."),
+        _ => log::info!("Failed to start Docker Desktop. Please start it manually."),
     }
 }

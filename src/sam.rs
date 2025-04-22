@@ -12,3 +12,4 @@ pub mod memory;
 pub mod services;
 pub mod setup;
 pub mod tools;
+pub mod crawler;

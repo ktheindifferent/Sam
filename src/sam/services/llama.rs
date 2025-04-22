@@ -1,81 +1,95 @@
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 pub struct LlamaService;
 
 impl LlamaService {
-    pub fn ensure_llama_binary() -> io::Result<()> {
-        // Use absolute path to scripts/llama based on project root
-        let llama_src = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/llama");
+    pub fn ensure_llama_binary_with_output() -> io::Result<String> {
+        let llama_src = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/llama.cpp");
         let llama_bin = Path::new("/opt/sam/bin/llama");
         let build_dir = llama_src.join("build");
-        // Ensure the build directory exists
         fs::create_dir_all(&build_dir)?;
 
         if llama_bin.exists() {
-            return Ok(());
+            return Ok("llama binary already exists.".to_string());
         }
 
-        // // Run cmake -B build
-        // let cmake_config = Command::new("cmake")
-        //     .current_dir(llama_src)
-        //     .arg("-B")
-        //     .arg("build")
-        //     .status()?;
+        let mut output_log = String::new();
 
-        // if (!cmake_config.success()) {
-        //     return Err(io::Error::new(
-        //         io::ErrorKind::Other,
-        //         "Failed to configure llama.cpp with cmake",
-        //     ));
-        // }
+        // Run cmake -B build
+        let cmake_config = Command::new("cmake")
+            .current_dir(llama_src.clone())
+            .arg("-B")
+            .arg("build")
+            .output()?;
+        output_log.push_str("--- cmake configure ---\n");
+        output_log.push_str(&String::from_utf8_lossy(&cmake_config.stdout));
+        output_log.push_str(&String::from_utf8_lossy(&cmake_config.stderr));
+        if !cmake_config.status.success() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to configure llama.cpp with cmake\n{}", output_log),
+            ));
+        }
 
         // Run cmake --build build --config Release
         let cmake_build = Command::new("cmake")
-            .current_dir(llama_src)
+            .current_dir(llama_src.clone())
             .arg("--build")
             .arg("build")
             .arg("--config")
             .arg("Release")
-            .status()?;
-
-        if (!cmake_build.success()) {
+            .output()?;
+        output_log.push_str("--- cmake build ---\n");
+        output_log.push_str(&String::from_utf8_lossy(&cmake_build.stdout));
+        output_log.push_str(&String::from_utf8_lossy(&cmake_build.stderr));
+        if !cmake_build.status.success() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
-                "Failed to build llama.cpp with cmake",
+                format!("Failed to build llama.cpp with cmake\n{}", output_log),
             ));
         }
 
-        // Find the built binary (usually in build/bin/llama or build/llama)
-        let built_bin = build_dir.join("bin/llama");
-        let built_bin_alt = build_dir.join("llama");
-        let built_bin = if built_bin.exists() {
-            built_bin
-        } else if built_bin_alt.exists() {
-            built_bin_alt
-        } else {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Built llama binary not found after cmake build",
-            ));
-        };
+        // Find the built binaries (llama-cli, llama-simple, llama-benchmark)
+        let binaries = ["llama-cli", "llama-simple", "llama-benchmark"];
+        let mut found_any = false;
 
-        // Ensure /opt/sam/bin exists
         fs::create_dir_all("/opt/sam/bin")?;
 
-        // Copy to /opt/sam/bin/llama
-        fs::copy(&built_bin, llama_bin)?;
+        for bin_name in &binaries {
+            let built_bin = build_dir.join("bin").join(bin_name);
+            let built_bin_alt = build_dir.join(bin_name);
+            let target_bin = Path::new("/opt/sam/bin").join(bin_name);
 
-        // Make sure it's executable
-        let _ = Command::new("chmod")
-            .arg("+x")
-            .arg(llama_bin)
-            .status();
+            let src_bin = if built_bin.exists() {
+                built_bin
+            } else if built_bin_alt.exists() {
+                built_bin_alt
+            } else {
+                continue;
+            };
 
-        Ok(())
+            fs::copy(&src_bin, &target_bin)?;
+            let _ = Command::new("chmod")
+                .arg("+x")
+                .arg(&target_bin)
+                .status();
+            found_any = true;
+            output_log.push_str(&format!("Installed binary: {}\n", target_bin.display()));
+        }
+
+        if !found_any {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("None of the expected llama binaries were found after cmake build\n{}", output_log),
+            ));
+        }
+
+        Ok(output_log)
     }
+
     fn download_model(model_url: &str, model_filename: &str) -> io::Result<()> {
         let models_dir = Path::new("/opt/sam/models/");
         let model_path = models_dir.join(model_filename);
@@ -120,14 +134,16 @@ impl LlamaService {
     }
 
     pub fn install_blocking() -> io::Result<String> {
-        Self::ensure_llama_binary()?;
+        let mut log = String::new();
+        log.push_str(&Self::ensure_llama_binary_with_output()?);
         Self::download_v2_model()?;
         Self::download_v3_model()?;
-        Ok("Llama binary and models installed.".to_string())
+        log.push_str("Llama binary and models installed.\n");
+        Ok(log)
     }
 
     pub fn query(model_path: &Path, prompt: &str) -> io::Result<String> {
-        Self::ensure_llama_binary()?;
+        Self::ensure_llama_binary_with_output()?;
 
         if (!model_path.exists()) {
             return Err(io::Error::new(

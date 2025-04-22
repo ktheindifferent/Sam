@@ -123,6 +123,8 @@ impl Config {
             (StorageLocation::sql_table_name(), StorageLocation::sql_build_statement(), StorageLocation::migrations()),
             (FileStorage::sql_table_name(), FileStorage::sql_build_statement(), FileStorage::migrations()),
             (Notification::sql_table_name(), Notification::sql_build_statement(), Notification::migrations()),
+            (crate::sam::crawler::CrawlJob::sql_table_name(), crate::sam::crawler::CrawlJob::sql_build_statement(), crate::sam::crawler::CrawlJob::migrations()),
+            (crate::sam::crawler::CrawledPage::sql_table_name(), crate::sam::crawler::CrawledPage::sql_build_statement(), crate::sam::crawler::CrawledPage::migrations()),
         ];
 
         let mut current_client = client;
@@ -441,6 +443,8 @@ impl Config {
                     push_json!(FileStorage, from_row_lite);
                 }
             },
+            t if t == crate::sam::crawler::CrawlJob::sql_table_name() => { push_json!(crate::sam::crawler::CrawlJob, from_row); },
+            t if t == crate::sam::crawler::CrawledPage::sql_table_name() => { push_json!(crate::sam::crawler::CrawledPage, from_row); },
             _ => {}
         }
         Ok(())

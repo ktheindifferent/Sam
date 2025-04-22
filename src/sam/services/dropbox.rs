@@ -238,21 +238,21 @@ pub fn get_paths(path: &str) -> Vec<DropboxObject>{
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
                     Ok(Err(_e)) => {
-                        // eprintln!("Error from files/list_folder_continue: {}", _e);
+                        // log::error!("Error from files/list_folder_continue: {}", _e);
                         break;
                     },
                     Err(_e) => {
-                        // eprintln!("API request error: {}", _e);
+                        // log::error!("API request error: {}", _e);
                         break;
                     },
                 }
             }
         },
         Ok(Err(_e)) => {
-            eprintln!("Error from files/list_folder");
+            log::error!("Error from files/list_folder");
         },
         Err(_e) => {
-            eprintln!("API request error");
+            log::error!("API request error");
         }
     }
 
@@ -280,27 +280,27 @@ pub fn empty_directories() -> Vec<String>{
                         }
                     },
                     Ok(Ok(files::Metadata::File(_entry))) => {
-                        // println!("File: {}", entry.path_display.unwrap_or(entry.name));
+                        // log::info!("File: {}", entry.path_display.unwrap_or(entry.name));
                     },
                     Ok(Ok(files::Metadata::Deleted(_entry))) => {
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
                     Ok(Err(_e)) => {
-                        // eprintln!("Error from files/list_folder_continue: {}", _e);
+                        // log::error!("Error from files/list_folder_continue: {}", _e);
                         break;
                     },
                     Err(_e) => {
-                        // eprintln!("API request error: {}", _e);
+                        // log::error!("API request error: {}", _e);
                         break;
                     },
                 }
             }
         },
         Ok(Err(_e)) => {
-            eprintln!("Error from files/list_folder");
+            log::error!("Error from files/list_folder");
         },
         Err(_e) => {
-            eprintln!("API request error");
+            log::error!("API request error");
         }
     }
 
@@ -334,21 +334,21 @@ pub fn is_path_empty(path: &str) -> bool{
                         // panic!("unexpected deleted entry: {:?}", entry);
                     },
                     Ok(Err(_e)) => {
-                        // eprintln!("Error from files/list_folder_continue: {}", _e);
+                        // log::error!("Error from files/list_folder_continue: {}", _e);
                         // break;
                     },
                     Err(_e) => {
-                        // eprintln!("API request error: {}", _e);
+                        // log::error!("API request error: {}", _e);
                         // break;
                     },
                 }
             }
         },
         Ok(Err(_e)) => {
-            // eprintln!("Error from files/list_folder: {}", _e);
+            // log::error!("Error from files/list_folder: {}", _e);
         },
         Err(_e) => {
-            // eprintln!("API request error: {}", _e);
+            // log::error!("API request error: {}", _e);
         }
     }
 
@@ -369,9 +369,9 @@ pub fn get_auth_from_env_or_prompt() -> dropbox_sdk::oauth2::Authorization {
     let oauth2_flow = dropbox_sdk::oauth2::Oauth2Type::PKCE(dropbox_sdk::oauth2::PkceCode::new());
     let url = dropbox_sdk::oauth2::AuthorizeUrlBuilder::new(&client_id, &oauth2_flow)
         .build();
-    eprintln!("Open this URL in your browser:");
-    eprintln!("{}", url);
-    eprintln!();
+    log::error!("Open this URL in your browser:");
+    log::error!("{}", url);
+    // log::error!();
     let auth_code = String::new();
 
     dropbox_sdk::oauth2::Authorization::from_auth_code(

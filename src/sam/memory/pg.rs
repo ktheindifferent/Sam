@@ -13,7 +13,7 @@ pub fn create_sam_user_and_db() -> io::Result<()> {
     // This assumes you have sufficient privileges (e.g., running as postgres or with sudo)
     #[cfg(target_os = "windows")]
     {
-        println!("Please use pgAdmin or psql to create user/database 'sam'.");
+        log::info!("Please use pgAdmin or psql to create user/database 'sam'.");
     }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
@@ -26,7 +26,7 @@ pub fn create_sam_user_and_db() -> io::Result<()> {
             .arg("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_user WHERE usename = 'sam') THEN CREATE USER sam WITH PASSWORD 'sam'; END IF; END $$;")
             .status()?;
         if !status.success() {
-            println!("Warning: Could not create user 'sam' or user already exists.");
+            log::info!("Warning: Could not create user 'sam' or user already exists.");
         }
         // Create database 'sam' owned by 'sam'
         let status = Command::new("sudo")
@@ -37,16 +37,16 @@ pub fn create_sam_user_and_db() -> io::Result<()> {
             .arg("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sam') THEN CREATE DATABASE sam OWNER sam; END IF; END $$;")
             .status()?;
         if !status.success() {
-            println!("Warning: Could not create database 'sam' or database already exists.");
+            log::info!("Warning: Could not create database 'sam' or database already exists.");
         }
-        println!("User and database 'sam' created or already exist.");
+        log::info!("User and database 'sam' created or already exist.");
     }
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
 pub fn install_postgres(_user: &str) -> io::Result<()> {
-    println!("Please download and run the PostgreSQL installer from https://www.postgresql.org/download/windows/");
+    log::info!("Please download and run the PostgreSQL installer from https://www.postgresql.org/download/windows/");
     Ok(())
 }
 
@@ -65,7 +65,7 @@ pub fn install_postgres(_user: &str) -> io::Result<()> {
             .arg("postgresql")
             .status()?;
         if status.success() {
-            println!("PostgreSQL installed successfully.");
+            log::info!("PostgreSQL installed successfully.");
         }
     } else {
         // Try yum (Fedora/CentOS)
@@ -76,7 +76,7 @@ pub fn install_postgres(_user: &str) -> io::Result<()> {
             .arg("postgresql-server")
             .status()?;
         if status.success() {
-            println!("PostgreSQL installed successfully.");
+            log::info!("PostgreSQL installed successfully.");
         }
     }
     Ok(())
@@ -93,7 +93,7 @@ pub fn install_postgres(user: &str) -> io::Result<()> {
         .arg("postgresql")
         .status()?;
     if status.success() {
-        println!("PostgreSQL installed successfully.");
+        log::info!("PostgreSQL installed successfully.");
     }
     Ok(())
 }
@@ -106,7 +106,7 @@ pub fn start_postgres(user: &str) -> io::Result<()> {
             .args(["-u", user, "brew", "services", "start", "postgresql"])
             .status()?;
         if !status.success() {
-            println!("Warning: Could not start PostgreSQL service on macOS.");
+            log::info!("Warning: Could not start PostgreSQL service on macOS.");
         }
         std::thread::sleep(std::time::Duration::from_secs(3));
     }
@@ -118,7 +118,7 @@ pub fn start_postgres(user: &str) -> io::Result<()> {
             .args(&["systemctl", "start", "postgresql"])
             .status()?;
         if !status.success() {
-            println!("Warning: Could not start PostgreSQL service on Linux.");
+            log::info!("Warning: Could not start PostgreSQL service on Linux.");
         }
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
@@ -130,7 +130,7 @@ pub fn start_postgres(user: &str) -> io::Result<()> {
             .args(&["start", "postgresql-x64-15"]) // Adjust service name as needed
             .status()?;
         if !status.success() {
-            println!("Warning: Could not start PostgreSQL service on Windows.");
+            log::info!("Warning: Could not start PostgreSQL service on Windows.");
         }
         std::thread::sleep(std::time::Duration::from_secs(2));
     }

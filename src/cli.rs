@@ -19,6 +19,14 @@ use std::sync::Arc;
 use std::thread;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::process;
+use std::io::Cursor;
+use rodio::{Decoder, OutputStream, Sink};
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::process::Command;
+use std::io::BufReader;
+use std::io::BufRead;
+use std::process::Stdio;
 
 /// Starts the interactive command prompt
 ///
@@ -30,7 +38,7 @@ pub async fn start_prompt() {
     tui_logger::set_default_level(log::LevelFilter::Debug);
 
     if let Err(e) = run_tui().await {
-        println!("TUI error: {:?}", e);
+        log::info!("TUI error: {:?}", e);
     }
 }
 
@@ -40,7 +48,7 @@ pub async fn start_prompt() {
 async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     // Set a panic hook to print panics to stderr
     std::panic::set_hook(Box::new(|info| {
-        eprintln!("\nSAM TUI PANIC: {info}");
+        log::error!("\nSAM TUI PANIC: {info}");
         // Try to restore terminal state
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
@@ -144,7 +152,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             if let Err(e) = draw_result {
                 let mut lines = output_lines.lock().unwrap();
                 lines.push(format!("TUI draw panic: {:?}", e));
-                eprintln!("TUI draw panic: {:?}", e);
+                log::error!("TUI draw panic: {:?}", e);
                 break;
             }
 
@@ -161,7 +169,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             if let Err(e) = poll_result {
                 let mut lines = output_lines.lock().unwrap();
                 lines.push(format!("TUI poll panic: {:?}", e));
-                eprintln!("TUI poll panic: {:?}", e);
+                log::error!("TUI poll panic: {:?}", e);
                 break;
             }
 
@@ -170,7 +178,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(e) = read_result {
                     let mut lines = output_lines.lock().unwrap();
                     lines.push(format!("TUI read panic: {:?}", e));
-                    eprintln!("TUI read panic: {:?}", e);
+                    log::error!("TUI read panic: {:?}", e);
                     break;
                 }
                 if let Ok(Ok(Event::Key(key))) = read_result {
@@ -210,7 +218,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     match result {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("TUI main loop panic: {:?}", e);
+            log::error!("TUI main loop panic: {:?}", e);
             let mut lines = output_lines.lock().unwrap();
             lines.push(format!("TUI main loop panic: {:?}", e));
         }
@@ -329,6 +337,18 @@ async fn handle_command(
             ];
             append_lines(output_lines, lines);
         }
+        "crawler start" => {
+            crate::sam::crawler::start_service();
+            append_line(output_lines, "Crawler service started.".to_string());
+        }
+        "crawler stop" => {
+            crate::sam::crawler::stop_service();
+            append_line(output_lines, "Crawler service stopped.".to_string());
+        }
+        "crawler status" => {
+            let status = crate::sam::crawler::service_status();
+            append_line(output_lines, format!("Crawler service status: {}", status));
+        }
         _ if cmd.starts_with("cd ") => {
             handle_cd(cmd, output_lines, current_dir);
         }
@@ -364,10 +384,111 @@ async fn handle_command(
             append_line(output_lines, "Starting llama model installer...".to_string());
             let output_lines = output_lines.clone();
             tokio::spawn(async move {
-                match crate::sam::services::llama::install().await {
-                    Ok(msg) => append_line(&output_lines, format!("llama install: {}", msg)),
-                    Err(e) => append_line(&output_lines, format!("llama install error: {}", e)),
+                
+           
+                let llama_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/llama.cpp");
+                let mut cmake_cmd = Command::new("cmake");
+                cmake_cmd.current_dir(&llama_src)
+                    .arg("-B")
+                    .arg("build");
+
+                let mut build_cmd = Command::new("cmake");
+                build_cmd.current_dir(&llama_src)
+                    .arg("--build")
+                    .arg("build")
+                    .arg("--config")
+                    .arg("Release");
+
+             
+                let output_lines2 = output_lines.clone();
+                let _ = run_command_stream_lines(cmake_cmd, move |line| {
+                    append_line(&output_lines2, format!("cmake: {}", line));
+                });
+
+                let output_lines3 = output_lines.clone();
+                let _ = run_command_stream_lines(build_cmd, move |line| {
+                    append_line(&output_lines3, format!("build: {}", line));
+                });
+
+
+                // Copy built binaries to /opt/sam/bin and set executable permissions
+                let bin_dir = llama_src.join("build/bin");
+                let target_dir = std::path::Path::new("/opt/sam/bin");
+                let binaries = ["llama-simple", "llama-bench", "llama-cli"];
+                for bin in &binaries {
+                    let src = bin_dir.join(bin);
+                    let dst = target_dir.join(bin);
+                    match fs::copy(&src, &dst) {
+                        Ok(_) => {
+                            // Set +x permissions
+                            let mut perms = fs::metadata(&dst).unwrap().permissions();
+                            perms.set_mode(0o755);
+                            fs::set_permissions(&dst, perms).unwrap();
+                            append_line(&output_lines, format!("Installed {} to {}", bin, dst.display()));
+                        }
+                        Err(e) => {
+                            append_line(&output_lines, format!("Failed to install {}: {}", bin, e));
+                        }
+                    }
                 }
+
+                // Show spinner while downloading models (blocking)
+                let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+                let spinner_running = Arc::new(Mutex::new(true));
+                let spinner_flag = spinner_running.clone();
+                let output_lines_clone = output_lines.clone();
+
+                // Add spinner line and get its index
+                let spinner_index = {
+                    let mut lines = output_lines.lock().unwrap();
+                    lines.push("⠋ Downloading Llama v2 and v3 models...".to_string());
+                    lines.len() - 1
+                };
+
+                // Spinner thread
+                let spinner_output_lines = output_lines.clone();
+                thread::spawn(move || {
+                    let mut i = 0;
+                    while *spinner_flag.lock().unwrap() {
+                        {
+                            let mut lines = spinner_output_lines.lock().unwrap();
+                            if spinner_index < lines.len() {
+                                lines[spinner_index] = format!("{} Downloading Llama v2 and v3 models...", spinner_chars[i % spinner_chars.len()]);
+                            }
+                        }
+                        i += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(80));
+                    }
+                });
+
+                // Run blocking downloads in a separate thread
+                let spinner_flag2 = spinner_running.clone();
+                let output_lines2 = output_lines.clone();
+                let spinner_index2 = spinner_index;
+                tokio::task::spawn_blocking(move || {
+                    let v2_result = crate::sam::services::llama::LlamaService::download_v2_model();
+                    let v3_result = crate::sam::services::llama::LlamaService::download_v3_model();
+
+                    *spinner_flag2.lock().unwrap() = false;
+                    let mut lines = output_lines2.lock().unwrap();
+                    if spinner_index2 < lines.len() {
+                        if v2_result.is_ok() && v3_result.is_ok() {
+                            lines[spinner_index2] = "Llama v2 and v3 models downloaded successfully.".to_string();
+                        } else {
+                            let mut msg = String::new();
+                            if let Err(e) = v2_result {
+                                msg.push_str(&format!("Failed to download v2 model: {}. ", e));
+                            }
+                            if let Err(e) = v3_result {
+                                msg.push_str(&format!("Failed to download v3 model: {}", e));
+                            }
+                            lines[spinner_index2] = msg;
+                        }
+                    }
+                });
+
+
+                append_line(&output_lines, "llama install: done.".to_string());
             });
         }
         _ if cmd.starts_with("llama ") => {
@@ -418,6 +539,49 @@ async fn handle_command(
         "lifx status" => {
             let status = crate::sam::services::lifx::status_service();
             append_line(output_lines, format!("LIFX service status: {}", status));
+        }
+        _ if cmd.starts_with("crawl search ") => {
+            let query = cmd.trim_start_matches("crawl search ").trim();
+            if query.is_empty() {
+                append_line(output_lines, "Usage: crawl search <query>".to_string());
+            } else {
+                let query = query.to_string();
+                let output_lines = output_lines.clone();
+                tokio::spawn(async move {
+                    use crate::sam::crawler::CrawledPage;
+                    use std::panic::AssertUnwindSafe;
+                    use futures::FutureExt;
+                    let result = AssertUnwindSafe(CrawledPage::query_by_relevance_async(&query, 10))
+                        .catch_unwind()
+                        .await;
+                    match result {
+                        Ok(Ok(scored_pages)) if !scored_pages.is_empty() => {
+                            append_line(&output_lines, format!("Found {} results:", scored_pages.len()));
+                            for (page, score) in scored_pages {
+                                append_line(&output_lines, format!("URL: {}", page.url));
+                                append_line(&output_lines, format!("Score: {}", score));
+                                if !page.tokens.is_empty() {
+                                    let snippet: String = page.tokens.iter().take(20).cloned().collect::<Vec<_>>().join(" ");
+                                    append_line(&output_lines, format!("Tokens: {}...", snippet));
+                                }
+                                append_line(&output_lines, "-----------------------------".to_string());
+                            }
+                        }
+                        Ok(Ok(_)) => append_line(&output_lines, "No results found.".to_string()),
+                        Ok(Err(e)) => append_line(&output_lines, format!("Search error: {}", e)),
+                        Err(panic) => {
+                            let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                                s.to_string()
+                            } else if let Some(s) = panic.downcast_ref::<String>() {
+                                s.clone()
+                            } else {
+                                "Unknown panic".to_string()
+                            };
+                            append_line(&output_lines, format!("Search panicked: {}", msg));
+                        }
+                    }
+                });
+            }
         }
         _ => {
             match crate::sam::services::rivescript::query(cmd) {
@@ -472,6 +636,10 @@ fn get_help_lines() -> Vec<String> {
         "lifx start            - Start the LIFX service".to_string(),
         "lifx stop             - Stop the LIFX service".to_string(),
         "lifx status           - Show LIFX service status".to_string(),
+        "crawler start           - Start the background web crawler".to_string(),
+        "crawler stop            - Stop the background web crawler".to_string(),
+        "crawler status          - Show crawler service status".to_string(),
+        "crawl search <query>   - Search crawled pages for a keyword".to_string(),
     ]
 }
 
@@ -558,8 +726,7 @@ async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 
 /// Play a WAV file from bytes using rodio (cross-platform)
 fn play_wav_from_bytes(wav_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Cursor;
-    use rodio::{Decoder, OutputStream, Sink};
+ 
 
     let (_stream, stream_handle) = OutputStream::try_default()?;
     let sink = Sink::try_new(&stream_handle)?;
@@ -583,7 +750,7 @@ pub fn check_postgres_env() {
         }
     }
     if !missing.is_empty() {
-        println!("{}", "Postgres credentials missing:".red().bold());
+        log::info!("{}", "Postgres credentials missing:".red().bold());
         for v in missing {
             loop {
                 print!("{}", format!("Enter value for {}: ", v).cyan().bold());
@@ -596,8 +763,48 @@ pub fn check_postgres_env() {
                         break;
                     }
                 }
-                println!("{}", format!("{} cannot be empty.", v).red());
+                log::info!("{}", format!("{} cannot be empty.", v).red());
             }
         }
     }
+}
+
+
+/// Run a command and stream its stdout/stderr lines to a callback
+pub fn run_command_stream_lines<F>(
+    mut cmd: Command,
+    mut on_line: F,
+) -> io::Result<i32>
+where
+    F: FnMut(String) + Send + 'static,
+{
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let mut reader = BufReader::new(stdout);
+    let mut err_reader = BufReader::new(stderr);
+
+    let mut buf = String::new();
+    let mut err_buf = String::new();
+
+    loop {
+        buf.clear();
+        err_buf.clear();
+        let stdout_read = reader.read_line(&mut buf)?;
+        let stderr_read = err_reader.read_line(&mut err_buf)?;
+
+        if stdout_read == 0 && stderr_read == 0 {
+            break;
+        }
+        if !buf.trim().is_empty() {
+            on_line(buf.trim_end().to_string());
+        }
+        if !err_buf.trim().is_empty() {
+            on_line(err_buf.trim_end().to_string());
+        }
+    }
+    let status = child.wait()?;
+    Ok(status.code().unwrap_or(-1))
 }
