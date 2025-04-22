@@ -805,6 +805,124 @@ async fn handle_command(
                 append_line(&output_lines, "llama install: done.".to_string()).await;
             });
         }
+        _ if cmd.starts_with("llama v2 ") => {
+            let prompt = cmd.trim_start_matches("llama v2 ").trim();
+            if prompt.is_empty() {
+            append_line(output_lines, "Usage: llama v2 <prompt>".to_string()).await;
+            } else {
+            let prompt = prompt.to_string();
+            let output_lines = output_lines.clone();
+
+            // Spinner setup
+            let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let spinner_running = Arc::new(Mutex::new(true));
+            let spinner_flag = spinner_running.clone();
+
+            // Add spinner line and get its index
+            let spinner_index = {
+                let mut lines = output_lines.lock().await;
+                lines.push("⠋ Querying llama v2...".to_string());
+                lines.len() - 1
+            };
+
+            // Spinner task
+            let spinner_output_lines = output_lines.clone();
+            tokio::spawn(async move {
+                let mut i = 0;
+                while *spinner_flag.lock().await {
+                {
+                    let mut lines = spinner_output_lines.lock().await;
+                    if spinner_index < lines.len() {
+                    lines[spinner_index] = format!("{} Querying llama v2...", spinner_chars[i % spinner_chars.len()]);
+                    }
+                }
+                i += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                }
+            });
+
+            // Query in blocking thread
+            let spinner_flag2 = spinner_running.clone();
+            let output_lines2 = output_lines.clone();
+            tokio::task::spawn_blocking(move || {
+                let result = crate::sam::services::llama::LlamaService::query_v2(&prompt);
+                let mut lines = output_lines2.blocking_lock();
+                *spinner_flag2.blocking_lock() = false;
+                if spinner_index < lines.len() {
+                match result {
+                    Ok(result) => {
+                    let text = result.trim().to_string();
+                    lines[spinner_index] = format!("llama v2: {}", text);
+                    let output_lines = output_lines2.clone();
+                    tokio::spawn(append_and_tts(output_lines, format!("llama v2: {}", text)));
+                    },
+                    Err(e) => {
+                    lines[spinner_index] = format!("llama v2 error: {}", e);
+                    }
+                }
+                }
+            });
+            }
+        }
+        _ if cmd.starts_with("llama v2-tiny ") => {
+            let prompt = cmd.trim_start_matches("llama v2-tiny ").trim();
+            if prompt.is_empty() {
+            append_line(output_lines, "Usage: llama v2-tiny <prompt>".to_string()).await;
+            } else {
+            let prompt = prompt.to_string();
+            let output_lines = output_lines.clone();
+
+            // Spinner setup
+            let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let spinner_running = Arc::new(Mutex::new(true));
+            let spinner_flag = spinner_running.clone();
+
+            // Add spinner line and get its index
+            let spinner_index = {
+                let mut lines = output_lines.lock().await;
+                lines.push("⠋ Querying llama v2-tiny...".to_string());
+                lines.len() - 1
+            };
+
+            // Spinner task
+            let spinner_output_lines = output_lines.clone();
+            tokio::spawn(async move {
+                let mut i = 0;
+                while *spinner_flag.lock().await {
+                {
+                    let mut lines = spinner_output_lines.lock().await;
+                    if spinner_index < lines.len() {
+                    lines[spinner_index] = format!("{} Querying llama v2-tiny...", spinner_chars[i % spinner_chars.len()]);
+                    }
+                }
+                i += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                }
+            });
+
+            // Query in blocking thread
+            let spinner_flag2 = spinner_running.clone();
+            let output_lines2 = output_lines.clone();
+            tokio::task::spawn_blocking(move || {
+                let result = crate::sam::services::llama::LlamaService::query_v2_tiny(&prompt);
+                let mut lines = output_lines2.blocking_lock();
+                *spinner_flag2.blocking_lock() = false;
+                if spinner_index < lines.len() {
+                match result {
+                    Ok(result) => {
+                    let text = result.trim().to_string();
+                    lines[spinner_index] = format!("llama v2-tiny: {}", text);
+                    let output_lines = output_lines2.clone();
+                    tokio::spawn(append_and_tts(output_lines, format!("llama v2-tiny: {}", text)));
+                    },
+                    Err(e) => {
+                    lines[spinner_index] = format!("llama v2-tiny error: {}", e);
+                    }
+                }
+                }
+            });
+            }
+        }
         _ if cmd.starts_with("llama ") => {
             let rest = cmd["llama ".len()..].to_string();
             let mut split = rest.splitn(2, ' ');
@@ -911,6 +1029,7 @@ fn get_help_lines() -> Vec<String> {
         "tts <text>            - Convert text to speech and play it".to_string(),
         "llama install         - Install or update Llama.cpp models".to_string(),
         "llama <model_path> <prompt> - Query a Llama.cpp model".to_string(),
+        "llama v2 <prompt>     - Query a Llama v2 model".to_string(),
         "lifx start            - Start the LIFX service".to_string(),
         "lifx stop             - Stop the LIFX service".to_string(),
         "lifx status           - Show LIFX service status".to_string(),

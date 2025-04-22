@@ -209,14 +209,12 @@ async fn main() {
         println!("Darknet binary found at /opt/sam/bin/darknet. Skipping install.");
     }
 
-    //  crate::sam::services::docker::install();
+     crate::sam::services::docker::install();
 
-    //  crate::sam::services::tts::init();
+     crate::sam::services::tts::init();
 
-    //  // Start the crawler background service before CLI
-    // //  crate::sam::crawler::start_service();
 
-    // crate::sam::services::crawler::start_service_async().await;
+    crate::sam::services::crawler::start_service_async().await;
 
   
     let config = crate::sam::memory::Config::new();

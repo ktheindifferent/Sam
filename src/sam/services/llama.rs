@@ -52,8 +52,8 @@ impl LlamaService {
             ));
         }
 
-        // Find the built binaries (llama-cli, llama-simple, llama-benchmark)
-        let binaries = ["llama-cli", "llama-simple", "llama-benchmark"];
+        // Find the built binaries
+        let binaries = ["llama-cli", "llama-simple", "llama-bench", "llama-run", "llama-server", "llama-perplexity"];
         let mut found_any = false;
 
         fs::create_dir_all("/opt/sam/bin")?;
@@ -126,6 +126,13 @@ impl LlamaService {
         )
     }
 
+    pub fn download_v2_tiny_model() -> io::Result<()> {
+        Self::download_model(
+            "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_0.gguf?download=true",
+            "tinyllama-1.1b-chat-v1.0.Q4_0.gguf",
+        )
+    }
+
     pub fn download_v2_model() -> io::Result<()> {
         Self::download_model(
             "https://huggingface.co/TheBloke/Llama-2-7B-GGUF/resolve/main/llama-2-7b.Q4_K_M.gguf",
@@ -137,9 +144,26 @@ impl LlamaService {
         let mut log = String::new();
         log.push_str(&Self::ensure_llama_binary_with_output()?);
         Self::download_v2_model()?;
+        Self::download_v2_tiny_model()?;
         Self::download_v3_model()?;
         log.push_str("Llama binary and models installed.\n");
         Ok(log)
+    }
+
+    pub fn query_v2(prompt: &str) -> io::Result<String> {
+        let model_path = Path::new("/opt/sam/models/llama-2-7b.Q4_K_M.gguf");
+        if !model_path.exists() {
+            Self::download_v2_model()?;
+        }
+        Self::query(model_path, prompt)
+    }
+
+    pub fn query_v2_tiny(prompt: &str) -> io::Result<String> {
+        let model_path = Path::new("/opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf");
+        if !model_path.exists() {
+            Self::download_v2_tiny_model()?;
+        }
+        Self::query(model_path, prompt)
     }
 
     pub fn query(model_path: &Path, prompt: &str) -> io::Result<String> {
@@ -152,21 +176,20 @@ impl LlamaService {
             ));
         }
 
-        let llama_bin = "/opt/sam/bin/llama";
-        let mut child = Command::new(llama_bin)
+        let llama_bin = "/opt/sam/bin/llama-cli";
+        let output = Command::new(llama_bin)
             .arg("--model")
             .arg(model_path)
             .arg("--prompt")
             .arg(prompt)
             .stdout(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped())
+            .output()?;
 
-        let mut output = String::new();
-        if let Some(mut stdout) = child.stdout.take() {
-            stdout.read_to_string(&mut output)?;
-        }
-        let _ = child.wait();
-        Ok(output)
+        let mut output_str = String::new();
+        output_str.push_str(&String::from_utf8_lossy(&output.stdout));
+        // output_str.push_str(&String::from_utf8_lossy(&output.stderr));
+        Ok(output_str)
     }
 }
 
