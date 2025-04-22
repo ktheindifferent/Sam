@@ -123,24 +123,24 @@ impl Config {
             (StorageLocation::sql_table_name(), StorageLocation::sql_build_statement(), StorageLocation::migrations()),
             (FileStorage::sql_table_name(), FileStorage::sql_build_statement(), FileStorage::migrations()),
             (Notification::sql_table_name(), Notification::sql_build_statement(), Notification::migrations()),
-            (crate::sam::crawler::CrawlJob::sql_table_name(), crate::sam::crawler::CrawlJob::sql_build_statement(), crate::sam::crawler::CrawlJob::migrations()),
-            (crate::sam::crawler::CrawledPage::sql_table_name(), crate::sam::crawler::CrawledPage::sql_build_statement(), crate::sam::crawler::CrawledPage::migrations()),
+            (crate::sam::services::crawler::CrawlJob::sql_table_name(), crate::sam::services::crawler::CrawlJob::sql_build_statement(), crate::sam::services::crawler::CrawlJob::migrations()),
+            (crate::sam::services::crawler::CrawledPage::sql_table_name(), crate::sam::services::crawler::CrawledPage::sql_build_statement(), crate::sam::services::crawler::CrawledPage::migrations()),
         ];
 
         let mut current_client = client;
         for (table_name, build_statement, migrations) in tables {
            
             // Run crawler index migrations after creating crawler tables
-            if table_name == crate::sam::crawler::CrawlJob::sql_table_name() {
-                for idx_sql in crate::sam::crawler::CrawlJob::sql_indexes() {
+            if table_name == crate::sam::services::crawler::CrawlJob::sql_table_name() {
+                for idx_sql in crate::sam::services::crawler::CrawlJob::sql_indexes() {
                     match current_client.batch_execute(idx_sql).await {
                         Ok(_) => log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql),
                         Err(e) => log::error!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
                     }
                 }
             }
-            if table_name == crate::sam::crawler::CrawledPage::sql_table_name() {
-                for idx_sql in crate::sam::crawler::CrawledPage::sql_indexes() {
+            if table_name == crate::sam::services::crawler::CrawledPage::sql_table_name() {
+                for idx_sql in crate::sam::services::crawler::CrawledPage::sql_indexes() {
                     match current_client.batch_execute(idx_sql).await {
                         Ok(_) => log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql),
                         Err(e) => log::error!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
@@ -464,8 +464,8 @@ impl Config {
                     push_json!(FileStorage, from_row_lite);
                 }
             },
-            t if t == crate::sam::crawler::CrawlJob::sql_table_name() => { push_json!(crate::sam::crawler::CrawlJob, from_row); },
-            t if t == crate::sam::crawler::CrawledPage::sql_table_name() => { push_json!(crate::sam::crawler::CrawledPage, from_row); },
+            t if t == crate::sam::services::crawler::CrawlJob::sql_table_name() => { push_json!(crate::sam::services::crawler::CrawlJob, from_row); },
+            t if t == crate::sam::services::crawler::CrawledPage::sql_table_name() => { push_json!(crate::sam::services::crawler::CrawledPage, from_row); },
             _ => {}
         }
         Ok(())

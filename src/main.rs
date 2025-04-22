@@ -209,14 +209,14 @@ async fn main() {
         println!("Darknet binary found at /opt/sam/bin/darknet. Skipping install.");
     }
 
-     crate::sam::services::docker::install();
+    //  crate::sam::services::docker::install();
 
-     crate::sam::services::tts::init();
+    //  crate::sam::services::tts::init();
 
-     // Start the crawler background service before CLI
-    //  crate::sam::crawler::start_service();
+    //  // Start the crawler background service before CLI
+    // //  crate::sam::crawler::start_service();
 
-    crate::sam::crawler::start_service_async().await;
+    // crate::sam::services::crawler::start_service_async().await;
 
   
     let config = crate::sam::memory::Config::new();
@@ -259,7 +259,7 @@ async fn main() {
 
     // // Start interactive CLI prompt instead of empty loop
     // // println!("SAM initialized and ready. Starting command prompt...");
-    cli::start_prompt().await;
+    crate::cli::start_prompt().await;
 
     loop{
         // Check for user input or other events

@@ -1,35 +1,179 @@
-pub fn install(){
-    // Install Docker Desktop
-    if !is_docker_installed() {
-        log::info!("Docker is not installed. Installing...");
+use std::process::{Command, Stdio};
+use log::{info, error};
+use std::time::Duration;
+use std::thread;
+
+/// Install Docker if not present and ensure daemon is running.
+pub async fn install() {
+    if (!is_installed()) {
+        info!("Docker is not installed. Installing...");
         install_docker();
     } else {
-        log::info!("Docker is already installed.");
+        info!("Docker is already installed.");
     }
 
-    // Check if Docker daemon is running
-    if !is_docker_daemon_running() {
-        log::info!("Docker daemon is not running. Please start it.");
-        start_docker_daemon();
+    if (!is_running()) {
+        info!("Docker daemon is not running. Attempting to start...");
+        start().await;
     } else {
-        log::info!("Docker daemon is running.");
+        info!("Docker daemon is running.");
     }
 }
 
+/// Start the Docker daemon/service.
+pub async fn start() {
+    #[cfg(target_os = "macos")]
+    {
+        let output = Command::new("open")
+            .arg("-a")
+            .arg("Docker")
+            .output();
+        match output {
+            Ok(o) if o.status.success() => info!("Started Docker Desktop."),
+            _ => error!("Failed to start Docker Desktop. Please start it manually."),
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let output = Command::new("sudo")
+            .args(&["systemctl", "start", "docker"])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => info!("Started Docker daemon."),
+            _ => error!("Failed to start Docker daemon. Please start it manually."),
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let output = Command::new("powershell")
+            .args(&[
+                "-Command",
+                "Start-Process -FilePath 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'"
+            ])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => info!("Started Docker Desktop."),
+            _ => error!("Failed to start Docker Desktop. Please start it manually."),
+        }
+    }
+}
+
+/// Stop the Docker daemon/service.
+pub async fn stop() {
+    #[cfg(target_os = "macos")]
+    {
+        let output = Command::new("osascript")
+            .args(&["-e", "quit app \"Docker\""])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => info!("Stopped Docker Desktop."),
+            _ => error!("Failed to stop Docker Desktop. Please stop it manually."),
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let output = Command::new("sudo")
+            .args(&["systemctl", "stop", "docker"])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => info!("Stopped Docker daemon."),
+            _ => error!("Failed to stop Docker daemon. Please stop it manually."),
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let output = Command::new("powershell")
+            .args(&[
+                "-Command",
+                "Stop-Process -Name 'Docker Desktop' -Force"
+            ])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => info!("Stopped Docker Desktop."),
+            _ => error!("Failed to stop Docker Desktop. Please stop it manually."),
+        }
+    }
+}
+
+/// Return the status of the Docker daemon: "running", "stopped", or "not installed"
+pub fn status() -> &'static str {
+    if is_running() {
+        "running"
+    } else if is_installed() {
+        "stopped"
+    } else {
+        "not installed"
+    }
+}
+
+/// Check if Docker is installed
+pub fn is_installed() -> bool {
+    let mut child = match Command::new("docker")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return false,
+    };
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) => {
+                if start.elapsed() > Duration::from_secs(2) {
+                    let _ = child.kill();
+                    log::warn!("Timeout waiting for 'docker --version' (is Docker installed?)");
+                    return false;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => return false,
+        }
+    }
+}
+
+/// Check if Docker daemon is running
+pub fn is_running() -> bool {
+    let mut child = match Command::new("docker")
+        .arg("info")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return false,
+    };
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) => {
+                if start.elapsed() > Duration::from_secs(2) {
+                    let _ = child.kill();
+                    log::warn!("Timeout waiting for 'docker info' (is Docker running?)");
+                    return false;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => return false,
+        }
+    }
+}
+
+// Platform-specific install logic
 #[cfg(target_os = "macos")]
-pub fn install_docker() {
-    // Uses Homebrew to install Docker Desktop via cask
-    std::process::Command::new("brew")
+fn install_docker() {
+    Command::new("brew")
         .args(["install", "--cask", "docker"])
         .status()
         .expect("Failed to install Docker via Homebrew");
 }
 
 #[cfg(target_os = "linux")]
-pub fn install_docker() {
-    // Uses apt-get for Ubuntu/Debian systems
-    // For production, add checks for distro and permissions
-    std::process::Command::new("sh")
+fn install_docker() {
+    Command::new("sh")
         .arg("-c")
         .arg("curl -fsSL https://get.docker.com | sh")
         .status()
@@ -37,79 +181,9 @@ pub fn install_docker() {
 }
 
 #[cfg(target_os = "windows")]
-pub fn install_docker() {
-    // Uses winget to install Docker Desktop
-    std::process::Command::new("powershell")
+fn install_docker() {
+    Command::new("powershell")
         .args(&["-Command", "winget install -e --id Docker.DockerDesktop"])
         .status()
         .expect("Failed to install Docker via winget");
-}
-
-pub fn is_docker_installed() -> bool {
-    std::process::Command::new("docker")
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-}
-
-pub fn is_docker_daemon_running() -> bool {
-    let output = std::process::Command::new("docker")
-        .arg("ps")
-        .output();
-
-    match output {
-        Ok(output) => {
-            if output.status.success() {
-                true
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                !stderr.contains("Cannot connect to the Docker daemon")
-            }
-        }
-        Err(_) => false,
-    }
-}
-
-#[cfg(target_os = "macos")]
-pub fn start_docker_daemon() {
-    // Try to open Docker Desktop.app (starts the daemon)
-    let output = std::process::Command::new("open")
-        .arg("-a")
-        .arg("Docker")
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() => log::info!("Started Docker Desktop."),
-        _ => log::info!("Failed to start Docker Desktop. Please start it manually."),
-    }
-}
-
-#[cfg(target_os = "linux")]
-pub fn start_docker_daemon() {
-    // Try to start the docker service (systemd)
-    let output = std::process::Command::new("sudo")
-        .args(&["systemctl", "start", "docker"])
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() => log::info!("Started Docker daemon."),
-        _ => log::info!("Failed to start Docker daemon. Please start it manually."),
-    }
-}
-
-#[cfg(target_os = "windows")]
-pub fn start_docker_daemon() {
-    // Try to start Docker Desktop via PowerShell
-    let output = std::process::Command::new("powershell")
-        .args(&[
-            "-Command",
-            "Start-Process -FilePath 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'"
-        ])
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() => log::info!("Started Docker Desktop."),
-        _ => log::info!("Failed to start Docker Desktop. Please start it manually."),
-    }
 }

@@ -1,5 +1,7 @@
 use std::process::Command;
 use log::{info, error};
+use std::time::Duration;
+use std::thread;
 
 /// Install and start Redis using Docker if not already running.
 /// This is intended to be called from setup/install.
@@ -100,22 +102,82 @@ pub fn status() -> &'static str {
 
 /// Helper: check if the Redis Docker container is running
 fn is_running() -> bool {
-    let check = Command::new("docker")
+    let mut check = Command::new("docker")
         .args(&["ps", "--filter", "name=sam-redis", "--format", "{{.Names}}"])
-        .output();
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
     match check {
-        Ok(output) => String::from_utf8_lossy(&output.stdout).contains("sam-redis"),
+        Ok(mut child) => {
+            let pid = child.id();
+            let start = std::time::Instant::now();
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        if status.success() {
+                            let mut output = String::new();
+                            if let Some(mut out) = child.stdout.take() {
+                                use std::io::Read;
+                                let _ = out.read_to_string(&mut output);
+                            }
+                            return output.contains("sam-redis");
+                        }
+                        return false;
+                    }
+                    Ok(None) => {
+                        if start.elapsed() > Duration::from_secs(2) {
+                            let _ = child.kill();
+                            log::warn!("Timeout waiting for 'docker ps' (is Docker running?)");
+                            return false;
+                        }
+                        thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(_) => return false,
+                }
+            }
+        }
         Err(_) => false,
     }
 }
 
 /// Helper: check if the Redis Docker container exists (installed)
 fn is_installed() -> bool {
-    let check = Command::new("docker")
+    let mut check = Command::new("docker")
         .args(&["ps", "-a", "--filter", "name=sam-redis", "--format", "{{.Names}}"])
-        .output();
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
     match check {
-        Ok(output) => String::from_utf8_lossy(&output.stdout).contains("sam-redis"),
+        Ok(mut child) => {
+            let pid = child.id();
+            let start = std::time::Instant::now();
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        if status.success() {
+                            let mut output = String::new();
+                            if let Some(mut out) = child.stdout.take() {
+                                use std::io::Read;
+                                let _ = out.read_to_string(&mut output);
+                            }
+                            return output.contains("sam-redis");
+                        }
+                        return false;
+                    }
+                    Ok(None) => {
+                        if start.elapsed() > Duration::from_secs(2) {
+                            let _ = child.kill();
+                            log::warn!("Timeout waiting for 'docker ps -a' (is Docker running?)");
+                            return false;
+                        }
+                        thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(_) => return false,
+                }
+            }
+        }
         Err(_) => false,
     }
 }

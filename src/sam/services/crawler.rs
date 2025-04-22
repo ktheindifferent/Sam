@@ -658,7 +658,7 @@ async fn crawl_url_inner(
 
                         // Extract file extension from path (before query/fragment)
                         let file_ext = {
-                            let url_no_query = url_lc.split(['?', '#'].as_ref()).next().unwrap_or("");
+                            let url_no_query = url_lc.split(&['?', '#'][..]).next().unwrap_or("");
                             std::path::Path::new(url_no_query)
                                 .extension()
                                 .and_then(|ext| ext.to_str())
@@ -770,7 +770,7 @@ async fn crawl_url_inner(
                             if let Ok(parsed) = Url::parse(link) {
                                 if let Some(path) = parsed.path_segments().and_then(|s| s.last()) {
                                     // Remove query and fragment
-                                    let fname = path.split(['?', '#'].as_ref()).next().unwrap_or("");
+                                    let fname = path.split(&['?', '#'][..]).next().unwrap_or("");
                                     // Get extension after last dot, if any
                                     let ext = fname.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
                                     let mime = match ext.as_str() {
@@ -953,7 +953,7 @@ async fn crawl_url_inner(
                     page.links = links;
                     info!("Fetched URL: {} ({} links, {} tokens)", url, page.links.len(), page.tokens.len());
                     // Only save if we have tokens (i.e., HTML was present)
-                    if !page.tokens.is_empty() {
+                    if (!page.tokens.is_empty()) {
                         page.save_async().await?;
                     }
                 }
@@ -988,7 +988,6 @@ pub async fn crawl_url(job_oid: String, url: String) -> crate::sam::memory::Resu
 
 static CRAWLER_RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// Start the crawler service in the background (call from main or CLI)
 pub fn start_service() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     STARTED.call_once(|| {

@@ -26,12 +26,37 @@ use std::io::BufRead;
 use std::process::Stdio;
 use tui_logger::{TuiLoggerWidget, TuiLoggerLevelOutput};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use std::sync::mpsc::{self, Sender};
+use std::io::{Read};
+// Add this import for catch_unwind on async blocks
+use futures::FutureExt;
+
+// Add this struct for a custom Write implementation
+struct PipeWriter {
+    sender: Sender<String>,
+}
+
+impl Write for PipeWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if let Ok(s) = std::str::from_utf8(buf) {
+            for line in s.lines() {
+                let _ = self.sender.send(line.to_string());
+            }
+        }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 // Move ServiceStatus struct to module scope and derive Debug, Default, Clone
 #[derive(Debug, Default, Clone)]
 struct ServiceStatus {
     crawler: String,
     redis: String,
+    docker: String, // Add docker status
+    update_count: u64, // Add a counter to show updates
 }
 
 /// Starts the interactive command prompt
@@ -39,6 +64,7 @@ struct ServiceStatus {
 /// This function checks for required Postgres environment variables,
 /// initializes the TUI logger, and launches the TUI event loop.
 pub async fn start_prompt() {
+    log::info!("[sam cli] start_prompt() called");
     check_postgres_env();
     // Initialize tui-logger (new crate)
     tui_logger::init_logger(log::LevelFilter::Debug).unwrap();
@@ -53,6 +79,64 @@ pub async fn start_prompt() {
 ///
 /// Handles user input, command execution, and UI rendering.
 async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("[sam cli] run_tui() called");
+
+    // Only ONE service_status and updater spawn at the top
+    let service_status = Arc::new(Mutex::new(ServiceStatus {
+        crawler: "unknown".to_string(),
+        redis: "unknown".to_string(),
+        docker: "unknown".to_string(),
+        update_count: 0,
+    }));
+   
+    log::info!("[sam status updater] about to spawn background updater task (top of run_tui)");
+    let service_status_clone = service_status.clone();
+    tokio::spawn(async move {
+        log::info!("[sam status updater] background updater task STARTED");
+        let mut count = 0u64;
+        loop {
+            log::info!("[sam status updater] loop iteration #{count}");
+            // Add logs before/after each status call
+            log::info!("[sam status updater] checking crawler status");
+            let crawler = std::panic::catch_unwind(|| crate::sam::services::crawler::service_status().to_string())
+                .unwrap_or_else(|e| {
+                    log::error!("[sam status updater] crawler status panicked: {:?}", e);
+                    "error".to_string()
+                });
+            log::info!("[sam status updater] crawler status: {}", crawler);
+
+            log::info!("[sam status updater] checking redis status");
+            let redis = std::panic::catch_unwind(|| crate::sam::services::redis::status().to_string())
+                .unwrap_or_else(|e| {
+                    log::error!("[sam status updater] redis status panicked: {:?}", e);
+                    "error".to_string()
+                });
+            log::info!("[sam status updater] redis status: {}", redis);
+
+            log::info!("[sam status updater] checking docker status");
+            let docker = std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
+                .unwrap_or_else(|e| {
+                    log::error!("[sam status updater] docker status panicked: {:?}", e);
+                    "error".to_string()
+                });
+            log::info!("[sam status updater] docker status: {}", docker);
+
+            log::info!(
+                "[sam status updater] update #{count}: crawler={:?}, redis={:?}, docker={:?}",
+                crawler, redis, docker
+            );
+
+            if let Ok(mut status) = service_status_clone.try_lock() {
+                status.crawler = if crawler.is_empty() { format!("unknown{}", count % 5) } else { crawler };
+                status.redis = if redis.is_empty() { format!("unknown{}", count % 5) } else { redis };
+                status.docker = if docker.is_empty() { format!("unknown{}", count % 5) } else { docker };
+                status.update_count = count;
+                count += 1;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    });
+
     // Set a panic hook to print panics to stderr
     std::panic::set_hook(Box::new(|info| {
         log::error!("\nSAM TUI PANIC: {info}");
@@ -89,6 +173,40 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         "Press Ctrl+C or type 'exit' to quit.".to_string(),
     ]));
 
+    // --- Add: Redirect stdout/stderr to output_lines ---
+    let (tx, rx) = mpsc::channel::<String>();
+    {
+        let tx_out = tx.clone();
+        let tx_err = tx.clone();
+
+        // Redirect stdout
+        let stdout_writer = PipeWriter { sender: tx_out };
+        // let _ = std::io::set_print(Some(Box::new(stdout_writer)));
+
+        // Redirect stderr
+        let stderr_writer = PipeWriter { sender: tx_err };
+        // let _ = std::io::set_panic(Some(Box::new(stderr_writer)));
+    }
+    // Spawn a thread to forward lines from rx to output_lines
+    {
+        let output_lines = output_lines.clone();
+        std::thread::spawn(move || {
+            while let Ok(line) = rx.recv() {
+                let output_lines = output_lines.clone();
+                let line = line.clone();
+                // Use tokio runtime if available, otherwise block
+                if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                    rt.spawn(async move {
+                        append_line(&output_lines, line).await;
+                    });
+                } else {
+                    futures::executor::block_on(append_line(&output_lines, line));
+                }
+            }
+        });
+    }
+    // --- End Add ---
+
     let human_name = get_human_name();
     let mut current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let mut scroll_offset: u16 = 0;
@@ -98,31 +216,12 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     let mut show_cursor = true;
     let mut cursor_tick: u8 = 0;
 
-    // Use tokio::sync::Mutex for async compatibility
-    let service_status = Arc::new(Mutex::new(ServiceStatus {
-        crawler: "unknown".to_string(),
-        redis: "unknown".to_string(),
-    }));
-
-    // Spawn a background task to update service status every 2 seconds
-    {
-        let service_status = service_status.clone();
-        tokio::spawn(async move {
-            loop {
-                let crawler = crate::sam::crawler::service_status().to_string();
-                let redis = crate::sam::services::redis::status().to_string();
-                let mut status = service_status.lock().await;
-                status.crawler = crawler;
-                status.redis = redis;
-                drop(status);
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
-        });
-    }
-
     loop {
-        // Fetch service status for display (block on lock, but outside draw closure)
-        let status = service_status.lock().await.clone();
+        // Fetch service status for display (lock for shortest possible time)
+        let status = {
+            let guard = service_status.lock().await;
+            guard.clone()
+        };
 
         // FIX: Acquire output_lines lock asynchronously and clone before draw
         let output_lines_snapshot = {
@@ -133,7 +232,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         let draw_result = catch_unwind(AssertUnwindSafe(|| {
             let mut local_output_height = output_height;
             let input_ref = &input;
-            let status = status.clone();
+            let status = status.clone(); // already cloned, no lock held here
             let output_lines_guard = &output_lines_snapshot;
 
             terminal.draw(|f| {
@@ -144,7 +243,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     .constraints([
                         Constraint::Percentage(66),
                         Constraint::Percentage(34),
-                    ].as_ref())
+                    ])
                     .split(size);
 
                 // Add a vertical split for left side: [status][output][input]
@@ -154,7 +253,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                         Constraint::Length(3), // status block
                         Constraint::Min(3),    // output
                         Constraint::Length(3), // input
-                    ].as_ref())
+                    ])
                     .split(main_chunks[0]);
 
                 local_output_height = left_chunks[1].height.max(1) as usize;
@@ -185,6 +284,18 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                                 _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
                             }
                         ),
+                        Span::raw("    "),
+                        Span::styled("Docker: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+                        Span::styled(
+                            &status.docker,
+                            match status.docker.as_str() {
+                                "running" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
+                                "stopped" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
+                                "not installed" => ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
+                                _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
+                            }
+                        ),
+                        Span::raw(format!("    [update #{}]", status.update_count)),
                     ])
                 ];
                 let status_widget = Paragraph::new(status_lines)
@@ -372,7 +483,7 @@ async fn run_with_spinner<F, Fut>(
 /// Helper to append output and play TTS in a single async block
 async fn append_and_tts(output_lines: Arc<Mutex<Vec<String>>>, text: String) {
     append_line(&output_lines, text.clone()).await;
-    match crate::sam::services::tts::get(text.clone()) {
+    match crate::sam::services::tts::get(text.clone().replace("┌─[sam]─>", "")) {
         Ok(wav_bytes) => {
             if let Err(e) = play_wav_from_bytes_send(&wav_bytes) {
                 append_line(&output_lines, format!("TTS playback error: {}", e)).await;
@@ -468,7 +579,7 @@ async fn handle_command(
             append_lines(output_lines, lines).await;
         }
         "crawler start" => {
-            crate::sam::crawler::start_service_async().await;
+            crate::sam::services::crawler::start_service_async().await;
             append_line(output_lines, "Crawler service started.".to_string()).await;
         }
         "crawler stop" => {
@@ -477,7 +588,7 @@ async fn handle_command(
                 "Stopping crawler service...",
                 |lines, _| lines.push("Crawler service stopped.".to_string()),
                 || async {
-                    crate::sam::crawler::stop_service();
+                    crate::sam::services::crawler::stop_service();
                     "done".to_string()
                 },
             ).await;
@@ -488,7 +599,7 @@ async fn handle_command(
                 "Checking crawler service status...",
                 |lines, status| lines.push(format!("Crawler service status: {}", status)),
                 || async {
-                    crate::sam::crawler::service_status().to_string()
+                    crate::sam::services::crawler::service_status().to_string()
                 },
             ).await;
         }
@@ -534,6 +645,32 @@ async fn handle_command(
                     crate::sam::services::redis::status().to_string()
                 },
             ).await;
+        }
+        "docker start" => {
+            run_with_spinner(
+                output_lines,
+                "Starting Docker daemon...",
+                |lines, _| lines.push("Docker start command issued.".to_string()),
+                || async {
+                    crate::sam::services::docker::start().await;
+                    "done".to_string()
+                },
+            ).await;
+        }
+        "docker stop" => {
+            run_with_spinner(
+                output_lines,
+                "Stopping Docker daemon...",
+                |lines, _| lines.push("Docker stop command issued.".to_string()),
+                || async {
+                    crate::sam::services::docker::stop().await;
+                    "done".to_string()
+                },
+            ).await;
+        }
+        "docker status" => {
+            let status = crate::sam::services::docker::status();
+            append_line(output_lines, format!("Docker daemon status: {}", status)).await;
         }
         _ if cmd.starts_with("cd ") => {
             handle_cd(cmd, output_lines, current_dir).await;
@@ -665,7 +802,6 @@ async fn handle_command(
                     }
                 });
 
-
                 append_line(&output_lines, "llama install: done.".to_string()).await;
             });
         }
@@ -718,7 +854,7 @@ async fn handle_command(
                 let query = query.to_string();
                 let output_lines = output_lines.clone();
                 tokio::spawn(async move {
-                    use crate::sam::crawler::CrawledPage;
+                    use crate::sam::services::crawler::CrawledPage;
                     match CrawledPage::query_by_relevance_async(&query, 10).await {
                         Ok(scored_pages) if !scored_pages.is_empty() => {
                             append_line(&output_lines, format!("Found {} results:", scored_pages.len())).await;
@@ -786,6 +922,9 @@ fn get_help_lines() -> Vec<String> {
         "redis start             - Start the Redis Docker container".to_string(),
         "redis stop              - Stop the Redis Docker container".to_string(),
         "redis status            - Show Redis Docker container status".to_string(),
+        "docker start             - Start the Docker daemon/service".to_string(),
+        "docker stop              - Stop the Docker daemon/service".to_string(),
+        "docker status            - Show Docker daemon/service status".to_string(),
     ]
 }
 

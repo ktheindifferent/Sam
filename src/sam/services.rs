@@ -56,3 +56,4 @@ pub mod redis;
 pub mod pg;
 // pub mod whisper;
 pub mod who;
+pub mod crawler;

@@ -23,9 +23,10 @@ use rouille::post_input;
 
 use serde::{Serialize, Deserialize};
 
-use palette::FromColor;
+use palette::rgb::{Rgb, Srgb};
+use palette::{Hsv, FromColor};
 
-use colors_transform::{Rgb, Color};
+use colors_transform::{Rgb as TransformRgb, Color};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -934,15 +935,12 @@ pub fn start(config: Config) -> StopHandle {
                                     let blue_int = rgb_parts_vec[2].to_string().parse::<i64>().unwrap(); 
                                     let blue_float: f32 = (blue_int) as f32;
 
-                                    let hcc = palette::Hsv::from_rgb(palette::Rgb{
-                                        red: red_float,
-                                        green: green_float,
-                                        blue: blue_float,
-                                    });
+                                    let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(red_float, green_float, blue_float);
+                                    let hcc = Hsv::from_color(rgb);
         
                                     // TODO: Why does this ugly hack work? Why is lifx api so differ
                                     let hbsk_set = HSBK {
-                                        hue: (hcc.hue.to_positive_degrees() * 182.0) as u16,
+                                        hue: (hcc.hue.into_positive_degrees() * 182.0) as u16,
                                         saturation: (hcc.saturation.to_degrees() * 1000.0) as u16,
                                         brightness,
                                         kelvin,
@@ -959,7 +957,7 @@ pub fn start(config: Config) -> StopHandle {
                                     let hex_vec: Vec<&str> = hex_split.collect();
                                     let hex = hex_vec[1].to_string();
 
-                                    let rgb2 = Rgb::from_hex_str(format!("#{}", hex).as_str()).unwrap();
+                                    let rgb2 = TransformRgb::from_hex_str(format!("#{}", hex).as_str()).unwrap();
                                     // Rgb { r: 255.0, g: 204.0, b: 0.0 }
 
                                     log::info!("{:?}", rgb2);
@@ -979,17 +977,14 @@ pub fn start(config: Config) -> StopHandle {
                                     log::info!("blue_float: {:?}", blue_float);
 
                     
-                                    let hcc = palette::Hsv::from_rgb(palette::Rgb{
-                                        red: red_float,
-                                        green: green_float,
-                                        blue: blue_float,
-                                    });
+                                    let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(red_float, green_float, blue_float);
+                                    let hcc = Hsv::from_color(rgb);
 
                                     log::info!("hcc: {:?}", hcc);
         
                                     // TODO: Why does this ugly hack work? Why is lifx api so differ
                                     let hbsk_set = HSBK {
-                                        hue: (hcc.hue.to_positive_degrees() * 182.0) as u16,
+                                        hue: (hcc.hue.into_positive_degrees() * 182.0) as u16,
                                         saturation: (hcc.saturation.to_degrees() * 1000.0) as u16,
                                         brightness,
                                         kelvin,
