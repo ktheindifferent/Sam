@@ -52,5 +52,7 @@ pub mod storage;
 pub mod stt;
 pub mod tts;
 pub mod llama;
+pub mod redis;
+pub mod pg;
 // pub mod whisper;
 pub mod who;

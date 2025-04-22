@@ -129,8 +129,29 @@ impl Config {
 
         let mut current_client = client;
         for (table_name, build_statement, migrations) in tables {
+           
+            // Run crawler index migrations after creating crawler tables
+            if table_name == crate::sam::crawler::CrawlJob::sql_table_name() {
+                for idx_sql in crate::sam::crawler::CrawlJob::sql_indexes() {
+                    match current_client.batch_execute(idx_sql).await {
+                        Ok(_) => log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql),
+                        Err(e) => log::error!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
+                    }
+                }
+            }
+            if table_name == crate::sam::crawler::CrawledPage::sql_table_name() {
+                for idx_sql in crate::sam::crawler::CrawledPage::sql_indexes() {
+                    match current_client.batch_execute(idx_sql).await {
+                        Ok(_) => log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql),
+                        Err(e) => log::error!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
+                    }
+                }
+            }
             current_client = Self::build_table(current_client, table_name, build_statement, migrations).await;
+            
         }
+
+        
 
         Ok(())
     }

@@ -27,6 +27,7 @@ use std::process::Command;
 use std::io::BufReader;
 use std::io::BufRead;
 use std::process::Stdio;
+use tokio::task::spawn_blocking;
 
 /// Starts the interactive command prompt
 ///
@@ -92,135 +93,124 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     let mut show_cursor = true;
     let mut cursor_tick: u8 = 0;
 
-    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        loop {
-            let draw_result = catch_unwind(AssertUnwindSafe(|| {
-                let output_lines_guard = output_lines.lock().unwrap();
-                let mut local_output_height = output_height;
-                let input_ref = &input;
-                let tui_state_ref = &tui_state;
-                terminal.draw(|f| {
-                    let size = f.size();
-                    let main_chunks = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .margin(1)
-                        .constraints([
-                            Constraint::Percentage(66),
-                            Constraint::Percentage(34),
-                        ].as_ref())
-                        .split(size);
+    loop {
+        let draw_result = catch_unwind(AssertUnwindSafe(|| {
+            let output_lines_guard = output_lines.lock().unwrap();
+            let mut local_output_height = output_height;
+            let input_ref = &input;
+            let tui_state_ref = &tui_state;
+            terminal.draw(|f| {
+                let size = f.size();
+                let main_chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .margin(1)
+                    .constraints([
+                        Constraint::Percentage(66),
+                        Constraint::Percentage(34),
+                    ].as_ref())
+                    .split(size);
 
-                    let left_chunks = Layout::default()
-                        .direction(Direction::Vertical)
-                        .constraints([
-                            Constraint::Min(3),
-                            Constraint::Length(3),
-                        ].as_ref())
-                        .split(main_chunks[0]);
+                let left_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Min(3),
+                        Constraint::Length(3),
+                    ].as_ref())
+                    .split(main_chunks[0]);
 
-                    local_output_height = left_chunks[0].height.max(1) as usize;
+                local_output_height = left_chunks[0].height.max(1) as usize;
 
-                    let cursor_char = if show_cursor { "_" } else { " " };
-                    let input_display = format!("{}{}", input_ref, cursor_char);
+                let cursor_char = if show_cursor { "_" } else { " " };
+                let input_display = format!("{}{}", input_ref, cursor_char);
 
-                    let output: Vec<Spans> = output_lines_guard.iter().map(|l| Spans::from(Span::raw(l))).collect();
+                let output: Vec<Spans> = output_lines_guard.iter().map(|l| Spans::from(Span::raw(l))).collect();
 
-                    let output_widget = Paragraph::new(output)
-                        .block(Block::default().borders(Borders::ALL).title("Output"))
-                        .scroll((scroll_offset, 0))
-                        .wrap(tui::widgets::Wrap { trim: false });
+                let output_widget = Paragraph::new(output)
+                    .block(Block::default().borders(Borders::ALL).title("Output"))
+                    .scroll((scroll_offset, 0))
+                    .wrap(tui::widgets::Wrap { trim: false });
 
-                    let input_widget = Paragraph::new(input_display)
-                        .block(Block::default().borders(Borders::ALL).title("Command"));
+                let input_widget = Paragraph::new(input_display)
+                    .block(Block::default().borders(Borders::ALL).title("Command"));
 
-                    let system_widget = TuiLoggerWidget::default()
-                        .block(Block::default().borders(Borders::ALL).title("System"))
-                        .output_separator('│')
-                        .output_timestamp(Some("%H:%M:%S".to_string()))
-                        .output_level(Some(TuiLoggerLevelOutput::Long))
-                        .output_target(false)
-                        .state(tui_state_ref);
+                let system_widget = TuiLoggerWidget::default()
+                    .block(Block::default().borders(Borders::ALL).title("System"))
+                    .output_separator('│')
+                    .output_timestamp(Some("%H:%M:%S".to_string()))
+                    .output_level(Some(TuiLoggerLevelOutput::Long))
+                    .output_target(false)
+                    .state(tui_state_ref);
 
-                    f.render_widget(output_widget, left_chunks[0]);
-                    f.render_widget(input_widget, left_chunks[1]);
-                    f.render_widget(system_widget, main_chunks[1]);
-                })?;
-                output_height = local_output_height;
-                Ok::<(), std::io::Error>(())
-            }));
+                f.render_widget(output_widget, left_chunks[0]);
+                f.render_widget(input_widget, left_chunks[1]);
+                f.render_widget(system_widget, main_chunks[1]);
+            })?;
+            output_height = local_output_height;
+            Ok::<(), std::io::Error>(())
+        }));
 
-            if let Err(e) = draw_result {
-                let mut lines = output_lines.lock().unwrap();
-                lines.push(format!("TUI draw panic: {:?}", e));
-                log::error!("TUI draw panic: {:?}", e);
-                break;
-            }
-
-            cursor_tick = cursor_tick.wrapping_add(1);
-            if cursor_tick >= 5 {
-                show_cursor = !show_cursor;
-                cursor_tick = 0;
-            }
-
-            let poll_result = catch_unwind(AssertUnwindSafe(|| {
-                event::poll(std::time::Duration::from_millis(100))
-            }));
-
-            if let Err(e) = poll_result {
-                let mut lines = output_lines.lock().unwrap();
-                lines.push(format!("TUI poll panic: {:?}", e));
-                log::error!("TUI poll panic: {:?}", e);
-                break;
-            }
-
-            if let Ok(Ok(true)) = poll_result {
-                let read_result = catch_unwind(AssertUnwindSafe(|| event::read()));
-                if let Err(e) = read_result {
-                    let mut lines = output_lines.lock().unwrap();
-                    lines.push(format!("TUI read panic: {:?}", e));
-                    log::error!("TUI read panic: {:?}", e);
-                    break;
-                }
-                if let Ok(Ok(Event::Key(key))) = read_result {
-                    match key.code {
-                        KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => break,
-                        KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
-                        KeyCode::PageDown => scroll_offset = scroll_offset.saturating_add(5),
-                        KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
-                        KeyCode::Down => scroll_offset = scroll_offset.saturating_add(1),
-                        KeyCode::Enter => {
-                            let cmd = input.trim().to_string();
-                            if cmd == "exit" || cmd == "quit" {
-                                break;
-                            }
-                            if !cmd.is_empty() {
-                                append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd));
-                                futures::executor::block_on(handle_command(
-                                    &cmd,
-                                    &output_lines,
-                                    &mut current_dir,
-                                    &human_name,
-                                    output_height,
-                                    &mut scroll_offset,
-                                ));
-                            }
-                            input.clear();
-                        }
-                        KeyCode::Char(c) => input.push(c),
-                        KeyCode::Backspace => { input.pop(); },
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }));
-
-    match result {
-        Ok(_) => {}
-        Err(e) => {
-            log::error!("TUI main loop panic: {:?}", e);
+        if let Err(e) = draw_result {
             let mut lines = output_lines.lock().unwrap();
-            lines.push(format!("TUI main loop panic: {:?}", e));
+            lines.push(format!("TUI draw panic: {:?}", e));
+            log::error!("TUI draw panic: {:?}", e);
+            break;
+        }
+
+        cursor_tick = cursor_tick.wrapping_add(1);
+        if cursor_tick >= 5 {
+            show_cursor = !show_cursor;
+            cursor_tick = 0;
+        }
+
+        let poll_result = catch_unwind(AssertUnwindSafe(|| {
+            event::poll(std::time::Duration::from_millis(100))
+        }));
+
+        if let Err(e) = poll_result {
+            let mut lines = output_lines.lock().unwrap();
+            lines.push(format!("TUI poll panic: {:?}", e));
+            log::error!("TUI poll panic: {:?}", e);
+            break;
+        }
+
+        if let Ok(Ok(true)) = poll_result {
+            let read_result = catch_unwind(AssertUnwindSafe(|| event::read()));
+            if let Err(e) = read_result {
+                let mut lines = output_lines.lock().unwrap();
+                lines.push(format!("TUI read panic: {:?}", e));
+                log::error!("TUI read panic: {:?}", e);
+                break;
+            }
+            if let Ok(Ok(Event::Key(key))) = read_result {
+                match key.code {
+                    KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => break,
+                    KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
+                    KeyCode::PageDown => scroll_offset = scroll_offset.saturating_add(5),
+                    KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
+                    KeyCode::Down => scroll_offset = scroll_offset.saturating_add(1),
+                    KeyCode::Enter => {
+                        let cmd = input.trim().to_string();
+                        if cmd == "exit" || cmd == "quit" {
+                            break;
+                        }
+                        if !cmd.is_empty() {
+                            append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd));
+                            handle_command(
+                                &cmd,
+                                &output_lines,
+                                &mut current_dir,
+                                &human_name,
+                                output_height,
+                                &mut scroll_offset,
+                            ).await;
+                        }
+                        input.clear();
+                    }
+                    KeyCode::Char(c) => input.push(c),
+                    KeyCode::Backspace => { input.pop(); },
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -338,16 +328,75 @@ async fn handle_command(
             append_lines(output_lines, lines);
         }
         "crawler start" => {
+            // Use a simple direct call instead of with_spinner if that's causing issues
             crate::sam::crawler::start_service();
             append_line(output_lines, "Crawler service started.".to_string());
+            
+            // OR keep with_spinner but ensure it doesn't block or create runtimes
         }
         "crawler stop" => {
-            crate::sam::crawler::stop_service();
-            append_line(output_lines, "Crawler service stopped.".to_string());
+            with_spinner(
+                output_lines,
+                "Stopping crawler service...",
+                |lines, _| lines.push("Crawler service stopped.".to_string()),
+                || async {
+                    crate::sam::crawler::stop_service();
+                    "done".to_string()
+                },
+            );
         }
         "crawler status" => {
-            let status = crate::sam::crawler::service_status();
-            append_line(output_lines, format!("Crawler service status: {}", status));
+            with_spinner(
+                output_lines,
+                "Checking crawler service status...",
+                |lines, status| lines.push(format!("Crawler service status: {}", status)),
+                || async {
+                    crate::sam::crawler::service_status().to_string()
+                },
+            );
+        }
+        "redis install" => {
+            with_spinner(
+                output_lines,
+                "Installing Redis via Docker...",
+                |lines, _| lines.push("Redis install complete.".to_string()),
+                || async {
+                    crate::sam::services::redis::install().await;
+                    "done".to_string()
+                },
+            );
+        }
+        "redis start" => {
+            with_spinner(
+                output_lines,
+                "Starting Redis via Docker...",
+                |lines, _| lines.push("Redis start command issued.".to_string()),
+                || async {
+                    crate::sam::services::redis::start().await;
+                    "done".to_string()
+                },
+            );
+        }
+        "redis stop" => {
+            with_spinner(
+                output_lines,
+                "Stopping Redis via Docker...",
+                |lines, _| lines.push("Redis stop command issued.".to_string()),
+                || async {
+                    crate::sam::services::redis::stop().await;
+                    "done".to_string()
+                },
+            );
+        }
+        "redis status" => {
+            with_spinner(
+                output_lines,
+                "Checking Redis service status...",
+                |lines, status| lines.push(format!("Redis service status: {}", status)),
+                || async {
+                    crate::sam::services::redis::status().to_string()
+                },
+            );
         }
         _ if cmd.starts_with("cd ") => {
             handle_cd(cmd, output_lines, current_dir);
@@ -547,15 +596,13 @@ async fn handle_command(
             } else {
                 let query = query.to_string();
                 let output_lines = output_lines.clone();
+                
                 tokio::spawn(async move {
                     use crate::sam::crawler::CrawledPage;
-                    use std::panic::AssertUnwindSafe;
-                    use futures::FutureExt;
-                    let result = AssertUnwindSafe(CrawledPage::query_by_relevance_async(&query, 10))
-                        .catch_unwind()
-                        .await;
-                    match result {
-                        Ok(Ok(scored_pages)) if !scored_pages.is_empty() => {
+                    
+                    // Use the async version properly with await
+                    match CrawledPage::query_by_relevance_async(&query, 10).await {
+                        Ok(scored_pages) if !scored_pages.is_empty() => {
                             append_line(&output_lines, format!("Found {} results:", scored_pages.len()));
                             for (page, score) in scored_pages {
                                 append_line(&output_lines, format!("URL: {}", page.url));
@@ -567,18 +614,8 @@ async fn handle_command(
                                 append_line(&output_lines, "-----------------------------".to_string());
                             }
                         }
-                        Ok(Ok(_)) => append_line(&output_lines, "No results found.".to_string()),
-                        Ok(Err(e)) => append_line(&output_lines, format!("Search error: {}", e)),
-                        Err(panic) => {
-                            let msg = if let Some(s) = panic.downcast_ref::<&str>() {
-                                s.to_string()
-                            } else if let Some(s) = panic.downcast_ref::<String>() {
-                                s.clone()
-                            } else {
-                                "Unknown panic".to_string()
-                            };
-                            append_line(&output_lines, format!("Search panicked: {}", msg));
-                        }
+                        Ok(_) => append_line(&output_lines, "No results found.".to_string()),
+                        Err(e) => append_line(&output_lines, format!("Search error: {}", e)),
                     }
                 });
             }
@@ -640,6 +677,10 @@ fn get_help_lines() -> Vec<String> {
         "crawler stop            - Stop the background web crawler".to_string(),
         "crawler status          - Show crawler service status".to_string(),
         "crawl search <query>   - Search crawled pages for a keyword".to_string(),
+        "redis install           - Install Redis using Docker".to_string(),
+        "redis start             - Start the Redis Docker container".to_string(),
+        "redis stop              - Stop the Redis Docker container".to_string(),
+        "redis status            - Show Redis Docker container status".to_string(),
     ]
 }
 
@@ -807,4 +848,59 @@ where
     }
     let status = child.wait()?;
     Ok(status.code().unwrap_or(-1))
+}
+
+fn with_spinner<F, Fut>(
+    output_lines: &Arc<Mutex<Vec<String>>>,
+    message: &str,
+    done_message: impl FnOnce(&mut Vec<String>, &str) + Send + 'static,
+    fut: F,
+) where 
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = String> + Send + 'static,
+{
+    let output_lines = output_lines.clone();
+    let message = message.to_string(); // Clone to owned String for thread
+    let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let spinner_running = Arc::new(Mutex::new(true));
+    let spinner_flag = spinner_running.clone();
+
+    let spinner_index = {
+        let mut lines = output_lines.lock().unwrap();
+        lines.push(format!("⠋ {}", message));
+        lines.len() - 1
+    };
+
+    // Spinner thread
+    let spinner_output_lines = output_lines.clone();
+    let message_clone = message.clone();
+    std::thread::spawn(move || {
+        let mut i = 0;
+        while *spinner_flag.lock().unwrap() {
+            {
+                let mut lines = spinner_output_lines.lock().unwrap();
+                if spinner_index < lines.len() {
+                    lines[spinner_index] = format!("{} {}", spinner_chars[i % spinner_chars.len()], message_clone);
+                }
+            }
+            i += 1;
+            std::thread::sleep(std::time::Duration::from_millis(80));
+        }
+    });
+
+    // Execute future and update when done
+    let spinner_flag2 = spinner_running.clone();
+    let output_lines2 = output_lines.clone();
+    let done_message = Box::new(done_message);
+    let spinner_idx = spinner_index;
+    
+    // Instead of creating a new runtime, use the existing one to execute the future
+    tokio::spawn(async move {
+        let result = fut().await;
+        *spinner_flag2.lock().unwrap() = false;
+        let mut lines = output_lines2.lock().unwrap();
+        if spinner_idx < lines.len() {
+            done_message(&mut lines, &result);
+        }
+    });
 }

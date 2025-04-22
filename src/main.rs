@@ -20,6 +20,11 @@ extern crate hound;
 extern crate postgres;
 extern crate threadpool;
 
+#[macro_use]
+extern crate log;
+//use tui_logger;
+use env_logger;
+
 use std::env;
 use std::os::unix::fs::PermissionsExt;
 
@@ -108,15 +113,24 @@ async fn main() {
     println!("Hello {}....SAM is starting up...", user);
     println!("================================================");
 
-    // Initialize logger with color, warning level, and timestamps
-    // simple_logger::SimpleLogger::new()
-    //     .with_colors(true)
-    //     .with_level(log::LevelFilter::Info)
-    //     .with_timestamps(true)
-    //     .init()
-    //     .unwrap();
-
-
+    // // Initialize logger with color, warning level, and timestamps
+    // // Early initialization of the logger
+    // let drain = tui_logger::Drain::new();
+    // // instead of tui_logger::init_logger, we use `env_logger`
+    // tui_logger::Builder::default()
+    //     .format(move |buf, record|
+    //         // patch the env-logger entry through our drain to the tui-logger
+    //         Ok(drain.log(record))
+    //     ).init(); // make this the global logger
+    // Early initialization of the logger
+    let drain = tui_logger::Drain::new();
+    // instead of tui_logger::init_logger, we use `env_logger`
+    env_logger::Builder::default()
+        .format(move |buf, record|
+            // patch the env-logger entry through our drain to the tui-logger
+            Ok(drain.log(record))
+        ).init(); // make this the global logger
+    // code....
 
     // Optionally set environment variables for libraries (uncomment if needed)
     // env::set_var("LIBTORCH", "/app/libtorch/libtorch");

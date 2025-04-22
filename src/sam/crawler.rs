@@ -11,10 +11,10 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio::time::{sleep, Duration};
 use trust_dns_resolver::TokioAsyncResolver;
 use std::sync::atomic::{AtomicBool, Ordering};
-use log::{info, warn, LevelFilter};
+use log::{info, LevelFilter};
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::path::Path;
@@ -24,6 +24,15 @@ use rand::rngs::SmallRng;
 use rand::SeedableRng;
 use regex;
 use url::ParseError;
+use redis::{AsyncCommands, aio::MultiplexedConnection, Client as RedisClient};
+
+static REDIS_URL: &str = "redis://127.0.0.1/";
+static REDIS_MANAGER: OnceCell<RedisClient> = OnceCell::new();
+
+async fn redis_client() -> redis::RedisResult<MultiplexedConnection> {
+    let client = REDIS_MANAGER.get_or_init(|| RedisClient::open(REDIS_URL).unwrap());
+    client.get_multiplexed_async_connection().await
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CrawlJob {
@@ -63,6 +72,15 @@ impl CrawlJob {
             updated_at BIGINT
         );"
     }
+    pub fn sql_indexes() -> Vec<&'static str> {
+        vec![
+            "CREATE INDEX IF NOT EXISTS idx_crawl_jobs_oid ON crawl_jobs (oid);",
+            "CREATE INDEX IF NOT EXISTS idx_crawl_jobs_start_url ON crawl_jobs (start_url);",
+            "CREATE INDEX IF NOT EXISTS idx_crawl_jobs_status ON crawl_jobs (status);",
+            "CREATE INDEX IF NOT EXISTS idx_crawl_jobs_created_at ON crawl_jobs (created_at);",
+            "CREATE INDEX IF NOT EXISTS idx_crawl_jobs_updated_at ON crawl_jobs (updated_at);",
+        ]
+    }
     pub fn migrations() -> Vec<&'static str> { vec![] }
     pub fn from_row(row: &Row) -> crate::sam::memory::Result<Self> {
         Ok(Self {
@@ -89,6 +107,16 @@ impl CrawlJob {
         order: Option<String>,
         query: Option<PostgresQueries>,
     ) -> crate::sam::memory::Result<Vec<Self>> {
+        // For simple queries (by oid), try Redis first
+        if let Some(q) = &query {
+            if q.queries.len() == 1 {
+                if let crate::sam::memory::PGCol::String(ref oid) = q.queries[0] {
+                    if let Some(obj) = Self::get_redis(oid).await {
+                        return Ok(vec![obj]);
+                    }
+                }
+            }
+        }
         tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query))
             .await
             .unwrap()
@@ -115,10 +143,34 @@ impl CrawlJob {
     }
     pub async fn save_async(&self) -> crate::sam::memory::Result<Self> {
         let this = self.clone();
+        // Save to Redis first for fast access
+        let _ = this.save_redis().await;
         tokio::task::spawn_blocking(move || this.save()).await.unwrap()
     }
     pub fn destroy(oid: String) -> crate::sam::memory::Result<bool> {
         Config::destroy_row(oid, Self::sql_table_name())
+    }
+
+    async fn redis_key(&self) -> String {
+        format!("crawljob:{}", self.oid)
+    }
+    pub async fn save_redis(&self) -> redis::RedisResult<()> {
+        let mut con = redis_client().await?;
+        let key = self.redis_key().await;
+        let val = serde_json::to_string(self).unwrap();
+        con.set(key, val).await
+    }
+    pub async fn get_redis(oid: &str) -> Option<Self> {
+        let mut con = match redis_client().await {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+        let key = format!("crawljob:{}", oid);
+        let val: Option<String> = con.get(key).await.ok();
+        val.and_then(|v| {
+            let obj: Result<CrawlJob, _> = serde_json::from_str(&v);
+            obj.ok()
+        })
     }
 }
 
@@ -168,6 +220,16 @@ impl CrawledPage {
             timestamp BIGINT
         );"
     }
+    pub fn sql_indexes() -> Vec<&'static str> {
+        vec![
+            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_oid ON crawled_pages (oid);",
+            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_url ON crawled_pages (url);",
+            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_crawl_job_oid ON crawled_pages (crawl_job_oid);",
+            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_timestamp ON crawled_pages (timestamp);",
+            // For tokens, a GIN index is best if using Postgres full-text search, but here we use a normal index for the text column:
+            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_tokens ON crawled_pages (tokens);",
+        ]
+    }
     pub fn migrations() -> Vec<&'static str> { vec![] }
     pub fn from_row(row: &Row) -> crate::sam::memory::Result<Self> {
         let links_str: Option<String> = row.get("links");
@@ -201,6 +263,16 @@ impl CrawledPage {
         order: Option<String>,
         query: Option<PostgresQueries>,
     ) -> crate::sam::memory::Result<Vec<Self>> {
+        // For simple queries (by oid), try Redis first
+        if let Some(q) = &query {
+            if q.queries.len() == 1 {
+                if let crate::sam::memory::PGCol::String(ref oid) = q.queries[0] {
+                    if let Some(obj) = Self::get_redis(oid).await {
+                        return Ok(vec![obj]);
+                    }
+                }
+            }
+        }
         tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query))
             .await
             .unwrap()
@@ -229,10 +301,34 @@ impl CrawledPage {
     }
     pub async fn save_async(&self) -> crate::sam::memory::Result<Self> {
         let this = self.clone();
+        // Save to Redis first for fast access
+        let _ = this.save_redis().await;
         tokio::task::spawn_blocking(move || this.save()).await.unwrap()
     }
     pub fn destroy(oid: String) -> crate::sam::memory::Result<bool> {
         Config::destroy_row(oid, Self::sql_table_name())
+    }
+
+    async fn redis_key(&self) -> String {
+        format!("crawledpage:{}", self.oid)
+    }
+    pub async fn save_redis(&self) -> redis::RedisResult<()> {
+        let mut con = redis_client().await?;
+        let key = self.redis_key().await;
+        let val = serde_json::to_string(self).unwrap();
+        con.set(key, val).await
+    }
+    pub async fn get_redis(oid: &str) -> Option<Self> {
+        let mut con = match redis_client().await {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+        let key = format!("crawledpage:{}", oid);
+        let val: Option<String> = con.get(key).await.ok();
+        val.and_then(|v| {
+            let obj: Result<CrawledPage, _> = serde_json::from_str(&v);
+            obj.ok()
+        })
     }
 
     /// Query crawled pages for the most probable results for a given query string.
@@ -364,8 +460,17 @@ impl CrawledPage {
     }
 
     pub async fn query_by_relevance_async(query: &str, limit: usize) -> crate::sam::memory::Result<Vec<(CrawledPage, usize)>> {
-        let query = query.to_string();
-        tokio::task::spawn_blocking(move || Self::query_by_relevance(&query, limit)).await.unwrap()
+        // Use spawn_blocking to move the CPU-intensive search to a separate thread
+        // without trying to create a new runtime
+        let query_string = query.to_string(); // Clone the query for move
+        tokio::task::spawn_blocking(move || {
+            Self::query_by_relevance(&query_string, limit)
+        })
+        .await
+        .unwrap_or_else(|e| {
+            log::error!("Search task panicked: {}", e);
+            Ok(vec![])
+        })
     }
 }
 
@@ -396,7 +501,7 @@ async fn crawl_url_inner(
             page.status_code = Some(status as i32);
             if status == 200 {
                 let html = resp.text().await.unwrap_or_default();
-                if (!html.is_empty()) {
+                if !html.is_empty() {
                     // Move HTML parsing and token extraction to a blocking thread
                     let url_clone = url.clone();
                     let (mut tokens, mut links) = tokio::task::spawn_blocking(move || {
@@ -751,7 +856,7 @@ async fn crawl_url_inner(
                         "il", "lo", "la", "i", "gli", "le", "un", "una", "uno", "dei", "delle", "degli", "del", "della", "dello", "dei",
                         "e", "o", "ma", "per", "con", "su", "tra", "fra", "di", "da", "a", "al", "ai", "agli", "alla", "alle", "allo",
                         "che", "chi", "cui", "come", "quando", "dove", "perché", "quale", "quali", "questo", "questa", "questi", "queste",
-                        "quello", "quella", "quelli", "quelle", "io", "tu", "lui", "lei", "noi", "voi", "loro", "mi", "ti", "si", "ci", "vi",
+                        "quello", "quella", "quelli", "quelle", "io", "tu", "lui", "lei", "noi", "voi", "mi", "ti", "si", "ci", "vi",
 
                         // Portuguese
                         "o", "a", "os", "as", "um", "uma", "uns", "umas", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas",
@@ -782,8 +887,8 @@ async fn crawl_url_inner(
                         "kanojotachi", "koko", "soko", "asoko", "doko", "itsu", "dare", "nani", "nan", "ikutsu", "ikura", "doushite", "dou",
 
                         // Turkish
-                        "ve", "bir", "bu", "da", "de", "için", "ile", "ama", "veya", "ya", "ya da", "çok", "az", "daha", "en", "gibi", "mi",
-                        "mu", "mü", "ben", "sen", "o", "biz", "siz", "onlar", "şu", "bu", "şey", "her", "hiç", "bazı", "bazı", "bazı",
+                        "ve", "bir", "bu", "da", "de", "için", "ile", "ama", "veya", "çok", "az", "daha", "en", "gibi", "mi",
+                        "mu", "mü", "ben", "sen", "o", "biz", "siz", "şu", "bu", "şey", "her", "hiç", "bazı", "bazı", "bazı",
 
                         // Arabic (transliterated)
                         "wa", "fi", "min", "ila", "an", "ala", "ma", "la", "huwa", "hiya", "anta", "anti", "nahnu", "antum", "antunna",
@@ -794,9 +899,9 @@ async fn crawl_url_inner(
                         "vah", "yeh", "ham", "aap", "unka", "unka", "unka", "unka", "unka", "unka", "unka", "unka", "unka", "unka",
 
                         // Polish
-                        "i", "w", "na", "z", "do", "o", "za", "po", "przez", "dla", "od", "bez", "pod", "nad", "przy", "między", "jest",
-                        "być", "był", "była", "było", "byli", "były", "ten", "ta", "to", "ci", "te", "tam", "tu", "kto", "co", "gdzie",
-                        "kiedy", "jak", "dlaczego", "który", "która", "które", "którzy",
+                        "i", "w", "na", "z", "do", "o", "za", "po", "przez", "dla", "od", "bez", "pod", "nad", "przy", "między",
+                        "jest", "być", "był", "była", "było", "byli", "były", "ten", "ta", "to", "ci", "te", "tam", "tu", "kto",
+                        "co", "gdzie", "kiedy", "jak", "dlaczego", "który", "która", "które", "którzy",
 
                         // Scandinavian (Danish, Norwegian, Swedish)
                         "och", "att", "det", "som", "en", "ett", "den", "de", "på", "av", "med", "till", "för", "från", "är", "var", "har",
@@ -949,6 +1054,34 @@ async fn save_dns_cache() {
     if let Ok(data) = serde_json::to_vec(&*cache) {
         let _ = fs::write(DNS_CACHE_PATH, data).await;
         log::info!("Saved DNS cache with {} entries", cache.len());
+    }
+}
+
+// Cache all CrawlJob and CrawledPage entries from Postgres into Redis
+async fn cache_all_to_redis() {
+    // Cache CrawlJobs
+    match CrawlJob::select(None, None, None, None) {
+        Ok(jobs) => {
+            let mut count = 0;
+            for job in jobs {
+                let _ = job.save_redis().await;
+                count += 1;
+            }
+            log::info!("Cached {} CrawlJob entries into Redis", count);
+        }
+        Err(e) => log::warn!("Failed to cache CrawlJob entries to Redis: {}", e),
+    }
+    // Cache CrawledPages
+    match CrawledPage::select(None, None, None, None) {
+        Ok(pages) => {
+            let mut count = 0;
+            for page in pages {
+                let _ = page.save_redis().await;
+                count += 1;
+            }
+            log::info!("Cached {} CrawledPage entries into Redis", count);
+        }
+        Err(e) => log::warn!("Failed to cache CrawledPage entries to Redis: {}", e),
     }
 }
 
@@ -1375,8 +1508,11 @@ async fn run_crawler_service() {
 
     load_dns_cache().await;
 
+    // Cache all Postgres crawler data into Redis on service start
+    cache_all_to_redis().await;
+
     loop {
-        if !CRAWLER_RUNNING.load(Ordering::SeqCst) {
+        if (!CRAWLER_RUNNING.load(Ordering::SeqCst)) {
             sleep(Duration::from_secs(1)).await;
             continue;
         }
