@@ -5,14 +5,14 @@ use std::thread;
 
 /// Install Docker if not present and ensure daemon is running.
 pub async fn install() {
-    if (!is_installed()) {
+    if !is_installed() {
         info!("Docker is not installed. Installing...");
         install_docker();
     } else {
         info!("Docker is already installed.");
     }
 
-    if (!is_running()) {
+    if !is_running() {
         info!("Docker daemon is not running. Attempting to start...");
         start().await;
     } else {

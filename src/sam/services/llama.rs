@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, Read, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -106,7 +106,7 @@ impl LlamaService {
         let mut resp = reqwest::blocking::get(model_url)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Download failed: {e}")))?;
 
-        if (!resp.status().is_success()) {
+        if !resp.status().is_success() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("Failed to download model: HTTP {}", resp.status()),
@@ -169,7 +169,7 @@ impl LlamaService {
     pub fn query(model_path: &Path, prompt: &str) -> io::Result<String> {
         Self::ensure_llama_binary_with_output()?;
 
-        if (!model_path.exists()) {
+        if !model_path.exists() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Model file not found.",

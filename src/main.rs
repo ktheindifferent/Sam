@@ -11,7 +11,7 @@ use std::path::Path;
 // Licensed under GPLv3....see LICENSE file.
 
 pub mod sam;
-pub mod cli; // New CLI module
+pub mod cli;
 
 
 // External crates
@@ -154,16 +154,16 @@ async fn main() {
     if crate::sam::memory::Config::check_postgres_installed() {
         println!("Postgres is already installed.");
 
-        crate::sam::memory::pg::start_postgres(user.as_str()).unwrap();
+        crate::sam::services::pg::start_postgres(user.as_str()).unwrap();
 
         crate::sam::memory::Config::create_user_and_database(user.as_str()).unwrap();
     } else {
         println!("Installing Postgres...");
-        crate::sam::memory::pg::install_postgres(user.as_str()).unwrap();
+        crate::sam::services::pg::install().await;
 
         // Start Postgres server
         println!("Starting Postgres...");
-        crate::sam::memory::pg::start_postgres(user.as_str()).unwrap();
+        crate::sam::services::pg::start_postgres(user.as_str()).unwrap();
 
         // --- Add Homebrew Postgres bin to PATH if on macOS ---
         #[cfg(target_os = "macos")]

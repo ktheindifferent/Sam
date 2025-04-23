@@ -4371,6 +4371,7 @@ name = "sam"
 version = "0.0.2"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "colored 3.0.0",
  "colors-transform",
  "crossterm 0.29.0",

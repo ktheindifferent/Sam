@@ -66,6 +66,7 @@ num-bigint = "0.4"
 num-traits = "0.2"
 # Enable if you are still using env_logger
 env_logger = "0.10.0"
+base64 = "0.22.1"
 
 [features]
 default = ["reqwest/default-tls", "trust-dns-resolver/dns-over-native-tls"]

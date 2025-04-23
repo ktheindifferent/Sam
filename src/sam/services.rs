@@ -54,6 +54,7 @@ pub mod tts;
 pub mod llama;
 pub mod redis;
 pub mod pg;
+pub mod spotify;
 // pub mod whisper;
 pub mod who;
 pub mod crawler;
