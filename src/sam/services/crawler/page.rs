@@ -10,25 +10,33 @@ use once_cell::sync::OnceCell;
 use log;
 use reqwest::Url;
 use regex;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
+use tokio::io::{AsyncReadExt,AsyncWriteExt};
+use base64::{engine::general_purpose, Engine as _};
 
 static REDIS_URL: &str = "redis://127.0.0.1/";
 static REDIS_MANAGER: OnceCell<RedisClient> = OnceCell::new();
 
 async fn redis_client() -> redis::RedisResult<MultiplexedConnection> {
-    let client = REDIS_MANAGER.get_or_init(|| RedisClient::open(REDIS_URL).unwrap());
+    let client = match REDIS_MANAGER.get_or_try_init(|| RedisClient::open(REDIS_URL)) {
+        Ok(client) => client,
+        Err(e) => {
+            log::error!("Failed to initialize Redis client: {}", e);
+            return Err(redis::RedisError::from((redis::ErrorKind::IoError, "Redis client init failed")));
+        }
+    };
     client.get_multiplexed_async_connection().await
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CrawledPage {
     pub id: i32,
-    pub oid: String,
     pub crawl_job_oid: String,
     pub url: String,
     pub tokens: Vec<String>,
     pub links: Vec<String>,
-    pub status_code: Option<i32>,
-    pub error: Option<String>,
     pub timestamp: i64,
 }
 impl Default for CrawledPage {
@@ -41,33 +49,32 @@ impl CrawledPage {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         CrawledPage {
             id: 0,
-            oid,
             crawl_job_oid: String::new(),
             url: String::new(),
             tokens: vec![],
             links: vec![],
-            status_code: None,
-            error: None,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+            timestamp: match SystemTime::now().duration_since(UNIX_EPOCH) {
+                Ok(duration) => duration.as_secs() as i64,
+                Err(e) => {
+                    log::error!("SystemTime error in CrawledPage::new(): {}", e);
+                    0
+                }
+            },
         }
     }
     pub fn sql_table_name() -> String { "crawled_pages".to_string() }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE IF NOT EXISTS crawled_pages (
             id serial PRIMARY KEY,
-            oid varchar NOT NULL UNIQUE,
             crawl_job_oid varchar NOT NULL,
             url varchar NOT NULL,
             tokens text,
             links text,
-            status_code integer,
-            error text,
             timestamp BIGINT
         );"
     }
     pub fn sql_indexes() -> Vec<&'static str> {
         vec![
-            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_oid ON crawled_pages (oid);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_url ON crawled_pages (url);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_crawl_job_oid ON crawled_pages (crawl_job_oid);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_timestamp ON crawled_pages (timestamp);",
@@ -83,13 +90,10 @@ impl CrawledPage {
         let tokens = tokens_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
         Ok(Self {
             id: row.get("id"),
-            oid: row.get("oid"),
             crawl_job_oid: row.get("crawl_job_oid"),
             url: row.get("url"),
             tokens,
             links,
-            status_code: row.get("status_code"),
-            error: row.get("error"),
             timestamp: row.get("timestamp"),
         })
     }
@@ -97,7 +101,13 @@ impl CrawledPage {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = match serde_json::from_str(&j) {
+                Ok(obj) => obj,
+                Err(e) => {
+                    log::error!("Failed to deserialize CrawledPage: {}", e);
+                    return Err(crate::sam::memory::Error::with_chain(e, "Deserialization error"));
+                }
+            };
             parsed_rows.push(object);
         }
         Ok(parsed_rows)
@@ -108,38 +118,42 @@ impl CrawledPage {
         order: Option<String>,
         query: Option<PostgresQueries>,
     ) -> crate::sam::memory::Result<Vec<Self>> {
-        // For simple queries (by oid), try Redis first
+        // For simple queries (by url), try Redis first
         if let Some(q) = &query {
             if q.queries.len() == 1 {
-                if let crate::sam::memory::PGCol::String(ref oid) = q.queries[0] {
-                    if let Some(obj) = Self::get_redis(oid).await {
+                if let crate::sam::memory::PGCol::String(ref url) = q.queries[0] {
+                    if let Some(obj) = Self::get_redis(url).await {
                         return Ok(vec![obj]);
                     }
                 }
             }
         }
-        tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query))
-            .await
-            .unwrap()
+        match tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query)).await {
+            Ok(res) => res,
+            Err(e) => {
+                log::error!("Failed to join select_async task: {}", e);
+                Err(crate::sam::memory::Error::with_chain(e, "JoinError in select_async"))
+            }
+        }
     }
     pub fn save(&self) -> crate::sam::memory::Result<Self> {
         let mut client = Config::client()?;
-        // Check for existing by oid
+        // Check for existing by url
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_columns.push("oid =".to_string());
+        pg_query.queries.push(crate::sam::memory::PGCol::String(self.url.clone()));
+        pg_query.query_columns.push("url =".to_string());
         let rows = Self::select(None, None, None, Some(pg_query.clone()))?;
         let links_str = self.links.join("\n");
         let tokens_str = self.tokens.join("\n");
         if rows.is_empty() {
             client.execute(
-                "INSERT INTO crawled_pages (oid, crawl_job_oid, url, tokens, links, status_code, error, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                &[&self.oid, &self.crawl_job_oid, &self.url, &tokens_str, &links_str, &self.status_code, &self.error, &self.timestamp]
+                "INSERT INTO crawled_pages (crawl_job_oid, url, tokens, links, timestamp) VALUES ($1, $2, $3, $4, $5)",
+                &[&self.crawl_job_oid, &self.url, &tokens_str, &links_str, &self.timestamp]
             )?;
         } else {
             client.execute(
-                "UPDATE crawled_pages SET crawl_job_oid = $1, url = $2, tokens = $3, links = $4, status_code = $5, error = $6, timestamp = $7 WHERE oid = $8",
-                &[&self.crawl_job_oid, &self.url, &tokens_str, &links_str, &self.status_code, &self.error, &self.timestamp, &self.oid]
+                "UPDATE crawled_pages SET crawl_job_oid = $1, tokens = $2, links = $3, timestamp = $4 WHERE url = $5",
+                &[&self.crawl_job_oid, &tokens_str, &links_str, &self.timestamp, &self.url]
             )?;
         }
         Ok(self.clone())
@@ -148,28 +162,40 @@ impl CrawledPage {
         let this = self.clone();
         // Save to Redis first for fast access
         let _ = this.save_redis().await;
-        tokio::task::spawn_blocking(move || this.save()).await.unwrap()
+        match tokio::task::spawn_blocking(move || this.save()).await {
+            Ok(res) => res,
+            Err(e) => {
+                log::error!("Failed to join save_async task: {}", e);
+                Err(crate::sam::memory::Error::with_chain(e, "JoinError in save_async"))
+            }
+        }
     }
-    pub fn destroy(oid: String) -> crate::sam::memory::Result<bool> {
-        Config::destroy_row(oid, Self::sql_table_name())
+    pub fn destroy(url: String) -> crate::sam::memory::Result<bool> {
+        Config::destroy_row(url, Self::sql_table_name())
     }
 
     async fn redis_key(&self) -> String {
-        format!("crawledpage:{}", self.oid)
+        format!("crawledpage:{}", encode_url_hash(&self.url))
     }
     pub async fn save_redis(&self) -> redis::RedisResult<()> {
-        log::info!("Saving CrawledPage to Redis: {}", self.oid);
+        log::info!("Saving CrawledPage to Redis: {}", self.url);
         let mut con = redis_client().await?;
         let key = self.redis_key().await;
-        let val = serde_json::to_string(self).unwrap();
+        let val = match serde_json::to_string(self) {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!("Failed to serialize CrawledPage for Redis: {}", e);
+                return Err(redis::RedisError::from((redis::ErrorKind::TypeError, "Serialization error")));
+            }
+        };
         con.set(key, val).await
     }
-    pub async fn get_redis(oid: &str) -> Option<Self> {
+    pub async fn get_redis(url: &str) -> Option<Self> {
         let mut con = match redis_client().await {
             Ok(c) => c,
             Err(_) => return None,
         };
-        let key = format!("crawledpage:{}", oid);
+        let key = format!("crawledpage:{}", encode_url_hash(url));
         let val: Option<String> = con.get(key).await.ok();
         val.and_then(|v| {
             let obj: Result<CrawledPage, _> = serde_json::from_str(&v);
@@ -236,16 +262,14 @@ impl CrawledPage {
                     }
                 }
                 }
-                // Bonus: if the page has a status_code of 200, add to score
-                if page.status_code == Some(200) {
-                *score += 1;
-                }
-                // Penalty: if the page has an error, subtract from score
-                if page.error.is_some() {
-                *score = score.saturating_sub(1);
-                }
                 // Bonus: if the page is more recent (timestamp within last 30 days), add to score
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+                let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                    Ok(duration) => duration.as_secs() as i64,
+                    Err(e) => {
+                        log::error!("SystemTime error: {}", e);
+                        0
+                    }
+                };
                 if page.timestamp > now - 30 * 24 * 60 * 60 {
                 *score += 1;
                 }
@@ -319,4 +343,88 @@ impl CrawledPage {
             Ok(vec![])
         })
     }
+
+    /// Collect all tokens from crawled pages, rank by frequency, and write top X to a file.
+    /// The file will be written to /opt/sam/tmp/common.tokens, one token per line.
+    pub async fn write_most_common_tokens_async(limit: usize) -> std::io::Result<()> {
+        // Collect all tokens from all crawled pages asynchronously
+        let pages = match Self::select_async(None, None, None, None).await {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("Failed to select crawled pages: {}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+            }
+        };
+
+        let mut freq: HashMap<String, usize> = HashMap::new();
+        for page in pages {
+            for token in page.tokens {
+                *freq.entry(token).or_insert(0) += 1;
+            }
+        }
+
+        // Sort tokens by frequency, descending
+        let mut freq_vec: Vec<(String, usize)> = freq.into_iter().collect();
+        freq_vec.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Take the top `limit` tokens
+        let top_tokens = freq_vec.into_iter().take(limit).map(|(token, _)| token);
+
+        // Write to file (use spawn_blocking for file I/O)
+        let tokens: Vec<String> = top_tokens.collect();
+        tokio::task::spawn_blocking(move || {
+            let mut file = File::create("/opt/sam/tmp/common.tokens")?;
+            for token in tokens {
+                writeln!(file, "{}", token)?;
+            }
+            Ok(())
+        }).await?
+    }
+
+    /// Serialize this CrawledPage to a JSON string for P2P sharing.
+    pub fn to_p2p_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Deserialize a CrawledPage from a JSON string received via P2P.
+    pub fn from_p2p_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
+    }
+
+    /// Send this CrawledPage to a peer over a TCP stream (async).
+    /// The stream must be connected. The message is length-prefixed (u32, big-endian).
+    pub async fn send_p2p<W: tokio::io::AsyncWrite + Unpin>(&self, mut writer: W) -> std::io::Result<()> {
+        let json = self.to_p2p_json().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let bytes = json.as_bytes();
+        let len = bytes.len() as u32;
+        writer.write_u32(len).await?;
+        writer.write_all(bytes).await?;
+        Ok(())
+    }
+
+    /// Receive a CrawledPage from a peer over a TCP stream (async).
+    /// Expects a length-prefixed (u32, big-endian) JSON message.
+    pub async fn recv_p2p<R: tokio::io::AsyncRead + Unpin>(mut reader: R) -> std::io::Result<Self> {
+        let len = reader.read_u32().await?;
+        let mut buf = vec![0u8; len as usize];
+        reader.read_exact(&mut buf).await?;
+        let json = String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Self::from_p2p_json(&json).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    }
+}
+
+
+/// Encodes a URL into a predictable, reversible hash string.
+/// The encoding is URL-safe base64 of the UTF-8 bytes of the URL.
+pub fn encode_url_hash(url: &str) -> String {
+    general_purpose::URL_SAFE_NO_PAD.encode(url.as_bytes())
+}
+
+/// Decodes a hash string back into the original URL.
+/// Returns None if the hash is invalid or not decodable.
+pub fn decode_url_hash(hash: &str) -> Option<String> {
+    general_purpose::URL_SAFE_NO_PAD
+        .decode(hash)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
 }

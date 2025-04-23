@@ -217,8 +217,10 @@ async fn main() {
     crate::sam::services::crawler::start_service_async().await;
 
   
-    let config = crate::sam::memory::Config::new();
-    config.init().await;
+    // let config = crate::sam::memory::Config::new();
+    // config.init().await;
+    
+    // crate::sam::services::crawler::page::CrawledPage::write_most_common_tokens_async(500).await;
 
    
 

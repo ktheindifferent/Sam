@@ -11,6 +11,7 @@ pub mod docker;
 pub mod spotify;
 pub mod lifx;
 pub mod misc;
+pub mod p2p;
 
 use std::path::PathBuf;
 use tokio::sync::Mutex;
@@ -37,6 +38,7 @@ pub async fn handle_command(
         "docker start" | "docker stop" | "docker status" => docker::handle_docker(cmd, output_lines).await,
         "spotify start" | "spotify stop" | "spotify status" | "spotify play" | "spotify pause" | "spotify shuffle" => spotify::handle_spotify(cmd, output_lines).await,
         "lifx start" | "lifx stop" | "lifx status" => lifx::handle_lifx(cmd, output_lines).await,
+        _ if cmd.starts_with("p2p ") => p2p::handle_p2p(cmd, output_lines).await,
         _ if cmd.starts_with("cd ") => cd::handle_cd(cmd, output_lines, current_dir).await,
         _ if cmd.starts_with("darknet ") => darknet::handle_darknet(cmd, output_lines).await,
         _ if cmd.starts_with("tts ") => tts::handle_tts(cmd, output_lines).await,

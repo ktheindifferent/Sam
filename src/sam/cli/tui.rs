@@ -80,7 +80,6 @@ pub async fn start_prompt() {
 ///
 /// Handles user input, command execution, and UI rendering.
 async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
-    log::info!("[sam cli] run_tui() called");
 
     // Only ONE service_status and updater spawn at the top
     let service_status = Arc::new(Mutex::new(ServiceStatus {
@@ -90,42 +89,24 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         update_count: 0,
     }));
    
-    log::info!("[sam status updater] about to spawn background updater task (top of run_tui)");
     let service_status_clone = service_status.clone();
     tokio::spawn(async move {
-        log::info!("[sam status updater] background updater task STARTED");
         let mut count = 0u64;
         loop {
-            log::info!("[sam status updater] loop iteration #{count}");
-            // Add logs before/after each status call
-            log::info!("[sam status updater] checking crawler status");
             let crawler = std::panic::catch_unwind(|| crate::sam::services::crawler::service_status().to_string())
-                .unwrap_or_else(|e| {
-                    log::error!("[sam status updater] crawler status panicked: {:?}", e);
+                .unwrap_or_else(|_| {
                     "error".to_string()
                 });
-            log::info!("[sam status updater] crawler status: {}", crawler);
 
-            log::info!("[sam status updater] checking redis status");
             let redis = std::panic::catch_unwind(|| crate::sam::services::redis::status().to_string())
-                .unwrap_or_else(|e| {
-                    log::error!("[sam status updater] redis status panicked: {:?}", e);
+                .unwrap_or_else(|_| {
                     "error".to_string()
                 });
-            log::info!("[sam status updater] redis status: {}", redis);
 
-            log::info!("[sam status updater] checking docker status");
             let docker = std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
-                .unwrap_or_else(|e| {
-                    log::error!("[sam status updater] docker status panicked: {:?}", e);
+                .unwrap_or_else(|_| {
                     "error".to_string()
                 });
-            log::info!("[sam status updater] docker status: {}", docker);
-
-            log::info!(
-                "[sam status updater] update #{count}: crawler={:?}, redis={:?}, docker={:?}",
-                crawler, redis, docker
-            );
 
             if let Ok(mut status) = service_status_clone.try_lock() {
                 status.crawler = if crawler.is_empty() { format!("unknown{}", count % 5) } else { crawler };

@@ -13,7 +13,8 @@ static REDIS_URL: &str = "redis://127.0.0.1/";
 static REDIS_MANAGER: OnceCell<RedisClient> = OnceCell::new();
 
 async fn redis_client() -> redis::RedisResult<MultiplexedConnection> {
-    let client = REDIS_MANAGER.get_or_init(|| RedisClient::open(REDIS_URL).unwrap());
+    let client = REDIS_MANAGER.get_or_try_init(|| RedisClient::open(REDIS_URL))
+        .map_err(|e| redis::RedisError::from((redis::ErrorKind::IoError, "Failed to create Redis client", format!("{:?}", e))))?;
     client.get_multiplexed_async_connection().await
 }
 
@@ -34,7 +35,10 @@ impl Default for CrawlJob {
 impl CrawlJob {
     pub fn new() -> CrawlJob {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_secs() as i64,
+            Err(_) => 0, // fallback to 0 if system time is before UNIX_EPOCH
+        };
         CrawlJob {
             id: 0,
             oid,
@@ -79,7 +83,8 @@ impl CrawlJob {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)
+                .map_err(|e| crate::sam::memory::Error::with_chain(e, "Failed to deserialize CrawlJob"))?;
             parsed_rows.push(object);
         }
         Ok(parsed_rows)
@@ -100,9 +105,10 @@ impl CrawlJob {
                 }
             }
         }
-        tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query))
+        let result = tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query))
             .await
-            .unwrap()
+            .map_err(|e| crate::sam::memory::Error::with_chain(e, "JoinError in select_async"))??;
+        Ok(result)
     }
     pub fn save(&self) -> crate::sam::memory::Result<Self> {
         let mut client = Config::client()?;
@@ -128,7 +134,10 @@ impl CrawlJob {
         let this = self.clone();
         // Save to Redis first for fast access
         let _ = this.save_redis().await;
-        tokio::task::spawn_blocking(move || this.save()).await.unwrap()
+        match tokio::task::spawn_blocking(move || this.save()).await {
+            Ok(res) => res,
+            Err(e) => Err(crate::sam::memory::Error::with_chain(e, "JoinError in save_async")),
+        }
     }
     pub fn destroy(oid: String) -> crate::sam::memory::Result<bool> {
         Config::destroy_row(oid, Self::sql_table_name())
@@ -141,7 +150,13 @@ impl CrawlJob {
         log::info!("Saving CrawlJob to Redis: {}", self.oid);
         let mut con = redis_client().await?;
         let key = self.redis_key().await;
-        let val = serde_json::to_string(self).unwrap();
+        let val = match serde_json::to_string(self) {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!("Failed to serialize CrawlJob for Redis: {}", e);
+                return Err(redis::RedisError::from((redis::ErrorKind::TypeError, "Serialization error")));
+            }
+        };
         con.set(key, val).await
     }
     pub async fn get_redis(oid: &str) -> Option<Self> {

@@ -18,7 +18,8 @@ use reqwest::Url;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use num_cpus;
-use rand::seq::SliceRandom; // <-- Add this import
+use rand::seq::SliceRandom;
+use url::ParseError; // <-- Add this import
 
 static CRAWLER_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -102,18 +103,41 @@ async fn cache_all_to_redis() {
     }
 }
 
+
+/// Returns true if the input string is a valid URL (absolute, with scheme and host)
+pub fn is_valid_url(s: &str) -> bool {
+    match Url::parse(s) {
+        Ok(url) => url.has_host() && url.scheme() != "",
+        Err(_) => false,
+    }
+}
+
 // Internal boxed async fn for recursion
+// Prevent printing crawled webdata to terminal by not using println!, dbg!, eprintln!, or any direct output anywhere in this function or its parsing logic
 async fn crawl_url_inner(
     job_oid: String,
     url: String,
     depth: usize,
 ) -> crate::sam::memory::Result<CrawledPage> {
+
+    // Bugfix: Check if the URL is valid before proceeding
+    if !is_valid_url(&url) {
+        return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg(format!("Invalid URL"))));
+    }
+
+
     let max_depth = 2;
 
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String(url.clone()));
     pg_query.query_columns.push("url =".to_string());
-    let existing = CrawledPage::select_async(None, None, None, Some(pg_query)).await.unwrap_or_default();
+    let existing = match CrawledPage::select_async(None, None, None, Some(pg_query)).await {
+        Ok(pages) => pages,
+        Err(e) => {
+            log::warn!("Failed to query existing CrawledPage: {}", e);
+            Vec::new()
+        }
+    };
     if !existing.is_empty() {
         return Ok(existing[0].clone());
     }
@@ -126,43 +150,560 @@ async fn crawl_url_inner(
     match resp {
         Ok(resp) => {
             let status = resp.status().as_u16();
-            page.status_code = Some(status as i32);
             if status == 200 {
-                let html = resp.text().await.unwrap_or_default();
-                if (!html.is_empty()) {
-                    // Move HTML parsing and token extraction to a blocking thread
+                let html = match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => {
+                        log::warn!("Failed to get text for {}: {}", url, e);
+                        String::new()
+                    }
+                };
+                if !html.is_empty() {
                     let url_clone = url.clone();
-                    let (mut tokens, mut links) = tokio::task::spawn_blocking(move || {
-                        // ...HTML parsing and extraction logic (see original)...
-                        // (Omitted for brevity, copy from original file)
-                        (vec![], vec![])
-                    }).await.unwrap();
+                    let result = tokio::task::spawn_blocking(move || {
+                        let document = scraper::Html::parse_document(&html);
+                        let mut tokens = Vec::new();
+                        let mut links = Vec::new();
+                        let body_selector = match scraper::Selector::parse("body") {
+                            Ok(sel) => sel,
+                            Err(e) => {
+                                log::warn!("Failed to parse selector 'body': {}", e);
+                                return (tokens, links);
+                            }
+                        };
+                        let skip_tags = ["script", "style", "noscript", "svg", "canvas", "iframe", "template"];
+                        let skip_selector = skip_tags
+                            .iter()
+                            .filter_map(|tag| match scraper::Selector::parse(tag) {
+                                Ok(selector) => Some(selector),
+                                Err(e) => {
+                                    log::warn!("Failed to parse selector '{}': {}", tag, e);
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        // Check for special replacement character (�) in the HTML body or any tag text
+                        let contains_replacement_char = html.contains('�')
+                            || document.root_element().text().any(|t| t.contains('�'));
+                        if contains_replacement_char {
+                            return (vec![], vec![]);
+                        }
+
+                        fn extract_text(element: &scraper::ElementRef, skip_selector: &[scraper::Selector], tokens: &mut Vec<String>) {
+                            for sel in skip_selector {
+                                if sel.matches(element) {
+                                    return;
+                                }
+                            }
+                            for child in element.children() {
+                                match child.value() {
+                                    scraper::node::Node::Text(t) => {
+                                        for word in t.text.split_whitespace() {
+                                            let w = word.trim_matches(|c: char| !c.is_alphanumeric());
+                                            if !w.is_empty() {
+                                                tokens.push(w.to_lowercase());
+                                            }
+                                        }
+                                    }
+                                    scraper::node::Node::Element(_) => {
+                                        if let Some(child_elem) = scraper::ElementRef::wrap(child) {
+                                            extract_text(&child_elem, skip_selector, tokens);
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        let url_lc = url_clone.to_ascii_lowercase();
+                        let mut file_mime: Option<&str> = None;
+                        let mime_map = [
+                            (".jpg", "image/jpeg"),
+                            (".jpeg", "image/jpeg"),
+                            (".png", "image/png"),
+                            (".gif", "image/gif"),
+                            (".bmp", "image/bmp"),
+                            (".webp", "image/webp"),
+                            (".svg", "image/svg+xml"),
+                            (".ico", "image/x-icon"),
+                            (".tiff", "image/tiff"),
+                            (".tif", "image/tiff"),
+                            (".heic", "image/heic"),
+                            (".heif", "image/heif"),
+                            (".apng", "image/apng"),
+                            (".avif", "image/avif"),
+                            (".mp3", "audio/mpeg"),
+                            (".wav", "audio/wav"),
+                            (".ogg", "audio/ogg"),
+                            (".oga", "audio/ogg"),
+                            (".flac", "audio/flac"),
+                            (".aac", "audio/aac"),
+                            (".m4a", "audio/mp4"),
+                            (".opus", "audio/opus"),
+                            (".mid", "audio/midi"),
+                            (".midi", "audio/midi"),
+                            (".amr", "audio/amr"),
+                            (".mp4", "video/mp4"),
+                            (".webm", "video/webm"),
+                            (".mov", "video/quicktime"),
+                            (".avi", "video/x-msvideo"),
+                            (".mkv", "video/x-matroska"),
+                            (".flv", "video/x-flv"),
+                            (".mpg", "video/mpeg"),
+                            (".mpeg", "video/mpeg"),
+                            (".3gp", "video/3gpp"),
+                            (".3g2", "video/3gpp2"),
+                            (".wmv", "video/x-ms-wmv"),
+                            (".m4v", "video/x-m4v"),
+                            (".ts", "video/mp2t"),
+                            (".ogv", "video/ogg"),
+                            (".pdf", "application/pdf"),
+                            (".doc", "application/msword"),
+                            (".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+                            (".ppt", "application/vnd.ms-powerpoint"),
+                            (".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+                            (".xls", "application/vnd.ms-excel"),
+                            (".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                            (".epub", "application/epub+zip"),
+                            (".mobi", "application/x-mobipocket-ebook"),
+                            (".azw3", "application/vnd.amazon.ebook"),
+                            (".fb2", "application/x-fictionbook+xml"),
+                            (".chm", "application/vnd.ms-htmlhelp"),
+                            (".xps", "application/vnd.ms-xpsdocument"),
+                            (".odt", "application/vnd.oasis.opendocument.text"),
+                            (".ods", "application/vnd.oasis.opendocument.spreadsheet"),
+                            (".odp", "application/vnd.oasis.opendocument.presentation"),
+                            (".odg", "application/vnd.oasis.opendocument.graphics"),
+                            (".odf", "application/vnd.oasis.opendocument.formula"),
+                            (".odc", "application/vnd.oasis.opendocument.chart"),
+                            (".odm", "application/vnd.oasis.opendocument.text-master"),
+                            (".zip", "application/zip"),
+                            (".tar", "application/x-tar"),
+                            (".gz", "application/gzip"),
+                            (".rar", "application/x-rar-compressed"),
+                            (".7z", "application/x-7z-compressed"),
+                            (".bz2", "application/x-bzip2"),
+                            (".xz", "application/x-xz"),
+                            (".csv", "text/csv"),
+                            (".json", "application/json"),
+                            (".xml", "application/xml"),
+                            (".yaml", "application/x-yaml"),
+                            (".yml", "application/x-yaml"),
+                            (".md", "text/markdown"),
+                            (".rst", "text/x-rst"),
+                            (".js", "application/javascript"),
+                            (".mjs", "application/javascript"),
+                            (".cjs", "application/javascript"),
+                            (".ts", "application/typescript"),
+                            (".tsx", "application/typescript"),
+                            (".jsx", "application/javascript"),
+                            (".css", "text/css"),
+                            (".scss", "text/x-scss"),
+                            (".sass", "text/x-sass"),
+                            (".less", "text/x-less"),
+                            (".woff", "font/woff"),
+                            (".woff2", "font/woff2"),
+                            (".ttf", "font/ttf"),
+                            (".otf", "font/otf"),
+                            (".eot", "application/vnd.ms-fontobject"),
+                            (".swf", "application/x-shockwave-flash"),
+                            (".jar", "application/java-archive"),
+                            (".exe", "application/vnd.microsoft.portable-executable"),
+                            (".apk", "application/vnd.android.package-archive"),
+                            (".dmg", "application/x-apple-diskimage"),
+                            (".iso", "application/x-iso9660-image"),
+                        ];
+
+                        let file_ext = {
+                            let url_no_query = url_lc.split(&['?', '#'][..]).next().unwrap_or("");
+                            std::path::Path::new(url_no_query)
+                                .extension()
+                                .and_then(|ext| ext.to_str())
+                                .map(|ext| format!(".{}", ext))
+                        };
+
+                        if let Some(ref ext) = file_ext {
+                            for (map_ext, mime) in mime_map.iter() {
+                                if ext.eq_ignore_ascii_case(map_ext) {
+                                    file_mime = Some(*mime);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if let Some(mime) = file_mime {
+                            tokens.push(mime.to_string());
+                        } else {
+                            for body in document.select(&body_selector) {
+                                extract_text(&body, &skip_selector, &mut tokens);
+                            }
+                        }
+
+                        let a_selector = match scraper::Selector::parse("a[href]") {
+                            Ok(sel) => sel,
+                            Err(e) => {
+                                log::warn!("Failed to parse selector 'a[href]': {}", e);
+                                return (tokens, links);
+                            }
+                        };
+                        for element in document.select(&a_selector) {
+                            if let Some(link) = element.value().attr("href") {
+                                if let Ok(abs) = Url::parse(link)
+                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(link)))
+                                {
+                                    links.push(abs.to_string());
+                                }
+                            }
+                        }
+
+                        let img_selector = match scraper::Selector::parse("img[src]") {
+                            Ok(sel) => sel,
+                            Err(e) => {
+                                log::warn!("Failed to parse selector 'img[src]': {}", e);
+                                return (tokens, links);
+                            }
+                        };
+                        for element in document.select(&img_selector) {
+                            if let Some(src) = element.value().attr("src") {
+                                if let Ok(abs) = Url::parse(src)
+                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                {
+                                    links.push(abs.to_string());
+                                }
+                            }
+                        }
+
+                        let audio_selector = match scraper::Selector::parse("audio[src]") {
+                            Ok(sel) => sel,
+                            Err(e) => {
+                                log::warn!("Failed to parse selector 'audio[src]': {}", e);
+                                return (tokens, links);
+                            }
+                        };
+                        for element in document.select(&audio_selector) {
+                            if let Some(src) = element.value().attr("src") {
+                                if let Ok(abs) = Url::parse(src)
+                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                {
+                                    links.push(abs.to_string());
+                                }
+                            }
+                        }
+
+                        let source_selector = match scraper::Selector::parse("audio source[src], video source[src]") {
+                            Ok(sel) => sel,
+                            Err(e) => {
+                                log::warn!("Failed to parse selector 'audio source[src], video source[src]': {}", e);
+                                return (tokens, links);
+                            }
+                        };
+                        for element in document.select(&source_selector) {
+                            if let Some(src) = element.value().attr("src") {
+                                if let Ok(abs) = Url::parse(src)
+                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                {
+                                    links.push(abs.to_string());
+                                }
+                            }
+                        }
+
+                        let video_selector = match scraper::Selector::parse("video[src]") {
+                            Ok(sel) => sel,
+                            Err(e) => {
+                                log::warn!("Failed to parse selector 'video[src]': {}", e);
+                                return (tokens, links);
+                            }
+                        };
+                        for element in document.select(&video_selector) {
+                            if let Some(src) = element.value().attr("src") {
+                                if let Ok(abs) = Url::parse(src)
+                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                {
+                                    links.push(abs.to_string());
+                                }
+                            }
+                        }
+
+                        let link_selector = match scraper::Selector::parse("link[rel=\"stylesheet\"]") {
+                            Ok(sel) => sel,
+                            Err(e) => {
+                                log::warn!("Failed to parse selector 'link[rel=\"stylesheet\"]': {}", e);
+                                return (tokens, links);
+                            }
+                        };
+                        for element in document.select(&link_selector) {
+                            if let Some(href) = element.value().attr("href") {
+                                if let Ok(abs) = Url::parse(href)
+                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(href)))
+                                {
+                                    links.push(abs.to_string());
+                                }
+                            }
+                        }
+
+                        let script_selector = match scraper::Selector::parse("script[src]") {
+                            Ok(sel) => sel,
+                            Err(e) => {
+                                log::warn!("Failed to parse selector 'script[src]': {}", e);
+                                return (tokens, links);
+                            }
+                        };
+                        for element in document.select(&script_selector) {
+                            if let Some(src) = element.value().attr("src") {
+                                if let Ok(abs) = Url::parse(src)
+                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                {
+                                    links.push(abs.to_string());
+                                }
+                            }
+                        }
+
+                        let mut mime_tokens = Vec::new();
+                        for link in &links {
+                            if let Ok(parsed) = Url::parse(link) {
+                                if let Some(path) = parsed.path_segments().and_then(|s| s.last()) {
+                                    let fname = path.split(&['?', '#'][..]).next().unwrap_or("");
+                                    let ext = fname.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+                                    let mime = match ext.as_str() {
+                                        "jpg" | "jpeg" => Some("image/jpeg"),
+                                        "png" => Some("image/png"),
+                                        "gif" => Some("image/gif"),
+                                        "mp3" => Some("audio/mp3"),
+                                        "wav" => Some("audio/wav"),
+                                        "ogg" => Some("audio/ogg"),
+                                        "mp4" => Some("video/mp4"),
+                                        "webm" => Some("video/webm"),
+                                        "mov" => Some("video/quicktime"),
+                                        "avi" => Some("video/x-msvideo"),
+                                        "bpm" => Some("image/bmp"),
+                                        "webp" => Some("image/webp"),
+                                        "svg" => Some("image/svg+xml"),
+                                        "ico" => Some("image/x-icon"),
+                                        "tiff" => Some("image/tiff"),
+                                        "flv" => Some("video/x-flv"),
+                                        "css" => Some("text/css"),
+                                        "js" => Some("application/javascript"),
+                                        _ => None,
+                                    };
+                                    if let Some(m) = mime {
+                                        mime_tokens.push(m.to_string());
+                                    }
+                                }
+                            }
+                        }
+                        tokens.extend(mime_tokens);
+
+                        (tokens, links)
+                    }).await;
+
+                    let (mut tokens, mut links) = match result {
+                        Ok((tokens, links)) => (tokens, links),
+                        Err(e) => {
+                            log::warn!("Failed to parse HTML for {}: {}", url, e);
+                            (Vec::new(), Vec::new())
+                        }
+                    };
 
                     tokens.sort();
                     tokens.dedup();
                     links.sort();
                     links.dedup();
 
-                    // ...token filtering logic (see original)...
-                    // (Omitted for brevity, copy from original file)
+           
+                    let common_tokens = vec![
+                        // English
+                        "the", "is", "in", "and", "to", "a", "of", "for", "on", "that", "this", "it", "with",
+                        "as", "at", "by", "an", "be", "are", "was", "were", "from", "or", "but", "not", "have",
+                        "has", "had", "will", "would", "can", "could", "should", "do", "does", "did", "so",
+                        "if", "then", "than", "which", "who", "whom", "whose", "what", "when", "where", "why",
+                        "how", "about", "all", "any", "each", "few", "more", "most", "other", "some", "such",
+                        "no", "nor", "only", "own", "same", "too", "very", "just", "over", "under", "again",
+                        "once", "also", "into", "out", "up", "down", "off", "above", "below", "between", "after",
+                        "before", "during", "through", "because", "while", "both", "either", "neither", "may",
+                        "might", "must", "our", "your", "their", "his", "her", "its", "them", "they", "he", "she",
+                        "we", "you", "i", "me", "my", "mine", "yours", "theirs", "ours", "us",
+                        "him", "hers", "himself", "herself", "itself", "themselves", "ourselves", "yourself",
+                        "yourselves", "am", "shall",
+                        // Numbers
+                        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+                        "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40",
+                        "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "100", "1000",
+
+                        // Spanish
+                        "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "y", "o", "u", "en", "con", "por", "para",
+                        "es", "que", "se", "no", "sí", "su", "sus", "le", "lo", "como", "más", "pero", "ya", "o", "muy", "sin", "sobre",
+                        "entre", "también", "hasta", "desde", "todo", "todos", "todas", "toda", "mi", "mis", "tu", "tus", "su", "sus",
+                        "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas", "aquel", "aquella", "aquellos", "aquellas",
+                        "yo", "tú", "él", "ella", "nosotros", "vosotros", "ellos", "ellas", "me", "te", "se", "nos", "os", "les",
+
+                        // French
+                        "le", "la", "les", "un", "une", "des", "du", "de", "en", "et", "à", "au", "aux", "pour", "par", "sur", "dans",
+                        "est", "ce", "cette", "ces", "il", "elle", "ils", "elles", "nous", "vous", "tu", "je", "me", "te", "se", "leur",
+                        "lui", "son", "sa", "ses", "mon", "ma", "mes", "ton", "ta", "tes", "notre", "nos", "votre", "vos", "leur", "leurs",
+                        "qui", "que", "quoi", "dont", "où", "quand", "comment", "pourquoi", "avec", "sans", "sous", "entre", "aussi",
+                        "plus", "moins", "très", "bien", "mal", "comme", "mais", "ou", "donc", "or", "ni", "car",
+
+                        // German
+                        "der", "die", "das", "ein", "eine", "einer", "eines", "einem", "einen", "und", "oder", "aber", "den", "dem", "des",
+                        "zu", "mit", "auf", "für", "von", "an", "im", "in", "am", "aus", "bei", "nach", "über", "unter", "vor", "zwischen",
+                        "ist", "war", "sind", "sein", "hat", "haben", "wird", "werden", "nicht", "kein", "keine", "mehr", "weniger", "auch",
+                        "nur", "schon", "noch", "immer", "man", "wir", "ihr", "sie", "er", "es", "ich", "du", "mein", "dein", "sein", "ihr",
+                        "unser", "euer", "dies", "diese", "dieser", "dieses", "jener", "jene", "jenes",
+
+                        // Italian
+                        "il", "lo", "la", "i", "gli", "le", "un", "una", "uno", "dei", "delle", "degli", "del", "della", "dello", "dei",
+                        "e", "o", "ma", "per", "con", "su", "tra", "fra", "di", "da", "a", "al", "ai", "agli", "alla", "alle", "allo",
+                        "che", "chi", "cui", "come", "quando", "dove", "perché", "quale", "quali", "questo", "questa", "questi", "queste",
+                        "quello", "quella", "quelli", "quelle", "io", "tu", "lui", "lei", "noi", "voi", "mi", "ti", "si", "ci", "vi",
+
+                        // Portuguese
+                        "o", "a", "os", "as", "um", "uma", "uns", "umas", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas",
+                        "por", "para", "com", "sem", "sobre", "entre", "e", "ou", "mas", "também", "como", "mais", "menos", "muito", "pouco",
+                        "já", "ainda", "só", "todo", "toda", "todos", "todas", "meu", "minha", "meus", "minhas", "teu", "tua", "teus", "tuas",
+                        "seu", "sua", "seus", "suas", "nosso", "nossa", "nossos", "nossas", "vosso", "vossa", "vossos", "vossas", "ele", "ela",
+                        "eles", "elas", "nós", "vós", "eu", "tu", "você", "vocês", "lhe", "lhes", "me", "te", "se", "nos", "vos",
+
+                        // Dutch
+                        "de", "het", "een", "en", "of", "maar", "want", "dus", "voor", "na", "met", "zonder", "over", "onder", "tussen",
+                        "in", "op", "aan", "bij", "tot", "van", "uit", "door", "om", "tot", "als", "dan", "dat", "die", "dit", "deze",
+                        "die", "wie", "wat", "waar", "wanneer", "hoe", "waarom", "welke", "wij", "jij", "hij", "zij", "het", "ik", "je",
+                        "mijn", "jouw", "zijn", "haar", "ons", "onze", "hun", "uw", "hun", "ze", "u", "men", "er", "hier", "daar",
+
+                        // Russian (transliterated)
+                        "i", "a", "no", "da", "net", "on", "ona", "ono", "oni", "my", "vy", "ty", "ya", "moy", "tvoy", "ego", "ee", "nas",
+                        "vas", "ikh", "kto", "chto", "gde", "kogda", "pochemu", "kak", "eto", "v", "na", "s", "k", "o", "po", "za", "ot",
+                        "do", "iz", "u", "nad", "pod", "pervyy", "vtoroy", "odin", "dva", "tri", "chetyre", "pyat", "shest", "sem", "vosem",
+                        "devyat", "desyat", "bolshe", "menshe", "vse", "vsyo", "vsego", "eto", "tak", "zdes", "tam", "tut", "to", "eto",
+
+                        // Chinese (pinyin, most common stopwords)
+                        "de", "shi", "bu", "le", "zai", "ren", "wo", "ni", "ta", "men", "zhe", "na", "yi", "ge", "you", "he", "ye", "ma",
+                        "ba", "ne", "li", "dui", "dao", "zai", "shang", "xia",
+
+                        // Japanese (romaji, common particles and pronouns)
+                        "no", "ni", "wa", "ga", "wo", "de", "to", "mo", "kara", "made", "yori", "e", "ka", "ne", "yo", "kore", "sore", "are",
+                        "dore", "kono", "sono", "ano", "dono", "watashi", "anata", "kare", "kanojo", "watashitachi", "anatatachi", "karera",
+                        "kanojotachi", "koko", "soko", "asoko", "doko", "itsu", "dare", "nani", "nan", "ikutsu", "ikura", "doushite", "dou",
+
+                        // Turkish
+                        "ve", "bir", "bu", "da", "de", "için", "ile", "ama", "veya", "çok", "az", "daha", "en", "gibi", "mi",
+                        "mu", "mü", "ben", "sen", "o", "biz", "siz", "şu", "bu", "şey", "her", "hiç", "bazı", "bazı", "bazı",
+
+                        // Arabic (transliterated)
+                        "wa", "fi", "min", "ila", "an", "ala", "ma", "la", "huwa", "hiya", "anta", "anti", "nahnu", "antum", "antunna",
+                        "hum", "hunna", "hadha", "hadhi", "dhalika", "tilka", "huna", "hunaka", "ayna", "mata", "kayfa", "limadha",
+
+                        // Hindi (transliterated)
+                        "hai", "ka", "ki", "ke", "mein", "par", "aur", "ya", "lekin", "bhi", "ko", "se", "tak", "ko", "mein", "tum", "main",
+                        "vah", "yeh", "ham", "aap", "unka", "unka", "unka", "unka", "unka", "unka", "unka", "unka", "unka", "unka",
+
+                        // Polish
+                        "i", "w", "na", "z", "do", "o", "za", "po", "przez", "dla", "od", "bez", "pod", "nad", "przy", "między",
+                        "jest", "być", "był", "była", "było", "byli", "były", "ten", "ta", "to", "ci", "te", "tam", "tu", "kto",
+                        "co", "gdzie", "kiedy", "jak", "dlaczego", "który", "która", "które", "którzy",
+
+                        // Scandinavian (Danish, Norwegian, Swedish)
+                        "och", "att", "det", "som", "en", "ett", "den", "de", "på", "av", "med", "till", "för", "från", "är", "var", "har",
+                        "hade", "inte", "men", "om", "eller", "så", "vi", "ni", "han", "hon", "de", "vi", "ni", "jag", "du", "mig", "dig",
+
+                        // Greek (transliterated)
+                        "kai", "se", "apo", "me", "gia", "os", "stin", "sto", "stin", "stin", "stin", "stin", "stin", "stin", "stin", "stin",
+                        "stin", "stin", "stin", "stin", "stin", "stin", "stin", "stin", "stin", "stin", "stin", "stin", "stin", "stin",
+
+                        // Add more as needed for other languages...
+
+                        // Extended with most common tokens from crawls:
+                        "copyright", "privacy", "use", "rights", "contact", "new", "content", "home", "reserved", "search", "skip", "get",
+                        "help", "2025", "one", "terms", "these", "work", "list", "travel", "business", "information", "please", "services",
+                        "first", "support", "service", "online", "make", "sign", "see", "options", "site", "start", "policy", "english",
+                        "create", "find", "version", "way", "close", "inc", "available", "review", "free", "world", "related", "account",
+                        "security", "careers", "press", "time", "need", "part", "using", "top", "access", "here", "statement", "data",
+                        "conditions", "best", "modern", "there", "software", "events", "check", "know", "features", "view", "company",
+                        "news", "partner", "current", "staff", "awards", "open", "property", "language", "like", "human", "discover",
+                        "stay", "community", "show", "centre", "without", "end", "become", "login", "continue", "set", "articles", "date",
+                        "unique", "people", "safety", "customer", "room", "resource", "interest", "changes", "booking.com", "faqs",
+                        "slavery", "foundation", "sustainability", "usd", "yet", "holdings", "1996–2025", "register", "license", "day",
+                        "well", "project", "countries", "corporate", "don't", "popular", "within", "real", "calendar", "covid-19",
+                        "facebook", "adding", "reviews", "choose", "international", "next", "cookie", "regions", "friendly", "used",
+                        "page", "good", "based", "seasonal", "guidelines", "explore", "including", "places", "relations", "great",
+                        "monthly", "mobile", "words", "leave", "days", "guest", "million", "provides", "code", "latest", "verify", "tell",
+                        "many", "finally", "development", "offers", "read", "deals", "team", "cookies", "hire", "leader", "traveller",
+                        "type", "united", "take", "experience", "followed", "learn", "languages", "holiday", "website", "hotels", "that's",
+                        "trip", "research", "affiliate", "public", "starts", "back", "coronavirus", "cities", "place", "started",
+                        "verified", "now", "email", "location", "extranet", "number", "investor", "stays", "homes", "group", "guests",
+                        "try", "flight", "resources", "been", "resorts", "reporting", "accommodation", "area", "houses", "name",
+                        "airport", "hostels", "around", "hotel", "different", "villas", "finder", "source", "districts", "dispute",
+                        "airports", "less", "center", "dialog", "digital", "quiet", "b&bs", "apartments", "select", "offer", "private",
+                        "they're", "download", "restaurant", "full", "local", "agents", "menu", "booked", "provide", "authenticity",
+                        "stayed", "naughty", "watch", "written", "key", "check-in", "overview", "include", "personal", "follow", "issues",
+                        "every", "taxis", "flights", "technology", "manage", "rentals", "dates", "via", "map", "check-out", "two", "right",
+                        "tools", "questions", "thanks", "book", "advanced", "various", "2024", "add", "process", "details", "users",
+                        "enter", "management", "getting", "states", "blog", "history", "reservations", "guide", "logo", "easy",
+                        "trademarks", "performance", "last", "additional", "large", "general", "following", "accessibility", "across",
+                        "located", "special", "facilities", "much", "system", "media", "provided", "long", "views", "attractions", "value",
+                        "building", "documentation", "working", "shimbun", "university", "welcome", "price", "web", "case", "found",
+                        "another", "small", "click", "report", "children", "log", "april", "central", "health", "permission", "possible",
+                        "even", "month", "near", "those", "reservation", "settings", "social", "apply", "projects", "making", "park",
+                        "release", "note", "address", "wifi", "high", "links", "short", "share", "design", "prices", "feather", "rooms",
+                        "systems", "family", "user", "city", "night", "registered", "food", "change", "adults", "global", "currency",
+                        "offering", "specific", "learning", "google", "look", "money", "air", "life", "away", "style", "perfect", "cost",
+                        "throughout", "build", "library", "status", "state", "mailing", "applications", "internet", "everything", "areas",
+                        "needs", "level", "things", "being", "years", "request", "required", "issue", "visit", "partners", "activities",
+                        "parking", "releases", "kingdom", "globe", "house", "lists", "event", "fitness", "score", "south", "policies",
+                        "filter", "better", "results", "利用規約", "faq", "space", "availability", "api", "course", "flexible", "各国語サイト",
+                        "asia&japan", "quality", "table", "reproduction", "file", "highly", "network", "storage", "recent", "bar",
+                        "cnn.co.jp", "products", "always", "u.s", "save", "desk", "year", "cases", "looking", "application", "past",
+                        "minutes", "future", "好書好日", "example", "star", "info", "multiple", "bed", "japan", "join", "something",
+                        "subject", "dollar", "still", "big", "hours", "shared", "common", "outdoor", "order", "link", "nice", "extra",
+                        "walk", "quick", "republication", "impact", "enjoy", "description", "topics", "situated", "costs", "clean",
+                        "needed", "2023", "reports", "distance", "requests", "whether", "2.0", "サイトマップ", "control", "shopping", "old",
+                        "computer", "sponsorship", "range", "kitchen", "machine", "office", "run", "week", "important", "contribute",
+                        "feature", "includes", "board", "update", "outside",
+                    ];
+                    let date_regex = regex::Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$");
+                    let date2_regex = regex::Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$");
+                    let date3_regex = regex::Regex::new(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$");
+                    let date4_regex = regex::Regex::new(r"^\d{8}$");
+                    let date5_regex = regex::Regex::new(r"^\d{4}\.\d{1,2}\.\d{1,2}$");
+                    let date6_regex = regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$");
+                    let date7_regex = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|([+-]\d{2}:\d{2}))?)?$");
+
+                    tokens.retain(|token| {
+                        !common_tokens.contains(&token.as_str())
+                            || date_regex.as_ref().map_or(false, |re| re.is_match(token))
+                            || date2_regex.as_ref().map_or(false, |re| re.is_match(token))
+                            || date3_regex.as_ref().map_or(false, |re| re.is_match(token))
+                            || date4_regex.as_ref().map_or(false, |re| re.is_match(token))
+                            || date5_regex.as_ref().map_or(false, |re| re.is_match(token))
+                            || date6_regex.as_ref().map_or(false, |re| re.is_match(token))
+                            || date7_regex.as_ref().map_or(false, |re| re.is_match(token))
+                    });
+                    tokens.retain(|token| token.len() > 2 && token.len() < 20);
+                    let url_tokens: HashSet<_> = url.split('/').map(|s| s.to_lowercase()).collect();
+                    tokens.retain(|token| !url_tokens.contains(&token.to_lowercase()));
+                    if let Ok(domain) = Url::parse(&url).and_then(|u| {
+                        u.domain()
+                            .map(|d| d.to_string())
+                            .ok_or_else(|| ParseError::EmptyHost)
+                    }) {
+                        let domain_tokens: HashSet<_> = domain.split('.').map(|s| s.to_lowercase()).collect();
+                        tokens.retain(|token| !domain_tokens.contains(&token.to_lowercase()));
+                    }
 
                     page.tokens = tokens;
                     page.links = links;
-                    info!("Fetched URL: {} ({} links, {} tokens)", url, page.links.len(), page.tokens.len());
-                    // Only save if we have tokens (i.e., HTML was present)
-                    if (!page.tokens.is_empty()) {
-                        page.save_async().await?;
+                    if !page.tokens.is_empty() {
+                        if let Err(e) = page.save_async().await {
+                            log::warn!("Failed to save page for {}: {}", url, e);
+                        }
                     }
                 }
             }
         }
         Err(e) => {
             info!("Error fetching URL {}: {}", url, e);
-            page.error = Some(e.to_string());
         }
     }
 
-    // Crawl links sequentially (not in parallel), but only if depth < max_depth
     if depth < max_depth && !page.links.is_empty() {
         let job_oid = page.crawl_job_oid.clone();
         let links = page.links.clone();
@@ -198,13 +739,18 @@ pub fn start_service() {
         } else {
             // Not inside a runtime: spawn a thread and create a runtime
             std::thread::spawn(|| {
-                let rt = tokio::runtime::Builder::new_multi_thread()
+                match tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
-                    .build()
-                    .unwrap();
-                rt.block_on(async {
-                    run_crawler_service().await;
-                });
+                    .build() {
+                    Ok(rt) => {
+                        rt.block_on(async {
+                            run_crawler_service().await;
+                        });
+                    }
+                    Err(e) => {
+                        log::error!("Failed to create Tokio runtime: {}", e);
+                    }
+                }
             });
         }
     });
@@ -765,7 +1311,13 @@ pub async fn run_crawler_service() {
             info!("Starting crawl job: oid={} url={}", job.oid, job.start_url);
             // Mark as running
             job.status = "running".to_string();
-            job.updated_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+            job.updated_at = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(duration) => duration.as_secs() as i64,
+                Err(e) => {
+                    log::warn!("SystemTime before UNIX EPOCH: {:?}", e);
+                    0
+                }
+            };
             let _ = job.save_async().await;
 
             // Crawl start_url and discovered links (BFS, depth 2)
@@ -796,7 +1348,13 @@ pub async fn run_crawler_service() {
             }
             // Mark job as done
             job.status = "done".to_string();
-            job.updated_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+            job.updated_at = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(duration) => duration.as_secs() as i64,
+                Err(e) => {
+                    log::warn!("SystemTime before UNIX EPOCH: {:?}", e);
+                    0
+                }
+            };
             let _ = job.save_async().await;
             info!("Finished crawl job: oid={}", job.oid);
         } else {
