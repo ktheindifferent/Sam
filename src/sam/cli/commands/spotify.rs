@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match cmd {
         "spotify start" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Starting Spotify playback service...",
                 |lines, _| lines.push("Spotify playback started.".to_string()),
@@ -15,7 +15,7 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "spotify stop" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Stopping Spotify playback service...",
                 |lines, _| lines.push("Spotify playback stopped.".to_string()),
@@ -26,7 +26,7 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "spotify status" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Checking Spotify playback status...",
                 |lines, status| lines.push(format!("Spotify status: {}", status)),
@@ -36,7 +36,7 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "spotify play" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Resuming Spotify playback...",
                 |lines, _| lines.push("Spotify playback resumed.".to_string()),
@@ -47,7 +47,7 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "spotify pause" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Pausing Spotify playback...",
                 |lines, _| lines.push("Spotify playback paused.".to_string()),
@@ -58,7 +58,7 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "spotify shuffle" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Toggling Spotify shuffle...",
                 |lines, _| lines.push("Spotify shuffle toggled.".to_string()),

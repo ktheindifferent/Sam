@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 pub async fn handle_redis(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match cmd {
         "redis install" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Installing Redis via Docker...",
                 |lines, _| lines.push("Redis install complete.".to_string()),
@@ -15,7 +15,7 @@ pub async fn handle_redis(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "redis start" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Starting Redis via Docker...",
                 |lines, _| lines.push("Redis start command issued.".to_string()),
@@ -26,7 +26,7 @@ pub async fn handle_redis(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "redis stop" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Stopping Redis via Docker...",
                 |lines, _| lines.push("Redis stop command issued.".to_string()),
@@ -37,7 +37,7 @@ pub async fn handle_redis(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "redis status" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Checking Redis service status...",
                 |lines, status| lines.push(format!("Redis service status: {}", status)),

@@ -11,7 +11,7 @@ use std::path::Path;
 // Licensed under GPLv3....see LICENSE file.
 
 pub mod sam;
-pub mod cli;
+
 
 
 // External crates
@@ -257,7 +257,7 @@ async fn main() {
 
     // // Start interactive CLI prompt instead of empty loop
     // // println!("SAM initialized and ready. Starting command prompt...");
-    crate::cli::start_prompt().await;
+    crate::sam::cli::start_prompt().await;
 
     loop{
         // Check for user input or other events

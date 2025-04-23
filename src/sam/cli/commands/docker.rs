@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 pub async fn handle_docker(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match cmd {
         "docker start" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Starting Docker daemon...",
                 |lines, _| lines.push("Docker start command issued.".to_string()),
@@ -15,7 +15,7 @@ pub async fn handle_docker(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "docker stop" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Stopping Docker daemon...",
                 |lines, _| lines.push("Docker stop command issued.".to_string()),

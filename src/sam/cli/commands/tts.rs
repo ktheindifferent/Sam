@@ -11,6 +11,6 @@ pub async fn handle_tts(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         out.push(format!("Synthesizing speech for: '{}'", input));
         let output_lines = output_lines.clone();
         let text = input.to_string();
-        tokio::spawn(crate::cli::helpers::append_and_tts(output_lines, text));
+        tokio::spawn(crate::sam::cli::helpers::append_and_tts(output_lines, text));
     }
 }

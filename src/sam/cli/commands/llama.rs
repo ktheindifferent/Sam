@@ -51,7 +51,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                         Ok(result) => {
                             let text = result.trim().to_string();
                             let output_lines = output_lines.clone();
-                            tokio::spawn(crate::cli::helpers::append_and_tts(output_lines, format!("llama: {}", text)));
+                            tokio::spawn(crate::sam::cli::helpers::append_and_tts(output_lines, format!("llama: {}", text)));
                         },
                         Err(e) => {
                             let output_lines = output_lines.clone();

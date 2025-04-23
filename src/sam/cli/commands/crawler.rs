@@ -9,7 +9,7 @@ pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             out.push("Crawler service started.".to_string());
         }
         "crawler stop" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Stopping crawler service...",
                 |lines, _| lines.push("Crawler service stopped.".to_string()),
@@ -20,7 +20,7 @@ pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             ).await;
         }
         "crawler status" => {
-            crate::cli::spinner::run_with_spinner(
+            crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Checking crawler service status...",
                 |lines, status| lines.push(format!("Crawler service status: {}", status)),
