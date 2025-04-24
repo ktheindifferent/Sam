@@ -12,7 +12,7 @@ use rouille::Request;
 use rouille::Response;
 
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/locations" {
         let objects = crate::sam::memory::Location::select(None, None, None, None)?;
         return Ok(Response::json(&objects));

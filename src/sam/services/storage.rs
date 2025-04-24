@@ -33,7 +33,7 @@ pub fn init_cache() {
         .name("cache".to_string())
         .spawn(move || {
             loop {
-                let _ = crate::sam::memory::FileStorage::cache_all();
+                let _ = crate::sam::memory::storage::File::cache_all();
                 thread::sleep(Duration::from_secs(100)); // Adjusted to seconds for clarity
             }
         });
@@ -51,13 +51,13 @@ pub fn init_cache() {
 /// - `/api/services/storage/files`
 /// - `/api/services/storage/file/{oid}`
 pub fn handle(
-    _current_session: crate::sam::memory::WebSessions,
+    _current_session: crate::sam::memory::cache::WebSessions,
     request: &Request,
 ) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/storage/locations" {
         // Handle storage locations
         if request.method() == "GET" {
-            let locations = crate::sam::memory::StorageLocation::select(None, None, None, None)?;
+            let locations = crate::sam::memory::config::FileStorageLocation::select(None, None, None, None)?;
             return Ok(Response::json(&locations));
         }
 
@@ -69,7 +69,7 @@ pub fn handle(
                 password: String,
             })?;
 
-            let mut location = crate::sam::memory::StorageLocation::new();
+            let mut location = crate::sam::memory::config::FileStorageLocation::new();
             location.storage_type = input.storage_type;
             location.endpoint = input.endpoint;
             location.username = input.username;
@@ -83,7 +83,7 @@ pub fn handle(
     if request.url() == "/api/services/storage/files" {
         // Handle file storage
         if request.method() == "GET" {
-            let files = crate::sam::memory::FileStorage::select_lite(None, None, None, None)?;
+            let files = crate::sam::memory::storage::File::select_lite(None, None, None, None)?;
             return Ok(Response::json(&files));
         }
 
@@ -94,7 +94,7 @@ pub fn handle(
                 storage_location_oid: Option<String>,
             })?;
 
-            let mut file = crate::sam::memory::FileStorage::new();
+            let mut file = crate::sam::memory::storage::File::new();
             file.file_name = input.file_data.filename.ok_or("unknown filename")?;
             file.file_type = input.file_data.mime;
             file.file_data = Some(input.file_data.data);
@@ -120,7 +120,7 @@ pub fn handle(
             pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
             pg_query.query_columns.push("oid =".to_string());
 
-            let files = crate::sam::memory::FileStorage::select(None, None, None, Some(pg_query))?;
+            let files = crate::sam::memory::storage::File::select(None, None, None, Some(pg_query))?;
             if let Some(file) = files.first() {
                 return Ok(Response::from_data(file.file_type.clone(), file.file_data.clone().unwrap()));
             } else {

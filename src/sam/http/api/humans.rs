@@ -10,7 +10,7 @@
 use rouille::Request;
 use rouille::Response;
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/humans" {
         let objects = crate::sam::memory::Human::select(None, None, Some("email ASC".to_string()), None)?;
         return Ok(Response::json(&objects));

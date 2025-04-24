@@ -57,6 +57,7 @@ struct ServiceStatus {
     crawler: String,
     redis: String,
     docker: String, // Add docker status
+    sms: String, // Add sms status
     update_count: u64, // Add a counter to show updates
 }
 
@@ -86,6 +87,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         crawler: "unknown".to_string(),
         redis: "unknown".to_string(),
         docker: "unknown".to_string(),
+        sms: "unknown".to_string(), // Add sms status
         update_count: 0,
     }));
    
@@ -108,10 +110,16 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     "error".to_string()
                 });
 
+            let sms = std::panic::catch_unwind(|| crate::sam::services::sms::status().to_string())
+                .unwrap_or_else(|_| {
+                    "error".to_string()
+                });
+
             if let Ok(mut status) = service_status_clone.try_lock() {
                 status.crawler = if crawler.is_empty() { format!("unknown{}", count % 5) } else { crawler };
                 status.redis = if redis.is_empty() { format!("unknown{}", count % 5) } else { redis };
                 status.docker = if docker.is_empty() { format!("unknown{}", count % 5) } else { docker };
+                status.sms = if sms.is_empty() { format!("unknown{}", count % 5) } else { sms };
                 status.update_count = count;
                 count += 1;
             }
@@ -277,7 +285,16 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                                 _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
                             }
                         ),
-                        Span::raw(format!("    [update #{}]", status.update_count)),
+                        Span::raw("    "),
+                        Span::styled("SMS: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+                        Span::styled(
+                            &status.sms,
+                            match status.sms.as_str() {
+                                "running" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
+                                "stopped" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
+                                _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
+                            }
+                        ),
                     ])
                 ];
                 let status_widget = Paragraph::new(status_lines)

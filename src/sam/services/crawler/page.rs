@@ -66,17 +66,14 @@ impl CrawledPage {
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE IF NOT EXISTS crawled_pages (
             id serial PRIMARY KEY,
-            crawl_job_oid varchar NOT NULL,
             url varchar NOT NULL,
             tokens text,
-            links text,
             timestamp BIGINT
         );"
     }
     pub fn sql_indexes() -> Vec<&'static str> {
         vec![
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_url ON crawled_pages (url);",
-            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_crawl_job_oid ON crawled_pages (crawl_job_oid);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_timestamp ON crawled_pages (timestamp);",
             // For tokens, a GIN index is best if using Postgres full-text search, but here we use a normal index for the text column:
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_tokens ON crawled_pages (tokens);",
@@ -84,16 +81,16 @@ impl CrawledPage {
     }
     pub fn migrations() -> Vec<&'static str> { vec![] }
     pub fn from_row(row: &Row) -> crate::sam::memory::Result<Self> {
-        let links_str: Option<String> = row.get("links");
-        let links = links_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
+        // let links_str: Option<String> = row.get("links");
+        // let links = links_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
         let tokens_str: Option<String> = row.get("tokens");
         let tokens = tokens_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
         Ok(Self {
             id: row.get("id"),
-            crawl_job_oid: row.get("crawl_job_oid"),
             url: row.get("url"),
             tokens,
-            links,
+            crawl_job_oid: String::new(),
+            links: Vec::new(), 
             timestamp: row.get("timestamp"),
         })
     }
@@ -147,13 +144,13 @@ impl CrawledPage {
         let tokens_str = self.tokens.join("\n");
         if rows.is_empty() {
             client.execute(
-                "INSERT INTO crawled_pages (crawl_job_oid, url, tokens, links, timestamp) VALUES ($1, $2, $3, $4, $5)",
-                &[&self.crawl_job_oid, &self.url, &tokens_str, &links_str, &self.timestamp]
+                "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES ($1, $2, $3)",
+                &[&self.url, &tokens_str, &self.timestamp]
             )?;
         } else {
             client.execute(
-                "UPDATE crawled_pages SET crawl_job_oid = $1, tokens = $2, links = $3, timestamp = $4 WHERE url = $5",
-                &[&self.crawl_job_oid, &tokens_str, &links_str, &self.timestamp, &self.url]
+                "UPDATE crawled_pages SET tokens = $1, timestamp = $2 WHERE url = $3",
+                &[&tokens_str, &self.timestamp, &self.url]
             )?;
         }
         Ok(self.clone())
@@ -254,14 +251,14 @@ impl CrawledPage {
                 }
                 }
                 // Bonus: if query tokens appear in the links, add to score
-                for link in &page.links {
-                let link_lower = link.to_lowercase();
-                for token in &query_tokens {
-                    if link_lower.contains(token) {
-                    *score += 1;
-                    }
-                }
-                }
+                // for link in &page.links {
+                // let link_lower = link.to_lowercase();
+                // for token in &query_tokens {
+                //     if link_lower.contains(token) {
+                //     *score += 1;
+                //     }
+                // }
+                // }
                 // Bonus: if the page is more recent (timestamp within last 30 days), add to score
                 let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
                     Ok(duration) => duration.as_secs() as i64,

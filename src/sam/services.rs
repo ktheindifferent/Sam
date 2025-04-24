@@ -59,3 +59,4 @@ pub mod spotify;
 pub mod who;
 pub mod crawler;
 pub mod p2p;
+pub mod sms;

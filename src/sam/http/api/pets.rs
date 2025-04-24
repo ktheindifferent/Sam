@@ -10,6 +10,6 @@
 use rouille::Request;
 use rouille::Response;
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, _request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, _request: &Request) -> Result<Response, crate::sam::http::Error> {
     Ok(Response::empty_404())
 }

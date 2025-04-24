@@ -11,7 +11,7 @@ use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
 
-pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     
     if request.url().contains("/api/services/dropbox"){
         return crate::sam::services::dropbox::handle(current_session, request);   
@@ -60,7 +60,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
 
         
         if request.method() == "GET" {
-            let objects = crate::sam::memory::Service::select(None, None, None, None)?;
+            let objects = crate::sam::memory::config::Service::select(None, None, None, None)?;
             return Ok(Response::json(&objects));
         } 
 
@@ -77,7 +77,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
 
 
             // Save Service
-            let mut service = crate::sam::memory::Service::new();
+            let mut service = crate::sam::memory::config::Service::new();
             service.identifier = input.identifier;
             service.key = input.key;
             service.secret = input.secret;
@@ -95,7 +95,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(service.oid.clone()));
             pg_query.query_columns.push("oid =".to_string());
-            let objects = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
+            let objects = crate::sam::memory::config::Service::select(None, None, None, Some(pg_query))?;
             if !objects.is_empty() {
                 if request.url().contains(".json"){
                     return Ok(Response::json(&objects[0]));

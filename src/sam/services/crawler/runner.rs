@@ -125,6 +125,40 @@ async fn crawl_url_inner(
         return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg(format!("Invalid URL"))));
     }
 
+    // Return early if the URL looks like a search endpoint
+    let url_lc = url.to_ascii_lowercase();
+    if url_lc.contains("/search/")
+        || url_lc.contains("search=")
+        || url_lc.contains("q=")
+        || url_lc.contains("/find/")
+        || url_lc.contains("/query/")
+        || url_lc.contains("query=")
+        || url_lc.contains("/lookup/")
+        || url_lc.contains("lookup=")
+        || url_lc.contains("/results/")
+        || url_lc.contains("results=")
+        || url_lc.contains("/explore/")
+        || url_lc.contains("explore=")
+        || url_lc.contains("/filter/")
+        || url_lc.contains("filter=")
+        || url_lc.contains("/discover/")
+        || url_lc.contains("discover=")
+        || url_lc.contains("/browse/")
+        || url_lc.contains("browse=")
+        || url_lc.contains("u=")
+        || url_lc.contains("url=")
+        || url_lc.contains("id=")
+        || url_lc.contains("backURL=")
+        || url_lc.contains("text=")
+        || url_lc.contains("searchterm=")
+        || url_lc.contains("/list/")
+
+    {
+        return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg(
+            "URL appears to be a search endpoint, skipping".to_string(),
+        )));
+    }
+
 
     let max_depth = 2;
 
@@ -458,40 +492,40 @@ async fn crawl_url_inner(
                             }
                         }
 
-                        let mut mime_tokens = Vec::new();
-                        for link in &links {
-                            if let Ok(parsed) = Url::parse(link) {
-                                if let Some(path) = parsed.path_segments().and_then(|s| s.last()) {
-                                    let fname = path.split(&['?', '#'][..]).next().unwrap_or("");
-                                    let ext = fname.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-                                    let mime = match ext.as_str() {
-                                        "jpg" | "jpeg" => Some("image/jpeg"),
-                                        "png" => Some("image/png"),
-                                        "gif" => Some("image/gif"),
-                                        "mp3" => Some("audio/mp3"),
-                                        "wav" => Some("audio/wav"),
-                                        "ogg" => Some("audio/ogg"),
-                                        "mp4" => Some("video/mp4"),
-                                        "webm" => Some("video/webm"),
-                                        "mov" => Some("video/quicktime"),
-                                        "avi" => Some("video/x-msvideo"),
-                                        "bpm" => Some("image/bmp"),
-                                        "webp" => Some("image/webp"),
-                                        "svg" => Some("image/svg+xml"),
-                                        "ico" => Some("image/x-icon"),
-                                        "tiff" => Some("image/tiff"),
-                                        "flv" => Some("video/x-flv"),
-                                        "css" => Some("text/css"),
-                                        "js" => Some("application/javascript"),
-                                        _ => None,
-                                    };
-                                    if let Some(m) = mime {
-                                        mime_tokens.push(m.to_string());
-                                    }
-                                }
-                            }
-                        }
-                        tokens.extend(mime_tokens);
+                        // let mut mime_tokens = Vec::new();
+                        // for link in &links {
+                        //     if let Ok(parsed) = Url::parse(link) {
+                        //         if let Some(path) = parsed.path_segments().and_then(|s| s.last()) {
+                        //             let fname = path.split(&['?', '#'][..]).next().unwrap_or("");
+                        //             let ext = fname.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+                        //             let mime = match ext.as_str() {
+                        //                 "jpg" | "jpeg" => Some("image/jpeg"),
+                        //                 "png" => Some("image/png"),
+                        //                 "gif" => Some("image/gif"),
+                        //                 "mp3" => Some("audio/mp3"),
+                        //                 "wav" => Some("audio/wav"),
+                        //                 "ogg" => Some("audio/ogg"),
+                        //                 "mp4" => Some("video/mp4"),
+                        //                 "webm" => Some("video/webm"),
+                        //                 "mov" => Some("video/quicktime"),
+                        //                 "avi" => Some("video/x-msvideo"),
+                        //                 "bpm" => Some("image/bmp"),
+                        //                 "webp" => Some("image/webp"),
+                        //                 "svg" => Some("image/svg+xml"),
+                        //                 "ico" => Some("image/x-icon"),
+                        //                 "tiff" => Some("image/tiff"),
+                        //                 "flv" => Some("video/x-flv"),
+                        //                 "css" => Some("text/css"),
+                        //                 "js" => Some("application/javascript"),
+                        //                 _ => None,
+                        //             };
+                        //             if let Some(m) = mime {
+                        //                 mime_tokens.push(m.to_string());
+                        //             }
+                        //         }
+                        //     }
+                        // }
+                        // tokens.extend(mime_tokens);
 
                         (tokens, links)
                     }).await;
@@ -658,6 +692,59 @@ async fn crawl_url_inner(
                         "needed", "2023", "reports", "distance", "requests", "whether", "2.0", "サイトマップ", "control", "shopping", "old",
                         "computer", "sponsorship", "range", "kitchen", "machine", "office", "run", "week", "important", "contribute",
                         "feature", "includes", "board", "update", "outside",
+
+
+
+                        "instagram", "students", "science", "education", "newsletter", "youtube", "twitter", "live", "linkedin", "video",
+                        "notice", "student", "stories", "study", "store", "professional", "opportunities", "training", "collection",
+                        "plan", "school", "daily", "studies", "2021", "academic", "jobs", "career", "feedback", "enterprise", "campus",
+                        "legal", "submit", "living", "innovation", "financial", "tech", "brand", "sport", "funding", "environment",
+                        "2022", "courses", "national", "español", "care", "meet", "program", "choices", "skills", "connect", "culture",
+                        "college", "art", "teaching", "alumni", "test", "browser", "solutions", "sciences", "product", "knowledge",
+                        "improve", "times", "navigation", "podcasts", "2020", "institute", "engagement", "action", "government",
+                        "groups", "sports", "hub", "podcast", "consumer", "communication", "members", "material", "categories",
+                        "leadership", "freedom", "agreement", "industry", "app", "delivery", "shop", "engineering", "schools", "series",
+                        "updated", "opportunity", "form", "focus", "benefits", "sell", "strategy", "subscribe", "planning", "edition", 
+                        "department", "executive", "degree", "today", "return", "gift", "2018", "recently", "2019", "job", "give", 
+                        "guidance", "newsletters", "purchase", "protection", "undergraduate", "premium", "arts", "payments", "together", 
+                        "diversity", "developer", "trust", "festival", "partnerships", "graduate", "ways", "videos", "platform", "expand", 
+                        "mission", "involved", "women", "north", "types", "works", "develop", "breadcrumb", "usa", "buy", "published", 
+                        "black", "updates", "understand", "postgraduate", "ideas", "listed", "further", "loading", "track", "three", 
+                        "member", "category", "directory", "keep", "researchers", "law", "ambiente", "searches", "solo", "requirements", 
+                        "medical", "summary", "models", "notifications", "model", "governance", "moda", "field", "line", "tips", "selected", 
+                        "practice", "insights", "san", "having", "match", "2017", "messages", "medicine", "virtual", "power", "cards", 
+                        "argentina", "publications", "futuro", "collections", "role", "finance", "cultura", "early", "green", "post", 
+                        "saved", "archive", "apr", "higher", "programs", "inclusion", "chile", "italiano", "white", "organization", 
+                        "departments", "experiences", "technical", "america", "guides", "items", "advice", "asked", "call", "teams", 
+                        "computing", "2016", "materials", "window", "programme", "text", "standard", "means", "secure", "act", "since", 
+                        "sites", "china", "due", "understanding", "pricing", "books", "transfer", "framework", "ensure", "mundo", 
+                        "individual", "american", "marketing", "feed", "challenges", "months", "creative", "europa", "size", "ask", 
+                        "plans", "africa", "pay", "march", "helps", "fast", "casa", "points", "award", "vision", "featured", "left", 
+                        "giving", "rare", "conference", "potential", "chat", "analysis", "gallery", "phone", "complete", "mar", 
+                        "technologies", "january", "country", "spaces", "fees", "shipping", "music", "body", "sizes", "single", "designed", 
+                        "external", "society", "sales", "able", "websites", "artificial", "film", "maps", "colombia", "fund", "lab", 
+                        "records", "connected", "it's", "royal", "send", "era", "images", "values", "developers", "love", "collaboration", 
+                        "excellence", "server", "annual", "receive", "you're", "activity", "guarantee", "sellers", "champions", 
+                        "article", "credit", "play", "young", "david", "icon", "españa", "pro", "print", "creating", "tiktok", 
+                        "architecture", "cart", "sharing", "frequently", "success", "previous", "september", "processes", "selling", 
+                        "uses", "section", "strategic", "healthcare", "games", "academy", "base", "directly", "experts", "item", 
+                        "lifestyle", "cloud", "core", "visual", "opens", "returns", "otherwise", "studio", "partnership", "james", 
+                        "beyond", "director", "apps", "london", "administration", "approach", "toggle", "keyword", "developing", 
+                        "accounts", "touch", "wellbeing", "makes", "viewed", "environmental", "desktop", "scholarships", "survey", 
+                        "york", "steps", "june", "portal", "communities", "structure", "institutes", "wide", "accept", "image", "parte", 
+                        "risk", "john", "league", "politics", "cook", "docs", "organizations", "safe", "term", "1995-2025", "applying", 
+                        "adchoice", "beauty", "senior", "east", "running", "physical", "clear", "operations", "supporting", "progress", 
+                        "providing", "essential", "responsible", "writing", "summer", "card", "programmes", "profile", "canada", 
+                        "currently", "networks", "supported", "non", "it's", "class", "against", "magazine", "positive", "leading", 
+                        "official", "exchange", "standards", "condition", "sustainable", "registration", "mental", "archives", "contacts", 
+                        "trump", "applied", "collaborate", "managing", "manager", "watchlist", "final", "india", "documents", "growth", 
+                        "analytics", "quickly", "méxico", "mini", "british", "alto", "story", "animal", "useful", "radio", "others", 
+                        "existing", "initiatives", "water", "february", "journey", "actions", "civil", "active", "original", "italia", 
+                        "forms", "method", "committee", "tab", "benefit", "garage", "universities", "august", "outlet", "publication", 
+                        "box", "communications", "employment", "connecting", "upcoming", "reference", "tool", "2015", "vault", "energy", 
+                        "locations", "sign-in", "auto", "infrastructure", "2012", "futura", "ready", "relevant", "speed", "host", 
+                        "intelligence", "audio", "browse", "lead", "function", "president", "grants", "serie",
+
                     ];
                     let date_regex = regex::Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$");
                     let date2_regex = regex::Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$");
@@ -730,28 +817,35 @@ pub fn start_service() {
         log::info!("Crawler service starting...");
         CRAWLER_RUNNING.store(true, Ordering::SeqCst);
 
+        let cpu_cores = num_cpus::get();
+
         // Only create a runtime if not already inside one
         if tokio::runtime::Handle::try_current().is_ok() {
-            // Already inside a runtime: spawn the service directly
+            // Already inside a runtime: spawn the service on 8 tasks
+            for _ in 0..(cpu_cores/4) {
             tokio::spawn(async {
                 run_crawler_service().await;
             });
+            }
         } else {
             // Not inside a runtime: spawn a thread and create a runtime
-            std::thread::spawn(|| {
-                match tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build() {
-                    Ok(rt) => {
-                        rt.block_on(async {
-                            run_crawler_service().await;
-                        });
+            // Spawn 8 threads, each with its own Tokio runtime running the crawler service
+            for _ in 0..(cpu_cores/4) {
+                std::thread::spawn(|| {
+                    match tokio::runtime::Builder::new_multi_thread()
+                        .enable_all()
+                        .build() {
+                        Ok(rt) => {
+                            rt.block_on(async {
+                                run_crawler_service().await;
+                            });
+                        }
+                        Err(e) => {
+                            log::error!("Failed to create Tokio runtime: {}", e);
+                        }
                     }
-                    Err(e) => {
-                        log::error!("Failed to create Tokio runtime: {}", e);
-                    }
-                }
-            });
+                });
+            }
         }
     });
     CRAWLER_RUNNING.store(true, Ordering::SeqCst);

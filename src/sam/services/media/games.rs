@@ -7,7 +7,7 @@ use rouille::Request;
 use rouille::Response;
 
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url().contains("/games") {
         return Ok(Response::json(&games()?)); // Simplified unwrap
     }

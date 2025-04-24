@@ -12,7 +12,7 @@ use rouille::Response;
 
 use std::path::Path;
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/observations" {
         let skip = request.get_param("skip");
         let mut skip_number: usize = 0;

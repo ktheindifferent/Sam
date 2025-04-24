@@ -69,13 +69,13 @@ pub fn handle(request: &Request) -> Result<Response> {
     }
 
     // TODO: Limit by tiimestamp field
-    let sessions = crate::sam::memory::WebSessions::select(None, None, None, None)?;
+    let sessions = crate::sam::memory::cache::WebSessions::select(None, None, None, None)?;
 
 
     return Ok(session::session(request, "SID", 99999999999999999, |session| {
 
         // Setup/Restore Current Session
-        let mut current_session = crate::sam::memory::WebSessions::new(session.id().to_string());
+        let mut current_session = crate::sam::memory::cache::WebSessions::new(session.id().to_string());
         for s in sessions{
             if s.sid == current_session.sid{
                 current_session = s;
@@ -95,7 +95,7 @@ pub fn handle(request: &Request) -> Result<Response> {
     }));
 }
 
-pub fn handle_with_session(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response> {
+pub fn handle_with_session(current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response> {
 
 
         // =================================================================

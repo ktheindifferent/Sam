@@ -5,7 +5,7 @@ use rouille::Response;
 use invidious::reqwest::blocking::Client;
 
 
-pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/media/youtube" {
 
         let q_param = request.get_param("q");
@@ -88,7 +88,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         file_folder_tree.push("Videos".to_string());
         file_folder_tree.push("Youtube".to_string());
 
-        let mut file = crate::sam::memory::FileStorage::new();
+        let mut file = crate::sam::memory::storage::File::new();
         file.file_name = format!("{}.mp4", tube_id.clone());
         file.file_type = "video/mp4".to_string();
         file.file_data = Some(data);
@@ -97,7 +97,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         file.save()?;
 
 
-        let mut notify = crate::sam::memory::Notification::new();
+        let mut notify = crate::sam::memory::human::Notification::new();
         notify.message = format!("{}.mp4 finished downloading!", tube_id.clone());
         notify.human_oid = current_session.human_oid;
         notify.sid = current_session.sid;

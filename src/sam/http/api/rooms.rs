@@ -11,7 +11,7 @@ use rouille::Request;
 use rouille::Response;
 use serde::{Serialize, Deserialize};
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     
     if request.url().contains("/api/rooms") && request.url().contains("/things") {
        

@@ -10,11 +10,11 @@ use serde::{Serialize, Deserialize};
 
 use std::io::prelude::*;
 
-pub fn get_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
+pub fn get_db_obj() -> Result<crate::sam::memory::config::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String("dropbox".to_string()));
     pg_query.query_columns.push("identifier =".to_string());
-    let service = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
+    let service = crate::sam::memory::config::Service::select(None, None, None, Some(pg_query))?;
     Ok(service[0].clone())
 }
 
@@ -57,7 +57,7 @@ pub fn finish_auth(pkce: String, auth_code: String) -> dropbox_sdk::oauth2::Auth
 }
 
 pub fn update_key(key: String, refresh: Option<String>){
-    let mut service = crate::sam::memory::Service::new();
+    let mut service = crate::sam::memory::config::Service::new();
     service.identifier = "dropbox".to_string();
     match refresh{
         Some(refr) => {
@@ -82,7 +82,7 @@ pub fn update_key(key: String, refresh: Option<String>){
 
 
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/dropbox" {
 
         let path_param = request.get_param("path");

@@ -25,7 +25,7 @@ const _STYLE_INDEXES: [usize; 5] = [0, 2, 5, 7, 10];
 const _CONTENT_INDEXES: [usize; 1] = [7];
 
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url().contains("/styles"){
         return Ok(Response::json(&styles().unwrap()));
     }
@@ -120,7 +120,7 @@ pub fn run(_style_img: &str, _content_img: &str, _oid: String, _style: String) -
     //         let mut buf = Vec::new();
     //         file.read_to_end(&mut buf);
 
-    //         let mut file = crate::sam::memory::FileStorage::new();
+    //         let mut file = crate::sam::memory::storage::File::new();
     //         file.file_name = format!("{}-{}-{}.jpg", oid, style, step_idx);
     //         file.file_type = format!("image/jpeg");
     //         file.file_data = Some(buf);

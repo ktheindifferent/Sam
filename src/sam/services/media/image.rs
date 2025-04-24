@@ -21,7 +21,7 @@ pub fn install() -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url().contains("/nst"){
         return nst::handle(current_session, request);
     }

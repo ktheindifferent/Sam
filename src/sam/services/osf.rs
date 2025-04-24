@@ -17,7 +17,7 @@ use serde::{Serialize, Deserialize};
 
 
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/osf/packages" {
         let jupiter = crate::sam::services::osf::get();
         match jupiter{

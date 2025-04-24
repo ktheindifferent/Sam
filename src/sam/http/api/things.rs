@@ -12,7 +12,7 @@ use rouille::Response;
 use serde::{Serialize, Deserialize};
 use rouille::post_input;
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     
 
     

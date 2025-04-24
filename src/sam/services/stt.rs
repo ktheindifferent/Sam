@@ -152,7 +152,7 @@ pub fn install() -> std::io::Result<()> {
 }
 
 // Handles incoming STT requests and processes audio files.
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/stt" {
         let data = post_input!(request, { audio_data: rouille::input::post::BufferedFile })?;
         let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {

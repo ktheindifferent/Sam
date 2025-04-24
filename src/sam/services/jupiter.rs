@@ -15,15 +15,15 @@ use rouille::Request;
 use rouille::Response;
 use serde::{Serialize, Deserialize};
 
-pub fn get_db_obj() -> Result<crate::sam::memory::Service, crate::sam::services::Error>{
+pub fn get_db_obj() -> Result<crate::sam::memory::config::Service, crate::sam::services::Error>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String("jupiter".to_string()));
     pg_query.query_columns.push("identifier =".to_string());
-    let service = crate::sam::memory::Service::select(None, None, None, Some(pg_query))?;
+    let service = crate::sam::memory::config::Service::select(None, None, None, Some(pg_query))?;
     Ok(service[0].clone())
 }
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/jupiter" {
         let jupiter = crate::sam::services::jupiter::get();
         match jupiter{

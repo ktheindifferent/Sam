@@ -12,11 +12,11 @@ use rouille::Request;
 use rouille::Response;
 use std::thread;
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/settings" {
 
         if request.method() == "GET" {
-            let objects = crate::sam::memory::Setting::select(None, None, None, None)?;
+            let objects = crate::sam::memory::config::Setting::select(None, None, None, None)?;
             return Ok(Response::json(&objects));
         }
 
@@ -27,7 +27,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
                 values: Vec<String>
             })?;
 
-            let mut obj = crate::sam::memory::Setting::new();
+            let mut obj = crate::sam::memory::config::Setting::new();
             obj.key = input.key;
             obj.values = input.values;
             obj.save()?;
@@ -47,7 +47,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(identifier.replace("key:", "")));
             pg_query.query_columns.push("key =".to_string());
-            let objects = crate::sam::memory::Setting::select(None, None, None, Some(pg_query))?;
+            let objects = crate::sam::memory::config::Setting::select(None, None, None, Some(pg_query))?;
             return Ok(Response::text(&objects[0].clone().values[0]));
         }
 
@@ -65,7 +65,7 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
             pg_query.queries.push(crate::sam::memory::PGCol::String(identifier.replace("key:", "")));
             pg_query.query_columns.push("key =".to_string());
-            let objects = crate::sam::memory::Setting::select(None, None, None, Some(pg_query))?;
+            let objects = crate::sam::memory::config::Setting::select(None, None, None, Some(pg_query))?;
             return Ok(Response::json(&objects[0]));
         }
 
@@ -78,11 +78,11 @@ pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Reque
 
 pub fn set_defaults(){
     thread::spawn(move || {
-        let objects = crate::sam::memory::Setting::select(None, None, None, None).unwrap();
+        let objects = crate::sam::memory::config::Setting::select(None, None, None, None).unwrap();
         if objects.is_empty() {
 
             // enable_embedded_lifx_server
-            let mut enable_embedded_lifx_server = crate::sam::memory::Setting::new();
+            let mut enable_embedded_lifx_server = crate::sam::memory::config::Setting::new();
             let mut setting_vec: Vec<String> = Vec::new();
             enable_embedded_lifx_server.key = "enable_embedded_lifx_server".to_string();
             setting_vec.push("false".to_string());
@@ -90,7 +90,7 @@ pub fn set_defaults(){
             enable_embedded_lifx_server.save().unwrap();
 
             // enable_embedded_stt_server
-            let mut enable_embedded_stt_server = crate::sam::memory::Setting::new();
+            let mut enable_embedded_stt_server = crate::sam::memory::config::Setting::new();
             let mut setting_vec: Vec<String> = Vec::new();
             enable_embedded_stt_server.key = "enable_embedded_stt_server".to_string();
             setting_vec.push("false".to_string());
@@ -98,7 +98,7 @@ pub fn set_defaults(){
             enable_embedded_stt_server.save().unwrap();
 
             // enable_embedded_tts_server
-            let mut enable_embedded_tts_server = crate::sam::memory::Setting::new();
+            let mut enable_embedded_tts_server = crate::sam::memory::config::Setting::new();
             let mut setting_vec: Vec<String> = Vec::new();
             enable_embedded_tts_server.key = "enable_embedded_tts_server".to_string();
             setting_vec.push("false".to_string());
@@ -106,7 +106,7 @@ pub fn set_defaults(){
             enable_embedded_tts_server.save().unwrap();
 
             // enable_embedded_snapcast_server
-            let mut enable_embedded_snapcast_server = crate::sam::memory::Setting::new();
+            let mut enable_embedded_snapcast_server = crate::sam::memory::config::Setting::new();
             let mut setting_vec: Vec<String> = Vec::new();
             enable_embedded_snapcast_server.key = "enable_embedded_snapcast_server".to_string();
             setting_vec.push("false".to_string());
@@ -114,7 +114,7 @@ pub fn set_defaults(){
             enable_embedded_snapcast_server.save().unwrap();
 
             // microphone_threshold
-            let mut microphone_threshold = crate::sam::memory::Setting::new();
+            let mut microphone_threshold = crate::sam::memory::config::Setting::new();
             let mut setting_vec: Vec<String> = Vec::new();
             microphone_threshold.key = "microphone_threshold".to_string();
             setting_vec.push("14000".to_string());
@@ -122,7 +122,7 @@ pub fn set_defaults(){
             microphone_threshold.save().unwrap();
 
             // default_file_storage_location
-            let mut default_file_storage_location = crate::sam::memory::Setting::new();
+            let mut default_file_storage_location = crate::sam::memory::config::Setting::new();
             let mut setting_vec: Vec<String> = Vec::new();
             default_file_storage_location.key = "default_file_storage_location".to_string();
             setting_vec.push("SQL".to_string());

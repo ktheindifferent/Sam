@@ -11,7 +11,7 @@ pub mod settings;
 use rouille::Request;
 use rouille::Response;
 
-pub fn handle_api_request(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle_api_request(current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
    
     if request.url() == "/api/sid" {
         return Ok(Response::text(current_session.sid));

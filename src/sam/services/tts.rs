@@ -52,7 +52,7 @@ fn ensure_tts_tmp_dir() {
     }
 }
 
-pub fn handle(_current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/tts" {
         let input = request.get_param("text").unwrap();
         return Ok(Response::from_data("audio/wav", crate::sam::services::tts::get(input).unwrap()));

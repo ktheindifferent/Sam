@@ -15,7 +15,7 @@ use rouille::Request;
 use rouille::Response;
 use rouille::post_input;
 
-pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     
     
     
@@ -30,7 +30,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.sid));
         pg_query.query_columns.push(" AND sid =".to_string());
 
-        let notifications = crate::sam::memory::Notification::select(None, None, Some("timestamp DESC".to_string()), Some(pg_query))?;
+        let notifications = crate::sam::memory::human::Notification::select(None, None, Some("timestamp DESC".to_string()), Some(pg_query))?;
         
         return Ok(Response::json(&notifications));
     }
@@ -43,7 +43,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
         pg_query.queries.push(crate::sam::memory::PGCol::String(input.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
 
-        let notifications = crate::sam::memory::Notification::select(Some(20), None, Some("timestamp DESC".to_string()), Some(pg_query))?;
+        let notifications = crate::sam::memory::human::Notification::select(Some(20), None, Some("timestamp DESC".to_string()), Some(pg_query))?;
         let mut notification = notifications[0].clone();
         notification.seen = true;
         notification.save().unwrap();
@@ -60,7 +60,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
             pg_query.queries.push(crate::sam::memory::PGCol::String(current_session.human_oid));
             pg_query.query_columns.push("human_oid =".to_string());
 
-            let notifications = crate::sam::memory::Notification::select(Some(20), None, Some("timestamp DESC".to_string()), Some(pg_query))?;
+            let notifications = crate::sam::memory::human::Notification::select(Some(20), None, Some("timestamp DESC".to_string()), Some(pg_query))?;
             
             return Ok(Response::json(&notifications));
         }
@@ -71,7 +71,7 @@ pub fn handle(current_session: crate::sam::memory::WebSessions, request: &Reques
             })?;
 
 
-            let mut notification = crate::sam::memory::Notification::new();
+            let mut notification = crate::sam::memory::human::Notification::new();
             notification.message = input.message;
             notification.sid = current_session.sid;
             notification.human_oid = current_session.human_oid;

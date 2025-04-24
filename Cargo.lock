@@ -4427,6 +4427,7 @@ version = "0.0.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "chrono",
  "colored 3.0.0",
  "colors-transform",
  "crossterm 0.29.0",
@@ -4440,6 +4441,7 @@ dependencies = [
  "git2",
  "hound",
  "invidious",
+ "lazy_static",
  "lifx-rs",
  "log",
  "nanoid",
