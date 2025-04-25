@@ -10,6 +10,31 @@ use std::path::Path;
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+// TODO:
+// 1. Finish implementing SMS support.
+// 2. Extend CLI
+//  - move http to services
+//  - add more commands
+//  - add more options
+//  - add more help
+//  - add more error handling
+//  - add more tests
+// 3. Add support for other notification services (e.g., email, push notifications).
+// 4. Implement a notification history feature.
+// 5. Add a user interface for managing notification settings.
+// 6. Finish revising database structure
+// 7. Make cache databases redis/postgres hybrid
+// 8. Add support for different database backends (e.g., SQLite, MySQL).
+// 9. Create an oid for SAM on server startup if one does not exist....make sure only root can access it.
+// 10. Add support for different storage backends (e.g., S3, Google Cloud Storage).
+// 11. Implement a backup and restore feature for the database.
+// 12. Whisper.cpp support
+// 13. Bootcamp service that uses list of common prompts, collected prompts + data to train new models.
+// 14. Revise default rivescript with bootcamp prompts.
+// 15. Extend thing support to include more devices and platforms.
+// 16. GUI+API overhaul!!!
+// 17. Mobile app
+// 18. Data goblin apps (recipie, shopping list, calendar, cat identification, etc.)
 pub mod sam;
 
 
@@ -275,3 +300,5 @@ async fn main() {
     //     std::thread::sleep(std::time::Duration::from_secs(1));
     // }
 }
+
+

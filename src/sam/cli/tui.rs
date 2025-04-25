@@ -69,8 +69,8 @@ pub async fn start_prompt() {
     log::info!("[sam cli] start_prompt() called");
     helpers::check_postgres_env();
     // Initialize tui-logger (new crate)
-    tui_logger::init_logger(log::LevelFilter::Debug).unwrap();
-    tui_logger::set_default_level(log::LevelFilter::Debug);
+    tui_logger::init_logger(log::LevelFilter::Info).unwrap();
+    tui_logger::set_default_level(log::LevelFilter::Info);
 
     if let Err(e) = run_tui().await {
         log::info!("TUI error: {:?}", e);
@@ -91,41 +91,41 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         update_count: 0,
     }));
    
-    let service_status_clone = service_status.clone();
-    tokio::spawn(async move {
-        let mut count = 0u64;
-        loop {
-            let crawler = std::panic::catch_unwind(|| crate::sam::services::crawler::service_status().to_string())
-                .unwrap_or_else(|_| {
-                    "error".to_string()
-                });
+    // let service_status_clone = service_status.clone();
+    // tokio::spawn(async move {
+    //     let mut count = 0u64;
+    //     loop {
+    //         let crawler = std::panic::catch_unwind(|| crate::sam::services::crawler::service_status().to_string())
+    //             .unwrap_or_else(|_| {
+    //                 "error".to_string()
+    //             });
 
-            let redis = std::panic::catch_unwind(|| crate::sam::services::redis::status().to_string())
-                .unwrap_or_else(|_| {
-                    "error".to_string()
-                });
+    //         let redis = std::panic::catch_unwind(|| crate::sam::services::redis::status().to_string())
+    //             .unwrap_or_else(|_| {
+    //                 "error".to_string()
+    //             });
 
-            let docker = std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
-                .unwrap_or_else(|_| {
-                    "error".to_string()
-                });
+    //         let docker = std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
+    //             .unwrap_or_else(|_| {
+    //                 "error".to_string()
+    //             });
 
-            let sms = std::panic::catch_unwind(|| crate::sam::services::sms::status().to_string())
-                .unwrap_or_else(|_| {
-                    "error".to_string()
-                });
+    //         let sms = std::panic::catch_unwind(|| crate::sam::services::sms::status().to_string())
+    //             .unwrap_or_else(|_| {
+    //                 "error".to_string()
+    //             });
 
-            if let Ok(mut status) = service_status_clone.try_lock() {
-                status.crawler = if crawler.is_empty() { format!("unknown{}", count % 5) } else { crawler };
-                status.redis = if redis.is_empty() { format!("unknown{}", count % 5) } else { redis };
-                status.docker = if docker.is_empty() { format!("unknown{}", count % 5) } else { docker };
-                status.sms = if sms.is_empty() { format!("unknown{}", count % 5) } else { sms };
-                status.update_count = count;
-                count += 1;
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        }
-    });
+    //         if let Ok(mut status) = service_status_clone.try_lock() {
+    //             status.crawler = if crawler.is_empty() { format!("unknown{}", count % 5) } else { crawler };
+    //             status.redis = if redis.is_empty() { format!("unknown{}", count % 5) } else { redis };
+    //             status.docker = if docker.is_empty() { format!("unknown{}", count % 5) } else { docker };
+    //             status.sms = if sms.is_empty() { format!("unknown{}", count % 5) } else { sms };
+    //             status.update_count = count;
+    //             count += 1;
+    //         }
+    //         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    //     }
+    // });
 
     // Set a panic hook to print panics to stderr
     std::panic::set_hook(Box::new(|info| {

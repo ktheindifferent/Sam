@@ -80,6 +80,32 @@ impl Config {
         });
     }
 
+    pub async fn connect(&self) -> Result<tokio_postgres::Client> {
+        // Build a TLS connector that skips certificate verification (for self-signed certs)
+        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+        builder.set_verify(SslVerifyMode::NONE);
+        let connector = MakeTlsConnector::new(builder.build());
+
+        // Connect to the PostgreSQL database
+        let (client, connection) = tokio_postgres::connect(
+            &format!(
+                "postgresql://{}:{}@{}/{}?sslmode=prefer",
+                self.postgres.username, self.postgres.password, self.postgres.address, self.postgres.db_name
+            ),
+            connector,
+        )
+        .await?;
+
+        // Spawn the connection handler
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                log::error!("connection error: {}", e);
+            }
+        });
+
+        Ok(client)
+    }
+
 
     
     pub async fn build_tables(&self) -> Result<()>{
@@ -337,8 +363,13 @@ impl Config {
         offset: Option<usize>,
         order: Option<String>,
         query: Option<PostgresQueries>,
+        mut established_client: Option<postgres::Client>,
     ) -> Result<Vec<String>> {
-        let mut client = Config::client()?;
+        let mut client = if let Some(client) = established_client.take() {
+            client
+        } else {
+            Config::client()?
+        };
 
         // Build SELECT clause
         let mut execquery = if let Some(cols) = &columns {
@@ -397,10 +428,148 @@ impl Config {
         }
 
         // Close the client connection
-        if let Err(e) = client.close() {
-            log::error!("Failed to close PG-SQL Client: {}", e);
+        if established_client.is_none() {
+            if let Err(e) = client.close() {
+                log::error!("Failed to close PG-SQL Client: {}", e);
+            }
         }
 
+        Ok(parsed_rows)
+    }
+
+    /// Asynchronously executes a SELECT query on the specified PostgreSQL table with optional filtering, ordering, and pagination.
+    ///
+    /// # Arguments
+    /// * `table_name` - The name of the table to query.
+    /// * `columns` - Optional comma-separated list of columns to select. If `None`, selects all columns.
+    /// * `limit` - Optional maximum number of rows to return.
+    /// * `offset` - Optional number of rows to skip.
+    /// * `order` - Optional ORDER BY clause (e.g., "id DESC").
+    /// * `query` - Optional `PostgresQueries` for WHERE clause and parameterized values.
+    /// * `established_client` - Optionally provide an already established tokio_postgres::Client.
+    ///
+    /// # Returns
+    /// Returns a `Result` containing a vector of JSON strings, each representing a row.
+    pub async fn pg_select_async(
+        table_name: String,
+        columns: Option<String>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+        established_client: Option<&tokio_postgres::Client>,
+    ) -> Result<Vec<String>> {
+        // Prepare to collect results
+        let mut parsed_rows: Vec<String> = Vec::new();
+        if let Some(client_ref) = established_client {
+            // Use the provided reference
+            // ...existing code for building execquery...
+            let mut execquery = if let Some(cols) = &columns {
+                format!("SELECT {} FROM {}", cols, table_name)
+            } else {
+                format!("SELECT * FROM {}", table_name)
+            };
+            if let Some(pg_query) = query.clone() {
+                let mut counter = 1;
+                for col in pg_query.query_columns.iter() {
+                    if counter == 1 {
+                        execquery = format!("{} WHERE {} ${}", execquery, col, counter);
+                    } else {
+                        execquery = format!("{} {} ${}", execquery, col, counter);
+                    }
+                    counter += 1;
+                }
+            }
+            execquery = match order {
+                Some(order_val) => format!("{} ORDER BY {}", execquery, order_val),
+                None => format!("{} ORDER BY id DESC", execquery),
+            };
+            if let Some(limit_val) = limit {
+                execquery = format!("{} LIMIT {}", execquery, limit_val);
+            }
+            if let Some(offset_val) = offset {
+                execquery = format!("{} OFFSET {}", execquery, offset_val);
+            }
+            if let Some(pg_query) = query {
+                let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
+                    match x {
+                        PGCol::String(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                        PGCol::Number(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                        PGCol::Boolean(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    }
+                }).collect();
+                for row in client_ref.query(execquery.as_str(), query_values.as_slice()).await? {
+                    Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+                }
+            } else {
+                for row in client_ref.query(execquery.as_str(), &[]).await? {
+                    Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+                }
+            }
+        } else {
+            // Create a new client and use it within this block
+            let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+            builder.set_verify(SslVerifyMode::NONE);
+            let connector = MakeTlsConnector::new(builder.build());
+            let config = Config::new();
+            let conn_str = format!(
+                "postgresql://{}:{}@{}/{}?sslmode=prefer",
+                config.postgres.username,
+                config.postgres.password,
+                config.postgres.address,
+                config.postgres.db_name
+            );
+            let (client, connection) = tokio_postgres::connect(&conn_str, connector).await?;
+            tokio::spawn(async move {
+                if let Err(e) = connection.await {
+                    log::error!("connection error: {}", e);
+                }
+            });
+            // ...existing code for building execquery...
+            let mut execquery = if let Some(cols) = &columns {
+                format!("SELECT {} FROM {}", cols, table_name)
+            } else {
+                format!("SELECT * FROM {}", table_name)
+            };
+            if let Some(pg_query) = query.clone() {
+                let mut counter = 1;
+                for col in pg_query.query_columns.iter() {
+                    if counter == 1 {
+                        execquery = format!("{} WHERE {} ${}", execquery, col, counter);
+                    } else {
+                        execquery = format!("{} {} ${}", execquery, col, counter);
+                    }
+                    counter += 1;
+                }
+            }
+            execquery = match order {
+                Some(order_val) => format!("{} ORDER BY {}", execquery, order_val),
+                None => format!("{} ORDER BY id DESC", execquery),
+            };
+            if let Some(limit_val) = limit {
+                execquery = format!("{} LIMIT {}", execquery, limit_val);
+            }
+            if let Some(offset_val) = offset {
+                execquery = format!("{} OFFSET {}", execquery, offset_val);
+            }
+            if let Some(pg_query) = query {
+                let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
+                    match x {
+                        PGCol::String(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                        PGCol::Number(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                        PGCol::Boolean(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    }
+                }).collect();
+                for row in client.query(execquery.as_str(), query_values.as_slice()).await? {
+                    Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+                }
+            } else {
+                for row in client.query(execquery.as_str(), &[]).await? {
+                    Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+                }
+            }
+            // client is dropped here
+        }
         Ok(parsed_rows)
     }
 
@@ -486,6 +655,40 @@ impl Config {
 
         // Connect and return the client
         Ok(postgres::Client::connect(&conn_str, connector)?)
+    }
+
+    /// Asynchronously creates and returns a tokio_postgres::Client using the current configuration.
+    ///
+    /// This function builds a TLS connector (with certificate verification disabled for self-signed certs)
+    /// and connects to the configured PostgreSQL database using the `tokio_postgres` crate.
+    ///
+    /// # Returns
+    /// Returns a `Result` containing a `tokio_postgres::Client` on success, or an error otherwise.
+    pub async fn client_async() -> Result<tokio_postgres::Client> {
+        let config = Config::new();
+
+        // Build a TLS connector that skips certificate verification (for self-signed certs)
+        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+        builder.set_verify(SslVerifyMode::NONE);
+        let connector = MakeTlsConnector::new(builder.build());
+
+        // Construct the connection string
+        let conn_str = format!(
+            "postgresql://{}:{}@{}/{}?sslmode=prefer",
+            config.postgres.username,
+            config.postgres.password,
+            config.postgres.address,
+            config.postgres.db_name
+        );
+
+        // Connect and return the client
+        let (client, connection) = tokio_postgres::connect(&conn_str, connector).await?;
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                log::error!("connection error: {}", e);
+            }
+        });
+        Ok(client)
     }
 
     /// Checks if PostgreSQL (psql) is installed and available in PATH.

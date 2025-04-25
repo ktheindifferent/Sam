@@ -116,7 +116,7 @@ impl WebCrawlExtResult {
             limit,
             offset,
             order,
-            query
+            query, None
         )?;
 
         for j in jsons {

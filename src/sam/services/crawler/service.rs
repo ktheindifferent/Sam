@@ -1,3 +1,7 @@
+//! Crawler service module.
+//!
+//! Re-exports crawler job, page, and runner modules and their main types/functions.
+
 pub mod job;
 pub mod page;
 pub mod runner;

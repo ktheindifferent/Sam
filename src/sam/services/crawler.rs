@@ -1,3 +1,8 @@
+// TODO: Pooled DB connection for all the threads :)
+// TODO: Ext Crawler
+// TODO: Use redis for dns cache if available
+
+
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use rand::{thread_rng, Rng};

@@ -46,7 +46,7 @@ pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>
         let output_lines = output_lines.clone();
         tokio::spawn(async move {
             use crate::sam::services::crawler::CrawledPage;
-            match CrawledPage::query_by_relevance_async(&query, 10).await {
+            match CrawledPage::query_by_relevance_async(&query, 10, None).await {
                 Ok(scored_pages) if !scored_pages.is_empty() => {
                     let mut out = output_lines.lock().await;
                     out.push(format!("Found {} results:", scored_pages.len()));

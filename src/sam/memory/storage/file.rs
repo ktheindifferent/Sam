@@ -137,7 +137,7 @@ impl File {
     }
     pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
+        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
 
         for j in jsons{
             let object: Self = serde_json::from_str(&j).unwrap();
@@ -149,7 +149,7 @@ impl File {
     }
     pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = Config::pg_select(Self::sql_table_name(), Some("id, oid, file_name, file_type, file_folder_tree, storage_location_oid, created_at, updated_at".to_string()), limit, offset, order, query)?;
+        let jsons = Config::pg_select(Self::sql_table_name(), Some("id, oid, file_name, file_type, file_folder_tree, storage_location_oid, created_at, updated_at".to_string()), limit, offset, order, query, None)?;
 
         for j in jsons{
             let object: Self = serde_json::from_str(&j).unwrap();

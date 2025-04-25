@@ -1,3 +1,7 @@
+//! Crawler page definition and persistence layer.
+//! 
+//! Provides the CrawledPage struct and async/sync DB/Redis persistence for crawled web pages.
+
 use serde::{Serialize, Deserialize};
 use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
@@ -15,10 +19,12 @@ use std::fs::File;
 use std::io::Write;
 use tokio::io::{AsyncReadExt,AsyncWriteExt};
 use base64::{engine::general_purpose, Engine as _};
+use std::collections::HashSet;
 
 static REDIS_URL: &str = "redis://127.0.0.1/";
 static REDIS_MANAGER: OnceCell<RedisClient> = OnceCell::new();
 
+/// Get a Redis multiplexed async connection (singleton client).
 async fn redis_client() -> redis::RedisResult<MultiplexedConnection> {
     let client = match REDIS_MANAGER.get_or_try_init(|| RedisClient::open(REDIS_URL)) {
         Ok(client) => client,
@@ -30,6 +36,7 @@ async fn redis_client() -> redis::RedisResult<MultiplexedConnection> {
     client.get_multiplexed_async_connection().await
 }
 
+/// Represents a crawled web page (tokens, links, timestamp, etc).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CrawledPage {
     pub id: i32,
@@ -39,6 +46,7 @@ pub struct CrawledPage {
     pub links: Vec<String>,
     pub timestamp: i64,
 }
+
 impl Default for CrawledPage {
     fn default() -> Self {
         Self::new()
@@ -94,9 +102,38 @@ impl CrawledPage {
             timestamp: row.get("timestamp"),
         })
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> crate::sam::memory::Result<Vec<Self>> {
+    // pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>, ) -> crate::sam::memory::Result<Vec<Self>> {
+    //     let mut parsed_rows: Vec<Self> = Vec::new();
+    //     let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
+    //     for j in jsons {
+    //         let object: Self = match serde_json::from_str(&j) {
+    //             Ok(obj) => obj,
+    //             Err(e) => {
+    //                 log::error!("Failed to deserialize CrawledPage: {}", e);
+    //                 return Err(crate::sam::memory::Error::with_chain(e, "Deserialization error"));
+    //             }
+    //         };
+    //         parsed_rows.push(object);
+    //     }
+    //     Ok(parsed_rows)
+    // }
+    pub async fn select_async(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+        established_client: Option<&tokio_postgres::Client>,
+    ) -> crate::sam::memory::Result<Vec<Self>> {
+        let jsons = crate::sam::memory::Config::pg_select_async(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            established_client,
+        ).await?;
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
         for j in jsons {
             let object: Self = match serde_json::from_str(&j) {
                 Ok(obj) => obj,
@@ -109,63 +146,58 @@ impl CrawledPage {
         }
         Ok(parsed_rows)
     }
-    pub async fn select_async(
-        limit: Option<usize>,
-        offset: Option<usize>,
-        order: Option<String>,
-        query: Option<PostgresQueries>,
-    ) -> crate::sam::memory::Result<Vec<Self>> {
-        // For simple queries (by url), try Redis first
-        if let Some(q) = &query {
-            if q.queries.len() == 1 {
-                if let crate::sam::memory::PGCol::String(ref url) = q.queries[0] {
-                    if let Some(obj) = Self::get_redis(url).await {
-                        return Ok(vec![obj]);
-                    }
-                }
-            }
-        }
-        match tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query)).await {
-            Ok(res) => res,
-            Err(e) => {
-                log::error!("Failed to join select_async task: {}", e);
-                Err(crate::sam::memory::Error::with_chain(e, "JoinError in select_async"))
-            }
-        }
-    }
-    pub fn save(&self) -> crate::sam::memory::Result<Self> {
-        let mut client = Config::client()?;
-        // Check for existing by url
+    // pub fn save(&self) -> crate::sam::memory::Result<Self> {
+    //     let mut client = Config::client()?;
+    //     // Check for existing by url
+    //     let mut pg_query = PostgresQueries::default();
+    //     pg_query.queries.push(crate::sam::memory::PGCol::String(self.url.clone()));
+    //     pg_query.query_columns.push("url =".to_string());
+    //     let rows = Self::select(None, None, None, Some(pg_query.clone()))?;
+    //     let links_str = self.links.join("\n");
+    //     let tokens_str = self.tokens.join("\n");
+    //     if rows.is_empty() {
+    //         client.execute(
+    //             "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES ($1, $2, $3)",
+    //             &[&self.url, &tokens_str, &self.timestamp]
+    //         )?;
+    //     } else {
+    //         client.execute(
+    //             "UPDATE crawled_pages SET tokens = $1, timestamp = $2 WHERE url = $3",
+    //             &[&tokens_str, &self.timestamp, &self.url]
+    //         )?;
+    //     }
+    //     Ok(self.clone())
+    // }
+    pub async fn save_async(&self, established_client: Option<&tokio_postgres::Client>) -> crate::sam::memory::Result<Self> {
+        let tokens_str = self.tokens.join("\n");
+        let timestamp_str = self.timestamp.to_string();
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.url.clone()));
         pg_query.query_columns.push("url =".to_string());
-        let rows = Self::select(None, None, None, Some(pg_query.clone()))?;
-        let links_str = self.links.join("\n");
-        let tokens_str = self.tokens.join("\n");
+
+        // Check for existing by url, pass through established_client
+        let rows = Self::select_async(None, None, None, Some(pg_query.clone()), established_client).await?;
+        let client_owned;
+        let client = match established_client {
+            Some(client) => client,
+            None => {
+                client_owned = crate::sam::memory::Config::client_async().await?;
+                &client_owned
+            }
+        };
+
         if rows.is_empty() {
             client.execute(
                 "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES ($1, $2, $3)",
                 &[&self.url, &tokens_str, &self.timestamp]
-            )?;
+            ).await?;
         } else {
             client.execute(
                 "UPDATE crawled_pages SET tokens = $1, timestamp = $2 WHERE url = $3",
                 &[&tokens_str, &self.timestamp, &self.url]
-            )?;
+            ).await?;
         }
         Ok(self.clone())
-    }
-    pub async fn save_async(&self) -> crate::sam::memory::Result<Self> {
-        let this = self.clone();
-        // Save to Redis first for fast access
-        let _ = this.save_redis().await;
-        match tokio::task::spawn_blocking(move || this.save()).await {
-            Ok(res) => res,
-            Err(e) => {
-                log::error!("Failed to join save_async task: {}", e);
-                Err(crate::sam::memory::Error::with_chain(e, "JoinError in save_async"))
-            }
-        }
     }
     pub fn destroy(url: String) -> crate::sam::memory::Result<bool> {
         Config::destroy_row(url, Self::sql_table_name())
@@ -202,150 +234,137 @@ impl CrawledPage {
 
     /// Query crawled pages for the most probable results for a given query string.
     /// Returns a vector of (CrawledPage, score), sorted by descending score.
-    pub fn query_by_relevance(query: &str, limit: usize) -> crate::sam::memory::Result<Vec<(CrawledPage, usize)>> {
-        // Catch panics to avoid crashing the CLI/TUI
-        let result = std::panic::catch_unwind(|| {
-            // Tokenize the query (lowercase, split on whitespace, remove punctuation)
-            let query_tokens: Vec<String> = query
-                .split_whitespace()
-                .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
-                .filter(|w| !w.is_empty())
-                .collect();
+    /// Query crawled pages for the most probable results for a given query string.
+    /// Returns a vector of (CrawledPage, score), sorted by descending score.
+    pub async fn query_by_relevance_async(
+        query: &str,
+        limit: usize,
+        established_client: Option<&tokio_postgres::Client>,
+    ) -> crate::sam::memory::Result<Vec<(CrawledPage, usize)>> {
+        // Tokenize the query (lowercase, split on whitespace, remove punctuation)
+        let query_tokens: Vec<String> = query
+            .split_whitespace()
+            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+            .filter(|w| !w.is_empty())
+            .collect();
 
-            // Early return if no tokens
-            if query_tokens.is_empty() {
-                return Ok::<Vec<(CrawledPage, usize)>, crate::sam::memory::Error>(vec![]);
-            }
+        if query_tokens.is_empty() {
+            return Ok(vec![]);
+        }
 
-            // Fetch all crawled pages (could optimize with DB full-text search)
-            let pages = tokio::runtime::Handle::current()
-                .block_on(CrawledPage::select_async(None, None, Some("timestamp DESC".to_string()), None))?;
+        // Try to filter at the DB level if possible (e.g., by LIKE on url or tokens)
+        let mut pg_query = PostgresQueries::default();
+        let like_pattern_zero = format!("%{}%", query_tokens[0]);
+        pg_query.queries.push(crate::sam::memory::PGCol::String(like_pattern_zero.clone()));
+        pg_query.query_columns.push("url ilike".to_string());
+        pg_query.queries.push(crate::sam::memory::PGCol::String(like_pattern_zero));
+        pg_query.query_columns.push(" OR tokens ilike".to_string());
+        for token in &query_tokens {
+            let like_pattern = format!("%{}%", token);
+            pg_query.queries.push(crate::sam::memory::PGCol::String(like_pattern));
+            pg_query.query_columns.push(" OR tokens ilike".to_string());
+        }
 
-            // Score each page by number of query tokens present in its tokens
-            let mut scored: Vec<(CrawledPage, usize)> = pages
-                .into_iter()
-                .map(|page| {
-                    let page_tokens: std::collections::HashSet<_> = page.tokens.iter().map(|t| t.as_str()).collect();
-                    let mut score = 0;
-                    for token in &query_tokens {
-                        if page_tokens.contains(token.as_str()) {
-                            score += 1;
+        // Fetch a subset of pages matching the first token in the URL (as a filter)
+        let pages = match Self::select_async(
+            Some(500),
+            None,
+            Some("timestamp DESC".to_string()),
+            Some(pg_query.clone()),
+            established_client,
+        ).await {
+            Ok(p) if !p.is_empty() => p,
+            _ => vec![],
+        };
+
+        let query_tokens_set: HashSet<&str> = query_tokens.iter().map(|s| s.as_str()).collect();
+        let query_lower = query.to_lowercase();
+
+        let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_secs() as i64,
+            Err(_) => 0,
+        };
+
+        let mut scored: Vec<(CrawledPage, usize)> = pages
+            .into_iter()
+            .map(|page| {
+                let page_tokens: HashSet<&str> = page.tokens.iter().map(|t| t.as_str()).collect();
+                let mut score: usize = 0;
+                for token in &query_tokens_set {
+                    if page_tokens.contains(token) {
+                        score += 1;
+                    }
+                }
+
+                if page.url.to_lowercase() == format!("https://www.{}.com/", query_lower)
+                    || page.url.to_lowercase() == format!("https://{}.com/", query_lower)
+                    || page.url.to_lowercase() == format!("https://www.{}.com", query_lower)
+                    || page.url.to_lowercase() == format!("https://{}.com", query_lower)
+                {
+                    score += 1000;
+                }
+
+                if page.url.to_lowercase() == format!("http://www.{}.com/", query_lower)
+                    || page.url.to_lowercase() == format!("http://{}.com/", query_lower)
+                {
+                    score += 700;
+                }
+
+                if page.url.to_lowercase().contains(&query_lower) {
+                    score += 2;
+                }
+                // Heuristics
+                let url_lower = page.url.to_lowercase();
+                for token in &query_tokens_set {
+                    if url_lower.contains(token) {
+                        score += 1;
+                    }
+                }
+                if page.timestamp > now - 30 * 24 * 60 * 60 {
+                    score += 1;
+                }
+                if let Ok(parsed_url) = Url::parse(&page.url) {
+                    if let Some(domain) = parsed_url.domain() {
+                        let domain_lower = domain.to_lowercase();
+                        for token in &query_tokens_set {
+                            if domain_lower.contains(token) {
+                                score += 1;
+                            }
                         }
                     }
-                    // Bonus: if query is substring of URL, add to score
-                    if page.url.to_lowercase().contains(&query.to_lowercase()) {
-                        score += 2;
-                    }
-                    (page, score)
-                })
-                .filter(|(_, score)| *score > 0)
-                .collect();
-
-            // Additional scoring heuristics:
-            for (page, score) in &mut scored {
-                // Bonus: if query tokens appear in the URL path or domain, add to score
-                let url_lower = page.url.to_lowercase();
-                for token in &query_tokens {
-                if url_lower.contains(token) {
-                    *score += 1;
                 }
-                }
-                // Bonus: if query tokens appear in the links, add to score
-                // for link in &page.links {
-                // let link_lower = link.to_lowercase();
-                // for token in &query_tokens {
-                //     if link_lower.contains(token) {
-                //     *score += 1;
-                //     }
-                // }
-                // }
-                // Bonus: if the page is more recent (timestamp within last 30 days), add to score
-                let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
-                    Ok(duration) => duration.as_secs() as i64,
-                    Err(e) => {
-                        log::error!("SystemTime error: {}", e);
-                        0
-                    }
-                };
-                if page.timestamp > now - 30 * 24 * 60 * 60 {
-                *score += 1;
-                }
-                // Bonus: if the query tokens appear in the page's domain name, add to score
-                if let Ok(parsed_url) = Url::parse(&page.url) {
-                if let Some(domain) = parsed_url.domain() {
-                    let domain_lower = domain.to_lowercase();
-                    for token in &query_tokens {
-                    if domain_lower.contains(token) {
-                        *score += 1;
-                    }
-                    }
-                }
-                }
-                // Bonus: if the page has more tokens (longer content), add to score
                 if page.tokens.len() > 100 {
-                *score += 1;
+                    score += 1;
                 }
-                // Bonus: if the page has many links (potentially a hub), add to score
                 if page.links.len() > 20 {
-                *score += 1;
+                    score += 1;
                 }
-                // Penalty: if the page is very old (older than 1 year), subtract from score
                 if page.timestamp < now - 365 * 24 * 60 * 60 {
-                *score = score.saturating_sub(1);
+                    score = score.saturating_sub(1);
                 }
-                // Bonus: if the query matches the start of the URL, add to score
-                if page.url.to_lowercase().starts_with(&query.to_lowercase()) {
-                *score += 1;
+                if url_lower.starts_with(&query_lower) {
+                    score += 1;
                 }
-                // Bonus: if the query matches the end of the URL, add to score
-                if page.url.to_lowercase().ends_with(&query.to_lowercase()) {
-                *score += 1;
+                if url_lower.ends_with(&query_lower) {
+                    score += 1;
                 }
-            }
+                (page, score)
+            })
+            .filter(|(_, score)| *score > 0)
+            .collect();
 
-            // Sort by descending score
-            scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        scored.truncate(limit);
 
-            // Limit results
-            scored.truncate(limit);
-
-            Ok(scored)
-        });
-
-        match result {
-            Ok(Ok(scored)) => Ok(scored),
-            Ok(Err(e)) => {
-                // Underlying DB or logic error
-                log::error!("query_by_relevance error: {}", e);
-                Ok(vec![])
-            }
-            Err(_) => {
-                // Panic occurred
-                log::error!("query_by_relevance panicked");
-                Ok(vec![])
-            }
-        }
+        Ok(scored)
     }
 
-    pub async fn query_by_relevance_async(query: &str, limit: usize) -> crate::sam::memory::Result<Vec<(CrawledPage, usize)>> {
-        // Use spawn_blocking to move the CPU-intensive search to a separate thread
-        // without trying to create a new runtime
-        let query_string = query.to_string(); // Clone the query for move
-        tokio::task::spawn_blocking(move || {
-            Self::query_by_relevance(&query_string, limit)
-        })
-        .await
-        .unwrap_or_else(|e| {
-            log::error!("Search task panicked: {}", e);
-            Ok(vec![])
-        })
-    }
 
     /// Collect all tokens from crawled pages, rank by frequency, and write top X to a file.
     /// The file will be written to /opt/sam/tmp/common.tokens, one token per line.
     pub async fn write_most_common_tokens_async(limit: usize) -> std::io::Result<()> {
         // Collect all tokens from all crawled pages asynchronously
-        let pages = match Self::select_async(None, None, None, None).await {
+        let pages = match Self::select_async(None, None, None, None, None).await {
             Ok(p) => p,
             Err(e) => {
                 log::error!("Failed to select crawled pages: {}", e);

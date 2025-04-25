@@ -204,7 +204,7 @@ impl Observation {
     }
     pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query)?;
+        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
 
         for j in jsons{
             let object: Self = serde_json::from_str(&j).unwrap();
@@ -216,7 +216,7 @@ impl Observation {
     }
     pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = Config::pg_select(Self::sql_table_name(), Some("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json".to_string()), limit, offset, order, query)?;
+        let jsons = Config::pg_select(Self::sql_table_name(), Some("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json".to_string()), limit, offset, order, query, None)?;
 
         for j in jsons{
             let object: Self = serde_json::from_str(&j).unwrap();
