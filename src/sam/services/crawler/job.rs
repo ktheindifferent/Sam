@@ -137,7 +137,6 @@ impl CrawlJob {
     /// Async save (also saves to Redis).
     pub async fn save_async(&self) -> crate::sam::memory::Result<Self> {
         let this = self.clone();
-        let _ = this.save_redis().await;
         match tokio::task::spawn_blocking(move || this.save()).await {
             Ok(res) => res,
             Err(e) => Err(crate::sam::memory::Error::with_chain(e, "JoinError in save_async")),

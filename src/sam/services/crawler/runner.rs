@@ -383,12 +383,6 @@ async fn crawl_url_inner(
             if status == 200 {
                 // Extract headers before consuming resp
                 let headers = resp.headers().clone();
-            
-
-
-                let response = resp.clone();
-           
-            
                 let url_clone = url.clone();
                 let headers_clone = headers.clone();
                 // Try to extract the MIME type from the Content-Type header, ignoring parameters like charset
@@ -402,21 +396,30 @@ async fn crawl_url_inner(
                         }
                     }
                 }
-                // Pass headers into the closure
+                // Await the response text here, outside spawn_blocking
+                let html = match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => {
+                        log::warn!("Failed to get text for {}: {}", url, e);
+                        String::new()
+                    }
+                };
+                // Pass headers and html into the closure
                 let result = tokio::task::spawn_blocking(move || {
-                  
                     let mut tokens = Vec::new();
                     let mut links = Vec::new();
                     let mut mime_tokens = Vec::new();
-
-
-
-
-
                     let url_lc = url_clone.to_ascii_lowercase();
                     let mut file_mime: Option<&str> = None;
-                    
-
+                    // ...existing code...
+                    // Bugfix: Check for special replacement character (�) in the HTML body or any tag text
+                    let document = scraper::Html::parse_document(&html);
+                    let contains_replacement_char = html.contains('�')
+                        || document.root_element().text().any(|t| t.contains('�'));
+                    if contains_replacement_char {
+                        return (mime_tokens, tokens, links);
+                    }
+                    // ...existing code...
                     let file_ext = {
                         let url_no_query = url_lc.split(&['?', '#'][..]).next().unwrap_or("");
                         let path = std::path::Path::new(url_no_query);
@@ -478,15 +481,6 @@ async fn crawl_url_inner(
                     };
                     
                     if is_document && mime_tokens.iter().any(|m| m.starts_with("text/html")) {
-
-                        let html = match response.text().await {
-                            Ok(text) => text,
-                            Err(e) => {
-                                log::warn!("Failed to get text for {}: {}", url, e);
-                                String::new()
-                            }
-                        };
-
 
                         // Bugfix: Check for special replacement character (�) in the HTML body or any tag text
                         let document = scraper::Html::parse_document(&html);
@@ -668,7 +662,7 @@ async fn crawl_url_inner(
                 let date4_regex = regex::Regex::new(r"^\d{8}$");
                 let date5_regex = regex::Regex::new(r"^\d{4}\.\d{1,2}\.\d{1,2}$");
                 let date6_regex = regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$");
-                let date7_regex = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|([+-]\d{2}:\d{2}))?)?$");
+                let date7_regex = regex::Regex::new(r"^\d{4}-\d{2}-\2}(T\d{2}:\d{2}(:\d{2})?(Z|([+-]\d{2}:\d{2}))?)?$");
 
                 tokens.retain(|token| {
                     !COMMON_TOKENS.contains(token)
@@ -850,79 +844,106 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             let queue = Arc::new(tokio::sync::Mutex::new(VecDeque::from([(job.start_url.clone(), 0)])));
             let all_crawled_pages = Arc::new(tokio::sync::Mutex::new(Vec::new()));
 
+            let concurrency = num_cpus::get().max(4); // At least 4 concurrent tasks
             loop {
-                let url_depth = {
+                // Collect all URLs at the current minimum depth
+                let (batch, current_depth) = {
                     let mut q = queue.lock().await;
-                    let mut url_depth = None;
-                    while let Some((url, depth)) = q.pop_front() {
-                        // Only lock visited for the check, not the whole loop
-                        let already_visited = {
-                            let v = visited.lock().await;
-                            v.contains(&url) || depth > max_depth
+                    let mut batch = Vec::new();
+                    let mut min_depth: Option<usize> = None;
+                    // Find the minimum depth in the queue
+                    for &(_, d) in q.iter() {
+                        min_depth = match min_depth {
+                            Some(md) => Some(md.min(d)),
+                            None => Some(d),
                         };
-                        if already_visited {
-                            continue;
-                        }
-                        url_depth = Some((url, depth));
-                        break;
                     }
-                    url_depth
+                    let min_depth = match min_depth {
+                        Some(d) => d,
+                        None => break,
+                    };
+                    // Drain all URLs at this depth
+                    let mut i = 0;
+                    while i < q.len() {
+                        if q[i].1 == min_depth {
+                            let (url, depth) = q.remove(i).unwrap();
+                            batch.push((url, depth));
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    (batch, min_depth)
                 };
-                let (url, depth) = match url_depth {
-                    Some(ud) => ud,
-                    None => break,
-                };
-
-                // Only lock visited for the insert
+                if batch.is_empty() { break; }
+                // Mark all as visited
                 {
                     let mut v = visited.lock().await;
-                    v.insert(url.clone());
+                    for (url, _) in &batch {
+                        v.insert(url.clone());
+                    }
                 }
-                info!("Crawling url={} depth={}", url, depth);
-                match crawl_url(job_oid.clone(), url.clone(), established_clients.clone(), client.clone()).await {
-                    Ok(mut pages) => {
-                        // Collect new links to add to queue
-                        let mut new_links = Vec::new();
-                        for page in &pages {
-                            for link in &page.links {
-                                let should_add = {
-                                    let v = visited.lock().await;
-                                    !v.contains(link)
-                                };
-                                if should_add {
-                                    new_links.push((link.clone(), depth + 1));
-                                }
-                            }
+                // Crawl all URLs at this depth concurrently
+                use futures::stream;
+                let results = stream::iter(batch.into_iter())
+                    .map(|(url, depth)| {
+                        let job_oid = job_oid.clone();
+                        let established_clients = established_clients.clone();
+                        let client = client.clone();
+                        async move {
+                            (url.clone(), depth, crawl_url(job_oid, url, established_clients, client).await)
                         }
-                        // Add new links to queue in one lock
-                        if !new_links.is_empty() {
-                            let mut q = queue.lock().await;
-                            for (link, d) in new_links {
-                                q.push_back((link, d));
-                            }
-                        }
-                        // Add pages to all_crawled_pages in one lock
-                        {
-                            let mut all = all_crawled_pages.lock().await;
-                            all.append(&mut pages);
-                            if all.len() > 500 {
-                                // Batch save all crawled pages in chunks of 500
-                                for chunk in all.chunks(500) {
-                                    if let Err(e) = CrawledPage::save_async_batch(chunk, established_clients.clone()).await {
-                                        log::warn!("Failed to save batch of pages: {}", e);
-                                        for p in chunk {
-                                            write_url_to_retry_cache(&p.url).await;
-                                        }
+                    })
+                    .buffer_unordered(concurrency)
+                    .collect::<Vec<_>>()
+                    .await;
+                // Process results
+                let mut new_links = Vec::new();
+                for (url, depth, result) in results {
+                    match result {
+                        Ok(mut pages) => {
+                            for page in &pages {
+                                for link in &page.links {
+                                    let should_add = {
+                                        let v = visited.lock().await;
+                                        !v.contains(link)
+                                    };
+                                    if should_add {
+                                        new_links.push((link.clone(), depth + 1));
                                     }
                                 }
-                                all.clear();
+                            }
+                            // Add pages to all_crawled_pages in one lock
+                            {
+                                let mut all = all_crawled_pages.lock().await;
+                                all.append(&mut pages);
+                                if all.len() > 500 {
+                                    // Batch save all crawled pages in chunks of 500
+                                    for chunk in all.chunks(500) {
+                                        if let Err(e) = CrawledPage::save_async_batch(chunk, established_clients.clone()).await {
+                                            log::warn!("Failed to save batch of pages: {}", e);
+                                            for p in chunk {
+                                                write_url_to_retry_cache(&p.url).await;
+                                            }
+                                        }
+                                    }
+                                    all.clear();
+                                }
                             }
                         }
+                        Err(e) => {
+                            info!("Crawler error: {}", e);
+                            log::error!("Crawler error: {}", e);
+                            write_url_to_retry_cache(&url).await;
+                        }
                     }
-                    Err(e) => {
-                        info!("Crawler error: {}", e);
-                        log::error!("Crawler error: {}", e);
-                        write_url_to_retry_cache(&url).await;
+                }
+                // Add new links to queue in one lock
+                if !new_links.is_empty() {
+                    let mut q = queue.lock().await;
+                    for (link, d) in new_links {
+                        if d <= max_depth {
+                            q.push_back((link, d));
+                        }
                     }
                 }
             }
@@ -1107,7 +1128,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     job
                 });
                 let job_create_duration = job_create_start.elapsed();
-                log::info!("Created crawl job for URL: {} in {:?}", url, job_create_duration);
+                log::debug!("Created crawl job for URL: {} in {:?}", url, job_create_duration);
             }
         }
         sleep(Duration::from_secs(10)).await;
