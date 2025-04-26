@@ -386,14 +386,8 @@ async fn crawl_url_inner(
             
 
 
-
-                let html = match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => {
-                        log::warn!("Failed to get text for {}: {}", url, e);
-                        String::new()
-                    }
-                };
+                let response = resp.clone();
+           
             
                 let url_clone = url.clone();
                 let headers_clone = headers.clone();
@@ -483,7 +477,16 @@ async fn crawl_url_inner(
                         None => true,
                     };
                     
-                    if is_document {
+                    if is_document && mime_tokens.iter().any(|m| m.starts_with("text/html")) {
+
+                        let html = match response.text().await {
+                            Ok(text) => text,
+                            Err(e) => {
+                                log::warn!("Failed to get text for {}: {}", url, e);
+                                String::new()
+                            }
+                        };
+
 
                         // Bugfix: Check for special replacement character (�) in the HTML body or any tag text
                         let document = scraper::Html::parse_document(&html);
@@ -748,34 +751,6 @@ fn crawl_url_boxed<'a>(job_oid: String, url: String, depth: usize, established_c
 pub async fn crawl_url(job_oid: String, url: String, established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>, client: std::sync::Arc<reqwest::Client>) -> crate::sam::memory::Result<Vec<CrawledPage>> {
     crawl_url_boxed(job_oid, url, 0, established_clients, client).await
 }
-
-// pub fn start_service() {
-//     static STARTED: std::sync::Once = std::sync::Once::new();
-//     STARTED.call_once(|| {
-//         log::info!("Crawler service starting...");
-//         CRAWLER_RUNNING.store(true, Ordering::SeqCst);
-
-//         let cpu_cores = num_cpus::get();
-
-//         let rt = tokio::runtime::Builder::new_multi_thread()
-//         .worker_threads(8)
-//         .enable_all()
-//         .thread_stack_size(4 * 1024 * 1024)
-//         .build()
-//         .expect("Failed to build Tokio runtime");
-    
-//         rt.block_on(async {
-//             // Spawn multiple crawler services as tasks
-//             for _ in 0..cpu_cores {
-//                 tokio::spawn(:());
-//             }
-//             // Keep the runtime alive
-//             futures::future::pending::<()>().await;
-//         });
-//     });
-//     CRAWLER_RUNNING.store(true, Ordering::SeqCst);
-//     log::info!("Crawler service started.");
-// }
 
 /// Async-friendly version for use from async contexts (e.g., ratatui CLI)
 pub async fn start_service_async() {
