@@ -19,6 +19,7 @@ use crate::sam::memory::human::{Human, FaceEncoding, Notification};
 use crate::sam::memory::location::{Location};
 use crate::sam::memory::room::Room;
 use crate::sam::memory::PostgresServer;
+use tokio::sync::MutexGuard;
 
 
 pub mod service;
@@ -52,12 +53,12 @@ impl Config {
 
         match self.create_db().await{
             Ok(_) => log::info!("Database created successfully"),
-            Err(e) => log::error!("failed to create database: {}", e),
+            Err(e) => log::debug!("failed to create database: {}", e),
         }
 
         match self.build_tables().await{
             Ok(_) => log::info!("Tables created successfully"),
-            Err(e) => log::error!("failed to create tables: {}", e),
+            Err(e) => log::debug!("failed to create tables: {}", e),
         }
     
 
@@ -150,7 +151,7 @@ impl Config {
                 for idx_sql in crate::sam::services::crawler::CrawlJob::sql_indexes() {
                     match current_client.batch_execute(idx_sql).await {
                         Ok(_) => log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql),
-                        Err(e) => log::error!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
+                        Err(e) => log::debug!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
                     }
                 }
             }
@@ -158,7 +159,7 @@ impl Config {
                 for idx_sql in crate::sam::services::crawler::CrawledPage::sql_indexes() {
                     match current_client.batch_execute(idx_sql).await {
                         Ok(_) => log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql),
-                        Err(e) => log::error!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
+                        Err(e) => log::debug!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
                     }
                 }
             }
@@ -208,7 +209,7 @@ impl Config {
                 if e.to_string().contains("already exists") {
                     log::info!("Database '{}' already exists", self.postgres.db_name);
                 } else {
-                    log::error!("Failed to create database '{}': {}", self.postgres.db_name, e);
+                    log::debug!("Failed to create database '{}': {}", self.postgres.db_name, e);
                     return Err(e.into());
                 }
             }
@@ -239,7 +240,7 @@ impl Config {
         // Attempt to create the table
         match client.batch_execute(build_statement).await {
             Ok(_) => log::info!("POSTGRES: CREATED '{}' TABLE", table_name),
-            Err(e) => log::error!("POSTGRES: Failed to create '{}': {:?}", table_name, e),
+            Err(e) => log::debug!("POSTGRES: Failed to create '{}': {:?}", table_name, e),
         }
 
         // Apply migrations in order
@@ -250,7 +251,7 @@ impl Config {
             }
             match client.batch_execute(migration).await {
                 Ok(_) => log::info!("POSTGRES: MIGRATED '{}' TABLE", table_name),
-                Err(e) => log::error!("POSTGRES: Migration failed for '{}': {:?}", table_name, e),
+                Err(e) => log::debug!("POSTGRES: Migration failed for '{}': {:?}", table_name, e),
             }
         }
 
@@ -314,7 +315,7 @@ impl Config {
         // Spawn the connection handler
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                log::error!("connection error: {}", e);
+                log::debug!("connection error: {}", e);
             }
         });
 
@@ -430,7 +431,7 @@ impl Config {
         // Close the client connection
         if established_client.is_none() {
             if let Err(e) = client.close() {
-                log::error!("Failed to close PG-SQL Client: {}", e);
+                log::debug!("Failed to close PG-SQL Client: {}", e);
             }
         }
 
@@ -457,119 +458,87 @@ impl Config {
         offset: Option<usize>,
         order: Option<String>,
         query: Option<PostgresQueries>,
-        established_client: Option<&tokio_postgres::Client>,
+        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
     ) -> Result<Vec<String>> {
-        // Prepare to collect results
+
         let mut parsed_rows: Vec<String> = Vec::new();
-        if let Some(client_ref) = established_client {
-            // Use the provided reference
-            // ...existing code for building execquery...
-            let mut execquery = if let Some(cols) = &columns {
-                format!("SELECT {} FROM {}", cols, table_name)
-            } else {
-                format!("SELECT * FROM {}", table_name)
-            };
-            if let Some(pg_query) = query.clone() {
-                let mut counter = 1;
-                for col in pg_query.query_columns.iter() {
-                    if counter == 1 {
-                        execquery = format!("{} WHERE {} ${}", execquery, col, counter);
-                    } else {
-                        execquery = format!("{} {} ${}", execquery, col, counter);
-                    }
-                    counter += 1;
-                }
+
+        // Lock the client for the duration of the query
+        // Try to acquire a lock on any of the provided clients
+        let mut client_guard = None;
+        for client_arc in &established_clients {
+            if let Ok(guard) = client_arc.try_lock() {
+            client_guard = Some(guard);
+            break;
             }
-            execquery = match order {
-                Some(order_val) => format!("{} ORDER BY {}", execquery, order_val),
-                None => format!("{} ORDER BY id DESC", execquery),
-            };
-            if let Some(limit_val) = limit {
-                execquery = format!("{} LIMIT {}", execquery, limit_val);
+        }
+        let mut client_guard = match client_guard {
+            Some(guard) => guard,
+            None => {
+            // If none are available, just wait for the first one
+            established_clients
+                .get(0)
+                .expect("No clients provided")
+                .lock()
+                .await
             }
-            if let Some(offset_val) = offset {
-                execquery = format!("{} OFFSET {}", execquery, offset_val);
+        };
+
+        // Build SELECT clause
+        let mut execquery = if let Some(cols) = &columns {
+            format!("SELECT {} FROM {}", cols, table_name)
+        } else {
+            format!("SELECT * FROM {}", table_name)
+        };
+
+        // Build WHERE clause if query is provided
+        if let Some(pg_query) = query.clone() {
+            let mut counter = 1;
+            for col in pg_query.query_columns.iter() {
+                if counter == 1 {
+                    execquery = format!("{} WHERE {} ${}", execquery, col, counter);
+                } else {
+                    execquery = format!("{} {} ${}", execquery, col, counter);
+                }
+                counter += 1;
             }
-            if let Some(pg_query) = query {
-                let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
-                    match x {
-                        PGCol::String(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
-                        PGCol::Number(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
-                        PGCol::Boolean(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
-                    }
-                }).collect();
-                for row in client_ref.query(execquery.as_str(), query_values.as_slice()).await? {
-                    Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+        }
+
+        // Add ORDER BY clause
+        execquery = match order {
+            Some(order_val) => format!("{} ORDER BY {}", execquery, order_val),
+            None => format!("{} ORDER BY id DESC", execquery),
+        };
+
+        // Add LIMIT and OFFSET
+        if let Some(limit_val) = limit {
+            execquery = format!("{} LIMIT {}", execquery, limit_val);
+        }
+        if let Some(offset_val) = offset {
+            execquery = format!("{} OFFSET {}", execquery, offset_val);
+        }
+
+        // Execute query with or without parameters
+        if let Some(pg_query) = query {
+            let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
+                match x {
+                    PGCol::String(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::Number(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::Boolean(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
                 }
-            } else {
-                for row in client_ref.query(execquery.as_str(), &[]).await? {
-                    Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
-                }
+            }).collect();
+
+            for row in client_guard.query(execquery.as_str(), query_values.as_slice()).await? {
+                Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
             }
         } else {
-            // Create a new client and use it within this block
-            let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-            builder.set_verify(SslVerifyMode::NONE);
-            let connector = MakeTlsConnector::new(builder.build());
-            let config = Config::new();
-            let conn_str = format!(
-                "postgresql://{}:{}@{}/{}?sslmode=prefer",
-                config.postgres.username,
-                config.postgres.password,
-                config.postgres.address,
-                config.postgres.db_name
-            );
-            let (client, connection) = tokio_postgres::connect(&conn_str, connector).await?;
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    log::error!("connection error: {}", e);
-                }
-            });
-            // ...existing code for building execquery...
-            let mut execquery = if let Some(cols) = &columns {
-                format!("SELECT {} FROM {}", cols, table_name)
-            } else {
-                format!("SELECT * FROM {}", table_name)
-            };
-            if let Some(pg_query) = query.clone() {
-                let mut counter = 1;
-                for col in pg_query.query_columns.iter() {
-                    if counter == 1 {
-                        execquery = format!("{} WHERE {} ${}", execquery, col, counter);
-                    } else {
-                        execquery = format!("{} {} ${}", execquery, col, counter);
-                    }
-                    counter += 1;
-                }
+            for row in client_guard.query(execquery.as_str(), &[]).await? {
+                Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
             }
-            execquery = match order {
-                Some(order_val) => format!("{} ORDER BY {}", execquery, order_val),
-                None => format!("{} ORDER BY id DESC", execquery),
-            };
-            if let Some(limit_val) = limit {
-                execquery = format!("{} LIMIT {}", execquery, limit_val);
-            }
-            if let Some(offset_val) = offset {
-                execquery = format!("{} OFFSET {}", execquery, offset_val);
-            }
-            if let Some(pg_query) = query {
-                let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
-                    match x {
-                        PGCol::String(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
-                        PGCol::Number(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
-                        PGCol::Boolean(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
-                    }
-                }).collect();
-                for row in client.query(execquery.as_str(), query_values.as_slice()).await? {
-                    Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
-                }
-            } else {
-                for row in client.query(execquery.as_str(), &[]).await? {
-                    Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
-                }
-            }
-            // client is dropped here
         }
+
+        
+
         Ok(parsed_rows)
     }
 

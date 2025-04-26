@@ -143,6 +143,55 @@ impl CrawlJob {
             Err(e) => Err(crate::sam::memory::Error::with_chain(e, "JoinError in save_async")),
         }
     }
+
+
+    /// Async destroy by oid (removes from DB and Redis).
+    pub async fn destroy_async(oid: String) -> crate::sam::memory::Result<bool> {
+        // Remove from Redis
+        // let mut redis_con = match redis_client().await {
+        //     Ok(c) => c,
+        //     Err(_) => return Err(crate::sam::memory::Error::msg("Failed to connect to Redis")),
+        // };
+        // let redis_key = format!("crawljob:{}", oid);
+        // let _: () = redis_con.del(redis_key).await.unwrap_or(());
+
+
+        let config = Config::new();
+
+        // Build a TLS connector that skips certificate verification (for self-signed certs)
+        let mut builder = openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls()).unwrap();
+        builder.set_verify(openssl::ssl::SslVerifyMode::NONE);
+        let connector = postgres_openssl::MakeTlsConnector::new(builder.build());
+
+        // Construct the connection string
+        let conn_str = format!(
+            "postgresql://{}:{}@{}/{}?sslmode=prefer",
+            config.postgres.username,
+            config.postgres.password,
+            config.postgres.address,
+            config.postgres.db_name
+        );
+
+        // Connect and return the client
+        let (pg_client, connection) = tokio_postgres::connect(&conn_str, connector).await?;
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                log::error!("connection error: {}", e);
+            }
+        });
+
+        // Remove from Postgres
+        let table = Self::sql_table_name();
+        let query = format!("DELETE FROM {} WHERE oid = $1", table);
+       
+        // let pg_client = crate::sam::memory::Config::client_async().await.unwrap();
+        // Spawn the connection to drive it
+        // tokio::spawn(connection);
+        let rows = pg_client.execute(&query, &[&oid]).await.map_err(|e| crate::sam::memory::Error::with_chain(e, "Failed to delete crawl job"))?;
+        Ok(rows > 0)
+    }
+
+
     /// Destroy by oid.
     pub fn destroy(oid: String) -> crate::sam::memory::Result<bool> {
         Config::destroy_row(oid, Self::sql_table_name())

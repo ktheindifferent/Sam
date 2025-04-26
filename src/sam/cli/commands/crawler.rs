@@ -36,7 +36,7 @@ pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     }
 }
 
-pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
+pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) -> Result<(), Box<dyn std::error::Error>> {
     let query = cmd.trim_start_matches("crawl search ").trim();
     if query.is_empty() {
         let mut out = output_lines.lock().await;
@@ -46,7 +46,13 @@ pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>
         let output_lines = output_lines.clone();
         tokio::spawn(async move {
             use crate::sam::services::crawler::CrawledPage;
-            match CrawledPage::query_by_relevance_async(&query, 10, None).await {
+            let mut established_clients = Vec::with_capacity(12);
+            for _ in 0..1 {
+                let client = Arc::new(tokio::sync::Mutex::new(crate::sam::memory::Config::client_async().await.unwrap()));
+                established_clients.push(client);
+            }
+
+            match CrawledPage::query_by_relevance_async(&query, 10, established_clients).await {
                 Ok(scored_pages) if !scored_pages.is_empty() => {
                     let mut out = output_lines.lock().await;
                     out.push(format!("Found {} results:", scored_pages.len()));
@@ -71,4 +77,5 @@ pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>
             }
         });
     }
+    Ok(())
 }

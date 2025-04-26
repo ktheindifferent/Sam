@@ -71,6 +71,17 @@ pub async fn start_prompt() {
     // Initialize tui-logger (new crate)
     tui_logger::init_logger(log::LevelFilter::Info).unwrap();
     tui_logger::set_default_level(log::LevelFilter::Info);
+ 
+    // Only set log file if /opt/sam exists
+    let log_dir = std::path::Path::new("/opt/sam");
+    if log_dir.exists() && log_dir.is_dir() {
+        let log_file_path = log_dir.join("output.log");
+        let file_options = tui_logger::TuiLoggerFile::new(log_file_path.to_str().unwrap())
+            .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
+            .output_file(true)
+            .output_separator(':');
+        tui_logger::set_log_file(file_options);
+    }
 
     if let Err(e) = run_tui().await {
         log::info!("TUI error: {:?}", e);
@@ -91,65 +102,71 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         update_count: 0,
     }));
    
-    // let service_status_clone = service_status.clone();
-    // tokio::spawn(async move {
-    //     let mut count = 0u64;
-    //     loop {
-    //         let crawler = std::panic::catch_unwind(|| crate::sam::services::crawler::service_status().to_string())
-    //             .unwrap_or_else(|_| {
-    //                 "error".to_string()
-    //             });
+    let service_status_clone = service_status.clone();
+    tokio::spawn(async move {
+        let mut count = 0u64;
+        loop {
+            let crawler = std::panic::catch_unwind(|| crate::sam::services::crawler::service_status().to_string())
+                .unwrap_or_else(|_| {
+                    "error".to_string()
+                });
 
-    //         let redis = std::panic::catch_unwind(|| crate::sam::services::redis::status().to_string())
-    //             .unwrap_or_else(|_| {
-    //                 "error".to_string()
-    //             });
+            let redis = std::panic::catch_unwind(|| crate::sam::services::redis::status().to_string())
+                .unwrap_or_else(|_| {
+                    "error".to_string()
+                });
 
-    //         let docker = std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
-    //             .unwrap_or_else(|_| {
-    //                 "error".to_string()
-    //             });
+            let docker = std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
+                .unwrap_or_else(|_| {
+                    "error".to_string()
+                });
 
-    //         let sms = std::panic::catch_unwind(|| crate::sam::services::sms::status().to_string())
-    //             .unwrap_or_else(|_| {
-    //                 "error".to_string()
-    //             });
+            let sms = std::panic::catch_unwind(|| crate::sam::services::sms::status().to_string())
+                .unwrap_or_else(|_| {
+                    "error".to_string()
+                });
 
-    //         if let Ok(mut status) = service_status_clone.try_lock() {
-    //             status.crawler = if crawler.is_empty() { format!("unknown{}", count % 5) } else { crawler };
-    //             status.redis = if redis.is_empty() { format!("unknown{}", count % 5) } else { redis };
-    //             status.docker = if docker.is_empty() { format!("unknown{}", count % 5) } else { docker };
-    //             status.sms = if sms.is_empty() { format!("unknown{}", count % 5) } else { sms };
-    //             status.update_count = count;
-    //             count += 1;
-    //         }
-    //         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    //     }
-    // });
+            if let Ok(mut status) = service_status_clone.try_lock() {
+                status.crawler = if crawler.is_empty() { format!("unknown{}", count % 5) } else { crawler };
+                status.redis = if redis.is_empty() { format!("unknown{}", count % 5) } else { redis };
+                status.docker = if docker.is_empty() { format!("unknown{}", count % 5) } else { docker };
+                status.sms = if sms.is_empty() { format!("unknown{}", count % 5) } else { sms };
+                status.update_count = count;
+                count += 1;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    });
 
     // Set a panic hook to print panics to stderr
     std::panic::set_hook(Box::new(|info| {
         log::error!("\nSAM TUI PANIC: {info}");
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
         // Try to restore terminal state
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+       
         // Flush to ensure message is visible
         let _ = io::stdout().flush();
         let _ = io::stderr().flush();
     }));
 
+    
+    let backend = CrosstermBackend::new(io::stdout());
     enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
+    execute!(io::stdout(), EnterAlternateScreen)?;
+   
     let mut terminal = Terminal::new(backend)?;
+
+    terminal.clear()?;
+
 
     // Ensure terminal is restored even if panic or error
     struct DropGuard;
     impl Drop for DropGuard {
         fn drop(&mut self) {
-            let _ = disable_raw_mode();
             let _ = execute!(io::stdout(), LeaveAlternateScreen);
+            let _ = disable_raw_mode();
+           
             let _ = io::stdout().flush();
             let _ = io::stderr().flush();
         }

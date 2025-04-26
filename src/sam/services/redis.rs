@@ -101,7 +101,7 @@ pub fn status() -> &'static str {
 }
 
 /// Helper: check if the Redis Docker container is running
-fn is_running() -> bool {
+pub fn is_running() -> bool {
     let mut check = Command::new("docker")
         .args(&["ps", "--filter", "name=sam-redis", "--format", "{{.Names}}"])
         .stdout(std::process::Stdio::piped())

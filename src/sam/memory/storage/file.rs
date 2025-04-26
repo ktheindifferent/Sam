@@ -241,12 +241,23 @@ impl File {
 
         Ok(())
     }
+    /// Async version of cache_all using spawn_blocking
+    // pub async fn cache_all_async() -> Result<()> {
+    //     tokio::task::spawn_blocking(|| Self::cache_all()).await??;
+    //     Ok(())
+    // }
     pub fn cache(&self) -> Result<()>{
         if let Some(data) = self.file_data.clone() {
             std::fs::write(self.path_on_disk().clone(), data)?;
         }
         Ok(())
     }
+    /// Async version of cache using spawn_blocking
+    // pub async fn cache_async(&self) -> Result<()> {
+    //     let this = self.clone();
+    //     tokio::task::spawn_blocking(move || this.cache()).await??;
+    //     Ok(())
+    // }
     pub fn path_on_disk(&self) -> String{
         format!("/opt/sam/files/{}", self.oid.clone())
     }

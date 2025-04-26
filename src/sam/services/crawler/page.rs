@@ -14,6 +14,7 @@ use once_cell::sync::OnceCell;
 use log;
 use reqwest::Url;
 use regex;
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -74,7 +75,7 @@ impl CrawledPage {
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE IF NOT EXISTS crawled_pages (
             id serial PRIMARY KEY,
-            url varchar NOT NULL,
+            url varchar NOT NULL UNIQUE,
             tokens text,
             timestamp BIGINT
         );"
@@ -87,7 +88,11 @@ impl CrawledPage {
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_tokens ON crawled_pages (tokens);",
         ]
     }
-    pub fn migrations() -> Vec<&'static str> { vec![] }
+    pub fn migrations() -> Vec<&'static str> { vec![
+        "DROP INDEX IF EXISTS idx_crawled_pages_tokens;",
+        "CREATE INDEX idx_crawled_pages_tokens_gin ON crawled_pages USING GIN (tokens);"
+    ]}
+    
     pub fn from_row(row: &Row) -> crate::sam::memory::Result<Self> {
         // let links_str: Option<String> = row.get("links");
         // let links = links_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
@@ -122,7 +127,7 @@ impl CrawledPage {
         offset: Option<usize>,
         order: Option<String>,
         query: Option<PostgresQueries>,
-        established_client: Option<&tokio_postgres::Client>,
+        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
     ) -> crate::sam::memory::Result<Vec<Self>> {
         let jsons = crate::sam::memory::Config::pg_select_async(
             Self::sql_table_name(),
@@ -131,7 +136,7 @@ impl CrawledPage {
             offset,
             order,
             query,
-            established_client,
+            established_clients,
         ).await?;
         let mut parsed_rows: Vec<Self> = Vec::new();
         for j in jsons {
@@ -168,23 +173,151 @@ impl CrawledPage {
     //     }
     //     Ok(self.clone())
     // }
-    pub async fn save_async(&self, established_client: Option<&tokio_postgres::Client>) -> crate::sam::memory::Result<Self> {
+
+
+    /// Save a batch of CrawledPage objects asynchronously.
+    /// If a page with the same URL exists, it is updated; otherwise, it is inserted.
+    /// Returns the vector of saved pages.
+    pub async fn save_async_batch(
+        pages: &[CrawledPage],
+        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
+    ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
+
+        let mut pages_cleaned = pages.iter().filter(|p| !p.url.is_empty()).collect::<Vec<_>>();
+        pages_cleaned.sort_by(|a, b| a.url.cmp(&b.url));
+        let mut seen = HashSet::new();
+        pages_cleaned.retain(|p| seen.insert(&p.url));
+
+
+        // Collect all URLs from pages_cleaned
+        let urls: Vec<&String> = pages_cleaned.iter().map(|p| &p.url).collect();
+        if urls.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Build a PostgresQueries to select rows where url matches any of the URLs
+        let mut pg_query = PostgresQueries::default();
+        let mut i = 0;
+        for url in &urls {
+            if i > 0 {
+                pg_query.queries.push(crate::sam::memory::PGCol::String((*url).clone()));
+                pg_query.query_columns.push(" OR url =".to_string());
+            } else {
+                pg_query.queries.push(crate::sam::memory::PGCol::String((*url).clone()));
+                pg_query.query_columns.push("url =".to_string());
+            }
+            i += 1;
+        }
+
+        // Query for existing pages by URL
+        let existing_pages = Self::select_async(
+            None,
+            None,
+            None,
+            Some(pg_query),
+            established_clients.clone(),
+        ).await?;
+
+        // Remove from pages_cleaned any page whose URL matches an existing page
+        let existing_urls: HashSet<&String> = existing_pages.iter().map(|p| &p.url).collect();
+        pages_cleaned.retain(|p| !existing_urls.contains(&p.url));
+
+
+        if pages.is_empty() {
+            return Ok(vec![]);
+        }
+        // if established_clients.is_empty() {
+        //     return Err(crate::sam::memory::Error::msg("No available Postgres clients"));
+        // }
+
+        // Try to lock the first available client from established_clients
+        let mut client = None;
+        for arc_client in &established_clients {
+            if let Ok(guard) = arc_client.try_lock() {
+                client = Some(guard);
+                break;
+            }
+        }
+        // If none could be locked immediately, await the first one
+        let mut client = match client {
+            Some(guard) => guard,
+            None => {
+                established_clients
+                    .get(0)
+                    .expect("No available Postgres clients")
+                    .lock()
+                    .await
+            }
+        };
+
+        // Prepare bulk UPSERT (insert or update on conflict)
+        // Only url is unique, so use ON CONFLICT(url)
+        let mut values = Vec::new();
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = Vec::new();
+        let mut tokens_strs: Vec<String> = Vec::new();
+
+        // First, collect all tokens_strs
+        for page in pages_cleaned.iter() {
+            tokens_strs.push(page.tokens.join("\n"));
+        }
+        // Then, build values and params
+        for (i, page) in pages_cleaned.iter().enumerate() {
+            values.push(format!(
+                "(${}, ${}, ${})",
+                i * 3 + 1,
+                i * 3 + 2,
+                i * 3 + 3
+            ));
+            params.push(&page.url);
+            params.push(&tokens_strs[i]);
+            params.push(&page.timestamp);
+        }
+
+        let sql = format!(
+            "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES {} \
+            ON CONFLICT(url) DO UPDATE SET tokens = EXCLUDED.tokens, timestamp = EXCLUDED.timestamp",
+            values.join(", ")
+        );
+
+        client.execute(sql.as_str(), &params[..]).await?;
+
+        Ok(pages.to_vec())
+    }
+
+
+    pub async fn save_async(
+        &self,
+        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
+    ) -> crate::sam::memory::Result<Self> {
         let tokens_str = self.tokens.join("\n");
-        let timestamp_str = self.timestamp.to_string();
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.url.clone()));
         pg_query.query_columns.push("url =".to_string());
 
-        // Check for existing by url, pass through established_client
-        let rows = Self::select_async(None, None, None, Some(pg_query.clone()), established_client).await?;
-        let client_owned;
-        let client = match established_client {
-            Some(client) => client,
+        // Check for existing by url, pass through established_clients
+        let rows = Self::select_async(None, None, None, Some(pg_query.clone()), established_clients.clone()).await?;
+
+        // Try to lock the first available client from established_clients
+        let mut client = None;
+        for arc_client in &established_clients {
+            if let Ok(guard) = arc_client.try_lock() {
+            client = Some(guard);
+            break;
+            }
+        }
+        // If none could be locked immediately, await the first one
+        let mut client = match client {
+            Some(guard) => guard,
             None => {
-                client_owned = crate::sam::memory::Config::client_async().await?;
-                &client_owned
+            // fallback: just await the first one
+            established_clients
+                .get(0)
+                .expect("No available Postgres clients")
+                .lock()
+                .await
             }
         };
+
 
         if rows.is_empty() {
             client.execute(
@@ -239,7 +372,7 @@ impl CrawledPage {
     pub async fn query_by_relevance_async(
         query: &str,
         limit: usize,
-        established_client: Option<&tokio_postgres::Client>,
+        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
     ) -> crate::sam::memory::Result<Vec<(CrawledPage, usize)>> {
         // Tokenize the query (lowercase, split on whitespace, remove punctuation)
         let query_tokens: Vec<String> = query
@@ -271,7 +404,7 @@ impl CrawledPage {
             None,
             Some("timestamp DESC".to_string()),
             Some(pg_query.clone()),
-            established_client,
+            established_clients,
         ).await {
             Ok(p) if !p.is_empty() => p,
             _ => vec![],
@@ -364,7 +497,13 @@ impl CrawledPage {
     /// The file will be written to /opt/sam/tmp/common.tokens, one token per line.
     pub async fn write_most_common_tokens_async(limit: usize) -> std::io::Result<()> {
         // Collect all tokens from all crawled pages asynchronously
-        let pages = match Self::select_async(None, None, None, None, None).await {
+        let mut established_clients = Vec::new();
+        for i in 0..1 {
+            let client = Arc::new(tokio::sync::Mutex::new(crate::sam::memory::Config::client_async().await.unwrap()));
+            established_clients.push(client);
+        }
+
+        let pages = match Self::select_async(None, None, None, None, established_clients).await {
             Ok(p) => p,
             Err(e) => {
                 log::error!("Failed to select crawled pages: {}", e);

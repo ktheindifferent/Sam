@@ -12,7 +12,7 @@ use tokio_postgres::Row;
 use reqwest::Url;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
-use tokio::sync::Mutex as TokioMutex;
+// use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use trust_dns_resolver::TokioAsyncResolver;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -47,5 +47,5 @@ pub mod runner;
 pub use job::CrawlJob;
 pub use page::CrawledPage;
 pub use runner::{
-    crawl_url, start_service, start_service_async, stop_service, service_status,
+    crawl_url, start_service_async, stop_service, service_status,
 };
