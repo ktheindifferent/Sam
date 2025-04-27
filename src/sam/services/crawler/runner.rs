@@ -29,7 +29,7 @@ static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync:
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(5))
         .timeout(Duration::from_secs(60))
-        .pool_max_idle_per_host(300)
+        .pool_max_idle_per_host(5000)
         .pool_idle_timeout(Some(Duration::from_secs(60)))
         .danger_accept_invalid_certs(true)
         .build()
@@ -882,20 +882,44 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                         v.insert(url.clone());
                     }
                 }
+                let all_crawled_pages_th = all_crawled_pages.clone();
+                
                 // Crawl all URLs at this depth concurrently
                 use futures::stream;
-                let results = stream::iter(batch.into_iter())
-                    .map(|(url, depth)| {
-                        let job_oid = job_oid.clone();
-                        let established_clients = established_clients.clone();
-                        let client = client.clone();
-                        async move {
-                            (url.clone(), depth, crawl_url(job_oid, url, established_clients, client).await)
+                let results = stream::iter(batch.into_iter()).map(|(url, depth)| {
+                    let job_oid = job_oid.clone();
+                    let established_clients = established_clients.clone();
+                    let client = client.clone();
+                    let all_crawled_pages_th = all_crawled_pages_th.clone();
+                    async move {
+                        // Save pages in batches of 10
+                        // Only do this if we have more than 100 pages to save
+                        // Save crawled pages in a separate task/thread to avoid blocking the main crawling loop
+                        {
+                            let mut all = all_crawled_pages_th.lock().await;
+                            if all.len() > 100 {
+                                for chunk in all.chunks(10) {
+                                    let chunk = chunk.to_vec();
+                                    let established_clients = established_clients.clone();
+                                    tokio::spawn(async move {
+                                        if let Err(e) = CrawledPage::save_async_batch(&chunk, established_clients).await {
+                                            log::warn!("Failed to save batch of pages: {}", e);
+                                            for p in &chunk {
+                                                write_url_to_retry_cache(&p.url).await;
+                                            }
+                                        }
+                                    });
+                                }
+                                all.clear();
+                            }
                         }
-                    })
-                    .buffer_unordered(concurrency)
-                    .collect::<Vec<_>>()
-                    .await;
+
+                        // Crawl the URL
+                        (url.clone(), depth, crawl_url(job_oid, url, established_clients, client).await)
+                    }
+                }).buffer_unordered(concurrency).collect::<Vec<_>>().await;
+                    
+                
                 // Process results
                 let mut new_links = Vec::new();
                 for (url, depth, result) in results {
@@ -916,9 +940,9 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                             {
                                 let mut all = all_crawled_pages.lock().await;
                                 all.append(&mut pages);
-                                if all.len() > 500 {
+                                if all.len() > 100 {
                                     // Batch save all crawled pages in chunks of 500
-                                    for chunk in all.chunks(500) {
+                                    for chunk in all.chunks(10) {
                                         if let Err(e) = CrawledPage::save_async_batch(chunk, established_clients.clone()).await {
                                             log::warn!("Failed to save batch of pages: {}", e);
                                             for p in chunk {
@@ -961,6 +985,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     }
                 }
             }
+            
             // Mark job as done
             job.status = "done".to_string();
             job.updated_at = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
