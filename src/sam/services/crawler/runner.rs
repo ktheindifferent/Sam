@@ -1,29 +1,43 @@
-use crate::sam::services::crawler::job::CrawlJob;
-use crate::sam::services::crawler::page::CrawledPage;
-use std::collections::{HashSet, VecDeque, HashMap};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering, AtomicU64};
-use tokio::time::{sleep, Duration};
-use once_cell::sync::{Lazy, OnceCell};
+//! # Crawler Runner Module
+//!
+//! This module implements the core logic for the distributed web crawler service in the SAM system.
+//! It manages crawl jobs, performs concurrent crawling, handles DNS and HTTP lookups, and manages caching using both Redis and file-based fallbacks.
+//!
+//! ## Features
+//! - Distributed, concurrent crawling of web pages and domains
+//! - DNS and HTTP(S) probing with caching
+//! - Job queueing, status tracking, and retry logic
+//! - Robust error handling and logging
+//! - Pluggable cache backend (Redis or file)
+//! - Token and link extraction from crawled pages
+//!
+//! ## Design
+//! The crawler is designed to be robust and scalable, supporting multiple concurrent workers and fault-tolerant job processing. It uses a combination of static data (common URLs, TLDs, prefixes, etc.) and dynamic job queues to discover and crawl new domains. DNS and HTTP lookups are cached to minimize redundant network requests. The system is designed to recover from errors and persist retry information for failed crawls.
+
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::Future;
 use std::path::Path;
-use tokio::fs;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+
+use futures::StreamExt;
 use log::{info, LevelFilter};
-use trust_dns_resolver::TokioAsyncResolver;
-use rand::{thread_rng, Rng};
+use once_cell::sync::Lazy;
 use rand::distributions::Alphanumeric;
 use rand::rngs::SmallRng;
-use rand::SeedableRng;
-use reqwest::Url;
-// use futures::stream::FuturesUnordered;
-use futures::StreamExt;
-use num_cpus;
 use rand::seq::SliceRandom;
+use rand::{thread_rng, Rng, SeedableRng};
+use reqwest::Url;
+use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tokio::time::{sleep, Duration};
 use trust_dns_resolver::config::*;
-use url::ParseError; // <-- Add this import
-use std::pin::Pin;
-use std::future::Future;
-// use tokio_stream::StreamExt;
+use trust_dns_resolver::TokioAsyncResolver;
+use url::ParseError;
+
+use crate::sam::services::crawler::job::CrawlJob;
+use crate::sam::services::crawler::page::CrawledPage;
 
 static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
     reqwest::Client::builder()
@@ -54,7 +68,6 @@ static COMMON_TOKENS: once_cell::sync::Lazy<Vec<String>> = once_cell::sync::Lazy
         .collect::<Vec<_>>()
 });
 
-
 static COMMON_PREFIXES: once_cell::sync::Lazy<Vec<String>> = once_cell::sync::Lazy::new(|| {
     let bytes = include_bytes!("common_prefixes.txt").to_vec();
     bytes
@@ -63,7 +76,6 @@ static COMMON_PREFIXES: once_cell::sync::Lazy<Vec<String>> = once_cell::sync::La
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
 });
-
 
 static COMMON_TLDS: once_cell::sync::Lazy<Vec<String>> = once_cell::sync::Lazy::new(|| {
     let bytes = include_bytes!("common_tlds.txt").to_vec();
@@ -74,7 +86,6 @@ static COMMON_TLDS: once_cell::sync::Lazy<Vec<String>> = once_cell::sync::Lazy::
         .collect::<Vec<_>>()
 });
 
-
 static COMMON_WORDS: once_cell::sync::Lazy<Vec<String>> = once_cell::sync::Lazy::new(|| {
     let bytes = include_bytes!("common_words.txt").to_vec();
     bytes
@@ -83,8 +94,6 @@ static COMMON_WORDS: once_cell::sync::Lazy<Vec<String>> = once_cell::sync::Lazy:
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
 });
-
-// use rand::{seq::SliceRandom, thread_rng};
 
 static CRAWLER_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -98,7 +107,19 @@ static TIMEOUT_COUNT: once_cell::sync::Lazy<std::sync::Mutex<usize>> = once_cell
 
 static REDIS_URL: &str = "redis://127.0.0.1/";
 
-// Load DNS cache from disk or Redis at startup
+/// Loads the DNS cache from Redis or a file, depending on configuration and availability.
+///
+/// # Arguments
+/// * `should_use_redis` - If true, attempts to load from Redis first; falls back to file if unavailable or corrupted.
+///
+/// # Behavior
+/// - If Redis is running and available, attempts to load the DNS cache from Redis.
+/// - If Redis is unavailable or the cache is corrupted, falls back to loading from a file on disk.
+/// - If the file does not exist, creates an empty cache file.
+/// - Updates the global DNS_LOOKUP_CACHE with the loaded data.
+///
+/// # Async
+/// This function is async and returns a boxed future for compatibility with static initializers.
 fn load_dns_cache(should_use_redis: bool) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     Box::pin(async move {
         use redis::AsyncCommands;
@@ -159,7 +180,16 @@ fn load_dns_cache(should_use_redis: bool) -> Pin<Box<dyn Future<Output = ()> + S
     })
 }
 
-// Save DNS cache to disk or Redis
+/// Saves the DNS cache to Redis if available, otherwise falls back to saving to a file.
+///
+/// # Behavior
+/// - Serializes the DNS_LOOKUP_CACHE to JSON.
+/// - Attempts to save to Redis if running.
+/// - If Redis is unavailable or saving fails, writes the cache to a file on disk.
+/// - Logs all errors and fallbacks.
+///
+/// # Async
+/// This function is async and should be awaited.
 async fn save_dns_cache() {
     let mut should_fallback = false;
     let cache = DNS_LOOKUP_CACHE.lock().await;
@@ -201,7 +231,19 @@ async fn save_dns_cache() {
     }
 }
 
-/// Writes a URL to the retry file (for failed/timed out crawls)
+/// Writes a URL to the retry cache for later reprocessing.
+///
+/// # Arguments
+/// * `url` - The URL string to be retried.
+///
+/// # Behavior
+/// - If Redis is available, appends the URL to a Redis list.
+/// - If Redis is unavailable, appends the URL to a local file.
+/// - Ensures the retry directory exists before writing.
+/// - Logs all errors and fallbacks.
+///
+/// # Async
+/// This function is async and should be awaited.
 pub async fn write_url_to_retry_cache(url: &str) {
     let mut should_fallback = false;
     // Use Redis if available, otherwise fallback to file
@@ -257,7 +299,13 @@ pub async fn write_url_to_retry_cache(url: &str) {
     }
 }
 
-/// Returns true if the input string is a valid URL (absolute, with scheme and host)
+/// Checks if a string is a valid absolute URL with a scheme and host.
+///
+/// # Arguments
+/// * `s` - The string to validate as a URL.
+///
+/// # Returns
+/// * `true` if the string is a valid absolute URL with a host and scheme, `false` otherwise.
 pub fn is_valid_url(s: &str) -> bool {
     match Url::parse(s) {
         Ok(url) => url.has_host() && url.scheme() != "",
@@ -265,10 +313,30 @@ pub fn is_valid_url(s: &str) -> bool {
     }
 }
 
-
-// Internal boxed async fn for recursion
-// Prevent printing crawled webdata to terminal by not using println!, dbg!, eprintln!, or any direct output anywhere in this function or its parsing logic
-// Returns all crawled pages (including recursive)
+/// Internal function to crawl a single URL, extract tokens and links, and optionally recurse.
+///
+/// # Arguments
+/// * `job_oid` - The unique identifier for the crawl job.
+/// * `url` - The URL to crawl.
+/// * `depth` - The current recursion depth.
+/// * `established_clients` - A vector of PostgreSQL client connections for database operations.
+/// * `client` - The shared HTTP client for making requests.
+///
+/// # Returns
+/// * `Result<Vec<CrawledPage>>` - A vector of crawled page results or an error.
+///
+/// # Behavior
+/// - Checks for global sleep and throttling.
+/// - Validates the URL and skips known search endpoints.
+/// - Checks for existing crawled data in the database.
+/// - Performs HTTP GET requests with retries and timeout handling.
+/// - Extracts tokens and links from HTML content using a blocking task.
+/// - Filters and deduplicates tokens and links.
+/// - Handles error cases, including timeouts and retry logic.
+/// - Returns all successfully crawled pages for the given URL.
+///
+/// # Async
+/// This function is async and should be awaited.
 async fn crawl_url_inner(
     job_oid: String,
     url: String,
@@ -299,6 +367,11 @@ async fn crawl_url_inner(
         || url_lc.contains("/find/")
         || url_lc.contains("/query/")
         || url_lc.contains("query=")
+        || url_lc.contains("/websearch?")
+        || url_lc.contains("/search_history?")
+        || url_lc.contains("/search?")
+        || url_lc.contains("/search")
+        || url_lc.contains("/search/")
         || url_lc.contains("/lookup/")
         || url_lc.contains("lookup=")
         || url_lc.contains("/results/")
@@ -327,9 +400,9 @@ async fn crawl_url_inner(
 
 
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
-    pg_query.queries.push(crate::sam::memory::PGCol::String(format!("%{}%",url.clone())));
-    pg_query.query_columns.push("url ilike".to_string());
-    let existing = match CrawledPage::select_async(None, None, None, Some(pg_query), established_clients.clone()).await {
+    pg_query.queries.push(crate::sam::memory::PGCol::String(format!("{}",url.clone())));
+    pg_query.query_columns.push("url =".to_string());
+    let existing = match CrawledPage::select_async(Some(1), None, None, Some(pg_query), established_clients.clone()).await {
         Ok(pages) => pages,
         Err(e) => {
             log::debug!("Failed to query existing CrawledPage: {}", e);
@@ -337,12 +410,72 @@ async fn crawl_url_inner(
         }
     };
     if !existing.is_empty() {
-        return Ok(existing);
+        return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg(
+            format!("CrawledPage already exists for URL: {}", url),
+        )));
     }
 
     let mut page = CrawledPage::new();
     page.crawl_job_oid = job_oid.clone();
     page.url = url.clone();
+
+
+
+
+
+
+    let mut file_mime: Option<&str> = None;
+    let mut mime_tokens = Vec::new();
+    let url_lc = url.clone().to_ascii_lowercase();
+    let file_ext = {
+        let url_no_query = url_lc.split(&['?', '#'][..]).next().unwrap_or("");
+        let path = std::path::Path::new(url_no_query);
+        // Only treat as file if the last segment contains a dot (.) and is not a known TLD
+        if let Some(segment) = path.file_name().and_then(|s| s.to_str()) {
+            if segment.contains('.') {
+                if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
+                    // List of common TLDs to exclude
+                    // List of all known TLDs (as of 2024-06, from IANA root zone database)
+                    // Source: https://data.iana.org/TLD/tlds-alpha-by-domain.txt
+                    let tlds = COMMON_TLDS.clone();
+                    if !tlds.contains(&ext.to_string()) {
+                        Some(format!(".{}", ext))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    if let Some(ref ext) = file_ext {
+        for (map_ext, mime) in crate::sam::tools::MIME_MAP.iter() {
+            if ext.eq_ignore_ascii_case(map_ext) {
+                file_mime = Some(*mime);
+                break;
+            }
+        }
+    }
+
+    if let Some(ref mime) = file_mime {
+        if mime.starts_with("text/") {
+            mime_tokens.push(mime.to_string());
+        } else {
+            page.tokens = vec![mime.to_string()];
+            return Ok(vec![page]);
+        }
+    }
+
+
+
+
+
 
   
     let mut resp = None;
@@ -408,10 +541,10 @@ async fn crawl_url_inner(
                 let result = tokio::task::spawn_blocking(move || {
                     let mut tokens = Vec::new();
                     let mut links = Vec::new();
-                    let mut mime_tokens = Vec::new();
-                    let url_lc = url_clone.to_ascii_lowercase();
-                    let mut file_mime: Option<&str> = None;
-                    // ...existing code...
+                  
+                    
+                 
+                  
                     // Bugfix: Check for special replacement character (�) in the HTML body or any tag text
                     let document = scraper::Html::parse_document(&html);
                     let contains_replacement_char = html.contains('�')
@@ -419,42 +552,8 @@ async fn crawl_url_inner(
                     if contains_replacement_char {
                         return (mime_tokens, tokens, links);
                     }
-                    // ...existing code...
-                    let file_ext = {
-                        let url_no_query = url_lc.split(&['?', '#'][..]).next().unwrap_or("");
-                        let path = std::path::Path::new(url_no_query);
-                        // Only treat as file if the last segment contains a dot (.) and is not a known TLD
-                        if let Some(segment) = path.file_name().and_then(|s| s.to_str()) {
-                            if segment.contains('.') {
-                                if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
-                                    // List of common TLDs to exclude
-                                    // List of all known TLDs (as of 2024-06, from IANA root zone database)
-                                    // Source: https://data.iana.org/TLD/tlds-alpha-by-domain.txt
-                                    let tlds = COMMON_TLDS.clone();
-                                    if !tlds.contains(&ext.to_string()) {
-                                        Some(format!(".{}", ext))
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    if let Some(ref ext) = file_ext {
-                        for (map_ext, mime) in crate::sam::tools::MIME_MAP.iter() {
-                            if ext.eq_ignore_ascii_case(map_ext) {
-                                file_mime = Some(*mime);
-                                break;
-                            }
-                        }
-                    }
+                
+                   
 
                     // Prefer MIME type from header, then file extension, then default
                     if let Some(mimeh) = mime_from_header {
@@ -736,17 +835,41 @@ async fn crawl_url_inner(
     Ok(all_pages)
 }
 
-// Boxed async fn for recursion
+/// Boxed async function for recursion compatibility.
+///
+/// # Arguments
+/// * See `crawl_url_inner`.
+///
+/// # Returns
+/// * Boxed future for async recursion.
 fn crawl_url_boxed<'a>(job_oid: String, url: String, depth: usize, established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>, client: std::sync::Arc<reqwest::Client>) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::sam::memory::Result<Vec<CrawledPage>>> + Send + 'a>> {
     Box::pin(crawl_url_inner(job_oid, url, depth, established_clients, client))
 }
 
-// Public entry point (non-recursive, just calls boxed version)
+/// Public entry point for crawling a URL (non-recursive).
+///
+/// # Arguments
+/// * See `crawl_url_inner`.
+///
+/// # Returns
+/// * `Result<Vec<CrawledPage>>` - A vector of crawled page results or an error.
+///
+/// # Async
+/// This function is async and should be awaited.
 pub async fn crawl_url(job_oid: String, url: String, established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>, client: std::sync::Arc<reqwest::Client>) -> crate::sam::memory::Result<Vec<CrawledPage>> {
     crawl_url_boxed(job_oid, url, 0, established_clients, client).await
 }
 
-/// Async-friendly version for use from async contexts (e.g., ratatui CLI)
+/// Starts the crawler service asynchronously, spawning worker tasks for each CPU core.
+///
+/// # Behavior
+/// - Ensures the service is only started once.
+/// - Spawns a worker for each CPU core to process crawl jobs concurrently.
+/// - Sets the global running flag.
+/// - Logs service start.
+///
+/// # Async
+/// This function is async and should be awaited.
 pub async fn start_service_async() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     STARTED.call_once(|| {
@@ -768,12 +891,21 @@ pub async fn start_service_async() {
     CRAWLER_RUNNING.store(true, Ordering::SeqCst);
 }
 
+/// Stops the crawler service and sets the running flag to false.
+///
+/// # Behavior
+/// - Sets the global running flag to false.
+/// - Logs service stop.
 pub fn stop_service() {
     info!("Crawler service stopping...");
     CRAWLER_RUNNING.store(false, Ordering::SeqCst);
     info!("Crawler service stopped.");
 }
 
+/// Returns the current status of the crawler service as a string.
+///
+/// # Returns
+/// * `"running"` if the service is active, `"stopped"` otherwise.
 pub fn service_status() -> &'static str {
     if CRAWLER_RUNNING.load(Ordering::SeqCst) {
         "running"
@@ -782,8 +914,19 @@ pub fn service_status() -> &'static str {
     }
 }
 
-/// Main crawler loop: finds pending jobs, crawls, updates status
-// TODO: Make postgres connection pool size configurable or higher level
+/// Main crawler loop that finds pending jobs, crawls URLs, and updates job status.
+///
+/// # Behavior
+/// - Continuously polls for pending crawl jobs.
+/// - For each job, marks as running, crawls the start URL and discovered links using BFS up to a maximum depth.
+/// - Uses concurrency to crawl multiple URLs in parallel.
+/// - Saves crawled pages in batches to the database.
+/// - Handles retry logic for failed URLs.
+/// - If no jobs are found, generates new jobs from common URLs and discovered domains using DNS and HTTP probing.
+/// - Periodically sleeps between iterations.
+///
+/// # Async
+/// This function is async and should be awaited.
 pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     let client = Arc::new(REQWEST_CLIENT.clone());
 
@@ -972,6 +1115,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 }
             }
 
+            // Save any remaining crawled pages
             let all_crawled_pages = match Arc::try_unwrap(all_crawled_pages) {
                 Ok(mutex) => mutex.into_inner(),
                 Err(arc) => arc.blocking_lock().clone(),
@@ -985,6 +1129,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     }
                 }
             }
+            drop(all_crawled_pages);
             
             // Mark job as done
             job.status = "done".to_string();
@@ -999,7 +1144,10 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 log::warn!("Failed to destroy crawl job: oid={}", job.oid);
                 false
             });
-            // let _ = job.save_async().await;
+
+            drop(visited);
+
+            let _ = job.save_async().await;
             info!("Finished crawl job: oid={}", job.oid);
         } else {
             // No jobs: scan common URLs and/or use DNS queries to find domains
@@ -1160,8 +1308,18 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     }
 }
 
-
-// Helper function to perform a single DNS lookup with cache
+/// Performs a DNS lookup for a domain, with caching and HTTP(S) probing.
+///
+/// # Arguments
+/// * `resolver` - The DNS resolver to use.
+/// * `domain` - The domain name to look up.
+/// * `client` - The shared HTTP client for probing.
+///
+/// # Returns
+/// * `true` if the domain resolves and responds to HTTP(S), `false` otherwise.
+///
+/// # Async
+/// This function is async and should be awaited.
 async fn lookup_domain(
     resolver: &TokioAsyncResolver,
     domain: &str,
@@ -1238,6 +1396,12 @@ async fn lookup_domain(
     found
 }
 
+/// Recursively extracts text tokens from an HTML element, skipping specified tags.
+///
+/// # Arguments
+/// * `element` - The current HTML element to process.
+/// * `skip_selector` - A list of selectors to skip (e.g., script, style).
+/// * `tokens` - The mutable vector to collect tokens into.
 fn extract_text(element: &scraper::ElementRef, skip_selector: &[scraper::Selector], tokens: &mut Vec<String>) {
     for sel in skip_selector {
         if sel.matches(element) {

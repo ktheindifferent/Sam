@@ -222,6 +222,10 @@ impl CrawledPage {
         let existing_urls: HashSet<&String> = existing_pages.iter().map(|p| &p.url).collect();
         pages_cleaned.retain(|p| !existing_urls.contains(&p.url));
 
+        // Early return if nothing to insert
+        if pages_cleaned.is_empty() {
+            return Ok(vec![]);
+        }
 
         if pages.is_empty() {
             return Ok(vec![]);
