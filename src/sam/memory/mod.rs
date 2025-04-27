@@ -42,6 +42,8 @@ error_chain! {
         PostError(rouille::input::post::PostError);
         ParseFloatError(std::num::ParseFloatError);
         SerdeJsonError(serde_json::Error);
+        DeadpoolPostgresError(deadpool_postgres::PoolError);
+        JoinError(tokio::task::JoinError);
         // TchError(tch::TchError);
     }
 }

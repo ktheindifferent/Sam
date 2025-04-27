@@ -2,12 +2,20 @@ use std::process::Command;
 use log::{info, error};
 use std::time::Duration;
 use std::thread;
+use bollard::Docker;
+use bollard::container::ListContainersOptions;
+use futures_util::stream::TryStreamExt;
+use tokio::runtime::Runtime;
+use std::sync::Mutex;
+use std::time::{ Instant};
+use once_cell::sync::Lazy;
+
 
 /// Install and start Redis using Docker if not already running.
 /// This is intended to be called from setup/install.
 pub async fn install() {
     info!("Checking for running Redis Docker container...");
-    if is_running() {
+    if is_running().await {
         info!("Redis Docker container 'sam-redis' is already running.");
         return;
     }
@@ -33,7 +41,7 @@ pub async fn install() {
 
 /// Start the Redis Docker container (if not running)
 pub async fn start() {
-    if is_running() {
+    if is_running().await {
         info!("Redis Docker container 'sam-redis' is already running.");
         return;
     }
@@ -64,7 +72,7 @@ pub async fn start() {
 
 /// Stop the Redis Docker container (if running)
 pub async fn stop() {
-    if !is_running() {
+    if !is_running().await {
         info!("Redis Docker container 'sam-redis' is not running.");
         return;
     }
@@ -90,10 +98,10 @@ pub async fn stop() {
 }
 
 /// Return the status of the Redis Docker container: "running", "stopped", or "not installed"
-pub fn status() -> &'static str {
-    if is_running() {
+pub async fn status() -> &'static str {
+    if is_running().await {
         "running"
-    } else if is_installed() {
+    } else if is_installed().await {
         "stopped"
     } else {
         "not installed"
@@ -101,83 +109,103 @@ pub fn status() -> &'static str {
 }
 
 /// Helper: check if the Redis Docker container is running
-pub fn is_running() -> bool {
-    let mut check = Command::new("docker")
-        .args(&["ps", "--filter", "name=sam-redis", "--format", "{{.Names}}"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+// Native Rust cannot directly interact with Docker without using its CLI or a Docker API client.
+// For a faster, native approach, use the `bollard` crate (Docker API client for Rust).
+// Add `bollard = "0.15"` to your Cargo.toml dependencies.
 
-    match check {
-        Ok(mut child) => {
-            let pid = child.id();
-            let start = std::time::Instant::now();
-            loop {
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        if status.success() {
-                            let mut output = String::new();
-                            if let Some(mut out) = child.stdout.take() {
-                                use std::io::Read;
-                                let _ = out.read_to_string(&mut output);
-                            }
-                            return output.contains("sam-redis");
-                        }
-                        return false;
-                    }
-                    Ok(None) => {
-                        if start.elapsed() > Duration::from_secs(2) {
-                            let _ = child.kill();
-                            log::warn!("Timeout waiting for 'docker ps' (is Docker running?)");
-                            return false;
-                        }
-                        thread::sleep(Duration::from_millis(50));
-                    }
-                    Err(_) => return false,
-                }
+
+struct RunningCache {
+    value: Option<(bool, Instant)>,
+}
+
+static IS_RUNNING_CACHE: Lazy<Mutex<RunningCache>> = Lazy::new(|| Mutex::new(RunningCache { value: None }));
+
+pub async fn is_running() -> bool {
+    let now = Instant::now();
+    // Check cache before await
+    {
+        let cache = IS_RUNNING_CACHE.lock().unwrap();
+        if let Some((cached, timestamp)) = cache.value {
+            if now.duration_since(timestamp) < Duration::from_secs(600) {
+                return cached;
             }
         }
-        Err(_) => false,
     }
+    // Not cached or expired, check Docker
+    let docker = match Docker::connect_with_local_defaults() {
+        Ok(d) => d,
+        Err(_) => {
+            let mut cache = IS_RUNNING_CACHE.lock().unwrap();
+            cache.value = Some((false, now));
+            return false;
+        }
+    };
+    let options = Some(ListContainersOptions::<String> {
+        all: false, // Only running containers
+        filters: {
+            let mut map = std::collections::HashMap::new();
+            map.insert("name".to_string(), vec!["sam-redis".to_string()]);
+            map
+        },
+        ..Default::default()
+    });
+    let result = match docker.list_containers(options).await {
+        Ok(containers) => containers.iter().any(|c| {
+            c.names.as_ref().map_or(false, |names| {
+                names.iter().any(|n| n.contains("sam-redis"))
+            })
+        }),
+        Err(_) => false,
+    };
+    let mut cache = IS_RUNNING_CACHE.lock().unwrap();
+    cache.value = Some((result, now));
+    result
 }
 
 /// Helper: check if the Redis Docker container exists (installed)
-fn is_installed() -> bool {
-    let mut check = Command::new("docker")
-        .args(&["ps", "-a", "--filter", "name=sam-redis", "--format", "{{.Names}}"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+struct InstalledCache {
+    value: Option<(bool, Instant)>,
+}
 
-    match check {
-        Ok(mut child) => {
-            let pid = child.id();
-            let start = std::time::Instant::now();
-            loop {
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        if status.success() {
-                            let mut output = String::new();
-                            if let Some(mut out) = child.stdout.take() {
-                                use std::io::Read;
-                                let _ = out.read_to_string(&mut output);
-                            }
-                            return output.contains("sam-redis");
-                        }
-                        return false;
-                    }
-                    Ok(None) => {
-                        if start.elapsed() > Duration::from_secs(2) {
-                            let _ = child.kill();
-                            log::warn!("Timeout waiting for 'docker ps -a' (is Docker running?)");
-                            return false;
-                        }
-                        thread::sleep(Duration::from_millis(50));
-                    }
-                    Err(_) => return false,
-                }
+static IS_INSTALLED_CACHE: Lazy<Mutex<InstalledCache>> = Lazy::new(|| Mutex::new(InstalledCache { value: None }));
+
+pub async fn is_installed() -> bool {
+    let now = Instant::now();
+    // Check cache before await
+    {
+        let cache = IS_INSTALLED_CACHE.lock().unwrap();
+        if let Some((cached, timestamp)) = cache.value {
+            if now.duration_since(timestamp) < Duration::from_secs(600) {
+                return cached;
             }
         }
-        Err(_) => false,
     }
+    let docker = match Docker::connect_with_local_defaults() {
+        Ok(d) => d,
+        Err(_) => {
+            let mut cache = IS_INSTALLED_CACHE.lock().unwrap();
+            cache.value = Some((false, now));
+            return false;
+        }
+    };
+    let options = Some(ListContainersOptions::<String> {
+        all: true, // Include stopped containers
+        filters: {
+            let mut map = std::collections::HashMap::new();
+            map.insert("name".to_string(), vec!["sam-redis".to_string()]);
+            map
+        },
+        ..Default::default()
+    });
+    let result = match docker.list_containers(options).await {
+        Ok(containers) => containers.iter().any(|c| {
+            c.names.as_ref().map_or(false, |names| {
+                names.iter().any(|n| n.contains("sam-redis"))
+            })
+        }),
+        Err(_) => false,
+    };
+    let mut cache = IS_INSTALLED_CACHE.lock().unwrap();
+    cache.value = Some((result, now));
+    result
 }

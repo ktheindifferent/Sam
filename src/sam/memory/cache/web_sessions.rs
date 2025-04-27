@@ -32,7 +32,7 @@ impl WebSessions {
         }
     }
     pub fn sql_table_name() -> String {
-        "web_sessions".to_string()
+        "cache_web_sessions".to_string()
     }
     pub fn migrations() -> Vec<&'static str> {
         vec![
@@ -40,7 +40,7 @@ impl WebSessions {
         ]
     }
     pub fn sql_build_statement() -> &'static str {
-        "CREATE TABLE public.web_sessions (
+        "CREATE TABLE public.cache_web_sessions (
             id serial NOT NULL,
             oid varchar NOT NULL UNIQUE,
             sid varchar NOT NULL UNIQUE,
@@ -48,7 +48,7 @@ impl WebSessions {
             ip_address varchar NULL,
             authenticated bool NULL DEFAULT FALSE,
             timestamp BIGINT NULL,
-            CONSTRAINT web_sessions_pkey PRIMARY KEY (id));"
+            CONSTRAINT cache_web_sessions_pkey PRIMARY KEY (id));"
     }
     pub fn save(&self) -> Result<&Self>{
         
@@ -71,7 +71,7 @@ impl WebSessions {
 
 
 
-            client.execute("INSERT INTO web_sessions (oid, sid, human_oid, ip_address, authenticated, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
+            client.execute("INSERT INTO cache_web_sessions (oid, sid, human_oid, ip_address, authenticated, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
                 &[&self.oid.clone(),
                 &self.sid,
                 &self.human_oid, 
@@ -113,7 +113,21 @@ impl WebSessions {
             timestamp: row.get("timestamp"),
         })
     }
+
+    pub async fn from_row_async(row: &Row) -> Result<Self> {
+        Ok(Self {
+            id: row.get("id"),
+            oid: row.get("oid"),
+            sid: row.get("sid"),
+            human_oid: row.get("human_oid"),
+            ip_address: row.get("ip_address"),
+            authenticated: row.get("authenticated"),
+            timestamp: row.get("timestamp"),
+        })
+    }
+
+
     pub fn destroy(oid: String) -> Result<bool>{
-        crate::sam::memory::Config::destroy_row(oid, "web_sessions".to_string())
+        crate::sam::memory::Config::destroy_row(oid, "cache_web_sessions".to_string())
     }
 }

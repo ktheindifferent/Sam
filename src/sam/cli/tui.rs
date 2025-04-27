@@ -111,7 +111,8 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     "error".to_string()
                 });
 
-            let redis = std::panic::catch_unwind(|| crate::sam::services::redis::status().to_string())
+            let redis_status_result = crate::sam::services::redis::status().await;
+            let redis = std::panic::catch_unwind(|| redis_status_result.to_string())
                 .unwrap_or_else(|_| {
                     "error".to_string()
                 });

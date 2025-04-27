@@ -59,7 +59,8 @@ colors-transform = "0.2.11"
 scraper = "0.23.1"
 regex = "1.11.1"
 url = "2.5.4"
-redis = { version = "0.29", features = ["tokio-comp", "aio"] }
+
+deadpool-redis = "0.13"
 ratatui = "0.29"
 num = "0.4"
 num-bigint = "0.4"
@@ -72,7 +73,10 @@ git2 = "0.18"
 lazy_static = "1.5.0"
 nanorand = "0.7.0"
 rayon = "1.10.0"
+deadpool-postgres = "0.14.1"
 tokio-stream = "0.1.17"
+bollard = "0.15"
+futures-util = "0.3.31"
 [features]
 default = ["reqwest/default-tls", "trust-dns-resolver/dns-over-native-tls"]
 vendored-openssl = ["openssl/vendored"]

@@ -1,3 +1,7 @@
+//! Thing module
+//!
+//! Provides synchronous and asynchronous methods for interacting with thing/device records in a PostgreSQL database.
+
 use serde::{Serialize, Deserialize};
 use rand::distributions::Alphanumeric;
 use rand::thread_rng;
@@ -9,21 +13,35 @@ use crate::sam::memory::{Config, PostgresQueries};
 use crate::sam::memory::Result;
 use rand::Rng;
 
+/// Represents a device or thing in the system.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Thing {
+    /// Database ID (primary key).
     pub id: i32,
+    /// Unique object identifier.
     pub oid: String,
+    /// Name of the thing.
     pub name: String,
+    /// OID of the associated room.
     pub room_oid: String,
-    pub thing_type: String, // lifx, rtsp, etc
+    /// Type of the thing (e.g., lifx, rtsp, etc).
+    pub thing_type: String,
+    /// Username for the thing (if applicable).
     pub username: String,
+    /// Password for the thing (if applicable).
     pub password: String,
+    /// IP address of the thing.
     pub ip_address: String,
+    /// Online identifiers for the thing.
     pub online_identifiers: Vec<String>,
+    /// Local identifiers for the thing.
     pub local_identifiers: Vec<String>,
+    /// Creation timestamp (seconds since UNIX_EPOCH).
     pub created_at: i64,
+    /// Last update timestamp (seconds since UNIX_EPOCH).
     pub updated_at: i64
 }
+
 impl Default for Thing {
     fn default() -> Self {
         Self::new()
@@ -31,6 +49,7 @@ impl Default for Thing {
 }
 
 impl Thing {
+    /// Creates a new Thing with a random OID and current timestamps.
     pub fn new() -> Thing {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         let empty_vec: Vec<String> = Vec::new();
@@ -49,9 +68,13 @@ impl Thing {
             updated_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
         }
     }
+
+    /// Returns the SQL table name for the things table.
     pub fn sql_table_name() -> String {
         "things".to_string()
     }
+
+    /// Returns the SQL statement to create the things table.
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.things (
             id serial NOT NULL,
@@ -68,6 +91,8 @@ impl Thing {
             updated_at BIGINT NULL,
             CONSTRAINT things_pkey PRIMARY KEY (id));"
     }
+
+    /// Returns a list of SQL migration statements for the things table.
     pub fn migrations() -> Vec<&'static str> {
         vec![
             "ALTER TABLE public.things ADD COLUMN username varchar NULL;",
@@ -77,8 +102,9 @@ impl Thing {
             "ALTER TABLE public.things ADD COLUMN updated_at BIGINT NULL;"
         ]
     }
-    pub fn save(&self) -> Result<&Self>{
 
+    /// Saves the Thing to the database. Updates if OID exists, inserts otherwise.
+    pub fn save(&self) -> Result<&Self> {
         let mut client = Config::client()?;
         
         // Search for OID matches
@@ -126,12 +152,11 @@ impl Thing {
                 ])?;
             }
         }
-        
-        
-    
         Ok(self)
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
+
+    /// Selects Thing entries from the database with optional limit, offset, order, and query.
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
 
@@ -139,10 +164,10 @@ impl Thing {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);
         }
-        
-
         Ok(parsed_rows)
     }
+
+    /// Constructs a Thing from a PostgreSQL row.
     pub fn from_row(row: &Row) -> Result<Self> {
         let mut online_identifiers: Vec<String> = Vec::new();
         let sql_online_identifiers: Option<String> = row.get("online_identifiers");
@@ -155,9 +180,6 @@ impl Thing {
             }
             online_identifiers = newvec;
         }  
-            
-
-           
         let mut local_identifiers: Vec<String> = Vec::new();
         let sql_local_identifiers: Option<String> = row.get("local_identifiers");
         if let Some(ts) = sql_local_identifiers {
@@ -169,7 +191,6 @@ impl Thing {
             }
             local_identifiers = newvec;
         }  
-
         Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
@@ -185,7 +206,73 @@ impl Thing {
             updated_at: row.get("updated_at")
         })
     }
-    pub fn destroy(oid: String) -> Result<bool>{
+
+    /// Deletes a Thing from the database by OID.
+    pub fn destroy(oid: String) -> Result<bool> {
         crate::sam::memory::Config::destroy_row(oid, "things".to_string())
+    }
+
+    /// Asynchronously saves the Thing to the database. Updates if OID exists, inserts otherwise.
+    pub async fn save_async(&self) -> Result<&Self> {
+        let mut client = Config::client_async().await?;
+        let mut pg_query = PostgresQueries::default();
+        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query.query_columns.push("oid =".to_string());
+        let rows = Self::select_async(None, None, None, Some(pg_query.clone())).await?;
+        if rows.is_empty() {
+            client.execute("INSERT INTO things (oid, name, room_oid, thing_type, username, password, ip_address, online_identifiers, local_identifiers, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+                &[&self.oid.clone(),
+                &self.name,
+                &self.room_oid,
+                &self.thing_type,
+                &self.username,
+                &self.password,
+                &self.ip_address,
+                &self.online_identifiers.join(","),
+                &self.local_identifiers.join(","),
+                &self.created_at,
+                &self.updated_at]
+            ).await?;
+        } else {
+            let ads = rows[0].clone();
+            if self.updated_at > ads.updated_at {
+                client.execute("UPDATE things SET name = $1, room_oid = $2, thing_type = $3, username = $4, password = $5, ip_address = $6, online_identifiers = $7, local_identifiers = $8 WHERE oid = $9;",
+                &[
+                    &self.name,
+                    &self.room_oid,
+                    &self.thing_type,
+                    &self.username,
+                    &self.password,
+                    &self.ip_address,
+                    &self.online_identifiers.join(","),
+                    &self.local_identifiers.join(","),
+                    &ads.oid
+                ]).await?;
+            }
+        }
+        Ok(self)
+    }
+
+    /// Asynchronously selects Thing entries from the database with optional limit, offset, order, and query.
+    pub async fn select_async(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+        let mut parsed_rows: Vec<Self> = Vec::new();
+        let config = crate::sam::memory::Config::new();
+let client = config.connect_pool().await?;
+        let jsons = crate::sam::memory::Config::pg_select_async(Self::sql_table_name(), None, limit, offset, order, query, client).await?;
+        for j in jsons {
+            let object: Self = serde_json::from_str(&j).unwrap();
+            parsed_rows.push(object);
+        }
+        Ok(parsed_rows)
+    }
+
+    /// Asynchronously constructs a Thing from a PostgreSQL row.
+    pub async fn from_row_async(row: &Row) -> Result<Self> {
+        Self::from_row(row)
+    }
+
+    /// Asynchronously deletes a Thing from the database by OID.
+    pub async fn destroy_async(oid: String) -> Result<bool> {
+        crate::sam::memory::Config::destroy_row_async(oid, "things".to_string()).await
     }
 }

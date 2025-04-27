@@ -1,3 +1,7 @@
+//! Observation module
+//!
+//! Provides synchronous and asynchronous methods for interacting with observation records in a PostgreSQL database.
+
 use serde::{Serialize, Deserialize};
 use std::fmt;
 use std::str::FromStr;
@@ -10,21 +14,35 @@ use crate::sam::memory::cache::WebSessions;
 use crate::sam::memory::Result;
 use rand::Rng;
 
+/// Represents an observation event in the system.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Observation {
+    /// Database ID (primary key).
     pub id: i32,
+    /// Unique object identifier.
     pub oid: String,
+    /// Timestamp of the observation (seconds since UNIX_EPOCH).
     pub timestamp: i64,
+    /// Type of the observation.
     pub observation_type: ObservationType,
+    /// Objects observed.
     pub observation_objects: Vec<ObservationObjects>,
+    /// Humans observed.
     pub observation_humans: Vec<Human>,
+    /// Notes about the observation.
     pub observation_notes: Vec<String>,
+    /// Optional file data associated with the observation.
     pub observation_file: Option<Vec<u8>>,
+    /// Deep vision results.
     pub deep_vision: Vec<DeepVisionResult>,
+    /// Optional deep vision results as JSON.
     pub deep_vision_json: Option<String>,
+    /// Associated thing/device (if any).
     pub thing: Option<Thing>,
+    /// Associated web session (if any).
     pub web_session: Option<WebSessions>,
 }
+
 impl Default for Observation {
     fn default() -> Self {
         Self::new()
@@ -32,6 +50,7 @@ impl Default for Observation {
 }
 
 impl Observation {
+    /// Creates a new Observation with a random OID and current timestamp.
     pub fn new() -> Observation {
         let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
         let observation_objects: Vec<ObservationObjects> = Vec::new();
@@ -54,9 +73,13 @@ impl Observation {
             web_session: None,
         }
     }
+
+    /// Returns the SQL table name for the observations table.
     pub fn sql_table_name() -> String {
         "observations".to_string()
     }
+
+    /// Returns a list of SQL migration statements for the observations table.
     pub fn migrations() -> Vec<&'static str> {
         vec![
             "ALTER TABLE public.observations ADD COLUMN observation_file bytea NULL;",
@@ -65,6 +88,8 @@ impl Observation {
             "ALTER TABLE public.observations ADD COLUMN web_session_id varchar NULL;",
         ]
     }
+
+    /// Returns the SQL statement to create the observations table.
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE public.observations (
             id serial NOT NULL,
@@ -80,8 +105,9 @@ impl Observation {
             web_session_id varchar NULL,
             CONSTRAINT observations_pkey PRIMARY KEY (id));"
     }
-    pub fn save(&self) -> Result<Self>{
 
+    /// Saves the Observation to the database. Updates if OID exists, inserts otherwise.
+    pub fn save(&self) -> Result<Self> {
         let mut client = Config::client()?;
 
         // Search for OID matches
@@ -198,11 +224,76 @@ impl Observation {
             Self::from_row(&rows_two[0])
 
         }
-        
-    
-      
     }
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
+
+    /// Asynchronously saves the Observation to the database. Updates if OID exists, inserts otherwise.
+    pub async fn save_async(&self) -> Result<Self> {
+        let mut client = Config::client_async().await?;
+        let mut pg_query = PostgresQueries::default();
+        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query.query_columns.push("oid =".to_string());
+        let rows = Self::select_async(None, None, None, Some(pg_query.clone())).await?;
+        let mut obb_obv_str = String::new();
+        for obv in &self.observation_objects {
+            obb_obv_str += format!("{},", obv).as_str();
+        }
+        let mut obb_humans_str = String::new();
+        for hum in &self.observation_humans {
+            obb_humans_str += format!("{},", hum.oid).as_str();
+        }
+        let mut obb_thing_str = String::new();
+        if let Some(thing) = &self.thing {
+            obb_thing_str = thing.oid.clone();
+        }
+        let mut obb_web_session_str = String::new();
+        if let Some(web_session) = &self.web_session {
+            obb_web_session_str = web_session.sid.clone();
+        }
+        if rows.is_empty() {
+            client.execute("INSERT INTO observations (oid, timestamp, observation_type, thing_oid, web_session_id, observation_objects, observation_humans, observation_notes, observation_file) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                &[&self.oid.clone(),
+                &self.timestamp,
+                &self.observation_type.to_string(),
+                &obb_thing_str,
+                &obb_web_session_str,
+                &obb_obv_str,
+                &obb_humans_str,
+                &self.observation_notes.join(","),
+                &self.observation_file]
+            ).await?;
+            if self.deep_vision_json.is_some() {
+                client.execute("UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
+                &[
+                    &self.deep_vision_json.clone().unwrap(),
+                    &self.oid
+                ]).await?;
+            }
+            let rows_two = Self::select_async(None, None, None, Some(pg_query)).await?;
+            Ok(rows_two[0].clone())
+        } else {
+            let ads = rows[0].clone();
+            client.execute("UPDATE observations SET observation_type = $1, observation_objects = $2, observation_humans = $3, observation_notes = $4, observation_file = $5 WHERE oid = $6;",
+                &[&self.observation_type.to_string(),
+                &obb_obv_str,
+                &obb_humans_str,
+                &self.observation_notes.join(","),
+                &self.observation_file,
+                &ads.oid]).await?;
+            if self.deep_vision_json.is_some() {
+                client.execute("UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
+                &[
+                    &self.deep_vision_json.clone().unwrap(),
+                    &self.oid
+                ]).await?;
+            }
+            let statement_two = client.prepare("SELECT * FROM observations WHERE oid = $1").await?;
+            let rows_two = client.query(&statement_two, &[&self.oid]).await?;
+            Self::from_row(&rows_two[0])
+        }
+    }
+
+    /// Selects Observation entries from the database with optional limit, offset, order, and query.
+    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
 
@@ -214,7 +305,22 @@ impl Observation {
 
         Ok(parsed_rows)
     }
-    pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
+
+    /// Asynchronously selects Observation entries from the database with optional limit, offset, order, and query.
+    pub async fn select_async(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+        let mut parsed_rows: Vec<Self> = Vec::new();
+        let config = crate::sam::memory::Config::new();
+let client = config.connect_pool().await?;
+        let jsons = crate::sam::memory::Config::pg_select_async(Self::sql_table_name(), None, limit, offset, order, query, client).await?;
+        for j in jsons {
+            let object: Self = serde_json::from_str(&j).unwrap();
+            parsed_rows.push(object);
+        }
+        Ok(parsed_rows)
+    }
+
+    /// Selects Observation entries (without file data) from the database with optional limit, offset, order, and query.
+    pub fn select_lite(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = Config::pg_select(Self::sql_table_name(), Some("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json".to_string()), limit, offset, order, query, None)?;
 
@@ -226,8 +332,22 @@ impl Observation {
 
         Ok(parsed_rows)
     }
-    pub fn from_row(row: &Row) -> Result<Self> {
 
+    /// Asynchronously selects Observation entries (without file data) from the database with optional limit, offset, order, and query.
+    pub async fn select_lite_async(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+        let mut parsed_rows: Vec<Self> = Vec::new();
+        let config = crate::sam::memory::Config::new();
+let client = config.connect_pool().await?;
+        let jsons = Config::pg_select_async(Self::sql_table_name(), Some("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json".to_string()), limit, offset, order, query, client).await?;
+        for j in jsons {
+            let object: Self = serde_json::from_str(&j).unwrap();
+            parsed_rows.push(object);
+        }
+        Ok(parsed_rows)
+    }
+
+    /// Constructs an Observation from a PostgreSQL row.
+    pub fn from_row(row: &Row) -> Result<Self> {
         let mut deep_vision: Vec<DeepVisionResult> = Vec::new();
 
         let deep_vision_json = row.get("deep_vision_json");
@@ -319,8 +439,14 @@ impl Observation {
             web_session: None,
         })
     }
-    pub fn from_row_lite(row: &Row) -> Result<Self> {
 
+    /// Asynchronously constructs an Observation from a PostgreSQL row.
+    pub async fn from_row_async(row: &Row) -> Result<Self> {
+        Self::from_row(row)
+    }
+
+    /// Constructs an Observation from a PostgreSQL row (without file data).
+    pub fn from_row_lite(row: &Row) -> Result<Self> {
         let mut deep_vision: Vec<DeepVisionResult> = Vec::new();
 
         let deep_vision_json = row.get("deep_vision_json");
@@ -396,7 +522,19 @@ impl Observation {
             web_session: None,
         })
     }
+
+    /// Asynchronously constructs an Observation from a PostgreSQL row (without file data).
+    pub async fn from_row_lite_async(row: &Row) -> Result<Self> {
+        Self::from_row_lite(row)
+    }
+
+    /// Deletes an Observation from the database by OID.
     pub fn destroy(oid: String) -> Result<bool>{
         crate::sam::memory::Config::destroy_row(oid, "observations".to_string())
+    }
+
+    /// Asynchronously deletes an Observation from the database by OID.
+    pub async fn destroy_async(oid: String) -> Result<bool> {
+        crate::sam::memory::Config::destroy_row_async(oid, "observations".to_string()).await
     }
 }

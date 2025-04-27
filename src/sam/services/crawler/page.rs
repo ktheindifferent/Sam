@@ -9,8 +9,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::sam::memory::{Config, PostgresQueries};
 use tokio_postgres::Row;
 use serde_json;
-use redis::{AsyncCommands, aio::MultiplexedConnection, Client as RedisClient};
-use once_cell::sync::OnceCell;
 use log;
 use reqwest::Url;
 use regex;
@@ -21,21 +19,6 @@ use std::io::Write;
 use tokio::io::{AsyncReadExt,AsyncWriteExt};
 use base64::{engine::general_purpose, Engine as _};
 use std::collections::HashSet;
-
-static REDIS_URL: &str = "redis://127.0.0.1/";
-static REDIS_MANAGER: OnceCell<RedisClient> = OnceCell::new();
-
-/// Get a Redis multiplexed async connection (singleton client).
-async fn redis_client() -> redis::RedisResult<MultiplexedConnection> {
-    let client = match REDIS_MANAGER.get_or_try_init(|| RedisClient::open(REDIS_URL)) {
-        Ok(client) => client,
-        Err(e) => {
-            log::error!("Failed to initialize Redis client: {}", e);
-            return Err(redis::RedisError::from((redis::ErrorKind::IoError, "Redis client init failed")));
-        }
-    };
-    client.get_multiplexed_async_connection().await
-}
 
 /// Represents a crawled web page (tokens, links, timestamp, etc).
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -84,7 +67,6 @@ impl CrawledPage {
         vec![
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_url ON crawled_pages (url);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_timestamp ON crawled_pages (timestamp);",
-            // For tokens, a GIN index is best if using Postgres full-text search, but here we use a normal index for the text column:
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_tokens ON crawled_pages (tokens);",
         ]
     }
@@ -94,8 +76,6 @@ impl CrawledPage {
     ]}
     
     pub fn from_row(row: &Row) -> crate::sam::memory::Result<Self> {
-        // let links_str: Option<String> = row.get("links");
-        // let links = links_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
         let tokens_str: Option<String> = row.get("tokens");
         let tokens = tokens_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
         Ok(Self {
@@ -103,32 +83,32 @@ impl CrawledPage {
             url: row.get("url"),
             tokens,
             crawl_job_oid: String::new(),
-            links: Vec::new(), 
+            links: Vec::new(),
             timestamp: row.get("timestamp"),
         })
     }
-    // pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>, ) -> crate::sam::memory::Result<Vec<Self>> {
-    //     let mut parsed_rows: Vec<Self> = Vec::new();
-    //     let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
-    //     for j in jsons {
-    //         let object: Self = match serde_json::from_str(&j) {
-    //             Ok(obj) => obj,
-    //             Err(e) => {
-    //                 log::error!("Failed to deserialize CrawledPage: {}", e);
-    //                 return Err(crate::sam::memory::Error::with_chain(e, "Deserialization error"));
-    //             }
-    //         };
-    //         parsed_rows.push(object);
-    //     }
-    //     Ok(parsed_rows)
-    // }
+
+    pub async fn from_row_async(row: &Row) -> crate::sam::memory::Result<Self> {
+        let tokens_str: Option<String> = row.get("tokens");
+        let tokens = tokens_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
+        Ok(Self {
+            id: row.get("id"),
+            url: row.get("url"),
+            tokens,
+            crawl_job_oid: String::new(),
+            links: Vec::new(),
+            timestamp: row.get("timestamp"),
+        })
+    }
+   
     pub async fn select_async(
         limit: Option<usize>,
         offset: Option<usize>,
         order: Option<String>,
-        query: Option<PostgresQueries>,
-        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
+        query: Option<PostgresQueries>
     ) -> crate::sam::memory::Result<Vec<Self>> {
+        let config = crate::sam::memory::Config::new();
+        let client = config.connect_pool().await?;
         let jsons = crate::sam::memory::Config::pg_select_async(
             Self::sql_table_name(),
             None,
@@ -136,7 +116,7 @@ impl CrawledPage {
             offset,
             order,
             query,
-            established_clients,
+            client,
         ).await?;
         let mut parsed_rows: Vec<Self> = Vec::new();
         for j in jsons {
@@ -151,36 +131,14 @@ impl CrawledPage {
         }
         Ok(parsed_rows)
     }
-    // pub fn save(&self) -> crate::sam::memory::Result<Self> {
-    //     let mut client = Config::client()?;
-    //     // Check for existing by url
-    //     let mut pg_query = PostgresQueries::default();
-    //     pg_query.queries.push(crate::sam::memory::PGCol::String(self.url.clone()));
-    //     pg_query.query_columns.push("url =".to_string());
-    //     let rows = Self::select(None, None, None, Some(pg_query.clone()))?;
-    //     let links_str = self.links.join("\n");
-    //     let tokens_str = self.tokens.join("\n");
-    //     if rows.is_empty() {
-    //         client.execute(
-    //             "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES ($1, $2, $3)",
-    //             &[&self.url, &tokens_str, &self.timestamp]
-    //         )?;
-    //     } else {
-    //         client.execute(
-    //             "UPDATE crawled_pages SET tokens = $1, timestamp = $2 WHERE url = $3",
-    //             &[&tokens_str, &self.timestamp, &self.url]
-    //         )?;
-    //     }
-    //     Ok(self.clone())
-    // }
+   
 
 
     /// Save a batch of CrawledPage objects asynchronously.
     /// If a page with the same URL exists, it is updated; otherwise, it is inserted.
     /// Returns the vector of saved pages.
     pub async fn save_async_batch(
-        pages: &[CrawledPage],
-        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
+        pages: &[CrawledPage]
     ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
 
         let mut pages_cleaned = pages.iter().filter(|p| !p.url.is_empty()).collect::<Vec<_>>();
@@ -214,8 +172,7 @@ impl CrawledPage {
             None,
             None,
             None,
-            Some(pg_query),
-            established_clients.clone(),
+            Some(pg_query)
         ).await?;
 
         // Remove from pages_cleaned any page whose URL matches an existing page
@@ -230,30 +187,8 @@ impl CrawledPage {
         if pages.is_empty() {
             return Ok(vec![]);
         }
-        // if established_clients.is_empty() {
-        //     return Err(crate::sam::memory::Error::msg("No available Postgres clients"));
-        // }
-
-        // Try to lock the first available client from established_clients
-        let mut client = None;
-        for arc_client in &established_clients {
-            if let Ok(guard) = arc_client.try_lock() {
-                client = Some(guard);
-                break;
-            }
-        }
-        // If none could be locked immediately, await the first one
-        let mut client = match client {
-            Some(guard) => guard,
-            None => {
-                established_clients
-                    .get(0)
-                    .expect("No available Postgres clients")
-                    .lock()
-                    .await
-            }
-        };
-
+  
+        
         // Prepare bulk UPSERT (insert or update on conflict)
         // Only url is unique, so use ON CONFLICT(url)
         let mut values = Vec::new();
@@ -283,6 +218,8 @@ impl CrawledPage {
             values.join(", ")
         );
 
+        let config = crate::sam::memory::Config::new();
+        let client = config.connect_pool().await?;
         client.execute(sql.as_str(), &params[..]).await?;
 
         Ok(pages.to_vec())
@@ -291,37 +228,17 @@ impl CrawledPage {
 
     pub async fn save_async(
         &self,
-        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
     ) -> crate::sam::memory::Result<Self> {
         let tokens_str = self.tokens.join("\n");
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.url.clone()));
         pg_query.query_columns.push("url =".to_string());
 
-        // Check for existing by url, pass through established_clients
-        let rows = Self::select_async(None, None, None, Some(pg_query.clone()), established_clients.clone()).await?;
+        // Check for existing by url
+        let rows = Self::select_async(None, None, None, Some(pg_query.clone())).await?;
 
-        // Try to lock the first available client from established_clients
-        let mut client = None;
-        for arc_client in &established_clients {
-            if let Ok(guard) = arc_client.try_lock() {
-            client = Some(guard);
-            break;
-            }
-        }
-        // If none could be locked immediately, await the first one
-        let mut client = match client {
-            Some(guard) => guard,
-            None => {
-            // fallback: just await the first one
-            established_clients
-                .get(0)
-                .expect("No available Postgres clients")
-                .lock()
-                .await
-            }
-        };
-
+        let config = crate::sam::memory::Config::new();
+        let client = config.connect_pool().await?;
 
         if rows.is_empty() {
             client.execute(
@@ -340,35 +257,6 @@ impl CrawledPage {
         Config::destroy_row(url, Self::sql_table_name())
     }
 
-    async fn redis_key(&self) -> String {
-        format!("crawledpage:{}", encode_url_hash(&self.url))
-    }
-    pub async fn save_redis(&self) -> redis::RedisResult<()> {
-        log::info!("Saving CrawledPage to Redis: {}", self.url);
-        let mut con = redis_client().await?;
-        let key = self.redis_key().await;
-        let val = match serde_json::to_string(self) {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!("Failed to serialize CrawledPage for Redis: {}", e);
-                return Err(redis::RedisError::from((redis::ErrorKind::TypeError, "Serialization error")));
-            }
-        };
-        con.set(key, val).await
-    }
-    pub async fn get_redis(url: &str) -> Option<Self> {
-        let mut con = match redis_client().await {
-            Ok(c) => c,
-            Err(_) => return None,
-        };
-        let key = format!("crawledpage:{}", encode_url_hash(url));
-        let val: Option<String> = con.get(key).await.ok();
-        val.and_then(|v| {
-            let obj: Result<CrawledPage, _> = serde_json::from_str(&v);
-            obj.ok()
-        })
-    }
-
     /// Query crawled pages for the most probable results for a given query string.
     /// Returns a vector of (CrawledPage, score), sorted by descending score.
     /// Query crawled pages for the most probable results for a given query string.
@@ -376,7 +264,6 @@ impl CrawledPage {
     pub async fn query_by_relevance_async(
         query: &str,
         limit: usize,
-        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
     ) -> crate::sam::memory::Result<Vec<(CrawledPage, usize)>> {
         // Tokenize the query (lowercase, split on whitespace, remove punctuation)
         let query_tokens: Vec<String> = query
@@ -408,7 +295,6 @@ impl CrawledPage {
             None,
             Some("timestamp DESC".to_string()),
             Some(pg_query.clone()),
-            established_clients,
         ).await {
             Ok(p) if !p.is_empty() => p,
             _ => vec![],
@@ -501,13 +387,9 @@ impl CrawledPage {
     /// The file will be written to /opt/sam/tmp/common.tokens, one token per line.
     pub async fn write_most_common_tokens_async(limit: usize) -> std::io::Result<()> {
         // Collect all tokens from all crawled pages asynchronously
-        let mut established_clients = Vec::new();
-        for i in 0..1 {
-            let client = Arc::new(tokio::sync::Mutex::new(crate::sam::memory::Config::client_async().await.unwrap()));
-            established_clients.push(client);
-        }
+     
 
-        let pages = match Self::select_async(None, None, None, None, established_clients).await {
+        let pages = match Self::select_async(None, None, None, None).await {
             Ok(p) => p,
             Err(e) => {
                 log::error!("Failed to select crawled pages: {}", e);
@@ -570,20 +452,4 @@ impl CrawledPage {
         let json = String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         Self::from_p2p_json(&json).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
-}
-
-
-/// Encodes a URL into a predictable, reversible hash string.
-/// The encoding is URL-safe base64 of the UTF-8 bytes of the URL.
-pub fn encode_url_hash(url: &str) -> String {
-    general_purpose::URL_SAFE_NO_PAD.encode(url.as_bytes())
-}
-
-/// Decodes a hash string back into the original URL.
-/// Returns None if the hash is invalid or not decodable.
-pub fn decode_url_hash(hash: &str) -> Option<String> {
-    general_purpose::URL_SAFE_NO_PAD
-        .decode(hash)
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
 }

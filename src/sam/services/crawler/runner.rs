@@ -39,12 +39,15 @@ use url::ParseError;
 use crate::sam::services::crawler::job::CrawlJob;
 use crate::sam::services::crawler::page::CrawledPage;
 
+use deadpool_redis::{Pool, Runtime, Config as DeadpoolConfig};
+use deadpool_redis::redis::{AsyncCommands, Cmd};
+
 static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(5))
-        .timeout(Duration::from_secs(60))
-        .pool_max_idle_per_host(5000)
-        .pool_idle_timeout(Some(Duration::from_secs(60)))
+        .timeout(Duration::from_secs(30))
+        .pool_max_idle_per_host(16)
+        .pool_idle_timeout(Some(Duration::from_secs(15)))
         .danger_accept_invalid_certs(true)
         .build()
         .expect("Failed to build reqwest client")
@@ -106,6 +109,12 @@ static SLEEP_UNTIL: once_cell::sync::Lazy<AtomicU64> = once_cell::sync::Lazy::ne
 static TIMEOUT_COUNT: once_cell::sync::Lazy<std::sync::Mutex<usize>> = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(0));
 
 static REDIS_URL: &str = "redis://127.0.0.1/";
+static REDIS_POOL: once_cell::sync::Lazy<Pool> = once_cell::sync::Lazy::new(|| {
+
+    let mut cfg = DeadpoolConfig::from_url(REDIS_URL);
+
+    cfg.create_pool(Some(Runtime::Tokio1)).unwrap()
+});
 
 /// Loads the DNS cache from Redis or a file, depending on configuration and availability.
 ///
@@ -122,43 +131,39 @@ static REDIS_URL: &str = "redis://127.0.0.1/";
 /// This function is async and returns a boxed future for compatibility with static initializers.
 fn load_dns_cache(should_use_redis: bool) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     Box::pin(async move {
-        use redis::AsyncCommands;
-        if crate::sam::services::redis::is_running() && should_use_redis {
-            match redis::Client::open(REDIS_URL) {
-                Ok(client) => {
-                    match client.get_multiplexed_async_connection().await {
-                        Ok(mut con) => {
-                            match redis::cmd("GET").arg("sam:dns_cache").query_async::<Option<Vec<u8>>>(&mut con).await {
-                                Ok(Some(data)) => {
-                                    if let Ok(map) = serde_json::from_slice::<HashMap<String, bool>>(&data) {
-                                        let mut cache = DNS_LOOKUP_CACHE.lock().await;
-                                        *cache = map;
-                                        log::info!("Loaded DNS cache from Redis with {} entries", cache.len());
-                                    } else {
-                                        log::warn!("Failed to parse DNS cache from Redis");
-                                        // TODO: Corupt so destroy and reload
-                                        return load_dns_cache(false).await;
-                                    }
+        if crate::sam::services::redis::is_running().await && should_use_redis {
+            match tokio::time::timeout(Duration::from_secs(3), REDIS_POOL.get()).await {
+                Ok(Ok(mut con)) => {
+                    match deadpool_redis::redis::cmd("GET").arg("sam:dns_cache").query_async::<_, Option<Vec<u8>>>(&mut con).await {
+                        Ok(Some(data)) => {
+                            if let Ok(map) = serde_json::from_slice::<HashMap<String, bool>>(&data) {
+                                {
+                                    let mut cache = DNS_LOOKUP_CACHE.lock().await;
+                                    *cache = map;
+                                    log::info!("Loaded DNS cache from Redis with {} entries", cache.len());
                                 }
-                                Ok(None) => {
-                                    log::info!("No DNS cache found in Redis");
-                                    save_dns_cache().await;
-                                    return load_dns_cache(true).await;
-                                }
-                                Err(e) => {
-                                    log::warn!("Failed to load DNS cache from Redis: {}", e);
-                                    return load_dns_cache(false).await;
-                                }
+                            } else {
+                                log::warn!("Failed to parse DNS cache from Redis");
+                                return load_dns_cache(false).await;
                             }
                         }
+                        Ok(None) => {
+                            log::info!("No DNS cache found in Redis");
+                            save_dns_cache().await;
+                            return load_dns_cache(true).await;
+                        }
                         Err(e) => {
-                            log::warn!("Failed to connect to Redis: {}", e);
+                            log::warn!("Failed to load DNS cache from Redis: {}", e);
                             return load_dns_cache(false).await;
                         }
                     }
                 }
-                Err(e) => {
-                    log::warn!("Failed to create Redis client: {}", e);
+                Ok(Err(e)) => {
+                    log::warn!("Failed to get Redis connection from pool: {}", e);
+                    return load_dns_cache(false).await;
+                }
+                Err(_) => {
+                    log::warn!("Timeout while waiting for Redis connection");
                     return load_dns_cache(false).await;
                 }
             }
@@ -171,9 +176,11 @@ fn load_dns_cache(should_use_redis: bool) -> Pin<Box<dyn Future<Output = ()> + S
             let path = Path::new(DNS_CACHE_PATH);
             if let Ok(data) = fs::read(path).await {
                 if let Ok(map) = serde_json::from_slice::<HashMap<String, bool>>(&data) {
-                    let mut cache = DNS_LOOKUP_CACHE.lock().await;
-                    *cache = map;
-                    log::info!("Loaded DNS cache from file with {} entries", cache.len());
+                    {
+                        let mut cache = DNS_LOOKUP_CACHE.lock().await;
+                        *cache = map;
+                        log::info!("Loaded DNS cache from file with {} entries", cache.len());
+                    }
                 }
             }
         }
@@ -200,12 +207,16 @@ async fn save_dns_cache() {
             return;
         }
     };
-    if crate::sam::services::redis::is_running() {
-        if let Ok(client) = redis::Client::open(REDIS_URL) {
-            if let Ok(mut con) = client.get_multiplexed_async_connection().await {
-                match redis::cmd("SET").arg("sam:dns_cache").arg(cache_bytes.clone()).query_async::<()>(&mut con).await {
+    drop(cache);
+    if crate::sam::services::redis::is_running().await {
+        match REDIS_POOL.get().await {
+            Ok(mut con) => {
+                match deadpool_redis::redis::cmd("SET").arg("sam:dns_cache").arg(cache_bytes.clone()).query_async::<_, ()>(&mut con).await {
                     Ok(_) => {
-                        log::info!("Saved DNS cache to Redis with {} entries", cache.len());
+                        {
+                            let cache = DNS_LOOKUP_CACHE.lock().await;
+                            log::info!("Saved DNS cache to Redis with {} entries", cache.len());
+                        }
                         return;
                     }
                     Err(e) => {
@@ -213,13 +224,11 @@ async fn save_dns_cache() {
                         log::warn!("Failed to save DNS cache to Redis: {}", e);
                     }
                 }
-            } else {
-                should_fallback = true;
-                log::warn!("Failed to connect to Redis for saving DNS cache");
             }
-        } else {
-            should_fallback = true;
-            log::warn!("Failed to create Redis client for saving DNS cache");
+            Err(e) => {
+                should_fallback = true;
+                log::warn!("Failed to get Redis connection from pool for saving DNS cache: {}", e);
+            }
         }
     } else {
         should_fallback = true;
@@ -247,30 +256,22 @@ async fn save_dns_cache() {
 pub async fn write_url_to_retry_cache(url: &str) {
     let mut should_fallback = false;
     // Use Redis if available, otherwise fallback to file
-    if crate::sam::services::redis::is_running() {
-        match redis::Client::open(REDIS_URL) {
-            Ok(client) => {
-                match client.get_multiplexed_async_connection().await {
-                    Ok(mut con) => {
-                        if let Err(e) = redis::cmd("RPUSH")
-                            .arg("sam:crawl_retry")
-                            .arg(url)
-                            .query_async::<()>(&mut con)
-                            .await
-                        {
-                            should_fallback = true;
-                            log::warn!("Failed to write retry URL to Redis: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        should_fallback = true;
-                        log::warn!("Failed to connect to Redis for retry cache: {}", e);
-                    }
+    if crate::sam::services::redis::is_running().await {
+        match REDIS_POOL.get().await {
+            Ok(mut con) => {
+                if let Err(e) = deadpool_redis::redis::cmd("RPUSH")
+                    .arg("sam:crawl_retry")
+                    .arg(url)
+                    .query_async::<_, ()>(&mut con)
+                    .await
+                {
+                    should_fallback = true;
+                    log::warn!("Failed to write retry URL to Redis: {}", e);
                 }
             }
             Err(e) => {
                 should_fallback = true;
-                log::warn!("Failed to create Redis client for retry cache: {}", e);
+                log::warn!("Failed to get Redis connection from pool for retry cache: {}", e);
             }
         }
     } else {
@@ -319,7 +320,6 @@ pub fn is_valid_url(s: &str) -> bool {
 /// * `job_oid` - The unique identifier for the crawl job.
 /// * `url` - The URL to crawl.
 /// * `depth` - The current recursion depth.
-/// * `established_clients` - A vector of PostgreSQL client connections for database operations.
 /// * `client` - The shared HTTP client for making requests.
 ///
 /// # Returns
@@ -341,7 +341,6 @@ async fn crawl_url_inner(
     job_oid: String,
     url: String,
     depth: usize,
-    established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
     client: std::sync::Arc<reqwest::Client>,
 ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
 
@@ -402,7 +401,7 @@ async fn crawl_url_inner(
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String(format!("{}",url.clone())));
     pg_query.query_columns.push("url =".to_string());
-    let existing = match CrawledPage::select_async(Some(1), None, None, Some(pg_query), established_clients.clone()).await {
+    let existing = match CrawledPage::select_async(Some(1), None, None, Some(pg_query).clone()).await {
         Ok(pages) => pages,
         Err(e) => {
             log::debug!("Failed to query existing CrawledPage: {}", e);
@@ -538,216 +537,161 @@ async fn crawl_url_inner(
                     }
                 };
                 // Pass headers and html into the closure
-                let result = tokio::task::spawn_blocking(move || {
-                    let mut tokens = Vec::new();
-                    let mut links = Vec::new();
-                  
-                    
-                 
-                  
-                    // Bugfix: Check for special replacement character (�) in the HTML body or any tag text
+                // Instead of spawn_blocking, do parsing directly (async context)
+                let mut tokens = Vec::new();
+                let mut links = Vec::new();
+
+                // Prefer MIME type from header, then file extension, then default
+                if let Some(mimeh) = mime_from_header {
+                    mime_tokens.push(mimeh);
+                } else if let Some(mime) = file_mime {
+                    mime_tokens.push(mime.to_string());
+                } else {
+                    mime_tokens.push("application/octet-stream".to_string());
+                }
+
+                // Treat .php, .asp, .aspx, .jsp, .jspx, .htm, .html, .xhtml, .shtml, .cgi, .pl, .cfm, .rb, .py, .xml, .json, .md, .txt, etc. as "document" types that may contain links
+                let doc_exts = [
+                    ".html", ".htm", ".xhtml", ".shtml", ".php", ".asp", ".aspx", ".jsp", ".jspx", ".cgi", ".pl", ".cfm", ".rb", ".py", ".xml", ".json", ".md", ".txt", "/"
+                ];
+                let is_document = match &file_ext {
+                    Some(ext) => doc_exts.iter().any(|d| ext.eq_ignore_ascii_case(d)),
+                    None => true,
+                };
+
+                if is_document && mime_tokens.iter().any(|m| m.starts_with("text/html")) {
                     let document = scraper::Html::parse_document(&html);
+
                     let contains_replacement_char = html.contains('�')
                         || document.root_element().text().any(|t| t.contains('�'));
                     if contains_replacement_char {
-                        return (mime_tokens, tokens, links);
-                    }
-                
-                   
-
-                    // Prefer MIME type from header, then file extension, then default
-                    if let Some(mimeh) = mime_from_header {
-                        mime_tokens.push(mimeh);
-                    } else if let Some(mime) = file_mime {
-                        mime_tokens.push(mime.to_string());
+                        // skip parsing
+                        // (mime_tokens, tokens, links)
                     } else {
-                        mime_tokens.push("application/octet-stream".to_string());
-                    }
-                    
-
-
-                    
-                
-
-                    // Treat .php, .asp, .aspx, .jsp, .jspx, .htm, .html, .xhtml, .shtml, .cgi, .pl, .cfm, .rb, .py, .xml, .json, .md, .txt, etc. as "document" types that may contain links
-                    let doc_exts = [
-                        ".html", ".htm", ".xhtml", ".shtml", ".php", ".asp", ".aspx", ".jsp", ".jspx", ".cgi", ".pl", ".cfm", ".rb", ".py", ".xml", ".json", ".md", ".txt", "/"
-                    ];
-                    // If no extension, treat as document; otherwise, check if extension is in doc_exts
-                    let is_document = match &file_ext {
-                        Some(ext) => doc_exts.iter().any(|d| ext.eq_ignore_ascii_case(d)),
-                        None => true,
-                    };
-                    
-                    if is_document && mime_tokens.iter().any(|m| m.starts_with("text/html")) {
-
-                        // Bugfix: Check for special replacement character (�) in the HTML body or any tag text
-                        let document = scraper::Html::parse_document(&html);
-                        let contains_replacement_char = html.contains('�')
-                            || document.root_element().text().any(|t| t.contains('�'));
-                        if contains_replacement_char {
-                            return (mime_tokens, tokens, links);
-                        }
-                
                         let body_selector = match scraper::Selector::parse("body") {
                             Ok(sel) => sel,
                             Err(e) => {
                                 log::warn!("Failed to parse selector 'body': {}", e);
-                                return (mime_tokens, tokens, links);
+                                all_pages.push(page);
+                                return Ok(all_pages);
+                                // return (mime_tokens, tokens, links);
                             }
                         };
                         let skip_tags = ["script", "style", "noscript", "svg", "canvas", "iframe", "template"];
                         let skip_selector = skip_tags
                             .iter()
-                            .filter_map(|tag| match scraper::Selector::parse(tag) {
-                                Ok(selector) => Some(selector),
-                                Err(e) => {
-                                    log::warn!("Failed to parse selector '{}': {}", tag, e);
-                                    None
-                                }
-                            })
+                            .filter_map(|tag| scraper::Selector::parse(tag).ok())
                             .collect::<Vec<_>>();
-    
 
                         for body in document.select(&body_selector) {
                             extract_text(&body, &skip_selector, &mut tokens);
                         }
 
-                        let a_selector = match scraper::Selector::parse("a[href]") {
-                            Ok(sel) => sel,
-                            Err(e) => {
-                                log::warn!("Failed to parse selector 'a[href]': {}", e);
-                                return (mime_tokens, tokens, links);
-                            }
-                        };
-                        for element in document.select(&a_selector) {
-                            if let Some(link) = element.value().attr("href") {
-                                if let Ok(abs) = Url::parse(link)
-                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(link)))
-                                {
-                                    links.push(abs.to_string());
+                        let a_selector = scraper::Selector::parse("a[href]").ok();
+                        if let Some(a_selector) = a_selector {
+                            for element in document.select(&a_selector) {
+                                if let Some(link) = element.value().attr("href") {
+                                    if let Ok(abs) = Url::parse(link)
+                                        .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(link)))
+                                    {
+                                        links.push(abs.to_string());
+                                    }
                                 }
                             }
                         }
 
-                        let img_selector = match scraper::Selector::parse("img[src]") {
-                            Ok(sel) => sel,
-                            Err(e) => {
-                                log::warn!("Failed to parse selector 'img[src]': {}", e);
-                                return (mime_tokens, tokens, links);
-                            }
-                        };
-                        for element in document.select(&img_selector) {
-                            if let Some(src) = element.value().attr("src") {
-                                if let Ok(abs) = Url::parse(src)
-                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
-                                {
-                                    links.push(abs.to_string());
+                        let img_selector = scraper::Selector::parse("img[src]").ok();
+                        if let Some(img_selector) = img_selector {
+                            for element in document.select(&img_selector) {
+                                if let Some(src) = element.value().attr("src") {
+                                    if let Ok(abs) = Url::parse(src)
+                                        .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                    {
+                                        links.push(abs.to_string());
+                                    }
                                 }
                             }
                         }
 
-                        let audio_selector = match scraper::Selector::parse("audio[src]") {
-                            Ok(sel) => sel,
-                            Err(e) => {
-                                log::warn!("Failed to parse selector 'audio[src]': {}", e);
-                                return (mime_tokens, tokens, links);
-                            }
-                        };
-                        for element in document.select(&audio_selector) {
-                            if let Some(src) = element.value().attr("src") {
-                                if let Ok(abs) = Url::parse(src)
-                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
-                                {
-                                    links.push(abs.to_string());
+                        let audio_selector = scraper::Selector::parse("audio[src]").ok();
+                        if let Some(audio_selector) = audio_selector {
+                            for element in document.select(&audio_selector) {
+                                if let Some(src) = element.value().attr("src") {
+                                    if let Ok(abs) = Url::parse(src)
+                                        .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                    {
+                                        links.push(abs.to_string());
+                                    }
                                 }
                             }
                         }
 
-                        let source_selector = match scraper::Selector::parse("audio source[src], video source[src]") {
-                            Ok(sel) => sel,
-                            Err(e) => {
-                                log::warn!("Failed to parse selector 'audio source[src], video source[src]': {}", e);
-                                return (mime_tokens, tokens, links);
-                            }
-                        };
-                        for element in document.select(&source_selector) {
-                            if let Some(src) = element.value().attr("src") {
-                                if let Ok(abs) = Url::parse(src)
-                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
-                                {
-                                    links.push(abs.to_string());
+                        let source_selector = scraper::Selector::parse("audio source[src], video source[src]").ok();
+                        if let Some(source_selector) = source_selector {
+                            for element in document.select(&source_selector) {
+                                if let Some(src) = element.value().attr("src") {
+                                    if let Ok(abs) = Url::parse(src)
+                                        .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                    {
+                                        links.push(abs.to_string());
+                                    }
                                 }
                             }
                         }
 
-                        let video_selector = match scraper::Selector::parse("video[src]") {
-                            Ok(sel) => sel,
-                            Err(e) => {
-                                log::warn!("Failed to parse selector 'video[src]': {}", e);
-                                return (mime_tokens, tokens, links);
-                            }
-                        };
-                        for element in document.select(&video_selector) {
-                            if let Some(src) = element.value().attr("src") {
-                                if let Ok(abs) = Url::parse(src)
-                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
-                                {
-                                    links.push(abs.to_string());
+                        let video_selector = scraper::Selector::parse("video[src]").ok();
+                        if let Some(video_selector) = video_selector {
+                            for element in document.select(&video_selector) {
+                                if let Some(src) = element.value().attr("src") {
+                                    if let Ok(abs) = Url::parse(src)
+                                        .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                    {
+                                        links.push(abs.to_string());
+                                    }
                                 }
                             }
                         }
 
-                        let link_selector = match scraper::Selector::parse("link[rel=\"stylesheet\"]") {
-                            Ok(sel) => sel,
-                            Err(e) => {
-                                log::warn!("Failed to parse selector 'link[rel=\"stylesheet\"]': {}", e);
-                                return (mime_tokens, tokens, links);
-                            }
-                        };
-                        for element in document.select(&link_selector) {
-                            if let Some(href) = element.value().attr("href") {
-                                if let Ok(abs) = Url::parse(href)
-                                    .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(href)))
-                                {
-                                    links.push(abs.to_string());
+                        let link_selector = scraper::Selector::parse("link[rel=\"stylesheet\"]").ok();
+                        if let Some(link_selector) = link_selector {
+                            for element in document.select(&link_selector) {
+                                if let Some(href) = element.value().attr("href") {
+                                    if let Ok(abs) = Url::parse(href)
+                                        .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(href)))
+                                    {
+                                        links.push(abs.to_string());
+                                    }
                                 }
                             }
                         }
 
-                        let script_selector = match scraper::Selector::parse("script[src]") {
-                            Ok(sel) => sel,
-                            Err(e) => {
-                                log::warn!("Failed to parse selector 'script[src]': {}", e);
-                                return (mime_tokens, tokens, links);
-                            }
-                        };
-                        for element in document.select(&script_selector) {
-                            if let Some(src) = element.value().attr("src") {
-                                if let Ok(abs) = Url::parse(src).or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
-                                {
-                                    links.push(abs.to_string());
+                        let script_selector = scraper::Selector::parse("script[src]").ok();
+                        if let Some(script_selector) = script_selector {
+                            for element in document.select(&script_selector) {
+                                if let Some(src) = element.value().attr("src") {
+                                    if let Ok(abs) = Url::parse(src)
+                                        .or_else(|_| Url::parse(&url_clone).and_then(|base| base.join(src)))
+                                    {
+                                        links.push(abs.to_string());
+                                    }
                                 }
                             }
                         }
-                    } else {
-                        log::debug!("Skipping non-document file: {}", url_clone.clone());
-                        // println!("{:?}: {}", file_ext, is_document);
-                
+
+                        // (mime_tokens, tokens, links)
                     }
+                } else {
+                    log::debug!("Skipping non-document file: {}", url_clone.clone());
+                    // (mime_tokens, tokens, links)
+                }
 
-                    
-                    
-                    (mime_tokens, tokens, links)
-                }).await;
-
-                let (mut mime_tokens, mut tokens, mut links) = match result {
-                    Ok((mime_tokens, tokens, links)) => (mime_tokens, tokens, links),
-                    Err(e) => {
-                        log::warn!("Failed to parse HTML for {}: {}", url, e);
-                        (Vec::new(), Vec::new(), Vec::new())
-                    }
-                };
+                // let (mut mime_tokens, mut tokens, mut links) = match result {
+                //     Ok((mime_tokens, tokens, links)) => (mime_tokens, tokens, links),
+                //     Err(e) => {
+                //         log::warn!("Failed to parse HTML for {}: {}", url, e);
+                //         (Vec::new(), Vec::new(), Vec::new())
+                //     }
+                // };
 
                 tokens.sort();
                 tokens.dedup();
@@ -842,8 +786,8 @@ async fn crawl_url_inner(
 ///
 /// # Returns
 /// * Boxed future for async recursion.
-fn crawl_url_boxed<'a>(job_oid: String, url: String, depth: usize, established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>, client: std::sync::Arc<reqwest::Client>) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::sam::memory::Result<Vec<CrawledPage>>> + Send + 'a>> {
-    Box::pin(crawl_url_inner(job_oid, url, depth, established_clients, client))
+fn crawl_url_boxed<'a>(job_oid: String, url: String, depth: usize, client: std::sync::Arc<reqwest::Client>) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::sam::memory::Result<Vec<CrawledPage>>> + Send + 'a>> {
+    Box::pin(crawl_url_inner(job_oid, url, depth, client))
 }
 
 /// Public entry point for crawling a URL (non-recursive).
@@ -856,8 +800,8 @@ fn crawl_url_boxed<'a>(job_oid: String, url: String, depth: usize, established_c
 ///
 /// # Async
 /// This function is async and should be awaited.
-pub async fn crawl_url(job_oid: String, url: String, established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>, client: std::sync::Arc<reqwest::Client>) -> crate::sam::memory::Result<Vec<CrawledPage>> {
-    crawl_url_boxed(job_oid, url, 0, established_clients, client).await
+pub async fn crawl_url(job_oid: String, url: String, client: std::sync::Arc<reqwest::Client>) -> crate::sam::memory::Result<Vec<CrawledPage>> {
+    crawl_url_boxed(job_oid, url, 0, client).await
 }
 
 /// Starts the crawler service asynchronously, spawning worker tasks for each CPU core.
@@ -877,7 +821,8 @@ pub async fn start_service_async() {
         CRAWLER_RUNNING.store(true, Ordering::SeqCst);
    
         tokio::spawn(async {
-            let cpu_cores = num_cpus::get();
+            let cpu_cores = 4;
+            log::info!("Starting crawler service with {} CPU cores", cpu_cores);
             for _ in 0..cpu_cores {
                 tokio::spawn(async {
                     if let Err(e) = run_crawler_service().await {
@@ -931,14 +876,8 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     let client = Arc::new(REQWEST_CLIENT.clone());
 
     // Set up logging
-    log::set_max_level(LevelFilter::Info);
+    // log::set_max_level(LevelFilter::Info);
 
-    // Establish an async connection pool for PostgreSQL using tokio_postgres
-    let mut established_clients = Vec::new();
-    for i in 0..2 {
-        let pgclient = Arc::new(tokio::sync::Mutex::new(crate::sam::memory::Config::client_async().await.unwrap()));
-        established_clients.push(pgclient);
-    }
 
     // Load common URLs, tokens, TLDs, prefixes, and words
     let tlds = COMMON_TLDS.clone();
@@ -960,12 +899,13 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     
 
         // Find a pending job
-        let mut jobs = match CrawlJob::select_async(Some(100), None, None, None).await {
+        let mut jobs = match CrawlJob::select_async(Some(5000), None, None, None).await {
             Ok(jobs) => jobs.into_iter().filter(|j| j.status == "pending").collect::<Vec<_>>(),
             Err(_) => vec![],
         };
 
         jobs.shuffle(&mut rand::thread_rng());
+        jobs.truncate(1);
 
         if let Some(mut job) = jobs.into_iter().next() {
             let job_oid = job.oid.clone();
@@ -1031,7 +971,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 use futures::stream;
                 let results = stream::iter(batch.into_iter()).map(|(url, depth)| {
                     let job_oid = job_oid.clone();
-                    let established_clients = established_clients.clone();
+                   
                     let client = client.clone();
                     let all_crawled_pages_th = all_crawled_pages_th.clone();
                     async move {
@@ -1043,9 +983,9 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                             if all.len() > 100 {
                                 for chunk in all.chunks(10) {
                                     let chunk = chunk.to_vec();
-                                    let established_clients = established_clients.clone();
+                                    
                                     tokio::spawn(async move {
-                                        if let Err(e) = CrawledPage::save_async_batch(&chunk, established_clients).await {
+                                        if let Err(e) = CrawledPage::save_async_batch(&chunk).await {
                                             log::warn!("Failed to save batch of pages: {}", e);
                                             for p in &chunk {
                                                 write_url_to_retry_cache(&p.url).await;
@@ -1058,7 +998,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                         }
 
                         // Crawl the URL
-                        (url.clone(), depth, crawl_url(job_oid, url, established_clients, client).await)
+                        (url.clone(), depth, crawl_url(job_oid, url, client).await)
                     }
                 }).buffer_unordered(concurrency).collect::<Vec<_>>().await;
                     
@@ -1086,7 +1026,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                 if all.len() > 100 {
                                     // Batch save all crawled pages in chunks of 500
                                     for chunk in all.chunks(10) {
-                                        if let Err(e) = CrawledPage::save_async_batch(chunk, established_clients.clone()).await {
+                                        if let Err(e) = CrawledPage::save_async_batch(chunk).await {
                                             log::warn!("Failed to save batch of pages: {}", e);
                                             for p in chunk {
                                                 write_url_to_retry_cache(&p.url).await;
@@ -1122,7 +1062,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             };
             // Batch save all crawled pages in chunks of 500
             for chunk in all_crawled_pages.chunks(500) {
-                if let Err(e) = CrawledPage::save_async_batch(chunk, established_clients.clone()).await {
+                if let Err(e) = CrawledPage::save_async_batch(chunk).await {
                     log::warn!("Failed to save batch of pages: {}", e);
                     for p in chunk {
                         write_url_to_retry_cache(&p.url).await;

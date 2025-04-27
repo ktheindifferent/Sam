@@ -20,7 +20,9 @@ use crate::sam::memory::location::{Location};
 use crate::sam::memory::room::Room;
 use crate::sam::memory::PostgresServer;
 use tokio::sync::MutexGuard;
-
+use deadpool_postgres::Pool;
+use once_cell::sync::OnceCell;
+use deadpool_postgres::Manager;
 
 pub mod service;
 pub mod file_storage_location;
@@ -43,12 +45,17 @@ impl Default for Config {
 }
 
 impl Config {
+
+    /// Creates a new Config instance with default values.
     pub fn new() -> Config {
         Config{
             postgres: PostgresServer::new(),
             version_installed: option_env!("CARGO_PKG_VERSION").unwrap_or("unknown").to_string()
         }
     }
+
+    /// Initializes the PostgreSQL database and starts the HTTP server.
+    /// TODO: Make http a service
     pub async fn init(&self){
 
         match self.create_db().await{
@@ -81,6 +88,7 @@ impl Config {
         });
     }
 
+    /// Returns a new PostgreSQL client connection.
     pub async fn connect(&self) -> Result<tokio_postgres::Client> {
         // Build a TLS connector that skips certificate verification (for self-signed certs)
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
@@ -107,8 +115,96 @@ impl Config {
         Ok(client)
     }
 
+    /// Returns a new PostgreSQL client connection.
+    /// Returns a new Deadpool PostgreSQL connection from a pool.
+    /// Initializes a pool if not already created.
+    /// This function is thread-safe and can be called from multiple threads.
+    ///
+    /// # Returns
+    /// Returns a `Result` containing a `deadpool_postgres::Client` if successful, or an error otherwise.
+    ///
+    /// # Example
+    /// ```
+    /// use crate::sam::memory::Config;
+    /// use deadpool_postgres::Client;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let config = Config::new();
+    ///     match config.connect_pool().await {
+    ///         Ok(client) => println!("Connected to PostgreSQL"),
+    ///         Err(e) => println!("Failed to connect: {}", e),
+    ///     }
+    /// }
+    /// ```
+    pub async fn connect_pool(&self) -> Result<deadpool_postgres::Client> {
 
-    
+        static POOL: OnceCell<Pool> = OnceCell::new();
+
+        let pool = POOL.get_or_init(|| {
+            let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+            builder.set_verify(SslVerifyMode::NONE);
+            let connector = MakeTlsConnector::new(builder.build());
+
+            let config_str = format!(
+                "host={} user={} password={} dbname={} sslmode=prefer",
+                self.postgres.address,
+                self.postgres.username,
+                self.postgres.password,
+                self.postgres.db_name
+            );
+            let mut pg_config = tokio_postgres::Config::new();
+            pg_config
+                .host(&self.postgres.address)
+                .user(&self.postgres.username)
+                .password(&self.postgres.password)
+                .dbname(&self.postgres.db_name);
+
+            let mgr = Manager::from_config(
+                pg_config,
+                connector,
+                deadpool_postgres::ManagerConfig { recycling_method: deadpool_postgres::RecyclingMethod::Fast }
+            );
+            Pool::builder(mgr).max_size(16).build().unwrap()
+        });
+
+        let client = pool.get().await.map_err(|e| crate::sam::memory::Error::from(e))?;
+        Ok(client)
+    }
+
+    /// Builds all tables in the PostgreSQL database.
+    ///
+    /// This function connects to the PostgreSQL database and executes the SQL statements
+    /// to create the tables defined in the `tables` array. It also applies any migrations
+    /// specified for each table.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` if all tables were created successfully, or an error otherwise.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails or any of the table creation or migrations fail.
+    ///
+    /// # Example
+    /// ```
+    /// use crate::sam::memory::Config;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let config = Config::new();
+    ///     match config.build_tables().await {
+    ///         Ok(_) => println!("Tables created successfully"),
+    ///         Err(e) => println!("Failed to create tables: {}", e),
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Note
+    /// This function is intended to be called during the initialization phase of the application.
+    /// It is responsible for setting up the database schema and ensuring that all required tables
+    /// are present before the application starts handling requests.
+    /// It is not intended to be called during normal operation.
+    /// It is recommended to call this function only once during the application's lifecycle.
+    /// It is also recommended to call this function only after the database has been created.
     pub async fn build_tables(&self) -> Result<()>{
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
@@ -180,6 +276,26 @@ impl Config {
     ///
     /// # Errors
     /// Returns an error if the connection fails or the database cannot be created.
+    ///
+    /// # Example
+    /// ```
+    /// use crate::sam::memory::Config;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let config = Config::new();
+    ///     match config.create_db().await {
+    ///         Ok(_) => println!("Database created successfully"),
+    ///         Err(e) => println!("Failed to create database: {}", e),
+    ///     }
+    /// }
+    /// ```
+    /// # Note
+    /// This function is intended to be called during the initialization phase of the application.
+    /// It is responsible for ensuring that the database exists before the application starts
+    /// handling requests. It is not intended to be called during normal operation.
+    /// It is recommended to call this function only once during the application's lifecycle.
+    /// It is also recommended to call this function only after the PostgreSQL server is running.
     pub async fn create_db(&self) -> Result<()> {
         // Build a TLS connector that skips certificate verification (for self-signed certs)
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
@@ -231,6 +347,28 @@ impl Config {
     ///
     /// # Returns
     /// Returns the same `tokio_postgres::Client` for further use.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails or any of the SQL statements fail.
+    ///
+    /// # Example
+    /// ```
+    /// use crate::sam::memory::Config;
+    /// use tokio_postgres::Client;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let config = Config::new();
+    ///     let client = config.connect().await.unwrap();
+    ///     let table_name = "example_table".to_string();
+    ///     let build_statement = "CREATE TABLE example_table (id SERIAL PRIMARY KEY, name VARCHAR(50))";
+    ///     let migrations = vec!["ALTER TABLE example_table ADD COLUMN age INT"];
+    ///     match config.build_table(client, table_name, build_statement, migrations).await {
+    ///         Ok(_) => println!("Table created and migrations applied successfully"),
+    ///         Err(e) => println!("Failed to create table or apply migrations: {}", e),
+    ///     }
+    /// }
+    /// ```
     pub async fn build_table(
         client: tokio_postgres::Client,
         table_name: String,
@@ -267,6 +405,26 @@ impl Config {
     /// # Returns
     /// Returns `Ok(true)` if the row was deleted (no longer exists), `Ok(false)` if the row still exists,
     /// or an error if the operation failed.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails or the SQL statement fails.
+    ///
+    /// # Example
+    /// ```
+    /// use crate::sam::memory::Config;
+    /// use tokio_postgres::Client;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let config = Config::new();
+    ///     let oid = "some_oid".to_string();
+    ///     let table_name = "example_table".to_string();
+    ///     match config.destroy_row(oid, table_name) {
+    ///         Ok(deleted) => println!("Row deleted: {}", deleted),
+    ///         Err(e) => println!("Failed to delete row: {}", e),
+    ///     }
+    /// }
+    /// ```
     pub fn destroy_row(oid: String, table_name: String) -> Result<bool> {
         let mut client = Config::client()?;
 
@@ -280,6 +438,44 @@ impl Config {
             &format!("SELECT 1 FROM {} WHERE oid = $1", table_name),
             &[&oid],
         )?;
+
+        Ok(rows.is_empty())
+    }
+
+    /// Asynchronously deletes a row from the specified table by OID.
+    ///
+    /// # Arguments
+    /// * `oid` - The OID of the row to delete.
+    /// * `table_name` - The name of the table from which to delete the row.
+    /// * `client` - An established tokio_postgres::Client.
+    ///
+    /// # Returns
+    /// Returns `Ok(true)` if the row was deleted (no longer exists), `Ok(false)` if the row still exists,
+    /// or an error if the operation failed.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails or the SQL statement fails.
+    ///
+    pub async fn destroy_row_async(
+        oid: String,
+        table_name: String
+    ) -> Result<bool> {
+        let config = crate::sam::memory::Config::new();
+        let client = config.connect_pool().await?;
+        // Use parameterized queries to prevent SQL injection
+        client
+            .execute(
+                &format!("DELETE FROM {} WHERE oid = $1", table_name),
+                &[&oid],
+            )
+            .await?;
+
+        let rows = client
+            .query(
+                &format!("SELECT 1 FROM {} WHERE oid = $1", table_name),
+                &[&oid],
+            )
+            .await?;
 
         Ok(rows.is_empty())
     }
@@ -438,6 +634,8 @@ impl Config {
         Ok(parsed_rows)
     }
 
+
+
     /// Asynchronously executes a SELECT query on the specified PostgreSQL table with optional filtering, ordering, and pagination.
     ///
     /// # Arguments
@@ -458,31 +656,10 @@ impl Config {
         offset: Option<usize>,
         order: Option<String>,
         query: Option<PostgresQueries>,
-        established_clients: Vec<std::sync::Arc<tokio::sync::Mutex<tokio_postgres::Client>>>,
+        client: deadpool_postgres::Client,
     ) -> Result<Vec<String>> {
 
         let mut parsed_rows: Vec<String> = Vec::new();
-
-        // Lock the client for the duration of the query
-        // Try to acquire a lock on any of the provided clients
-        let mut client_guard = None;
-        for client_arc in &established_clients {
-            if let Ok(guard) = client_arc.try_lock() {
-            client_guard = Some(guard);
-            break;
-            }
-        }
-        let mut client_guard = match client_guard {
-            Some(guard) => guard,
-            None => {
-            // If none are available, just wait for the first one
-            established_clients
-                .get(0)
-                .expect("No clients provided")
-                .lock()
-                .await
-            }
-        };
 
         // Build SELECT clause
         let mut execquery = if let Some(cols) = &columns {
@@ -528,11 +705,11 @@ impl Config {
                 }
             }).collect();
 
-            for row in client_guard.query(execquery.as_str(), query_values.as_slice()).await? {
+            for row in client.query(execquery.as_str(), query_values.as_slice()).await? {
                 Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
             }
         } else {
-            for row in client_guard.query(execquery.as_str(), &[]).await? {
+            for row in client.query(execquery.as_str(), &[]).await? {
                 Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
             }
         }
@@ -597,6 +774,63 @@ impl Config {
         }
         Ok(())
     }
+
+    /// Asynchronous helper function to serialize a row to JSON based on table and columns.
+    /// Serializes a database row into a JSON string and pushes it to the parsed_rows vector.
+    ///
+    /// # Arguments
+    /// * `table_name` - The name of the table to determine the struct type for deserialization.
+    /// * `columns` - Optional comma-separated list of columns; if `None`, full struct is serialized.
+    /// * `row` - The database row to serialize.
+    /// * `parsed_rows` - The vector to which the resulting JSON string will be appended.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` on success, or an error if serialization fails.
+    async fn serialize_row_async(
+        table_name: &str,
+        columns: &Option<String>,
+        row: &tokio_postgres::Row,
+        parsed_rows: &mut Vec<String>,
+    ) -> Result<()> {
+        macro_rules! push_json_async {
+            ($ty:ty, $from_row_async:ident) => {
+                parsed_rows.push(serde_json::to_string(&<$ty>::$from_row_async(row).await?).unwrap())
+            };
+        }
+
+        match table_name {
+            t if t == crate::sam::memory::cache::WikipediaSummary::sql_table_name() => { push_json_async!(crate::sam::memory::cache::WikipediaSummary, from_row_async); },
+            t if t == crate::sam::memory::Human::sql_table_name() => { push_json_async!(crate::sam::memory::Human, from_row_async); },
+            t if t == crate::sam::memory::human::FaceEncoding::sql_table_name() => { push_json_async!(crate::sam::memory::human::FaceEncoding, from_row_async); },
+            t if t == crate::sam::memory::Location::sql_table_name() => { push_json_async!(crate::sam::memory::Location, from_row_async); },
+            t if t == crate::sam::memory::human::Notification::sql_table_name() => { push_json_async!(crate::sam::memory::human::Notification, from_row_async); },
+            t if t == crate::sam::memory::Room::sql_table_name() => { push_json_async!(crate::sam::memory::Room, from_row_async); },
+            t if t == crate::sam::memory::config::Service::sql_table_name() => { push_json_async!(crate::sam::memory::config::Service, from_row_async); },
+            t if t == crate::sam::memory::Thing::sql_table_name() => { push_json_async!(crate::sam::memory::Thing, from_row_async); },
+            t if t == crate::sam::memory::Observation::sql_table_name() => {
+                if columns.is_none() {
+                    push_json_async!(crate::sam::memory::Observation, from_row_async);
+                } else {
+                    push_json_async!(crate::sam::memory::Observation, from_row_lite_async);
+                }
+            },
+            t if t == crate::sam::memory::config::Setting::sql_table_name() => { push_json_async!(crate::sam::memory::config::Setting, from_row_async); },
+            t if t == crate::sam::memory::cache::WebSessions::sql_table_name() => { push_json_async!(crate::sam::memory::cache::WebSessions, from_row_async); },
+            t if t == crate::sam::memory::config::FileStorageLocation::sql_table_name() => { push_json_async!(crate::sam::memory::config::FileStorageLocation, from_row_async); },
+            t if t == crate::sam::memory::storage::File::sql_table_name() => {
+                if columns.is_none() {
+                    push_json_async!(crate::sam::memory::storage::File, from_row_async);
+                } else {
+                    push_json_async!(crate::sam::memory::storage::File, from_row_lite_async);
+                }
+            },
+            t if t == crate::sam::services::crawler::CrawlJob::sql_table_name() => { push_json_async!(crate::sam::services::crawler::CrawlJob, from_row_async); },
+            t if t == crate::sam::services::crawler::CrawledPage::sql_table_name() => { push_json_async!(crate::sam::services::crawler::CrawledPage, from_row_async); },
+            _ => {}
+        }
+        Ok(())
+    }
+   
 
     /// Creates and returns a synchronous PostgreSQL client using the current configuration.
     ///

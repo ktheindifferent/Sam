@@ -42,7 +42,7 @@ pub async fn handle_redis(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 "Checking Redis service status...",
                 |lines, status| lines.push(format!("Redis service status: {}", status)),
                 || async {
-                    crate::sam::services::redis::status().to_string()
+                    crate::sam::services::redis::status().await.to_string()
                 },
             ).await;
         }

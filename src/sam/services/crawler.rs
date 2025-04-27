@@ -29,16 +29,7 @@ use rand::rngs::SmallRng;
 use rand::SeedableRng;
 use regex;
 use url::ParseError;
-use redis::{AsyncCommands, aio::MultiplexedConnection, Client as RedisClient};
 
-static REDIS_URL: &str = "redis://127.0.0.1/";
-static REDIS_MANAGER: OnceCell<RedisClient> = OnceCell::new();
-
-async fn redis_client() -> redis::RedisResult<MultiplexedConnection> {
-    let client = REDIS_MANAGER.get_or_try_init(|| RedisClient::open(REDIS_URL))
-        .map_err(|e| redis::RedisError::from((redis::ErrorKind::IoError, "Failed to create Redis client", format!("{:?}", e))))?;
-    client.get_multiplexed_async_connection().await
-}
 
 pub mod job;
 pub mod page;

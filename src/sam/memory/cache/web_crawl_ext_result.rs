@@ -39,18 +39,18 @@ impl WebCrawlExtResult {
     }
 
     pub fn sql_table_name() -> String {
-        "cached_web_crawl_ext_results".to_string()
+        "cache_web_crawl_ext_results".to_string()
     }
 
     pub fn sql_build_statement() -> &'static str {
-        "CREATE TABLE public.cached_web_crawl_ext_results (
+        "CREATE TABLE public.cache_web_crawl_ext_results (
             id serial NOT NULL,
             oid varchar NOT NULL UNIQUE,
             url varchar NOT NULL,
             summaries jsonb NULL,
             links jsonb NULL,
             timestamp BIGINT DEFAULT 0,
-            CONSTRAINT cached_web_crawl_ext_results_pkey PRIMARY KEY (id));"
+            CONSTRAINT cache_web_crawl_ext_results_pkey PRIMARY KEY (id));"
     }
 
     pub fn migrations() -> Vec<&'static str> {
@@ -78,7 +78,7 @@ impl WebCrawlExtResult {
 
         if rows.is_empty() {
             client.execute(
-                "INSERT INTO cached_web_crawl_ext_results (oid, url, summaries, links, timestamp) VALUES ($1, $2, $3, $4, $5)",
+                "INSERT INTO cache_web_crawl_ext_results (oid, url, summaries, links, timestamp) VALUES ($1, $2, $3, $4, $5)",
                 &[&object.oid, &object.url, &summaries_json, &links_json, &object.timestamp]
             )?;
 
@@ -93,11 +93,11 @@ impl WebCrawlExtResult {
         } else {
             let ads = rows[0].clone();
             client.execute(
-                "UPDATE cached_web_crawl_ext_results SET url = $1, summaries = $2, links = $3, timestamp = $4 WHERE oid = $5;",
+                "UPDATE cache_web_crawl_ext_results SET url = $1, summaries = $2, links = $3, timestamp = $4 WHERE oid = $5;",
                 &[&object.url, &summaries_json, &links_json, &object.timestamp, &ads.oid]
             )?;
 
-            let statement_two = client.prepare("SELECT * FROM cached_web_crawl_ext_results WHERE oid = $1")?;
+            let statement_two = client.prepare("SELECT * FROM cache_web_crawl_ext_results WHERE oid = $1")?;
             let rows_two = client.query(&statement_two, &[&object.oid])?;
             Self::from_row(&rows_two[0])
         }
