@@ -74,8 +74,19 @@ fn pre_install() {
 
 
     // Install Python packages
-    log::info!("Installing Python packages...");
-    crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect --break-system-packages");
+    #[cfg(target_os = "macos")]{
+        log::info!("Installing Python packages for MacOS...");
+        crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect --break-system-packages");
+    }
+    #[cfg(target_os = "linux")]{
+        log::info!("Installing Python packages for Linux...");
+        crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect");
+    }
+    #[cfg(target_os = "windows")]{
+        log::info!("Installing Python packages for Windows...");
+        crate::sam::tools::uinx_cmd("pip3 install rivescript pexpect");
+    }
+   
 
     // Create necessary directories
     let directories = vec![
@@ -121,9 +132,6 @@ fn install_services() {
             Ok(_) => log::info!("whisper installed successfully"),
             Err(e) => log::error!("Failed to install whisper: {}", e),
         }
-
-
-
     });
 
 

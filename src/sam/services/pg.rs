@@ -1,6 +1,13 @@
 use std::process::Command;
 use std::io;
 use log::{info, error};
+use std::process::Stdio;
+use std::env;
+use reqwest::blocking::get;
+use scraper::{Html, Selector};
+use std::fs;
+use std::io::Write;
+use std::path::Path;
 
 /*
 This Rust code provides functions to install and configure PostgreSQL on Windows, Linux, and macOS.
@@ -14,7 +21,29 @@ pub fn create_sam_user_and_db() -> io::Result<()> {
     // This assumes you have sufficient privileges (e.g., running as postgres or with sudo)
     #[cfg(target_os = "windows")]
     {
-        log::info!("Please use pgAdmin or psql to create user/database 'sam'.");
+        // On Windows, use the 'psql' command to create user and database.
+        // Assumes PostgreSQL is installed and 'psql' is in PATH.
+        let create_user = Command::new("psql")
+            .args(&[
+                "-U", "postgres",
+                "-c",
+                "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_user WHERE usename = 'sam') THEN CREATE USER sam WITH PASSWORD 'sam'; END IF; END $$;"
+            ])
+            .status()?;
+        if !create_user.success() {
+            log::info!("Warning: Could not create user 'sam' or user already exists.");
+        }
+        let create_db = Command::new("psql")
+            .args(&[
+                "-U", "postgres",
+                "-c",
+                "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sam') THEN CREATE DATABASE sam OWNER sam; END IF; END $$;"
+            ])
+            .status()?;
+        if !create_db.success() {
+            log::info!("Warning: Could not create database 'sam' or database already exists.");
+        }
+        log::info!("User and database 'sam' created or already exist.");
     }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
@@ -45,14 +74,74 @@ pub fn create_sam_user_and_db() -> io::Result<()> {
     Ok(())
 }
 
+
+
+/// Clone and build PostgreSQL server version 17 from source.
+/// This function requires `git`, `make`, `gcc`, and other build tools to be installed.
+/// On success, the built binaries will be in the `postgres` directory.
+pub fn build_postgres_from_source() -> io::Result<()> {
+
+    // 1. Clone the PostgreSQL 17 source if not already present
+    let repo_url = "https://github.com/postgres/postgres.git";
+    let dir = "postgres";
+    if !Path::new(dir).exists() {
+        let status = Command::new("git")
+            .args(&["clone", "--branch", "REL_17_STABLE", "--depth", "1", repo_url, dir])
+            .status()?;
+        if !status.success() {
+            error!("Failed to clone PostgreSQL source.");
+            return Err(io::Error::new(io::ErrorKind::Other, "git clone failed"));
+        }
+        info!("Cloned PostgreSQL 17 source.");
+    } else {
+        info!("PostgreSQL source directory already exists, skipping clone.");
+    }
+
+    // 2. Run ./configure
+    let configure_path = format!("{}/configure", dir);
+    if !Path::new(&configure_path).exists() {
+        error!("configure script not found in postgres directory.");
+        return Err(io::Error::new(io::ErrorKind::NotFound, "configure script missing"));
+    }
+    let status = Command::new("sh")
+        .current_dir(dir)
+        .arg("configure")
+        .status()?;
+    if !status.success() {
+        error!("Failed to run configure.");
+        return Err(io::Error::new(io::ErrorKind::Other, "configure failed"));
+    }
+    info!("Ran configure.");
+
+    // 3. Run make
+    let status = Command::new("make")
+        .current_dir(dir)
+        .status()?;
+    if !status.success() {
+        error!("Failed to build PostgreSQL.");
+        return Err(io::Error::new(io::ErrorKind::Other, "make failed"));
+    }
+    info!("PostgreSQL built successfully.");
+
+    // 4. Optionally, run make install (requires sudo/root)
+    // let status = Command::new("sudo")
+    //     .current_dir(dir)
+    //     .arg("make")
+    //     .arg("install")
+    //     .status()?;
+    // if !status.success() {
+    //     error!("Failed to install PostgreSQL.");
+    //     return Err(io::Error::new(io::ErrorKind::Other, "make install failed"));
+    // }
+    // info!("PostgreSQL installed successfully.");
+
+    Ok(())
+}
+
+
 #[cfg(target_os = "windows")]
 pub fn install_postgres(_user: &str) -> io::Result<()> {
-    use std::process::Stdio;
-    use std::env;
-    use reqwest::blocking::get;
-    use scraper::{Html, Selector};
-    use std::fs;
-    use std::io::Write;
+
 
     // 1. Fetch the EnterpriseDB binaries page
     let url = "https://www.enterprisedb.com/download-postgresql-binaries";

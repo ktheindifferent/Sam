@@ -195,6 +195,20 @@ impl From<zip::result::ZipError> for tools::Error {
     }
 }
 
+/// Reads the user from /opt/sam/whoismyhuman if it exists, otherwise returns the provided user.
+pub fn get_user_from_whois(user: &str) -> Result<String> {
+    let whois_path = Path::new("/opt/sam/whoismyhuman");
+    if whois_path.exists() {
+        match fs::read_to_string(whois_path) {
+            Ok(contents) => Ok(contents.trim().to_string()),
+            Err(e) => Err(Error::from(e)),
+        }
+    } else {
+        Ok(user.to_string())
+    }
+}
+
+
 /// Executes a Python 3 command and returns its output as a `String`.
 pub fn python3(command: &str) -> Result<String> {
     let output = Command::new("python3")

@@ -107,6 +107,8 @@ fn main() {
         }
 
         // Store the current username in the SAM_USER environment variable
+        // Cross platform way to get the username
+        // let user = whoami::username();
         let mut user = whoami::username();
         let opt_sam_path = Path::new("/opt/sam/");
         if user != "root" {
@@ -125,30 +127,12 @@ fn main() {
         }
 
         // Attempt to read username from /opt/sam/whoismyhuman if it exists
-        let whois_path = Path::new("/opt/sam/whoismyhuman");
-        user = if whois_path.exists() {
-            match fs::read_to_string(whois_path) {
-                Ok(contents) => contents.trim().to_string(),
-                Err(_) => user,
-            }
-        } else {
-            user
-        };
+        user = crate::sam::tools::get_user_from_whois().unwrap_or_else(|_| {
+            log::error!("Failed to read whoismyhuman file. Defaulting to 'human'.");
+            "human".to_string()
+        });
 
-        // Print ASCII art banner and version
-        println!("███████     █████     ███    ███    ");
-        println!("██         ██   ██    ████  ████    ");
-        println!("███████    ███████    ██ ████ ██    ");
-        println!("     ██    ██   ██    ██  ██  ██    ");
-        println!("███████ ██ ██   ██ ██ ██      ██ ██ ");
-        println!("Smart Artificial Mind");
-        println!("VERSION: {:?}", VERSION);
-        println!("Copyright 2021-2026 The Open Sam Foundation (OSF)");
-        println!("Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)");
-        println!("Licensed under GPLv3....see LICENSE file.");
-        println!("================================================");
-        println!("Hello {}....SAM is starting up...", user);
-        println!("================================================");
+        sam::print_banner();
 
         // Initialize logger with color, warning level, and timestamps
         simple_logger::SimpleLogger::new()
