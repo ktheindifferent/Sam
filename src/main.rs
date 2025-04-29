@@ -1,9 +1,8 @@
-
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
@@ -35,24 +34,21 @@
 // 18. Data goblin apps (recipie, shopping list, calendar, cat identification, etc.)
 pub mod sam;
 
-
-
 // External crates
-extern crate wikipedia;
-extern crate hound;
-extern crate postgres;
-extern crate threadpool;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
-//use tui_logger;
+// extern crate hound;
+// extern crate postgres;
+// extern crate threadpool;
+// extern crate wikipedia;
+// #[macro_use]
+// extern crate lazy_static;
+// #[macro_use]
+// extern crate log;
+// use tui_logger;
 
 use std::env;
 
 // Store application version as a const, set at compile time
 // const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
-
 
 /// Main entry point for the SAM application.
 /// Initializes logging, environment variables, configuration, and all core services.
@@ -67,7 +63,7 @@ fn main() {
         .expect("Failed to build Tokio runtime");
 
     runtime.block_on(async {
-        std::panic::set_hook(Box::new(|info| {
+        std::panic::set_hook(Box::new(|_info| {
             // Optionally log to a file or TUI logger instead
             // e.g., log::error!("Panic: {:?}", info);
             // Do nothing to suppress terminal output
@@ -111,8 +107,6 @@ fn main() {
 
         // Optionally escalate privileges if needed
         sudo::escalate_if_needed().unwrap();
-
-
 
         // // Initialize configuration and memory
         if crate::sam::memory::Config::check_postgres_installed() {
@@ -167,9 +161,8 @@ fn main() {
         std::env::set_var("PG_PASS", "sam");
         std::env::set_var("PG_ADDRESS", "localhost");
 
-    
-
-        crate::sam::services::docker::install();
+        // crate::sam::services::docker::install(); // This returns a Future, must be awaited or handled
+        // let _ = crate::sam::services::docker::install(); // If install() returns Result or Future, handle appropriately
 
         crate::sam::services::tts::init();
 
@@ -221,5 +214,3 @@ fn main() {
         }
     });
 }
-
-

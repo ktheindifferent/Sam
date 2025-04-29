@@ -1,12 +1,12 @@
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::sam::memory::Result;
+use crate::sam::memory::{Config, PostgresQueries};
 use rand::distributions::Alphanumeric;
 use rand::thread_rng;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use crate::sam::memory::{Config, PostgresQueries};
-use crate::sam::memory::Result;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WebCrawlExtResult {
@@ -26,8 +26,15 @@ impl Default for WebCrawlExtResult {
 
 impl WebCrawlExtResult {
     pub fn new(url: String) -> Self {
-        let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let oid: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(15)
+            .map(char::from)
+            .collect();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         Self {
             id: 0,
             oid,
@@ -54,24 +61,19 @@ impl WebCrawlExtResult {
     }
 
     pub fn migrations() -> Vec<&'static str> {
-        vec![
-            "",
-        ]
+        vec![""]
     }
 
     pub fn save(object: Self) -> Result<Self> {
         let mut client = Config::client()?;
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(object.oid.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(object.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
 
         // Search for OID matches
-        let rows = Self::select(
-            None,
-            None,
-            None,
-            Some(pg_query.clone())
-        )?;
+        let rows = Self::select(None, None, None, Some(pg_query.clone()))?;
 
         let summaries_json = serde_json::to_string(&object.summaries).unwrap();
         let links_json = serde_json::to_string(&object.links).unwrap();
@@ -83,12 +85,7 @@ impl WebCrawlExtResult {
             )?;
 
             // Search for OID matches
-            let rows_two = Self::select(
-                None,
-                None,
-                None,
-                Some(pg_query)
-            )?;
+            let rows_two = Self::select(None, None, None, Some(pg_query))?;
             Ok(rows_two[0].clone())
         } else {
             let ads = rows[0].clone();
@@ -97,7 +94,8 @@ impl WebCrawlExtResult {
                 &[&object.url, &summaries_json, &links_json, &object.timestamp, &ads.oid]
             )?;
 
-            let statement_two = client.prepare("SELECT * FROM cache_web_crawl_ext_results WHERE oid = $1")?;
+            let statement_two =
+                client.prepare("SELECT * FROM cache_web_crawl_ext_results WHERE oid = $1")?;
             let rows_two = client.query(&statement_two, &[&object.oid])?;
             Self::from_row(&rows_two[0])
         }
@@ -107,7 +105,7 @@ impl WebCrawlExtResult {
         limit: Option<usize>,
         offset: Option<usize>,
         order: Option<String>,
-        query: Option<PostgresQueries>
+        query: Option<PostgresQueries>,
     ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let jsons = crate::sam::memory::Config::pg_select(
@@ -116,7 +114,8 @@ impl WebCrawlExtResult {
             limit,
             offset,
             order,
-            query, None
+            query,
+            None,
         )?;
 
         for j in jsons {

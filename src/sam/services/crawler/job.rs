@@ -1,17 +1,17 @@
 //! Crawler job definition and persistence layer.
-//! 
+//!
 //! Provides the CrawlJob struct and async/sync DB/Redis persistence for crawl jobs.
 
-use serde::{Serialize, Deserialize};
-use rand::{thread_rng, Rng};
-use rand::distributions::Alphanumeric;
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::sam::memory::{Config, PostgresQueries};
-use tokio_postgres::Row;
-use serde_json;
 use log;
-use native_tls::{TlsConnector};
+use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio_postgres::Row;
 
 /// Represents a crawl job (start URL, status, timestamps).
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -33,8 +33,15 @@ impl Default for CrawlJob {
 impl CrawlJob {
     /// Create a new CrawlJob with random OID and current timestamps.
     pub fn new() -> CrawlJob {
-        let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        let oid: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(15)
+            .map(char::from)
+            .collect();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
         CrawlJob {
             id: 0,
             oid,
@@ -45,7 +52,9 @@ impl CrawlJob {
         }
     }
     /// Table name for SQL.
-    pub fn sql_table_name() -> String { "crawl_jobs".to_string() }
+    pub fn sql_table_name() -> String {
+        "crawl_jobs".to_string()
+    }
     /// SQL for table creation.
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE IF NOT EXISTS crawl_jobs (\n            id serial PRIMARY KEY,\n            oid varchar NOT NULL UNIQUE,\n            start_url varchar NOT NULL,\n            status varchar NOT NULL,\n            created_at BIGINT,\n            updated_at BIGINT\n        );"
@@ -60,7 +69,9 @@ impl CrawlJob {
             "CREATE INDEX IF NOT EXISTS idx_crawl_jobs_updated_at ON crawl_jobs (updated_at);",
         ]
     }
-    pub fn migrations() -> Vec<&'static str> { vec![] }
+    pub fn migrations() -> Vec<&'static str> {
+        vec![]
+    }
     /// Build from DB row.
     pub fn from_row(row: &Row) -> crate::sam::memory::Result<Self> {
         Ok(Self {
@@ -72,7 +83,6 @@ impl CrawlJob {
             updated_at: row.get("updated_at"),
         })
     }
-
 
     /// Build from async DB row.
     pub async fn from_row_async(row: &Row) -> crate::sam::memory::Result<Self> {
@@ -87,12 +97,26 @@ impl CrawlJob {
     }
 
     /// Select jobs from DB.
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> crate::sam::memory::Result<Vec<Self>> {
+    pub fn select(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> crate::sam::memory::Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
+        let jsons = Config::pg_select(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            None,
+        )?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j)
-                .map_err(|e| crate::sam::memory::Error::with_chain(e, "Failed to deserialize CrawlJob"))?;
+            let object: Self = serde_json::from_str(&j).map_err(|e| {
+                crate::sam::memory::Error::with_chain(e, "Failed to deserialize CrawlJob")
+            })?;
             parsed_rows.push(object);
         }
         Ok(parsed_rows)
@@ -113,7 +137,9 @@ impl CrawlJob {
     pub fn save(&self) -> crate::sam::memory::Result<Self> {
         let mut client = Config::client()?;
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
         let rows = Self::select(None, None, None, Some(pg_query.clone()))?;
         if rows.is_empty() {
@@ -124,7 +150,7 @@ impl CrawlJob {
         } else {
             client.execute(
                 "UPDATE crawl_jobs SET start_url = $1, status = $2, updated_at = $3 WHERE oid = $4",
-                &[&self.start_url, &self.status, &self.updated_at, &self.oid]
+                &[&self.start_url, &self.status, &self.updated_at, &self.oid],
             )?;
         }
         Ok(self.clone())
@@ -139,11 +165,28 @@ impl CrawlJob {
         if rows.is_empty() {
             // Insert new job
             let insert_query = "INSERT INTO crawl_jobs (oid, start_url, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)";
-            client.execute(insert_query, &[&self.oid, &self.start_url, &self.status, &self.created_at, &self.updated_at]).await?;
+            client
+                .execute(
+                    insert_query,
+                    &[
+                        &self.oid,
+                        &self.start_url,
+                        &self.status,
+                        &self.created_at,
+                        &self.updated_at,
+                    ],
+                )
+                .await?;
         } else {
             // Update existing job
-            let update_query = "UPDATE crawl_jobs SET start_url = $1, status = $2, updated_at = $3 WHERE oid = $4";
-            client.execute(update_query, &[&self.start_url, &self.status, &self.updated_at, &self.oid]).await?;
+            let update_query =
+                "UPDATE crawl_jobs SET start_url = $1, status = $2, updated_at = $3 WHERE oid = $4";
+            client
+                .execute(
+                    update_query,
+                    &[&self.start_url, &self.status, &self.updated_at, &self.oid],
+                )
+                .await?;
         }
         Ok(self.clone())
     }
@@ -163,16 +206,31 @@ impl CrawlJob {
             if rows.is_empty() {
                 // Insert new job
                 let insert_query = "INSERT INTO crawl_jobs (oid, start_url, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)";
-                client.execute(insert_query, &[&job.oid, &job.start_url, &job.status, &job.created_at, &job.updated_at]).await?;
+                client
+                    .execute(
+                        insert_query,
+                        &[
+                            &job.oid,
+                            &job.start_url,
+                            &job.status,
+                            &job.created_at,
+                            &job.updated_at,
+                        ],
+                    )
+                    .await?;
             } else {
                 // Update existing job
                 let update_query = "UPDATE crawl_jobs SET start_url = $1, status = $2, updated_at = $3 WHERE oid = $4";
-                client.execute(update_query, &[&job.start_url, &job.status, &job.updated_at, &job.oid]).await?;
+                client
+                    .execute(
+                        update_query,
+                        &[&job.start_url, &job.status, &job.updated_at, &job.oid],
+                    )
+                    .await?;
             }
         }
         Ok(())
     }
-
 
     /// Async destroy by oid (removes from DB only).
     pub async fn destroy_async(oid: String) -> crate::sam::memory::Result<bool> {
@@ -205,14 +263,16 @@ impl CrawlJob {
         // Remove from Postgres
         let table = Self::sql_table_name();
         let query = format!("DELETE FROM {table} WHERE oid = $1");
-       
+
         // let pg_client = crate::sam::memory::Config::client_async().await.unwrap();
         // Spawn the connection to drive it
         // tokio::spawn(connection);
-        let rows = pg_client.execute(&query, &[&oid]).await.map_err(|e| crate::sam::memory::Error::with_chain(e, "Failed to delete crawl job"))?;
+        let rows = pg_client
+            .execute(&query, &[&oid])
+            .await
+            .map_err(|e| crate::sam::memory::Error::with_chain(e, "Failed to delete crawl job"))?;
         Ok(rows > 0)
     }
-
 
     /// Destroy by oid.
     pub fn destroy(oid: String) -> crate::sam::memory::Result<bool> {

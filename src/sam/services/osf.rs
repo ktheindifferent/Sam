@@ -2,28 +2,28 @@
 /// ██         ██   ██    ████  ████    
 /// ███████    ███████    ██ ████ ██    
 ///      ██    ██   ██    ██  ██  ██    
-/// ███████ ██ ██   ██ ██ ██      ██ ██ 
+/// ███████ ██ ██   ██ ██ ██      ██ ██
 /// Copyright 2021-2026 The Open Sam Foundation (OSF)
 /// Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 /// Licensed under GPLv3....see LICENSE file.
 
-/// Jupiter.rs acts as a service module to connect sam to your jupiter server 
-/// Jupiter is a rust based wether server devloped by The Open Sam Foundation 
+/// Jupiter.rs acts as a service module to connect sam to your jupiter server
+/// Jupiter is a rust based wether server devloped by The Open Sam Foundation
 /// and can be found in the foundations git repository.
-
 use rouille::Request;
 use rouille::Response;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-
-
-pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(
+    _current_session: crate::sam::memory::cache::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/osf/packages" {
         let jupiter = crate::sam::services::osf::get();
-        match jupiter{
+        match jupiter {
             Ok(j) => {
                 return Ok(Response::json(&j));
-            },
+            }
             Err(e) => {
                 return Ok(Response::text(e.to_string()));
             }
@@ -32,11 +32,11 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
     Ok(Response::empty_404())
 }
 
-
-
 /// curl -X GET "https://jupiter.alpha.opensam.foundation/" -H "Authorization: xxx"
-pub fn get() -> Result<Packages, crate::sam::services::Error> { 
-    let request = reqwest::blocking::Client::new().get("https://osf.opensam.foundation/api/packages").send()?;
+pub fn get() -> Result<Packages, crate::sam::services::Error> {
+    let request = reqwest::blocking::Client::new()
+        .get("https://osf.opensam.foundation/api/packages")
+        .send()?;
     let json = request.json::<Packages>()?;
     Ok(json)
 }

@@ -1,19 +1,17 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
 use std::fs::{self};
 
-use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-
-
+use std::process::{Command, Stdio};
 
 // ./darknet detect cfg/yolov3-tiny.cfg yolov3-tiny.weights data/dog.jpg
 // {id: "dog", probability: 0.570732, left: 129, right: 369, top: 186, bottom: 517}
@@ -21,10 +19,7 @@ use std::path::Path;
 // {id: "car", probability: 0.615291, left: 465, right: 679, top: 71, bottom: 169}
 // {id: "bicycle", probability: 0.585022, left: 206, right: 575, top: 150, bottom: 450}
 pub fn darknet_image_with_gpu(file_path: String) -> Result<String, String> {
-
-
     let _observation_file = fs::read(file_path.as_str()).unwrap();
-
 
     let child = Command::new("sh")
     .arg("-c")
@@ -33,19 +28,17 @@ pub fn darknet_image_with_gpu(file_path: String) -> Result<String, String> {
     .spawn()
     .expect("failed to execute child");
 
-    let output = child
-        .wait_with_output()
-        .expect("failed to wait on child");
-    let darknet = String::from_utf8_lossy(&output.stdout).to_string().replace("\n", "");
+    let output = child.wait_with_output().expect("failed to wait on child");
+    let darknet = String::from_utf8_lossy(&output.stdout)
+        .to_string()
+        .replace("\n", "");
 
     if darknet.to_lowercase().contains("error") || darknet.is_empty() {
-        return Err(format!("deepvision_scan_image_with_cpu_error: {darknet}"))
+        return Err(format!("deepvision_scan_image_with_cpu_error: {darknet}"));
     }
 
     Ok(darknet)
-
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DetectionCoordinates {
@@ -75,10 +68,14 @@ pub async fn darknet_detect(image_path: &str) -> Result<DetectionResult, String>
     let cfg = "/opt/sam/models/yolov3.cfg";
     let weights = "/opt/sam/models/yolov3.weights";
     if !Path::new(cfg).exists() {
-        libsam::services::darknet::download_yolov3_cfg().await.map_err(|e| format!("Failed to download cfg: {e}"))?;
+        libsam::services::darknet::download_yolov3_cfg()
+            .await
+            .map_err(|e| format!("Failed to download cfg: {e}"))?;
     }
     if !Path::new(weights).exists() {
-        libsam::services::darknet::download_yolov3_model().await.map_err(|e| format!("Failed to download weights: {e}"))?;
+        libsam::services::darknet::download_yolov3_model()
+            .await
+            .map_err(|e| format!("Failed to download weights: {e}"))?;
     }
     if !Path::new(image_path).exists() {
         return Err(format!("Image file does not exist: {image_path}"));

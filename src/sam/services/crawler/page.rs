@@ -1,21 +1,21 @@
 //! Crawler page definition and persistence layer.
-//! 
+//!
 //! Provides the CrawledPage struct and async/sync DB/Redis persistence for crawled web pages.
 
-use serde::{Serialize, Deserialize};
-use rand::{thread_rng, Rng};
-use rand::distributions::Alphanumeric;
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::sam::memory::{Config, PostgresQueries};
-use tokio_postgres::Row;
-use serde_json;
 use log;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
+use serde_json;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
-use tokio::io::{AsyncReadExt,AsyncWriteExt};
-use std::collections::HashSet;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_postgres::Row;
 
 /// Represents a crawled web page (tokens, links, timestamp, etc).
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -35,7 +35,11 @@ impl Default for CrawledPage {
 }
 impl CrawledPage {
     pub fn new() -> CrawledPage {
-        let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
+        let oid: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(15)
+            .map(char::from)
+            .collect();
         CrawledPage {
             id: 0,
             crawl_job_oid: String::new(),
@@ -51,7 +55,9 @@ impl CrawledPage {
             },
         }
     }
-    pub fn sql_table_name() -> String { "crawled_pages".to_string() }
+    pub fn sql_table_name() -> String {
+        "crawled_pages".to_string()
+    }
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE IF NOT EXISTS crawled_pages (
             id serial PRIMARY KEY,
@@ -67,14 +73,18 @@ impl CrawledPage {
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_tokens ON crawled_pages (tokens);",
         ]
     }
-    pub fn migrations() -> Vec<&'static str> { vec![
-        "DROP INDEX IF EXISTS idx_crawled_pages_tokens;",
-        "CREATE INDEX idx_crawled_pages_tokens_gin ON crawled_pages USING GIN (tokens);"
-    ]}
-    
+    pub fn migrations() -> Vec<&'static str> {
+        vec![
+            "DROP INDEX IF EXISTS idx_crawled_pages_tokens;",
+            "CREATE INDEX idx_crawled_pages_tokens_gin ON crawled_pages USING GIN (tokens);",
+        ]
+    }
+
     pub fn from_row(row: &Row) -> crate::sam::memory::Result<Self> {
         let tokens_str: Option<String> = row.get("tokens");
-        let tokens = tokens_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
+        let tokens = tokens_str
+            .map(|s| s.split('\n').map(|s| s.to_string()).collect())
+            .unwrap_or_default();
         Ok(Self {
             id: row.get("id"),
             url: row.get("url"),
@@ -87,7 +97,9 @@ impl CrawledPage {
 
     pub async fn from_row_async(row: &Row) -> crate::sam::memory::Result<Self> {
         let tokens_str: Option<String> = row.get("tokens");
-        let tokens = tokens_str.map(|s| s.split('\n').map(|s| s.to_string()).collect()).unwrap_or_default();
+        let tokens = tokens_str
+            .map(|s| s.split('\n').map(|s| s.to_string()).collect())
+            .unwrap_or_default();
         Ok(Self {
             id: row.get("id"),
             url: row.get("url"),
@@ -97,12 +109,12 @@ impl CrawledPage {
             timestamp: row.get("timestamp"),
         })
     }
-   
+
     pub async fn select_async(
         limit: Option<usize>,
         offset: Option<usize>,
         order: Option<String>,
-        query: Option<PostgresQueries>
+        query: Option<PostgresQueries>,
     ) -> crate::sam::memory::Result<Vec<Self>> {
         let config = crate::sam::memory::Config::new();
         let client = config.connect_pool().await?;
@@ -114,35 +126,38 @@ impl CrawledPage {
             order,
             query,
             client,
-        ).await?;
+        )
+        .await?;
         let mut parsed_rows: Vec<Self> = Vec::new();
         for j in jsons {
             let object: Self = match serde_json::from_str(&j) {
                 Ok(obj) => obj,
                 Err(e) => {
                     log::error!("Failed to deserialize CrawledPage: {}", e);
-                    return Err(crate::sam::memory::Error::with_chain(e, "Deserialization error"));
+                    return Err(crate::sam::memory::Error::with_chain(
+                        e,
+                        "Deserialization error",
+                    ));
                 }
             };
             parsed_rows.push(object);
         }
         Ok(parsed_rows)
     }
-   
-
 
     /// Save a batch of CrawledPage objects asynchronously.
     /// If a page with the same URL exists, it is updated; otherwise, it is inserted.
     /// Returns the vector of saved pages.
     pub async fn save_async_batch(
-        pages: &[CrawledPage]
+        pages: &[CrawledPage],
     ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
-
-        let mut pages_cleaned = pages.iter().filter(|p| !p.url.is_empty()).collect::<Vec<_>>();
+        let mut pages_cleaned = pages
+            .iter()
+            .filter(|p| !p.url.is_empty())
+            .collect::<Vec<_>>();
         pages_cleaned.sort_by(|a, b| a.url.cmp(&b.url));
         let mut seen = HashSet::new();
         pages_cleaned.retain(|p| seen.insert(&p.url));
-
 
         // Collect all URLs from pages_cleaned
         let urls: Vec<&String> = pages_cleaned.iter().map(|p| &p.url).collect();
@@ -155,22 +170,21 @@ impl CrawledPage {
         let mut i = 0;
         for url in &urls {
             if i > 0 {
-                pg_query.queries.push(crate::sam::memory::PGCol::String((*url).clone()));
+                pg_query
+                    .queries
+                    .push(crate::sam::memory::PGCol::String((*url).clone()));
                 pg_query.query_columns.push(" OR url =".to_string());
             } else {
-                pg_query.queries.push(crate::sam::memory::PGCol::String((*url).clone()));
+                pg_query
+                    .queries
+                    .push(crate::sam::memory::PGCol::String((*url).clone()));
                 pg_query.query_columns.push("url =".to_string());
             }
             i += 1;
         }
 
         // Query for existing pages by URL
-        let existing_pages = Self::select_async(
-            None,
-            None,
-            None,
-            Some(pg_query)
-        ).await?;
+        let existing_pages = Self::select_async(None, None, None, Some(pg_query)).await?;
 
         // Remove from pages_cleaned any page whose URL matches an existing page
         let existing_urls: HashSet<&String> = existing_pages.iter().map(|p| &p.url).collect();
@@ -184,8 +198,7 @@ impl CrawledPage {
         if pages.is_empty() {
             return Ok(vec![]);
         }
-  
-        
+
         // Prepare bulk UPSERT (insert or update on conflict)
         // Only url is unique, so use ON CONFLICT(url)
         let mut values = Vec::new();
@@ -198,12 +211,7 @@ impl CrawledPage {
         }
         // Then, build values and params
         for (i, page) in pages_cleaned.iter().enumerate() {
-            values.push(format!(
-                "(${}, ${}, ${})",
-                i * 3 + 1,
-                i * 3 + 2,
-                i * 3 + 3
-            ));
+            values.push(format!("(${}, ${}, ${})", i * 3 + 1, i * 3 + 2, i * 3 + 3));
             params.push(&page.url);
             params.push(&tokens_strs[i]);
             params.push(&page.timestamp);
@@ -222,13 +230,12 @@ impl CrawledPage {
         Ok(pages.to_vec())
     }
 
-
-    pub async fn save_async(
-        &self,
-    ) -> crate::sam::memory::Result<Self> {
+    pub async fn save_async(&self) -> crate::sam::memory::Result<Self> {
         let tokens_str = self.tokens.join("\n");
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.url.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.url.clone()));
         pg_query.query_columns.push("url =".to_string());
 
         // Check for existing by url
@@ -238,15 +245,19 @@ impl CrawledPage {
         let client = config.connect_pool().await?;
 
         if rows.is_empty() {
-            client.execute(
-                "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES ($1, $2, $3)",
-                &[&self.url, &tokens_str, &self.timestamp]
-            ).await?;
+            client
+                .execute(
+                    "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES ($1, $2, $3)",
+                    &[&self.url, &tokens_str, &self.timestamp],
+                )
+                .await?;
         } else {
-            client.execute(
-                "UPDATE crawled_pages SET tokens = $1, timestamp = $2 WHERE url = $3",
-                &[&tokens_str, &self.timestamp, &self.url]
-            ).await?;
+            client
+                .execute(
+                    "UPDATE crawled_pages SET tokens = $1, timestamp = $2 WHERE url = $3",
+                    &[&tokens_str, &self.timestamp, &self.url],
+                )
+                .await?;
         }
         Ok(self.clone())
     }
@@ -265,7 +276,10 @@ impl CrawledPage {
         // Tokenize the query (lowercase, split on whitespace, remove punctuation)
         let query_tokens: Vec<String> = query
             .split_whitespace()
-            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+            .map(|w| {
+                w.trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase()
+            })
             .filter(|w| !w.is_empty())
             .collect();
 
@@ -276,13 +290,19 @@ impl CrawledPage {
         // Try to filter at the DB level if possible (e.g., by LIKE on url or tokens)
         let mut pg_query = PostgresQueries::default();
         let like_pattern_zero = format!("%{}%", query_tokens[0]);
-        pg_query.queries.push(crate::sam::memory::PGCol::String(like_pattern_zero.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(like_pattern_zero.clone()));
         pg_query.query_columns.push("url ilike".to_string());
-        pg_query.queries.push(crate::sam::memory::PGCol::String(like_pattern_zero));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(like_pattern_zero));
         pg_query.query_columns.push(" OR tokens ilike".to_string());
         for token in &query_tokens {
             let like_pattern = format!("%{token}%");
-            pg_query.queries.push(crate::sam::memory::PGCol::String(like_pattern));
+            pg_query
+                .queries
+                .push(crate::sam::memory::PGCol::String(like_pattern));
             pg_query.query_columns.push(" OR tokens ilike".to_string());
         }
 
@@ -292,7 +312,9 @@ impl CrawledPage {
             None,
             Some("timestamp DESC".to_string()),
             Some(pg_query.clone()),
-        ).await {
+        )
+        .await
+        {
             Ok(p) if !p.is_empty() => p,
             _ => vec![],
         };
@@ -379,12 +401,10 @@ impl CrawledPage {
         Ok(scored)
     }
 
-
     /// Collect all tokens from crawled pages, rank by frequency, and write top X to a file.
     /// The file will be written to /opt/sam/tmp/common.tokens, one token per line.
     pub async fn write_most_common_tokens_async(limit: usize) -> std::io::Result<()> {
         // Collect all tokens from all crawled pages asynchronously
-     
 
         let pages = match Self::select_async(None, None, None, None).await {
             Ok(p) => p,
@@ -416,7 +436,8 @@ impl CrawledPage {
                 writeln!(file, "{token}")?;
             }
             Ok(())
-        }).await?
+        })
+        .await?
     }
 
     /// Serialize this CrawledPage to a JSON string for P2P sharing.
@@ -431,7 +452,10 @@ impl CrawledPage {
 
     /// Send this CrawledPage to a peer over a TCP stream (async).
     /// The stream must be connected. The message is length-prefixed (u32, big-endian).
-    pub async fn send_p2p<W: tokio::io::AsyncWrite + Unpin>(&self, mut writer: W) -> std::io::Result<()> {
+    pub async fn send_p2p<W: tokio::io::AsyncWrite + Unpin>(
+        &self,
+        mut writer: W,
+    ) -> std::io::Result<()> {
         let json = self.to_p2p_json().map_err(std::io::Error::other)?;
         let bytes = json.as_bytes();
         let len = bytes.len() as u32;
@@ -446,7 +470,9 @@ impl CrawledPage {
         let len = reader.read_u32().await?;
         let mut buf = vec![0u8; len as usize];
         reader.read_exact(&mut buf).await?;
-        let json = String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        Self::from_p2p_json(&json).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        let json = String::from_utf8(buf)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Self::from_p2p_json(&json)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 }

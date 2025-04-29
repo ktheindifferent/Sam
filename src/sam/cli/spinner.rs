@@ -1,5 +1,5 @@
-use tokio::sync::Mutex;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub async fn run_with_spinner<F, Fut>(
     output_lines: &Arc<Mutex<Vec<String>>>,
@@ -36,7 +36,11 @@ pub async fn run_with_spinner<F, Fut>(
                 }
                 let mut lines = spinner_output_lines.lock().await;
                 if spinner_index < lines.len() {
-                    lines[spinner_index] = format!("{} {}", spinner_chars[i % spinner_chars.len()], message_clone);
+                    lines[spinner_index] = format!(
+                        "{} {}",
+                        spinner_chars[i % spinner_chars.len()],
+                        message_clone
+                    );
                 }
             }
             i += 1;

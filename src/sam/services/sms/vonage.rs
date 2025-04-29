@@ -1,6 +1,6 @@
 use reqwest::Client;
-use std::env;
 use serde::Deserialize;
+use std::env;
 
 #[derive(Debug, Deserialize)]
 struct VonageMessage {
@@ -42,7 +42,10 @@ pub async fn send_sms(to: &str, body: &str) -> Result<(), String> {
     if res.status().is_success() {
         Ok(())
     } else {
-        Err(format!("Vonage send failed: {}", res.text().await.unwrap_or_default()))
+        Err(format!(
+            "Vonage send failed: {}",
+            res.text().await.unwrap_or_default()
+        ))
     }
 }
 
@@ -65,10 +68,16 @@ pub async fn receive_sms() -> Result<Vec<String>, String> {
         .map_err(|e| format!("Vonage receive error: {e}"))?;
 
     if !res.status().is_success() {
-        return Err(format!("Vonage receive failed: {}", res.text().await.unwrap_or_default()));
+        return Err(format!(
+            "Vonage receive failed: {}",
+            res.text().await.unwrap_or_default()
+        ));
     }
 
-    let resp: VonageMessagesResponse = res.json().await.map_err(|e| format!("Vonage parse error: {e}"))?;
+    let resp: VonageMessagesResponse = res
+        .json()
+        .await
+        .map_err(|e| format!("Vonage parse error: {e}"))?;
     let mut messages = Vec::new();
     if let Some(items) = resp.items {
         for msg in items {

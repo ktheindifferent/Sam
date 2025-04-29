@@ -1,22 +1,22 @@
-pub mod help;
-pub mod status;
 pub mod cd;
-pub mod darknet;
-pub mod tts;
-pub mod llama;
 pub mod crawler;
-pub mod redis;
-pub mod pg;
+pub mod darknet;
 pub mod docker;
-pub mod spotify;
+pub mod help;
 pub mod lifx;
+pub mod llama;
 pub mod misc;
 pub mod p2p;
+pub mod pg;
+pub mod redis;
 pub mod sms;
+pub mod spotify;
+pub mod status;
+pub mod tts;
 
 use std::path::PathBuf;
-use tokio::sync::Mutex;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub async fn handle_command(
     cmd: &str,
@@ -33,11 +33,20 @@ pub async fn handle_command(
         "ls" => misc::handle_ls(output_lines, current_dir).await,
         "version" => misc::handle_version(output_lines).await,
         "status" => status::handle_status(output_lines, current_dir, human_name).await,
-        "crawler start" | "crawler stop" | "crawler status" => crawler::handle_crawler(cmd, output_lines).await,
-        "redis install" | "redis start" | "redis stop" | "redis status" => redis::handle_redis(cmd, output_lines).await,
-        "pg install" | "pg start" | "pg stop" | "pg status" => pg::handle_pg(cmd, output_lines).await,
-        "docker start" | "docker stop" | "docker status" => docker::handle_docker(cmd, output_lines).await,
-        "spotify start" | "spotify stop" | "spotify status" | "spotify play" | "spotify pause" | "spotify shuffle" => spotify::handle_spotify(cmd, output_lines).await,
+        "crawler start" | "crawler stop" | "crawler status" => {
+            crawler::handle_crawler(cmd, output_lines).await
+        }
+        "redis install" | "redis start" | "redis stop" | "redis status" => {
+            redis::handle_redis(cmd, output_lines).await
+        }
+        "pg install" | "pg start" | "pg stop" | "pg status" => {
+            pg::handle_pg(cmd, output_lines).await
+        }
+        "docker start" | "docker stop" | "docker status" => {
+            docker::handle_docker(cmd, output_lines).await
+        }
+        "spotify start" | "spotify stop" | "spotify status" | "spotify play" | "spotify pause"
+        | "spotify shuffle" => spotify::handle_spotify(cmd, output_lines).await,
         "lifx start" | "lifx stop" | "lifx status" => lifx::handle_lifx(cmd, output_lines).await,
         "sms start" | "sms stop" | "sms status" => sms::handle_sms(cmd, output_lines).await,
         _ if cmd.starts_with("p2p ") => p2p::handle_p2p(cmd, output_lines).await,
@@ -45,7 +54,9 @@ pub async fn handle_command(
         _ if cmd.starts_with("darknet ") => darknet::handle_darknet(cmd, output_lines).await,
         _ if cmd.starts_with("tts ") => tts::handle_tts(cmd, output_lines).await,
         _ if cmd.starts_with("llama") => llama::handle_llama(cmd, output_lines).await,
-        _ if cmd.starts_with("crawl search ") => crawler::handle_crawl_search(cmd, output_lines).await.unwrap(),
+        _ if cmd.starts_with("crawl search ") => crawler::handle_crawl_search(cmd, output_lines)
+            .await
+            .unwrap(),
         _ => misc::handle_default(cmd, output_lines).await,
     }
     // Scroll to bottom if needed

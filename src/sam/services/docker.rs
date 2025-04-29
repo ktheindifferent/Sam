@@ -1,7 +1,7 @@
+use log::{error, info};
 use std::process::{Command, Stdio};
-use log::{info, error};
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 /// Install Docker if not present and ensure daemon is running.
 pub async fn install() {
@@ -24,10 +24,7 @@ pub async fn install() {
 pub async fn start() {
     #[cfg(target_os = "macos")]
     {
-        let output = Command::new("open")
-            .arg("-a")
-            .arg("Docker")
-            .output();
+        let output = Command::new("open").arg("-a").arg("Docker").output();
         match output {
             Ok(o) if o.status.success() => info!("Started Docker Desktop."),
             _ => error!("Failed to start Docker Desktop. Please start it manually."),
@@ -48,7 +45,7 @@ pub async fn start() {
         let output = Command::new("powershell")
             .args(&[
                 "-Command",
-                "Start-Process -FilePath 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'"
+                "Start-Process -FilePath 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'",
             ])
             .output();
         match output {
@@ -83,10 +80,7 @@ pub async fn stop() {
     #[cfg(target_os = "windows")]
     {
         let output = Command::new("powershell")
-            .args(&[
-                "-Command",
-                "Stop-Process -Name 'Docker Desktop' -Force"
-            ])
+            .args(&["-Command", "Stop-Process -Name 'Docker Desktop' -Force"])
             .output();
         match output {
             Ok(o) if o.status.success() => info!("Stopped Docker Desktop."),

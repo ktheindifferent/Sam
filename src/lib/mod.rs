@@ -1,13 +1,13 @@
+// use futures::stream::StreamExt;
 use std::fs;
 use std::io::{self, Result};
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
-use zip::read::ZipArchive;
-use std::os::unix::fs::PermissionsExt;
 use tokio::fs as async_fs;
 use tokio::io::{self as async_io, AsyncWriteExt};
-use futures::stream::StreamExt;
 use tokio::process::Command as TokioCommand;
+use zip::read::ZipArchive;
 
 pub mod services;
 
@@ -32,7 +32,6 @@ pub fn print_banner(user: String) {
 }
 
 pub async fn cmd_async(command: &str) -> Result<String> {
-
     let output = TokioCommand::new("sh")
         .arg("-c")
         .arg(command)
@@ -43,10 +42,7 @@ pub async fn cmd_async(command: &str) -> Result<String> {
 }
 
 pub fn cmd(command: &str) -> Result<String> {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output()?;
+    let output = Command::new("sh").arg("-c").arg(command).output()?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -74,30 +70,33 @@ pub async fn extract_zip_async(zip_path: &str, extract_path: &str) -> Result<()>
     }
 
     // Now process each file asynchronously
-    let futs = file_infos.into_iter().map(|(name, is_dir, enclosed_name, unix_mode, contents)| {
-        let extract_path = extract_path.to_owned();
-        async move {
-            let outpath = match enclosed_name {
-                Some(p) => Path::new(&extract_path).join(p),
-                None => return Err(io::Error::other("Invalid path")),
-            };
+    let futs = file_infos
+        .into_iter()
+        .map(|(_name, is_dir, enclosed_name, unix_mode, contents)| {
+            let extract_path = extract_path.to_owned();
+            async move {
+                let outpath = match enclosed_name {
+                    Some(p) => Path::new(&extract_path).join(p),
+                    None => return Err(io::Error::other("Invalid path")),
+                };
 
-            if is_dir {
-                async_fs::create_dir_all(&outpath).await?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    async_fs::create_dir_all(parent).await?;
+                if is_dir {
+                    async_fs::create_dir_all(&outpath).await?;
+                } else {
+                    if let Some(parent) = outpath.parent() {
+                        async_fs::create_dir_all(parent).await?;
+                    }
+                    let mut outfile = async_fs::File::create(&outpath).await?;
+                    outfile.write_all(&contents).await?;
+                    #[cfg(unix)]
+                    if let Some(mode) = unix_mode {
+                        async_fs::set_permissions(&outpath, fs::Permissions::from_mode(mode))
+                            .await?;
+                    }
                 }
-                let mut outfile = async_fs::File::create(&outpath).await?;
-                outfile.write_all(&contents).await?;
-                #[cfg(unix)]
-                if let Some(mode) = unix_mode {
-                    async_fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).await?;
-                }
+                Ok(())
             }
-            Ok(())
-        }
-    });
+        });
 
     futures::future::try_join_all(futs).await?;
     Ok(())
@@ -111,7 +110,8 @@ pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let outpath = Path::new(extract_path).join(
-            file.enclosed_name().ok_or_else(|| io::Error::other("Invalid path"))?
+            file.enclosed_name()
+                .ok_or_else(|| io::Error::other("Invalid path"))?,
         );
 
         if file.name().ends_with('/') {
@@ -134,4 +134,3 @@ pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
 
     Ok(())
 }
-

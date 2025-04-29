@@ -1,22 +1,22 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+use rand::{distributions::Alphanumeric, Rng};
 use rouille::{Request, Response};
-use std::thread;
-use std::time::Duration;
-use std::process::Command;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
-use rand::{distributions::Alphanumeric, Rng};
 use std::path::Path;
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use std::process::Command;
+use std::thread;
+use std::time::Duration;
 
 const TTS_TMP_DIR: &str = "/opt/sam/tmp/tts";
 const MANIFEST_PATH: &str = "/opt/sam/tmp/tts/manifest.json";
@@ -52,24 +52,30 @@ fn ensure_tts_tmp_dir() {
     }
 }
 
-pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(
+    _current_session: crate::sam::memory::cache::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/tts" {
         let input = request.get_param("text").unwrap();
-        return Ok(Response::from_data("audio/wav", crate::sam::services::tts::get(input).unwrap()));
-        
+        return Ok(Response::from_data(
+            "audio/wav",
+            crate::sam::services::tts::get(input).unwrap(),
+        ));
     }
     Ok(Response::empty_404())
 }
 
-pub fn init(){
-
-    let tts_thead = thread::Builder::new().name("mozillatts".to_string()).spawn(move || {
-        crate::sam::tools::uinx_cmd("docker run -p 5002:5002 synesthesiam/mozillatts");
-    });
-    match tts_thead{
+pub fn init() {
+    let tts_thead = thread::Builder::new()
+        .name("mozillatts".to_string())
+        .spawn(move || {
+            crate::sam::tools::uinx_cmd("docker run -p 5002:5002 synesthesiam/mozillatts");
+        });
+    match tts_thead {
         Ok(_) => {
             log::info!("tts server started successfully");
-        },
+        }
         Err(e) => {
             log::error!("failed to initialize tts server: {}", e);
         }
@@ -104,7 +110,7 @@ pub fn get(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
             manifest.entries.insert(text.clone(), file_name);
             save_manifest(&manifest);
             Ok(x)
-        },
+        }
         Err(_) => {
             match fetch_local(text.clone()) {
                 Ok(x) => {
@@ -121,7 +127,7 @@ pub fn get(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
                     manifest.entries.insert(text.clone(), file_name);
                     save_manifest(&manifest);
                     Ok(x)
-                },
+                }
                 Err(_) => {
                     match fetch_online(text.clone()) {
                         Ok(x) => {
@@ -138,30 +144,37 @@ pub fn get(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
                             manifest.entries.insert(text.clone(), file_name);
                             save_manifest(&manifest);
                             Ok(x)
-                        },
+                        }
                         Err(e) => Err(e),
                     }
                 }
             }
         }
     }
-
 }
 
 pub fn fetch_online(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
     let client = reqwest::blocking::Client::new();
-    let bytes = client.get(format!("https://tts.opensam.foundation/api/tts?text={text}&speaker_id=&style_wav="))
+    let bytes = client
+        .get(format!(
+            "https://tts.opensam.foundation/api/tts?text={text}&speaker_id=&style_wav="
+        ))
         .basic_auth("sam", Some("87654321"))
         .timeout(Duration::from_secs(5))
-        .send()?.bytes()?;
+        .send()?
+        .bytes()?;
     Ok(bytes.to_vec())
 }
 
 pub fn fetch_local(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
     let client = reqwest::blocking::Client::new();
-    let bytes = client.get(format!("http://localhost:5002/api/tts?text={text}&speaker_id=&style_wav="))
+    let bytes = client
+        .get(format!(
+            "http://localhost:5002/api/tts?text={text}&speaker_id=&style_wav="
+        ))
         .timeout(Duration::from_secs(5))
-        .send()?.bytes()?;
+        .send()?
+        .bytes()?;
     Ok(bytes.to_vec())
 }
 pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -199,7 +212,12 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
             .collect();
         let tmp_path = Path::new(TTS_TMP_DIR).join(format!("{rand_name}.wav"));
         Command::new("say")
-            .args(["-o", tmp_path.to_str().unwrap(), "--data-format=LEF32@22050", text])
+            .args([
+                "-o",
+                tmp_path.to_str().unwrap(),
+                "--data-format=LEF32@22050",
+                text,
+            ])
             .output()?;
         let mut file = File::open(&tmp_path)?;
         let mut buf = Vec::new();
@@ -262,9 +280,7 @@ pub fn tts_cross_platform(text: &str) -> Result<(), Box<dyn std::error::Error>> 
 
 #[cfg(target_os = "macos")]
 pub fn tts_cross_platform(text: &str) -> Result<(), Box<dyn std::error::Error>> {
-    Command::new("say")
-        .arg(text)
-        .spawn()?;
+    Command::new("say").arg(text).spawn()?;
     Ok(())
 }
 
@@ -273,7 +289,12 @@ pub fn tts_cross_platform(text: &str) -> Result<(), Box<dyn std::error::Error>> 
     // Try espeak, fallback to festival
     if Command::new("espeak").arg(text).spawn().is_ok() {
         Ok(())
-    } else if Command::new("festival").arg("--tts").arg(text).spawn().is_ok() {
+    } else if Command::new("festival")
+        .arg("--tts")
+        .arg(text)
+        .spawn()
+        .is_ok()
+    {
         Ok(())
     } else {
         Err("No TTS engine found (espeak or festival required)".into())

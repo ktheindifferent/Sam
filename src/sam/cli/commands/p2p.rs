@@ -12,7 +12,8 @@ pub async fn handle_p2p(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::p2p::install().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "p2p start" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -23,7 +24,8 @@ pub async fn handle_p2p(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::p2p::start().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "p2p stop" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -34,7 +36,8 @@ pub async fn handle_p2p(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::p2p::stop().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "p2p status" => {
             let status = crate::sam::services::p2p::status();

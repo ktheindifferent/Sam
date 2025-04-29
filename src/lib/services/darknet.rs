@@ -1,8 +1,8 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
@@ -46,7 +46,8 @@ pub async fn build_darknet() -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to create dest binary: {e}"))?;
 
-    dest_file.write_all(&bin_bytes)
+    dest_file
+        .write_all(&bin_bytes)
         .await
         .map_err(|e| format!("Failed to write binary: {e}"))?;
 
@@ -66,7 +67,6 @@ pub async fn build_darknet() -> Result<(), String> {
 }
 
 pub async fn download_cfg_index() -> Result<(), String> {
-
     let url = "https://github.com/ktheindifferent/Darknet/tree/master/cfg";
     let output_dir = "./cfg";
 
@@ -79,10 +79,16 @@ pub async fn download_cfg_index() -> Result<(), String> {
         .map_err(|e| format!("Failed to fetch cfg index: {e}"))?;
 
     if !resp.status().is_success() {
-        return Err(format!("Failed to fetch cfg index, status: {}", resp.status()));
+        return Err(format!(
+            "Failed to fetch cfg index, status: {}",
+            resp.status()
+        ));
     }
 
-    let body = resp.text().await.map_err(|e| format!("Failed to read body: {e}"))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read body: {e}"))?;
 
     // Parse HTML to extract file names
     let document = Html::parse_document(&body);
@@ -124,16 +130,24 @@ pub async fn download_cfg_index() -> Result<(), String> {
             .map_err(|e| format!("Failed to download {name}: {e}"))?;
 
         if !resp.status().is_success() {
-            return Err(format!("Failed to download {}, status: {}", name, resp.status()));
+            return Err(format!(
+                "Failed to download {}, status: {}",
+                name,
+                resp.status()
+            ));
         }
 
-        let bytes = resp.bytes().await.map_err(|e| format!("Failed to read {name} bytes: {e}"))?;
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read {name} bytes: {e}"))?;
 
         let mut out_file = async_fs::File::create(&cfg_path)
             .await
             .map_err(|e| format!("Failed to create {cfg_path}: {e}"))?;
 
-        out_file.write_all(&bytes)
+        out_file
+            .write_all(&bytes)
             .await
             .map_err(|e| format!("Failed to write {cfg_path}: {e}"))?;
     }
@@ -158,13 +172,17 @@ pub async fn download_yolov3_cfg() -> Result<(), String> {
         return Err(format!("Failed to download cfg, status: {}", resp.status()));
     }
 
-    let bytes = resp.bytes().await.map_err(|e| format!("Failed to read cfg bytes: {e}"))?;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read cfg bytes: {e}"))?;
 
     let mut out_file = async_fs::File::create(&output_path)
         .await
         .map_err(|e| format!("Failed to create cfg file: {e}"))?;
 
-    out_file.write_all(&bytes)
+    out_file
+        .write_all(&bytes)
         .await
         .map_err(|e| format!("Failed to write cfg file: {e}"))?;
 
@@ -185,16 +203,23 @@ pub async fn download_yolov3_model() -> Result<(), String> {
         .map_err(|e| format!("Failed to download model: {e}"))?;
 
     if !resp.status().is_success() {
-        return Err(format!("Failed to download model, status: {}", resp.status()));
+        return Err(format!(
+            "Failed to download model, status: {}",
+            resp.status()
+        ));
     }
 
-    let bytes = resp.bytes().await.map_err(|e| format!("Failed to read model bytes: {e}"))?;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read model bytes: {e}"))?;
 
     let mut out_file = async_fs::File::create(&output_path)
         .await
         .map_err(|e| format!("Failed to create model file: {e}"))?;
 
-    out_file.write_all(&bytes)
+    out_file
+        .write_all(&bytes)
         .await
         .map_err(|e| format!("Failed to write model file: {e}"))?;
 
@@ -203,11 +228,11 @@ pub async fn download_yolov3_model() -> Result<(), String> {
 
 pub async fn install() -> std::io::Result<()> {
     build_darknet().await.map_err(std::io::Error::other)?;
-    download_yolov3_model().await.map_err(std::io::Error::other)?;
+    download_yolov3_model()
+        .await
+        .map_err(std::io::Error::other)?;
     download_yolov3_cfg().await.map_err(std::io::Error::other)?;
     download_cfg_index().await.map_err(std::io::Error::other)?;
     let _ = crate::cmd_async("chmod +x /opt/sam/bin/darknet");
     Ok(())
 }
-
-

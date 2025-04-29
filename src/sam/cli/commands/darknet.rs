@@ -25,7 +25,8 @@ pub async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 {
                     let mut lines = spinner_output_lines.lock().await;
                     if spinner_index < lines.len() {
-                        lines[spinner_index] = format!("{} Detecting...", spinner_chars[i % spinner_chars.len()]);
+                        lines[spinner_index] =
+                            format!("{} Detecting...", spinner_chars[i % spinner_chars.len()]);
                     }
                 }
                 i += 1;
@@ -41,7 +42,11 @@ pub async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             if spinner_index < lines.len() {
                 match output {
                     Ok(result) => {
-                        if let Some(best) = result.objects.iter().max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal)) {
+                        if let Some(best) = result.objects.iter().max_by(|a, b| {
+                            a.confidence
+                                .partial_cmp(&b.confidence)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        }) {
                             lines[spinner_index] = format!("Detected: {}", best.name);
                         } else {
                             lines[spinner_index] = "No objects detected.".to_string();

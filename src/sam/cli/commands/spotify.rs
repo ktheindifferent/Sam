@@ -12,7 +12,8 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::spotify::start().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "spotify stop" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -23,17 +24,17 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::spotify::stop().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "spotify status" => {
             crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Checking Spotify playback status...",
                 |lines, status| lines.push(format!("Spotify status: {status}")),
-                || async {
-                    crate::sam::services::spotify::status()
-                },
-            ).await;
+                || async { crate::sam::services::spotify::status() },
+            )
+            .await;
         }
         "spotify play" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -44,7 +45,8 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::spotify::play().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "spotify pause" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -55,7 +57,8 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::spotify::pause().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "spotify shuffle" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -66,7 +69,8 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::spotify::shuffle().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         _ => {
             let mut out = output_lines.lock().await;

@@ -1,8 +1,8 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
@@ -12,14 +12,13 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
-
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::unix::fs::PermissionsExt; // Added for `from_mode`
 
+use crate::sam::tools;
+use error_chain::error_chain; // Add missing import for tools module
 
-use error_chain::error_chain;
-use crate::sam::tools; // Add missing import for tools module
-
+#[allow(unexpected_cfgs)]
 error_chain! {
     foreign_links {
         Io(std::io::Error);
@@ -69,9 +68,15 @@ pub static MIME_MAP: [(&str, &str); 157] = [
     (".dmg", "application/x-apple-diskimage"),
     (".doc", "application/msword"),
     (".docm", "application/vnd.ms-word.document.macroEnabled.12"),
-    (".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    (
+        ".docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ),
     (".dot", "application/msword"),
-    (".dotx", "application/vnd.openxmlformats-officedocument.wordprocessingml.template"),
+    (
+        ".dotx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+    ),
     (".dylib", "application/x-dylib"),
     (".eot", "application/vnd.ms-fontobject"),
     (".epub", "application/epub+zip"),
@@ -142,8 +147,14 @@ pub static MIME_MAP: [(&str, &str); 157] = [
     (".pls", "audio/x-scpls"),
     (".png", "image/png"),
     (".ppt", "application/vnd.ms-powerpoint"),
-    (".pptm", "application/vnd.ms-powerpoint.presentation.macroEnabled.12"),
-    (".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    (
+        ".pptm",
+        "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+    ),
+    (
+        ".pptx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ),
     (".ps", "application/postscript"),
     (".py", "application/x-python"),
     (".rar", "application/x-rar-compressed"),
@@ -179,7 +190,10 @@ pub static MIME_MAP: [(&str, &str); 157] = [
     (".xhtml", "application/xhtml+xml"),
     (".xls", "application/vnd.ms-excel"),
     (".xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12"),
-    (".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    (
+        ".xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ),
     (".xml", "application/xml"),
     (".xps", "application/vnd.ms-xpsdocument"),
     (".xz", "application/x-xz"),
@@ -187,7 +201,6 @@ pub static MIME_MAP: [(&str, &str); 157] = [
     (".yml", "application/x-yaml"),
     (".zip", "application/zip"),
 ];
-
 
 impl From<zip::result::ZipError> for tools::Error {
     fn from(err: zip::result::ZipError) -> Self {
@@ -207,7 +220,6 @@ pub fn get_user_from_whois(user: &str) -> Result<String> {
         Ok(user.to_string())
     }
 }
-
 
 /// Executes a Python 3 command and returns its output as a `String`.
 pub fn python3(command: &str) -> Result<String> {
@@ -230,10 +242,7 @@ pub fn cmd(command: &str) -> Result<String> {
 
 /// Executes a Linux shell command and logs the result.
 pub fn uinx_cmd(command: &str) {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output();
+    let output = Command::new("sh").arg("-c").arg(command).output();
 
     match output {
         Ok(cmd) if cmd.status.success() => {
@@ -295,4 +304,3 @@ pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
 
     Ok(())
 }
-

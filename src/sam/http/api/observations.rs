@@ -1,8 +1,8 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
@@ -12,18 +12,25 @@ use rouille::Response;
 
 use std::path::Path;
 
-pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(
+    _current_session: crate::sam::memory::cache::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/observations" {
         let skip = request.get_param("skip");
         let mut skip_number: usize = 0;
-        if skip.is_some(){
+        if skip.is_some() {
             skip_number = skip.unwrap().parse::<usize>().unwrap();
         }
 
-        let objects = crate::sam::memory::Observation::select_lite(Some(1), Some(skip_number), Some("timestamp DESC".to_string()), None)?;
+        let objects = crate::sam::memory::Observation::select_lite(
+            Some(1),
+            Some(skip_number),
+            Some("timestamp DESC".to_string()),
+            None,
+        )?;
         return Ok(Response::json(&objects));
     }
-
 
     if request.url().contains("/api/observations/file/") {
         let url = request.url();
@@ -33,11 +40,14 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
 
         // Build query
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(oid.to_string()));
         pg_query.query_columns.push("oid =".to_string());
 
-        // Select project by oid 
-        let observations = crate::sam::memory::Observation::select(None, None, None, Some(pg_query)).unwrap();
+        // Select project by oid
+        let observations =
+            crate::sam::memory::Observation::select(None, None, None, Some(pg_query)).unwrap();
         let observation = observations[0].clone();
 
         let response = Response::from_data("audio/wav", observation.observation_file.unwrap());
@@ -54,25 +64,29 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
 
         // Build query
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(oid.to_string()));
         pg_query.query_columns.push("oid =".to_string());
 
-        // Select project by oid 
-        let observations = crate::sam::memory::Observation::select(None, None, None, Some(pg_query)).unwrap();
+        // Select project by oid
+        let observations =
+            crate::sam::memory::Observation::select(None, None, None, Some(pg_query)).unwrap();
         let observation = observations[0].clone();
 
         let wav_data = observation.observation_file.unwrap();
 
-        let tmp_file_path = format!("/opt/sam/tmp/observations/vwav/{}.wav", observation.oid).as_str().to_string();
+        let tmp_file_path = format!("/opt/sam/tmp/observations/vwav/{}.wav", observation.oid)
+            .as_str()
+            .to_string();
 
         // Use cached tmp file if it already exists
         let cache_path = format!("{}.16.wav.mp4", tmp_file_path.clone());
-        if Path::new(&cache_path).exists(){
+        if Path::new(&cache_path).exists() {
             let data = std::fs::read(format!("{}.16.wav.mp4", tmp_file_path.clone()).as_str())?;
             let response = Response::from_data("video/mp4", data);
             return Ok(response);
         }
-
 
         std::fs::write(tmp_file_path.clone(), wav_data)?;
 
@@ -82,20 +96,27 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
                 "ffmpeg -y -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav",
                 tmp_file_path.clone(),
                 tmp_file_path.clone()
-            ).as_str()
+            )
+            .as_str(),
         );
         // crate::sam::tools::uinx_cmd(format!("cp {} {}.16.wav", tmp_file_path.clone(), tmp_file_path.clone()));
 
         crate::sam::tools::uinx_cmd(
             format!(
-                "/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts", 
+                "/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts",
                 tmp_file_path.clone()
-            ).as_str()
+            )
+            .as_str(),
         );
-    
-        crate::sam::services::stt::patch_whisper_wts(format!("{}.16.wav.wts", tmp_file_path.clone()))?;
 
-        crate::sam::tools::uinx_cmd(format!("chmod +x {}.16.wav.wts", tmp_file_path.clone()).as_str());
+        crate::sam::services::stt::patch_whisper_wts(format!(
+            "{}.16.wav.wts",
+            tmp_file_path.clone()
+        ))?;
+
+        crate::sam::tools::uinx_cmd(
+            format!("chmod +x {}.16.wav.wts", tmp_file_path.clone()).as_str(),
+        );
 
         crate::sam::tools::uinx_cmd(format!("{}.16.wav.wts", tmp_file_path.clone()).as_str());
 
@@ -111,8 +132,6 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
 
         return Ok(response);
     }
-
-
 
     Ok(Response::empty_404())
 }

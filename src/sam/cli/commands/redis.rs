@@ -12,7 +12,8 @@ pub async fn handle_redis(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::redis::install().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "redis start" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -23,7 +24,8 @@ pub async fn handle_redis(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::redis::start().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "redis stop" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -34,17 +36,17 @@ pub async fn handle_redis(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::redis::stop().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "redis status" => {
             crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Checking Redis service status...",
                 |lines, status| lines.push(format!("Redis service status: {status}")),
-                || async {
-                    crate::sam::services::redis::status().await.to_string()
-                },
-            ).await;
+                || async { crate::sam::services::redis::status().await.to_string() },
+            )
+            .await;
         }
         _ => {
             let mut out = output_lines.lock().await;

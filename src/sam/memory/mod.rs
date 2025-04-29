@@ -1,8 +1,8 @@
 pub mod config;
 pub mod human;
 pub mod location;
-pub mod thing;
 pub mod observation;
+pub mod thing;
 // pub mod service;
 // pub mod file_storage;
 // pub mod notification;
@@ -19,8 +19,8 @@ pub mod storage;
 pub use config::Config;
 pub use human::Human;
 pub use location::*;
-pub use thing::*;
 pub use observation::*;
+pub use thing::*;
 // pub use service::*;
 // pub use file_storage::*;
 // pub use notification::*;
@@ -33,6 +33,7 @@ pub use room::*;
 
 // ===== Shared error_chain! block =====
 use error_chain::error_chain;
+#[allow(unexpected_cfgs)]
 error_chain! {
     foreign_links {
         Io(std::io::Error);
@@ -50,17 +51,17 @@ error_chain! {
 
 // ===== Shared utility types and enums =====
 
-use serde::{Serialize, Deserialize};
-use std::fmt;
+use serde::{Deserialize, Serialize};
 use std::env;
+use std::fmt;
 
 // PostgresServer config struct
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PostgresServer {
-	pub db_name: String,
+    pub db_name: String,
     pub username: String,
     pub password: String,
-	pub address: String
+    pub address: String,
 }
 impl Default for PostgresServer {
     fn default() -> Self {
@@ -73,11 +74,11 @@ impl PostgresServer {
         let username = env::var("PG_USER").expect("$PG_USER is not set");
         let password = env::var("PG_PASS").expect("$PG_PASS is not set");
         let address = env::var("PG_ADDRESS").expect("$PG_ADDRESS is not set");
-        PostgresServer{
-            db_name, 
-            username, 
-            password, 
-            address
+        PostgresServer {
+            db_name,
+            username,
+            password,
+            address,
         }
     }
 }
@@ -85,9 +86,9 @@ impl PostgresServer {
 // Not tracked in SQL
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct PostgresQueries {
-    pub queries: Vec<PGCol>, 
+    pub queries: Vec<PGCol>,
     pub query_columns: Vec<String>,
-    pub append: Option<String>
+    pub append: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -105,7 +106,7 @@ pub struct DeepVisionResult {
     pub left: i64,
     pub bottom: i64,
     pub right: i64,
-    pub top: i64
+    pub top: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -115,14 +116,14 @@ pub struct WhoioResult {
     pub left: i64,
     pub bottom: i64,
     pub right: i64,
-    pub top: i64
+    pub top: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ObservationType {
     UNKNOWN,
     SEEN,
-    HEARD
+    HEARD,
 }
 impl fmt::Display for ObservationType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -133,10 +134,10 @@ impl std::str::FromStr for ObservationType {
     type Err = ();
     fn from_str(input: &str) -> std::result::Result<ObservationType, Self::Err> {
         match input {
-            "UNKNOWN"  => Ok(ObservationType::UNKNOWN),
-            "SEEN"  => Ok(ObservationType::SEEN),
-            "HEARD"  => Ok(ObservationType::HEARD),
-            _      => Err(()),
+            "UNKNOWN" => Ok(ObservationType::UNKNOWN),
+            "SEEN" => Ok(ObservationType::SEEN),
+            "HEARD" => Ok(ObservationType::HEARD),
+            _ => Err(()),
         }
     }
 }
@@ -302,7 +303,7 @@ pub enum ObservationObjects {
     #[allow(non_camel_case_types)]
     HAIR_DRIER,
     #[allow(non_camel_case_types)]
-    TOOTHBRUSH
+    TOOTHBRUSH,
 }
 impl fmt::Display for ObservationObjects {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -313,86 +314,86 @@ impl std::str::FromStr for ObservationObjects {
     type Err = ();
     fn from_str(input: &str) -> std::result::Result<ObservationObjects, Self::Err> {
         match input {
-            "QR_CODE"  => Ok(ObservationObjects::QR_CODE),
-            "PERSON"  => Ok(ObservationObjects::PERSON),
-            "BICYCLE"  => Ok(ObservationObjects::BICYCLE),
-            "CAR"  => Ok(ObservationObjects::CAR),
-            "MOTORBIKE"  => Ok(ObservationObjects::MOTORBIKE),
-            "AEROPLANE"  => Ok(ObservationObjects::AEROPLANE),
-            "BUS"  => Ok(ObservationObjects::BUS),
-            "TRAIN"  => Ok(ObservationObjects::TRAIN),
-            "TRUCK"  => Ok(ObservationObjects::TRUCK),
-            "BOAT"  => Ok(ObservationObjects::BOAT),
-            "TRAFFIC_LIGHT"  => Ok(ObservationObjects::TRAFFIC_LIGHT),
-            "FIRE_HYDRANT"  => Ok(ObservationObjects::FIRE_HYDRANT),
-            "STOP_SIGN"  => Ok(ObservationObjects::STOP_SIGN),
-            "PARKING_METER"  => Ok(ObservationObjects::PARKING_METER),
-            "BENCH"  => Ok(ObservationObjects::BENCH),
-            "BIRD"  => Ok(ObservationObjects::BIRD),
-            "CAT"  => Ok(ObservationObjects::CAT),
-            "DOG"  => Ok(ObservationObjects::DOG),
-            "HORSE"  => Ok(ObservationObjects::HORSE),
-            "SHEEP"  => Ok(ObservationObjects::SHEEP),
-            "COW"  => Ok(ObservationObjects::COW),
-            "ELEPHANT"  => Ok(ObservationObjects::ELEPHANT),
-            "BEAR"  => Ok(ObservationObjects::BEAR),
-            "ZEBRA"  => Ok(ObservationObjects::ZEBRA),
-            "GIRAFFE"  => Ok(ObservationObjects::GIRAFFE),
-            "BACKPACK"  => Ok(ObservationObjects::BACKPACK),
-            "UMBRELLA"  => Ok(ObservationObjects::UMBRELLA),
-            "HANDBAG"  => Ok(ObservationObjects::HANDBAG),
-            "TIE"  => Ok(ObservationObjects::TIE),
-            "SUITCASE"  => Ok(ObservationObjects::SUITCASE),
-            "FRISBEE"  => Ok(ObservationObjects::FRISBEE),
-            "SKIS"  => Ok(ObservationObjects::SKIS),
-            "SNOWBOARD"  => Ok(ObservationObjects::SNOWBOARD),
-            "SPORTS_BALL"  => Ok(ObservationObjects::SPORTS_BALL),
-            "KITE"  => Ok(ObservationObjects::KITE),
-            "BASEBALL_BAT"  => Ok(ObservationObjects::BASEBALL_BAT),
-            "SKATEBOARD"  => Ok(ObservationObjects::SKATEBOARD),
-            "SURFBOARD"  => Ok(ObservationObjects::SURFBOARD),
-            "TENNIS_RACKET"  => Ok(ObservationObjects::TENNIS_RACKET),
-            "BOTTLE"  => Ok(ObservationObjects::BOTTLE),
-            "WINE_GLASS"  => Ok(ObservationObjects::WINE_GLASS),
-            "CUP"  => Ok(ObservationObjects::CUP),
-            "FORK"  => Ok(ObservationObjects::FORK),
-            "KNIFE"  => Ok(ObservationObjects::KNIFE),
-            "SPOON"  => Ok(ObservationObjects::SPOON),
-            "BOWL"  => Ok(ObservationObjects::BOWL),
-            "BANANA"  => Ok(ObservationObjects::BANANA),
-            "APPLE"  => Ok(ObservationObjects::APPLE),
-            "SANDWICH"  => Ok(ObservationObjects::SANDWICH),
-            "ORANGE"  => Ok(ObservationObjects::ORANGE),
-            "BROCCOLI"  => Ok(ObservationObjects::BROCCOLI),
-            "CARROT"  => Ok(ObservationObjects::CARROT),
-            "HOT_DOG"  => Ok(ObservationObjects::HOT_DOG),
-            "PIZZA"  => Ok(ObservationObjects::PIZZA),
-            "DONUT"  => Ok(ObservationObjects::DONUT),
-            "CAKE"  => Ok(ObservationObjects::CAKE),
-            "CHAIR"  => Ok(ObservationObjects::CHAIR),
-            "SOFA"  => Ok(ObservationObjects::SOFA),
-            "POTTED_PLANT"  => Ok(ObservationObjects::POTTED_PLANT),
-            "BED"  => Ok(ObservationObjects::BED),
-            "DINING_TABLE"  => Ok(ObservationObjects::DINING_TABLE),
-            "TOILET"  => Ok(ObservationObjects::TOILET),
-            "TV_MONITOR"  => Ok(ObservationObjects::TV_MONITOR),
-            "LAPTOP"  => Ok(ObservationObjects::LAPTOP),
-            "MOUSE"  => Ok(ObservationObjects::MOUSE),
-            "REMOTE"  => Ok(ObservationObjects::REMOTE),
-            "KEYBOARD"  => Ok(ObservationObjects::KEYBOARD),
-            "CELL_PHONE"  => Ok(ObservationObjects::CELL_PHONE),
-            "MICROWAVE"  => Ok(ObservationObjects::MICROWAVE),
-            "OVEN"  => Ok(ObservationObjects::OVEN),
-            "SINK"  => Ok(ObservationObjects::SINK),
-            "REFRIGERATOR"  => Ok(ObservationObjects::REFRIGERATOR),
-            "BOOK"  => Ok(ObservationObjects::BOOK),
-            "CLOCK"  => Ok(ObservationObjects::CLOCK),
-            "VASE"  => Ok(ObservationObjects::VASE),
-            "SCISSORS"  => Ok(ObservationObjects::SCISSORS),
-            "TEDDY_BEAR"  => Ok(ObservationObjects::TEDDY_BEAR),
-            "HAIR_DRIER"  => Ok(ObservationObjects::HAIR_DRIER),
-            "TOOTHBRUSH"  => Ok(ObservationObjects::TOOTHBRUSH),
-            _      => Err(()),
+            "QR_CODE" => Ok(ObservationObjects::QR_CODE),
+            "PERSON" => Ok(ObservationObjects::PERSON),
+            "BICYCLE" => Ok(ObservationObjects::BICYCLE),
+            "CAR" => Ok(ObservationObjects::CAR),
+            "MOTORBIKE" => Ok(ObservationObjects::MOTORBIKE),
+            "AEROPLANE" => Ok(ObservationObjects::AEROPLANE),
+            "BUS" => Ok(ObservationObjects::BUS),
+            "TRAIN" => Ok(ObservationObjects::TRAIN),
+            "TRUCK" => Ok(ObservationObjects::TRUCK),
+            "BOAT" => Ok(ObservationObjects::BOAT),
+            "TRAFFIC_LIGHT" => Ok(ObservationObjects::TRAFFIC_LIGHT),
+            "FIRE_HYDRANT" => Ok(ObservationObjects::FIRE_HYDRANT),
+            "STOP_SIGN" => Ok(ObservationObjects::STOP_SIGN),
+            "PARKING_METER" => Ok(ObservationObjects::PARKING_METER),
+            "BENCH" => Ok(ObservationObjects::BENCH),
+            "BIRD" => Ok(ObservationObjects::BIRD),
+            "CAT" => Ok(ObservationObjects::CAT),
+            "DOG" => Ok(ObservationObjects::DOG),
+            "HORSE" => Ok(ObservationObjects::HORSE),
+            "SHEEP" => Ok(ObservationObjects::SHEEP),
+            "COW" => Ok(ObservationObjects::COW),
+            "ELEPHANT" => Ok(ObservationObjects::ELEPHANT),
+            "BEAR" => Ok(ObservationObjects::BEAR),
+            "ZEBRA" => Ok(ObservationObjects::ZEBRA),
+            "GIRAFFE" => Ok(ObservationObjects::GIRAFFE),
+            "BACKPACK" => Ok(ObservationObjects::BACKPACK),
+            "UMBRELLA" => Ok(ObservationObjects::UMBRELLA),
+            "HANDBAG" => Ok(ObservationObjects::HANDBAG),
+            "TIE" => Ok(ObservationObjects::TIE),
+            "SUITCASE" => Ok(ObservationObjects::SUITCASE),
+            "FRISBEE" => Ok(ObservationObjects::FRISBEE),
+            "SKIS" => Ok(ObservationObjects::SKIS),
+            "SNOWBOARD" => Ok(ObservationObjects::SNOWBOARD),
+            "SPORTS_BALL" => Ok(ObservationObjects::SPORTS_BALL),
+            "KITE" => Ok(ObservationObjects::KITE),
+            "BASEBALL_BAT" => Ok(ObservationObjects::BASEBALL_BAT),
+            "SKATEBOARD" => Ok(ObservationObjects::SKATEBOARD),
+            "SURFBOARD" => Ok(ObservationObjects::SURFBOARD),
+            "TENNIS_RACKET" => Ok(ObservationObjects::TENNIS_RACKET),
+            "BOTTLE" => Ok(ObservationObjects::BOTTLE),
+            "WINE_GLASS" => Ok(ObservationObjects::WINE_GLASS),
+            "CUP" => Ok(ObservationObjects::CUP),
+            "FORK" => Ok(ObservationObjects::FORK),
+            "KNIFE" => Ok(ObservationObjects::KNIFE),
+            "SPOON" => Ok(ObservationObjects::SPOON),
+            "BOWL" => Ok(ObservationObjects::BOWL),
+            "BANANA" => Ok(ObservationObjects::BANANA),
+            "APPLE" => Ok(ObservationObjects::APPLE),
+            "SANDWICH" => Ok(ObservationObjects::SANDWICH),
+            "ORANGE" => Ok(ObservationObjects::ORANGE),
+            "BROCCOLI" => Ok(ObservationObjects::BROCCOLI),
+            "CARROT" => Ok(ObservationObjects::CARROT),
+            "HOT_DOG" => Ok(ObservationObjects::HOT_DOG),
+            "PIZZA" => Ok(ObservationObjects::PIZZA),
+            "DONUT" => Ok(ObservationObjects::DONUT),
+            "CAKE" => Ok(ObservationObjects::CAKE),
+            "CHAIR" => Ok(ObservationObjects::CHAIR),
+            "SOFA" => Ok(ObservationObjects::SOFA),
+            "POTTED_PLANT" => Ok(ObservationObjects::POTTED_PLANT),
+            "BED" => Ok(ObservationObjects::BED),
+            "DINING_TABLE" => Ok(ObservationObjects::DINING_TABLE),
+            "TOILET" => Ok(ObservationObjects::TOILET),
+            "TV_MONITOR" => Ok(ObservationObjects::TV_MONITOR),
+            "LAPTOP" => Ok(ObservationObjects::LAPTOP),
+            "MOUSE" => Ok(ObservationObjects::MOUSE),
+            "REMOTE" => Ok(ObservationObjects::REMOTE),
+            "KEYBOARD" => Ok(ObservationObjects::KEYBOARD),
+            "CELL_PHONE" => Ok(ObservationObjects::CELL_PHONE),
+            "MICROWAVE" => Ok(ObservationObjects::MICROWAVE),
+            "OVEN" => Ok(ObservationObjects::OVEN),
+            "SINK" => Ok(ObservationObjects::SINK),
+            "REFRIGERATOR" => Ok(ObservationObjects::REFRIGERATOR),
+            "BOOK" => Ok(ObservationObjects::BOOK),
+            "CLOCK" => Ok(ObservationObjects::CLOCK),
+            "VASE" => Ok(ObservationObjects::VASE),
+            "SCISSORS" => Ok(ObservationObjects::SCISSORS),
+            "TEDDY_BEAR" => Ok(ObservationObjects::TEDDY_BEAR),
+            "HAIR_DRIER" => Ok(ObservationObjects::HAIR_DRIER),
+            "TOOTHBRUSH" => Ok(ObservationObjects::TOOTHBRUSH),
+            _ => Err(()),
         }
     }
 }

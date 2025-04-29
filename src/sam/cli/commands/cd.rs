@@ -2,7 +2,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-pub async fn handle_cd(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &mut PathBuf) {
+pub async fn handle_cd(
+    cmd: &str,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+    current_dir: &mut PathBuf,
+) {
     let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
     if parts.len() == 2 {
         let new_dir = parts[1].trim();

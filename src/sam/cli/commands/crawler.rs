@@ -17,17 +17,17 @@ pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::crawler::stop_service();
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "crawler status" => {
             crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Checking crawler service status...",
                 |lines, status| lines.push(format!("Crawler service status: {status}")),
-                || async {
-                    crate::sam::services::crawler::service_status().to_string()
-                },
-            ).await;
+                || async { crate::sam::services::crawler::service_status().to_string() },
+            )
+            .await;
         }
         _ => {
             let mut out = output_lines.lock().await;
@@ -36,7 +36,10 @@ pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     }
 }
 
-pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn handle_crawl_search(
+    cmd: &str,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let query = cmd.trim_start_matches("crawl search ").trim();
     if query.is_empty() {
         let mut out = output_lines.lock().await;
@@ -55,7 +58,13 @@ pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>
                         out.push(format!("URL: {}", page.url));
                         out.push(format!("Score: {score}"));
                         if !page.tokens.is_empty() {
-                            let snippet: String = page.tokens.iter().take(20).cloned().collect::<Vec<_>>().join(" ");
+                            let snippet: String = page
+                                .tokens
+                                .iter()
+                                .take(20)
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(" ");
                             out.push(format!("Tokens: {snippet}..."));
                         }
                         out.push("-----------------------------".to_string());

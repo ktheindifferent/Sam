@@ -12,7 +12,8 @@ pub async fn handle_docker(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::docker::start().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "docker stop" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -23,7 +24,8 @@ pub async fn handle_docker(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::docker::stop().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "docker status" => {
             let status = crate::sam::services::docker::status();

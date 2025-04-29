@@ -1,6 +1,6 @@
 use reqwest::Client;
-use std::env;
 use serde::Deserialize;
+use std::env;
 
 #[derive(Debug, Deserialize)]
 struct PlivoMessage {
@@ -45,7 +45,10 @@ pub async fn send_sms(to: &str, body: &str) -> Result<(), String> {
     if res.status().is_success() {
         Ok(())
     } else {
-        Err(format!("Plivo send failed: {}", res.text().await.unwrap_or_default()))
+        Err(format!(
+            "Plivo send failed: {}",
+            res.text().await.unwrap_or_default()
+        ))
     }
 }
 
@@ -53,9 +56,7 @@ pub async fn send_sms(to: &str, body: &str) -> Result<(), String> {
 pub async fn receive_sms() -> Result<Vec<String>, String> {
     let auth_id = env::var("PLIVO_AUTH_ID").map_err(|_| "Missing PLIVO_AUTH_ID")?;
     let auth_token = env::var("PLIVO_AUTH_TOKEN").map_err(|_| "Missing PLIVO_AUTH_TOKEN")?;
-    let mut url = format!(
-        "https://api.plivo.com/v1/Account/{auth_id}/Message/?limit=50&offset=0"
-    );
+    let mut url = format!("https://api.plivo.com/v1/Account/{auth_id}/Message/?limit=50&offset=0");
 
     let client = Client::new();
     let mut messages = Vec::new();
@@ -71,16 +72,28 @@ pub async fn receive_sms() -> Result<Vec<String>, String> {
             .map_err(|e| format!("Plivo receive error: {e}"))?;
 
         if !res.status().is_success() {
-            return Err(format!("Plivo receive failed: {}", res.text().await.unwrap_or_default()));
+            return Err(format!(
+                "Plivo receive failed: {}",
+                res.text().await.unwrap_or_default()
+            ));
         }
 
-        let resp: PlivoMessagesResponse = res.json().await.map_err(|e| format!("Plivo parse error: {e}"))?;
+        let resp: PlivoMessagesResponse = res
+            .json()
+            .await
+            .map_err(|e| format!("Plivo parse error: {e}"))?;
         for msg in &resp.objects {
             messages.push(format!(
                 "[{}] From: {} To: {} Body: {}",
-                msg.message_time.clone().unwrap_or_else(|| "unknown".to_string()),
-                msg.from_number.clone().unwrap_or_else(|| "unknown".to_string()),
-                msg.to_number.clone().unwrap_or_else(|| "unknown".to_string()),
+                msg.message_time
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                msg.from_number
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                msg.to_number
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
                 msg.message.clone().unwrap_or_else(|| "".to_string())
             ));
         }

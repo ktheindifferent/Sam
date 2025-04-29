@@ -2,14 +2,14 @@
 //!
 //! Provides synchronous and asynchronous methods for interacting with service configurations in a PostgreSQL database.
 
-use serde::{Serialize, Deserialize};
+use crate::sam::memory::Result;
+use crate::sam::memory::{Config, PostgresQueries};
 use rand::distributions::Alphanumeric;
 use rand::thread_rng;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use crate::sam::memory::{Config, PostgresQueries};
-use crate::sam::memory::Result;
-use rand::Rng;
 
 /// Represents a key-value setting for a service.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -44,7 +44,7 @@ pub struct Service {
     /// Creation timestamp (seconds since UNIX_EPOCH).
     pub created_at: i64,
     /// Last update timestamp (seconds since UNIX_EPOCH).
-    pub updated_at: i64
+    pub updated_at: i64,
 }
 
 impl Default for Service {
@@ -56,9 +56,16 @@ impl Default for Service {
 impl Service {
     /// Creates a new Service with a random OID and current timestamps.
     pub fn new() -> Service {
-        let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
-        Service { 
+        let oid: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(15)
+            .map(char::from)
+            .collect();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        Service {
             id: 0,
             oid,
             identifier: String::new(),
@@ -69,7 +76,7 @@ impl Service {
             endpoint: String::new(),
             settings: Vec::new(),
             created_at: now,
-            updated_at: now
+            updated_at: now,
         }
     }
 
@@ -109,9 +116,13 @@ impl Service {
         let mut client = Config::client()?;
         // Search for OID or identifier matches
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.identifier.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.identifier.clone()));
         pg_query.query_columns.push(" OR identifier =".to_string());
         let rows = Self::select(None, None, None, Some(pg_query)).unwrap();
         let settings = serde_json::to_string(&self.settings).unwrap();
@@ -144,9 +155,22 @@ impl Service {
     }
 
     /// Selects Service entries from the database with optional limit, offset, order, and query.
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub fn select(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
+        let jsons = crate::sam::memory::Config::pg_select(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            None,
+        )?;
         for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);
@@ -158,11 +182,11 @@ impl Service {
     pub fn from_row(row: &Row) -> Result<Self> {
         let mut settings: Vec<ServiceSetting> = Vec::new();
         if let Some(settings_str) = row.get("settings") {
-            settings = serde_json::from_str(settings_str).unwrap();  
+            settings = serde_json::from_str(settings_str).unwrap();
         }
         Ok(Self {
             id: row.get("id"),
-            oid:  row.get("oid"),
+            oid: row.get("oid"),
             identifier: row.get("identifier"),
             key: row.get("key"),
             secret: row.get("secret"),
@@ -184,9 +208,13 @@ impl Service {
     pub async fn save_async(&self) -> Result<&Self> {
         let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.identifier.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.identifier.clone()));
         pg_query.query_columns.push(" OR identifier =".to_string());
         let rows = Self::select_async(None, None, None, Some(pg_query)).await?;
         let settings = serde_json::to_string(&self.settings).unwrap();
@@ -219,11 +247,25 @@ impl Service {
     }
 
     /// Asynchronously selects Service entries from the database with optional limit, offset, order, and query.
-    pub async fn select_async(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub async fn select_async(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let config = crate::sam::memory::Config::new();
-let client = config.connect_pool().await?;
-        let jsons = crate::sam::memory::Config::pg_select_async(Self::sql_table_name(), None, limit, offset, order, query, client).await?;
+        let client = config.connect_pool().await?;
+        let jsons = crate::sam::memory::Config::pg_select_async(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            client,
+        )
+        .await?;
         for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);

@@ -2,14 +2,14 @@
 //!
 //! Provides synchronous and asynchronous methods for interacting with thing/device records in a PostgreSQL database.
 
-use serde::{Serialize, Deserialize};
+use crate::sam::memory::Result;
+use crate::sam::memory::{Config, PostgresQueries};
 use rand::distributions::Alphanumeric;
 use rand::thread_rng;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use crate::sam::memory::{Config, PostgresQueries};
-use crate::sam::memory::Result;
-use rand::Rng;
 
 /// Represents a device or thing in the system.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -37,7 +37,7 @@ pub struct Thing {
     /// Creation timestamp (seconds since UNIX_EPOCH).
     pub created_at: i64,
     /// Last update timestamp (seconds since UNIX_EPOCH).
-    pub updated_at: i64
+    pub updated_at: i64,
 }
 
 impl Default for Thing {
@@ -49,21 +49,31 @@ impl Default for Thing {
 impl Thing {
     /// Creates a new Thing with a random OID and current timestamps.
     pub fn new() -> Thing {
-        let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
+        let oid: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(15)
+            .map(char::from)
+            .collect();
         let empty_vec: Vec<String> = Vec::new();
-        Thing { 
+        Thing {
             id: 0,
             oid,
-            name: String::new(), 
+            name: String::new(),
             room_oid: String::new(),
             thing_type: String::new(),
-            username: String::new(), 
-            password: String::new(), 
-            ip_address: String::new(), 
+            username: String::new(),
+            password: String::new(),
+            ip_address: String::new(),
             online_identifiers: empty_vec.clone(),
             local_identifiers: empty_vec.clone(),
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
-            updated_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            updated_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
         }
     }
 
@@ -97,25 +107,22 @@ impl Thing {
             "ALTER TABLE public.things ADD COLUMN password varchar NULL;",
             "ALTER TABLE public.things ADD COLUMN ip_address varchar NULL;",
             "ALTER TABLE public.things ADD COLUMN created_at BIGINT NULL;",
-            "ALTER TABLE public.things ADD COLUMN updated_at BIGINT NULL;"
+            "ALTER TABLE public.things ADD COLUMN updated_at BIGINT NULL;",
         ]
     }
 
     /// Saves the Thing to the database. Updates if OID exists, inserts otherwise.
     pub fn save(&self) -> Result<&Self> {
         let mut client = Config::client()?;
-        
+
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
 
-        let rows = Self::select(
-            None, 
-            None, 
-            None, 
-            Some(pg_query)
-        ).unwrap();
+        let rows = Self::select(None, None, None, Some(pg_query)).unwrap();
 
         if rows.is_empty() {
             client.execute("INSERT INTO things (oid, name, room_oid, thing_type, username, password, ip_address, online_identifiers, local_identifiers, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
@@ -130,7 +137,7 @@ impl Thing {
                 &self.local_identifiers.join(","),
                 &self.created_at,
                 &self.updated_at]
-            )?;        
+            )?;
         } else {
             let ads = rows[0].clone();
 
@@ -154,11 +161,24 @@ impl Thing {
     }
 
     /// Selects Thing entries from the database with optional limit, offset, order, and query.
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub fn select(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
+        let jsons = crate::sam::memory::Config::pg_select(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            None,
+        )?;
 
-        for j in jsons{
+        for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);
         }
@@ -173,26 +193,26 @@ impl Thing {
             let split = ts.split(',');
             let vec = split.collect::<Vec<&str>>();
             let mut newvec: Vec<String> = Vec::new();
-            for v in vec{
+            for v in vec {
                 newvec.push(v.to_string());
             }
             online_identifiers = newvec;
-        }  
+        }
         let mut local_identifiers: Vec<String> = Vec::new();
         let sql_local_identifiers: Option<String> = row.get("local_identifiers");
         if let Some(ts) = sql_local_identifiers {
             let split = ts.split(',');
             let vec = split.collect::<Vec<&str>>();
             let mut newvec: Vec<String> = Vec::new();
-            for v in vec{
+            for v in vec {
                 newvec.push(v.to_string());
             }
             local_identifiers = newvec;
-        }  
+        }
         Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
-            name: row.get("name"), 
+            name: row.get("name"),
             room_oid: row.get("room_oid"),
             thing_type: row.get("thing_type"),
             username: row.get("username"),
@@ -201,7 +221,7 @@ impl Thing {
             online_identifiers,
             local_identifiers,
             created_at: row.get("created_at"),
-            updated_at: row.get("updated_at")
+            updated_at: row.get("updated_at"),
         })
     }
 
@@ -214,7 +234,9 @@ impl Thing {
     pub async fn save_async(&self) -> Result<&Self> {
         let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
         let rows = Self::select_async(None, None, None, Some(pg_query.clone())).await?;
         if rows.is_empty() {
@@ -252,11 +274,25 @@ impl Thing {
     }
 
     /// Asynchronously selects Thing entries from the database with optional limit, offset, order, and query.
-    pub async fn select_async(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub async fn select_async(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let config = crate::sam::memory::Config::new();
-let client = config.connect_pool().await?;
-        let jsons = crate::sam::memory::Config::pg_select_async(Self::sql_table_name(), None, limit, offset, order, query, client).await?;
+        let client = config.connect_pool().await?;
+        let jsons = crate::sam::memory::Config::pg_select_async(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            client,
+        )
+        .await?;
         for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);

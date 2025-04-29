@@ -1,12 +1,13 @@
 use crate::sam::services::crawler::page::CrawledPage;
+use log::{error, info};
+use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
-use log::{info, error};
-use once_cell::sync::Lazy;
 
 static P2P_RUNNING: AtomicBool = AtomicBool::new(false);
-static P2P_HANDLE: Lazy<Mutex<Option<tokio::task::JoinHandle<()>>>> = Lazy::new(|| Mutex::new(None));
+static P2P_HANDLE: Lazy<Mutex<Option<tokio::task::JoinHandle<()>>>> =
+    Lazy::new(|| Mutex::new(None));
 static P2P_TX: Lazy<Mutex<Option<broadcast::Sender<CrawledPage>>>> = Lazy::new(|| Mutex::new(None));
 
 /// Install P2P service (no-op for now, but could check dependencies)

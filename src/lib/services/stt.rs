@@ -1,19 +1,34 @@
-use tokio::fs;
 use std::env;
-use std::path::PathBuf;
-use std::process::Command;
 use std::io;
 use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use tokio::fs;
 pub async fn install() -> io::Result<String> {
     let mut log = String::new();
     log.push_str(&ensure_whisper_binary_with_output().await?);
     log.push_str("Whisper binary installed.\n");
     let models = vec![
-        ("ggml-base.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"),
-        ("ggml-tiny.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"),
-        ("ggml-base.en.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"),
-        ("ggml-medium.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"),
-        ("ggml-large.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin"),
+        (
+            "ggml-base.bin",
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+        ),
+        (
+            "ggml-tiny.bin",
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+        ),
+        (
+            "ggml-base.en.bin",
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
+        ),
+        (
+            "ggml-medium.bin",
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+        ),
+        (
+            "ggml-large.bin",
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin",
+        ),
     ];
 
     for (file, url) in models {
@@ -27,10 +42,7 @@ pub async fn install() -> io::Result<String> {
     Ok(log)
 }
 
-
-
 pub async fn ensure_whisper_binary_with_output() -> io::Result<String> {
-
     let whisper_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/whisper.cpp");
     let whisper_bin = PathBuf::from("/opt/sam/bin/whisper-cli");
     let build_dir = whisper_src.join("build");
@@ -52,9 +64,9 @@ pub async fn ensure_whisper_binary_with_output() -> io::Result<String> {
     output_log.push_str(&String::from_utf8_lossy(&cmake_config.stdout));
     output_log.push_str(&String::from_utf8_lossy(&cmake_config.stderr));
     if !cmake_config.status.success() {
-        return Err(io::Error::other(
-            format!("Failed to configure whisper.cpp with cmake\n{output_log}"),
-        ));
+        return Err(io::Error::other(format!(
+            "Failed to configure whisper.cpp with cmake\n{output_log}"
+        )));
     }
 
     // Run cmake --build build --config Release
@@ -69,9 +81,9 @@ pub async fn ensure_whisper_binary_with_output() -> io::Result<String> {
     output_log.push_str(&String::from_utf8_lossy(&cmake_build.stdout));
     output_log.push_str(&String::from_utf8_lossy(&cmake_build.stderr));
     if !cmake_build.status.success() {
-        return Err(io::Error::other(
-            format!("Failed to build whisper.cpp with cmake\n{output_log}"),
-        ));
+        return Err(io::Error::other(format!(
+            "Failed to build whisper.cpp with cmake\n{output_log}"
+        )));
     }
 
     // Find the built binary
@@ -97,4 +109,3 @@ pub async fn ensure_whisper_binary_with_output() -> io::Result<String> {
 
     Ok(output_log)
 }
-

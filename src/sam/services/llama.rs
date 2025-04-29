@@ -28,9 +28,9 @@ impl LlamaService {
         output_log.push_str(&String::from_utf8_lossy(&cmake_config.stdout));
         output_log.push_str(&String::from_utf8_lossy(&cmake_config.stderr));
         if !cmake_config.status.success() {
-            return Err(io::Error::other(
-                format!("Failed to configure llama.cpp with cmake\n{output_log}"),
-            ));
+            return Err(io::Error::other(format!(
+                "Failed to configure llama.cpp with cmake\n{output_log}"
+            )));
         }
 
         // Run cmake --build build --config Release
@@ -45,13 +45,20 @@ impl LlamaService {
         output_log.push_str(&String::from_utf8_lossy(&cmake_build.stdout));
         output_log.push_str(&String::from_utf8_lossy(&cmake_build.stderr));
         if !cmake_build.status.success() {
-            return Err(io::Error::other(
-                format!("Failed to build llama.cpp with cmake\n{output_log}"),
-            ));
+            return Err(io::Error::other(format!(
+                "Failed to build llama.cpp with cmake\n{output_log}"
+            )));
         }
 
         // Find the built binaries
-        let binaries = ["llama-cli", "llama-simple", "llama-bench", "llama-run", "llama-server", "llama-perplexity"];
+        let binaries = [
+            "llama-cli",
+            "llama-simple",
+            "llama-bench",
+            "llama-run",
+            "llama-server",
+            "llama-perplexity",
+        ];
         let mut found_any = false;
 
         fs::create_dir_all("/opt/sam/bin")?;
@@ -70,10 +77,7 @@ impl LlamaService {
             };
 
             fs::copy(&src_bin, &target_bin)?;
-            let _ = Command::new("chmod")
-                .arg("+x")
-                .arg(&target_bin)
-                .output();
+            let _ = Command::new("chmod").arg("+x").arg(&target_bin).output();
             found_any = true;
             output_log.push_str(&format!("Installed binary: {}\n", target_bin.display()));
         }
@@ -105,9 +109,10 @@ impl LlamaService {
             .map_err(|e| io::Error::other(format!("Download failed: {e}")))?;
 
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("Failed to download model: HTTP {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "Failed to download model: HTTP {}",
+                resp.status()
+            )));
         }
 
         let mut out = fs::File::create(&model_path)?;

@@ -1,27 +1,24 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
-
-
 // Required dependencies
-use serde::{Serialize, Deserialize};
 use error_chain::error_chain;
 use opencl3::device::{get_all_devices, CL_DEVICE_TYPE_GPU};
+use serde::{Deserialize, Serialize};
 use tokio::fs as async_fs;
 
+use dialoguer::Confirm;
+use git2::{Cred, FetchOptions, RemoteCallbacks, Repository};
 use std::env;
 use std::fs;
-use std::path::Path;
 use std::io::{self, Write};
-use git2::{Repository, FetchOptions, Cred, RemoteCallbacks};
-use dialoguer::Confirm;
-
+use std::path::Path;
 
 // Define error handling
 error_chain! {
@@ -34,7 +31,6 @@ error_chain! {
     }
 }
 
-
 #[cfg(target_os = "windows")]
 const OS: &str = "windows";
 #[cfg(target_os = "macos")]
@@ -44,7 +40,6 @@ const OS: &str = "linux";
 
 #[tokio::main]
 async fn main() {
-
     // Initialize logger with color, warning level, and timestamps
     simple_logger::SimpleLogger::new()
         .with_colors(true)
@@ -59,7 +54,6 @@ async fn main() {
     if whoami != "root" {
         env::set_var("SAM_USER", &whoami);
     }
-
 
     // Optionally set environment variables for libraries (uncomment if needed)
     // env::set_var("LIBTORCH", "/app/libtorch/libtorch");
@@ -77,12 +71,12 @@ async fn main() {
             "PG_PASS",
             "PG_ADDRESS",
             "SAM_USER",
-        ]).unwrap();
-    }   
+        ])
+        .unwrap();
+    }
     // Check if the script is run with sudo
     log::info!("Starting preinstallation...");
     let _ = pre_install().await;
-
 
     // Store the current username in the SAM_USER environment variable
     // Cross platform way to get the username
@@ -105,9 +99,6 @@ async fn main() {
         }
     }
 
-
-
-
     log::info!("Checking for GPU devices...");
     // await check_gpu_devices().await;
     log::info!("Compiling snapcast...");
@@ -124,28 +115,26 @@ async fn main() {
 //     // crate::sam::services::media::snapcast::configure();
 //     log::info!("Installation complete!");
 
-
 // }
-
-
 
 // Pre-installation setup: Install required packages and create directories
 async fn pre_install() -> Result<()> {
     match OS {
         "windows" => {
             log::debug!("Installing system dependencies for Windows...");
-            let _ = libsam::cmd_async("choco install ffmpeg git git-lfs boost opencv python3").await?;
+            let _ =
+                libsam::cmd_async("choco install ffmpeg git git-lfs boost opencv python3").await?;
 
             log::debug!("Installing Python packages for Windows...");
             let _ = libsam::cmd_async("pip3 install rivescript pexpect").await?;
-        },
+        }
         "linux" => {
             log::debug!("Installing system dependencies for Linux...");
             let _ = libsam::cmd_async("apt install libx264-dev libssl-dev unzip libavcodec-extra58 python3 pip git git-lfs wget libboost-dev libopencv-dev python3-opencv ffmpeg iputils-ping libasound2-dev libpulse-dev libvorbisidec-dev libvorbis-dev libopus-dev libflac-dev libsoxr-dev alsa-utils libavahi-client-dev avahi-daemon libexpat1-dev libfdk-aac-dev -y").await?;
-        
+
             log::debug!("Installing Python packages for Linux...");
             let _ = libsam::cmd_async("pip3 install rivescript pexpect").await?;
-        },
+        }
         "macos" => {
             log::debug!("Installing system dependencies for MacOS...");
             let user = async_fs::read_to_string("/opt/sam/whoismyhuman")
@@ -158,24 +147,40 @@ async fn pre_install() -> Result<()> {
             )).await?;
 
             log::debug!("Installing Python packages for MacOS...");
-            let _ = libsam::cmd_async("pip3 install rivescript pexpect --break-system-packages").await?;
-        },
+            let _ = libsam::cmd_async("pip3 install rivescript pexpect --break-system-packages")
+                .await?;
+        }
         &_ => {
             log::error!("Unsupported OS: {}", OS);
             return Err(io::Error::other("Unsupported OS").into());
         }
     }
 
-
     // Create necessary directories
     let directories = vec![
-        "/opt/sam", "/opt/sam/bin", "/opt/sam/dat", "/opt/sam/streams", "/opt/sam/models",
-        "/opt/sam/models/nst", "/opt/sam/files", "/opt/sam/fonts", "/opt/sam/games",
-        "/opt/sam/scripts", "/opt/sam/scripts/rivescript", "/opt/sam/scripts/who.io",
-        "/opt/sam/scripts/who.io/dataset", "/opt/sam/scripts/sprec", "/opt/sam/scripts/sprec/audio",
-        "/opt/sam/scripts/sprec/noise", "/opt/sam/scripts/sprec/noise/_background_noise_",
-        "/opt/sam/scripts/sprec/noise/other", "/opt/sam/tmp", "/opt/sam/tmp/youtube",
-        "/opt/sam/tmp/youtube/downloads", "/opt/sam/tmp/sound", "/opt/sam/tmp/observations",
+        "/opt/sam",
+        "/opt/sam/bin",
+        "/opt/sam/dat",
+        "/opt/sam/streams",
+        "/opt/sam/models",
+        "/opt/sam/models/nst",
+        "/opt/sam/files",
+        "/opt/sam/fonts",
+        "/opt/sam/games",
+        "/opt/sam/scripts",
+        "/opt/sam/scripts/rivescript",
+        "/opt/sam/scripts/who.io",
+        "/opt/sam/scripts/who.io/dataset",
+        "/opt/sam/scripts/sprec",
+        "/opt/sam/scripts/sprec/audio",
+        "/opt/sam/scripts/sprec/noise",
+        "/opt/sam/scripts/sprec/noise/_background_noise_",
+        "/opt/sam/scripts/sprec/noise/other",
+        "/opt/sam/tmp",
+        "/opt/sam/tmp/youtube",
+        "/opt/sam/tmp/youtube/downloads",
+        "/opt/sam/tmp/sound",
+        "/opt/sam/tmp/observations",
         "/opt/sam/tmp/observations/vwav",
     ];
     for dir in directories {
@@ -186,7 +191,7 @@ async fn pre_install() -> Result<()> {
 
     // Set permissions for Linux and MacOS
     match OS {
-        "windows" => {},
+        "windows" => {}
         _ => {
             let _ = libsam::cmd_async("chmod -R 777 /opt/sam").await;
             let _ = libsam::cmd_async("chown 1000 -R /opt/sam").await;
@@ -222,9 +227,6 @@ fn check_gpu_devices() {
 //         }
 //     });
 
-
-
-
 //     let services = vec![
 //         // ("darknet", crate::sam::services::darknet::install as fn() -> std::result::Result<(), std::io::Error>), // REMOVE THIS LINE
 //         ("sprec", crate::sam::services::sprec::install as fn() -> std::result::Result<(), std::io::Error>),
@@ -251,13 +253,14 @@ fn check_gpu_devices() {
 
 // Check for updates from the Sam GitHub repository using git2
 pub async fn update() -> Result<()> {
-  
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
     // Open the repository at the Cargo crate root (where Cargo.toml is located)
     let repo = Repository::open(crate_root)?;
     let head = repo.head()?;
-    let local_oid = head.target().ok_or_else(|| std::io::Error::other("No HEAD found"))?;
+    let local_oid = head
+        .target()
+        .ok_or_else(|| std::io::Error::other("No HEAD found"))?;
     let local_commit = repo.find_commit(local_oid)?;
     let local_short = local_commit.id().to_string();
 
@@ -280,8 +283,16 @@ pub async fn update() -> Result<()> {
     let remote_short = remote_commit.id().to_string();
 
     if local_commit.id() != remote_commit.id() {
-        log::warn!("A new revision is available for Sam!\nCurrent: {}\nLatest: {}", local_short, remote_short);
-        if Confirm::new().with_prompt("Would you like to update Sam using git?").interact().unwrap_or(false) {
+        log::warn!(
+            "A new revision is available for Sam!\nCurrent: {}\nLatest: {}",
+            local_short,
+            remote_short
+        );
+        if Confirm::new()
+            .with_prompt("Would you like to update Sam using git?")
+            .interact()
+            .unwrap_or(false)
+        {
             // Fast-forward merge
             let mut ref_heads = repo.find_reference("refs/heads/main")?;
             ref_heads.set_target(remote_commit.id(), "Fast-forward to latest origin/main")?;

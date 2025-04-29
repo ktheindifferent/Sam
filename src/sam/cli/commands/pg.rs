@@ -12,7 +12,8 @@ pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     libsam::services::pg::install().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "pg start" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -23,7 +24,8 @@ pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     libsam::services::pg::start().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "pg stop" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -34,7 +36,8 @@ pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     libsam::services::pg::stop().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "pg status" => {
             let status = libsam::services::pg::status();

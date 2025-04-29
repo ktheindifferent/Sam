@@ -1,6 +1,4 @@
-
 pub fn install() -> std::io::Result<()> {
-
     // match games::install(){
     //     Ok(_) => {
     //         log::info!("Games installed successfully");
@@ -19,7 +17,6 @@ pub fn install() -> std::io::Result<()> {
     //     }
     // }
 
-
     // match image::install(){
     //     Ok(_) => {
     //         log::info!("Image service installed successfully");
@@ -28,7 +25,6 @@ pub fn install() -> std::io::Result<()> {
     //         log::error!("Failed to install image service: {}", e);
     //     }
     // }
-
 
     Ok(())
 }

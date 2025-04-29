@@ -1,19 +1,22 @@
-use std::io::{self, Write};
-use std::env;
-use std::process::Command;
-use std::io::BufReader;
-use std::io::BufRead;
-use std::process::Stdio;
-use tokio::sync::Mutex;
 use colored::Colorize;
+use std::env;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::{self, Write};
+use std::process::Command;
+use std::process::Stdio;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub async fn append_line(output_lines: &Mutex<Vec<String>>, line: String) {
     let mut lines = output_lines.lock().await;
     lines.push(line);
 }
 
-pub async fn append_lines<I: IntoIterator<Item = String>>(output_lines: &Mutex<Vec<String>>, lines: I) {
+pub async fn append_lines<I: IntoIterator<Item = String>>(
+    output_lines: &Mutex<Vec<String>>,
+    lines: I,
+) {
     let mut guard = output_lines.lock().await;
     guard.extend(lines);
 }
@@ -29,7 +32,7 @@ pub fn check_postgres_env() {
     let mut missing = vec![];
     for v in vars.iter() {
         match std::env::var(v) {
-            Ok(val) if !val.trim().is_empty() => {},
+            Ok(val) if !val.trim().is_empty() => {}
             _ => missing.push(*v),
         }
     }
@@ -53,10 +56,7 @@ pub fn check_postgres_env() {
     }
 }
 
-pub fn run_command_stream_lines<F>(
-    mut cmd: Command,
-    mut on_line: F,
-) -> io::Result<i32>
+pub fn run_command_stream_lines<F>(mut cmd: Command, mut on_line: F) -> io::Result<i32>
 where
     F: FnMut(String) + Send + 'static,
 {
@@ -107,7 +107,9 @@ pub async fn append_and_tts(output_lines: Arc<Mutex<Vec<String>>>, text: String)
 }
 
 // Add this helper for TTS playback
-fn play_wav_from_bytes_send(wav_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn play_wav_from_bytes_send(
+    wav_bytes: &[u8],
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use rodio::{Decoder, OutputStream, Sink};
     use std::io::Cursor;
     let (_stream, stream_handle) = OutputStream::try_default()?;

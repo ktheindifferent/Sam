@@ -12,7 +12,8 @@ pub async fn handle_sms(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::sms::start().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "sms stop" => {
             crate::sam::cli::spinner::run_with_spinner(
@@ -23,7 +24,8 @@ pub async fn handle_sms(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     crate::sam::services::sms::stop().await;
                     "done".to_string()
                 },
-            ).await;
+            )
+            .await;
         }
         "sms status" => {
             let status = crate::sam::services::sms::status();

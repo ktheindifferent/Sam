@@ -1,12 +1,11 @@
-use std::process::Command;
-use log::{info, error};
-use std::time::Duration;
-use bollard::Docker;
 use bollard::container::ListContainersOptions;
-use std::sync::Mutex;
-use std::time::{ Instant};
+use bollard::Docker;
+use log::{error, info};
 use once_cell::sync::Lazy;
-
+use std::process::Command;
+use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
 
 /// Install and start Redis using Docker if not already running.
 /// This is intended to be called from setup/install.
@@ -17,9 +16,7 @@ pub async fn install() {
         return;
     }
     info!("Pulling Redis Docker image...");
-    let pull = Command::new("docker")
-        .args(["pull", "redis:7"])
-        .output();
+    let pull = Command::new("docker").args(["pull", "redis:7"]).output();
 
     match pull {
         Ok(status) if status.status.success() => info!("Redis Docker image pulled successfully."),
@@ -45,10 +42,14 @@ pub async fn start() {
     info!("Starting Redis Docker container...");
     let run = Command::new("docker")
         .args([
-            "run", "-d",
-            "--name", "sam-redis",
-            "-p", "6379:6379",
-            "--restart", "unless-stopped",
+            "run",
+            "-d",
+            "--name",
+            "sam-redis",
+            "-p",
+            "6379:6379",
+            "--restart",
+            "unless-stopped",
             "redis:7",
         ])
         .output(); // changed from .status() to .output()
@@ -74,19 +75,18 @@ pub async fn stop() {
         return;
     }
     info!("Stopping Redis Docker container...");
-    let stop = Command::new("docker")
-        .args(["stop", "sam-redis"])
-        .output();
+    let stop = Command::new("docker").args(["stop", "sam-redis"]).output();
 
     match stop {
         Ok(status) if status.status.success() => info!("Redis Docker container stopped."),
-        Ok(status) => error!("Failed to stop Redis container, exit code: {}", status.status),
+        Ok(status) => error!(
+            "Failed to stop Redis container, exit code: {}",
+            status.status
+        ),
         Err(e) => error!("Failed to stop Redis container: {}", e),
     }
     // Optionally remove the container after stopping
-    let rm = Command::new("docker")
-        .args(["rm", "sam-redis"])
-        .output();
+    let rm = Command::new("docker").args(["rm", "sam-redis"]).output();
     match rm {
         Ok(status) if status.status.success() => info!("Redis Docker container removed."),
         Ok(_) => {} // ignore errors if already removed
@@ -110,12 +110,12 @@ pub async fn status() -> &'static str {
 // For a faster, native approach, use the `bollard` crate (Docker API client for Rust).
 // Add `bollard = "0.15"` to your Cargo.toml dependencies.
 
-
 struct RunningCache {
     value: Option<(bool, Instant)>,
 }
 
-static IS_RUNNING_CACHE: Lazy<Mutex<RunningCache>> = Lazy::new(|| Mutex::new(RunningCache { value: None }));
+static IS_RUNNING_CACHE: Lazy<Mutex<RunningCache>> =
+    Lazy::new(|| Mutex::new(RunningCache { value: None }));
 
 pub async fn is_running() -> bool {
     let now = Instant::now();
@@ -148,9 +148,9 @@ pub async fn is_running() -> bool {
     });
     let result = match docker.list_containers(options).await {
         Ok(containers) => containers.iter().any(|c| {
-            c.names.as_ref().is_some_and(|names| {
-                names.iter().any(|n| n.contains("sam-redis"))
-            })
+            c.names
+                .as_ref()
+                .is_some_and(|names| names.iter().any(|n| n.contains("sam-redis")))
         }),
         Err(_) => false,
     };
@@ -164,7 +164,8 @@ struct InstalledCache {
     value: Option<(bool, Instant)>,
 }
 
-static IS_INSTALLED_CACHE: Lazy<Mutex<InstalledCache>> = Lazy::new(|| Mutex::new(InstalledCache { value: None }));
+static IS_INSTALLED_CACHE: Lazy<Mutex<InstalledCache>> =
+    Lazy::new(|| Mutex::new(InstalledCache { value: None }));
 
 pub async fn is_installed() -> bool {
     let now = Instant::now();
@@ -196,9 +197,9 @@ pub async fn is_installed() -> bool {
     });
     let result = match docker.list_containers(options).await {
         Ok(containers) => containers.iter().any(|c| {
-            c.names.as_ref().is_some_and(|names| {
-                names.iter().any(|n| n.contains("sam-redis"))
-            })
+            c.names
+                .as_ref()
+                .is_some_and(|names| names.iter().any(|n| n.contains("sam-redis")))
         }),
         Err(_) => false,
     };

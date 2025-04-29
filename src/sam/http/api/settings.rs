@@ -1,8 +1,8 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
@@ -12,16 +12,17 @@ use rouille::Request;
 use rouille::Response;
 use std::thread;
 
-pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(
+    _current_session: crate::sam::memory::cache::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/settings" {
-
         if request.method() == "GET" {
             let objects = crate::sam::memory::config::Setting::select(None, None, None, None)?;
             return Ok(Response::json(&objects));
         }
 
         if request.method() == "POST" {
-
             let input = post_input!(request, {
                 key: String,
                 values: Vec<String>
@@ -32,12 +33,10 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
             obj.values = input.values;
             obj.save()?;
             return Ok(Response::json(&obj));
-
         }
     }
 
     if request.url().contains("/api/settings") && request.url().contains("/value") {
-       
         let url = request.url().clone();
         let split = url.split("/");
         let vec = split.collect::<Vec<&str>>();
@@ -45,17 +44,17 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
 
         if request.method() == "GET" && identifier.contains("key:") {
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
-            pg_query.queries.push(crate::sam::memory::PGCol::String(identifier.replace("key:", "")));
+            pg_query.queries.push(crate::sam::memory::PGCol::String(
+                identifier.replace("key:", ""),
+            ));
             pg_query.query_columns.push("key =".to_string());
-            let objects = crate::sam::memory::config::Setting::select(None, None, None, Some(pg_query))?;
+            let objects =
+                crate::sam::memory::config::Setting::select(None, None, None, Some(pg_query))?;
             return Ok(Response::text(&objects[0].clone().values[0]));
         }
-
     }
 
-
     if request.url().contains("/api/settings") {
-       
         let url = request.url().clone();
         let split = url.split("/");
         let vec = split.collect::<Vec<&str>>();
@@ -63,24 +62,23 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
 
         if request.method() == "GET" && identifier.contains("key:") {
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
-            pg_query.queries.push(crate::sam::memory::PGCol::String(identifier.replace("key:", "")));
+            pg_query.queries.push(crate::sam::memory::PGCol::String(
+                identifier.replace("key:", ""),
+            ));
             pg_query.query_columns.push("key =".to_string());
-            let objects = crate::sam::memory::config::Setting::select(None, None, None, Some(pg_query))?;
+            let objects =
+                crate::sam::memory::config::Setting::select(None, None, None, Some(pg_query))?;
             return Ok(Response::json(&objects[0]));
         }
-
     }
-
 
     Ok(Response::empty_404())
 }
 
-
-pub fn set_defaults(){
+pub fn set_defaults() {
     thread::spawn(move || {
         let objects = crate::sam::memory::config::Setting::select(None, None, None, None).unwrap();
         if objects.is_empty() {
-
             // enable_embedded_lifx_server
             let mut enable_embedded_lifx_server = crate::sam::memory::config::Setting::new();
             let mut setting_vec: Vec<String> = Vec::new();
@@ -128,9 +126,6 @@ pub fn set_defaults(){
             setting_vec.push("SQL".to_string());
             default_file_storage_location.values = setting_vec;
             default_file_storage_location.save().unwrap();
-
-
-
         };
     });
 }

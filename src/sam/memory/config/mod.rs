@@ -1,29 +1,29 @@
-use native_tls::{TlsConnector};
+use crate::sam::memory::PostgresServer;
+use crate::sam::memory::Result;
+use crate::sam::memory::{PGCol, PostgresQueries};
+use deadpool_postgres::Manager;
+use deadpool_postgres::Pool;
+use native_tls::TlsConnector;
+use once_cell::sync::OnceCell;
 use postgres_native_tls::MakeTlsConnector;
 use rouille::Response;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::process::Command;
 use std::thread;
 use tokio_postgres::Row;
-use std::process::Command;
-use crate::sam::memory::{PostgresQueries, PGCol};
-use crate::sam::memory::Result;
-use crate::sam::memory::PostgresServer;
-use deadpool_postgres::Pool;
-use once_cell::sync::OnceCell;
-use deadpool_postgres::Manager;
 
-pub mod service;
 pub mod file_storage_location;
+pub mod service;
 pub mod setting;
 
-pub use service::Service;
 pub use file_storage_location::FileStorageLocation;
+pub use service::Service;
 pub use setting::Setting;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     pub postgres: crate::sam::memory::PostgresServer,
-    pub version_installed: String
+    pub version_installed: String,
 }
 
 impl Default for Config {
@@ -33,45 +33,39 @@ impl Default for Config {
 }
 
 impl Config {
-
     /// Creates a new Config instance with default values.
     pub fn new() -> Config {
-        Config{
+        Config {
             postgres: PostgresServer::new(),
-            version_installed: option_env!("CARGO_PKG_VERSION").unwrap_or("unknown").to_string()
+            version_installed: option_env!("CARGO_PKG_VERSION")
+                .unwrap_or("unknown")
+                .to_string(),
         }
     }
 
     /// Initializes the PostgreSQL database and starts the HTTP server.
     /// TODO: Make http a service
-    pub async fn init(&self){
-
-        match self.create_db().await{
+    pub async fn init(&self) {
+        match self.create_db().await {
             Ok(_) => log::info!("Database created successfully"),
             Err(e) => log::debug!("failed to create database: {}", e),
         }
 
-        match self.build_tables().await{
+        match self.build_tables().await {
             Ok(_) => log::info!("Tables created successfully"),
             Err(e) => log::debug!("failed to create tables: {}", e),
         }
-    
 
         let _config = self.clone();
         thread::spawn(move || {
-
             rouille::start_server("0.0.0.0:8000".to_string().as_str(), move |request| {
-            
-                match crate::sam::http::handle(request){
-                    Ok(request) => {
-                        request
-                    },
+                match crate::sam::http::handle(request) {
+                    Ok(request) => request,
                     Err(err) => {
                         log::error!("HTTP_ERROR: {}", err);
                         Response::empty_404()
                     }
                 }
-
             });
         });
     }
@@ -89,7 +83,10 @@ impl Config {
         let (client, connection) = tokio_postgres::connect(
             &format!(
                 "postgresql://{}:{}@{}/{}?sslmode=prefer",
-                self.postgres.username, self.postgres.password, self.postgres.address, self.postgres.db_name
+                self.postgres.username,
+                self.postgres.password,
+                self.postgres.address,
+                self.postgres.db_name
             ),
             connector,
         )
@@ -128,7 +125,6 @@ impl Config {
     /// }
     /// ```
     pub async fn connect_pool(&self) -> Result<deadpool_postgres::Client> {
-
         static POOL: OnceCell<Pool> = OnceCell::new();
 
         let pool = POOL.get_or_init(|| {
@@ -155,7 +151,9 @@ impl Config {
             let mgr = Manager::from_config(
                 pg_config,
                 connector,
-                deadpool_postgres::ManagerConfig { recycling_method: deadpool_postgres::RecyclingMethod::Fast }
+                deadpool_postgres::ManagerConfig {
+                    recycling_method: deadpool_postgres::RecyclingMethod::Fast,
+                },
             );
             Pool::builder(mgr).max_size(16).build().unwrap()
         });
@@ -197,14 +195,25 @@ impl Config {
     /// It is not intended to be called during normal operation.
     /// It is recommended to call this function only once during the application's lifecycle.
     /// It is also recommended to call this function only after the database has been created.
-    pub async fn build_tables(&self) -> Result<()>{
+    pub async fn build_tables(&self) -> Result<()> {
         let connector = TlsConnector::builder()
             .danger_accept_invalid_certs(true)
             .build()
             .unwrap();
         let connector = MakeTlsConnector::new(connector);
 
-        let (client, connection) = tokio_postgres::connect(format!("postgresql://{}:{}@{}/{}?sslmode=prefer", &self.postgres.username, &self.postgres.password, &self.postgres.address, &self.postgres.db_name).as_str(), connector).await?;
+        let (client, connection) = tokio_postgres::connect(
+            format!(
+                "postgresql://{}:{}@{}/{}?sslmode=prefer",
+                &self.postgres.username,
+                &self.postgres.password,
+                &self.postgres.address,
+                &self.postgres.db_name
+            )
+            .as_str(),
+            connector,
+        )
+        .await?;
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {
@@ -214,56 +223,125 @@ impl Config {
 
         // Build all tables in sequence
         let tables = [
-            (crate::sam::memory::cache::WikipediaSummary::sql_table_name(),
-             crate::sam::memory::cache::WikipediaSummary::sql_build_statement(), 
-             crate::sam::memory::cache::WikipediaSummary::migrations()),
-            (crate::sam::memory::Human::sql_table_name(), crate::sam::memory::Human::sql_build_statement(), crate::sam::memory::Human::migrations()),
-            (crate::sam::memory::human::FaceEncoding::sql_table_name(), crate::sam::memory::human::FaceEncoding::sql_build_statement(), crate::sam::memory::human::FaceEncoding::migrations()),
-            (crate::sam::memory::location::Location::sql_table_name(), crate::sam::memory::location::Location::sql_build_statement(), crate::sam::memory::location::Location::migrations()),
-            (crate::sam::memory::room::Room::sql_table_name(), crate::sam::memory::room::Room::sql_build_statement(), crate::sam::memory::room::Room::migrations()),
-            (crate::sam::memory::config::Service::sql_table_name(), crate::sam::memory::config::Service::sql_build_statement(), crate::sam::memory::config::Service::migrations()),
-            (crate::sam::memory::Thing::sql_table_name(), crate::sam::memory::Thing::sql_build_statement(), crate::sam::memory::Thing::migrations()),
-            (crate::sam::memory::Observation::sql_table_name(), crate::sam::memory::Observation::sql_build_statement(), crate::sam::memory::Observation::migrations()),
-            (crate::sam::memory::config::Setting::sql_table_name(), crate::sam::memory::config::Setting::sql_build_statement(), crate::sam::memory::config::Setting::migrations()),
-            (crate::sam::memory::cache::WebSessions::sql_table_name(), crate::sam::memory::cache::WebSessions::sql_build_statement(), crate::sam::memory::cache::WebSessions::migrations()),
-            (crate::sam::memory::config::FileStorageLocation::sql_table_name(), crate::sam::memory::config::FileStorageLocation::sql_build_statement(), crate::sam::memory::config::FileStorageLocation::migrations()),
-            (crate::sam::memory::storage::File::sql_table_name(), crate::sam::memory::storage::File::sql_build_statement(), crate::sam::memory::storage::File::migrations()),
-            (crate::sam::memory::human::Notification::sql_table_name(), crate::sam::memory::human::Notification::sql_build_statement(), crate::sam::memory::human::Notification::migrations()),
-            (crate::sam::services::crawler::CrawlJob::sql_table_name(), crate::sam::services::crawler::CrawlJob::sql_build_statement(), crate::sam::services::crawler::CrawlJob::migrations()),
-            (crate::sam::services::crawler::CrawledPage::sql_table_name(), crate::sam::services::crawler::CrawledPage::sql_build_statement(), crate::sam::services::crawler::CrawledPage::migrations()),
+            (
+                crate::sam::memory::cache::WikipediaSummary::sql_table_name(),
+                crate::sam::memory::cache::WikipediaSummary::sql_build_statement(),
+                crate::sam::memory::cache::WikipediaSummary::migrations(),
+            ),
+            (
+                crate::sam::memory::Human::sql_table_name(),
+                crate::sam::memory::Human::sql_build_statement(),
+                crate::sam::memory::Human::migrations(),
+            ),
+            (
+                crate::sam::memory::human::FaceEncoding::sql_table_name(),
+                crate::sam::memory::human::FaceEncoding::sql_build_statement(),
+                crate::sam::memory::human::FaceEncoding::migrations(),
+            ),
+            (
+                crate::sam::memory::location::Location::sql_table_name(),
+                crate::sam::memory::location::Location::sql_build_statement(),
+                crate::sam::memory::location::Location::migrations(),
+            ),
+            (
+                crate::sam::memory::room::Room::sql_table_name(),
+                crate::sam::memory::room::Room::sql_build_statement(),
+                crate::sam::memory::room::Room::migrations(),
+            ),
+            (
+                crate::sam::memory::config::Service::sql_table_name(),
+                crate::sam::memory::config::Service::sql_build_statement(),
+                crate::sam::memory::config::Service::migrations(),
+            ),
+            (
+                crate::sam::memory::Thing::sql_table_name(),
+                crate::sam::memory::Thing::sql_build_statement(),
+                crate::sam::memory::Thing::migrations(),
+            ),
+            (
+                crate::sam::memory::Observation::sql_table_name(),
+                crate::sam::memory::Observation::sql_build_statement(),
+                crate::sam::memory::Observation::migrations(),
+            ),
+            (
+                crate::sam::memory::config::Setting::sql_table_name(),
+                crate::sam::memory::config::Setting::sql_build_statement(),
+                crate::sam::memory::config::Setting::migrations(),
+            ),
+            (
+                crate::sam::memory::cache::WebSessions::sql_table_name(),
+                crate::sam::memory::cache::WebSessions::sql_build_statement(),
+                crate::sam::memory::cache::WebSessions::migrations(),
+            ),
+            (
+                crate::sam::memory::config::FileStorageLocation::sql_table_name(),
+                crate::sam::memory::config::FileStorageLocation::sql_build_statement(),
+                crate::sam::memory::config::FileStorageLocation::migrations(),
+            ),
+            (
+                crate::sam::memory::storage::File::sql_table_name(),
+                crate::sam::memory::storage::File::sql_build_statement(),
+                crate::sam::memory::storage::File::migrations(),
+            ),
+            (
+                crate::sam::memory::human::Notification::sql_table_name(),
+                crate::sam::memory::human::Notification::sql_build_statement(),
+                crate::sam::memory::human::Notification::migrations(),
+            ),
+            (
+                crate::sam::services::crawler::CrawlJob::sql_table_name(),
+                crate::sam::services::crawler::CrawlJob::sql_build_statement(),
+                crate::sam::services::crawler::CrawlJob::migrations(),
+            ),
+            (
+                crate::sam::services::crawler::CrawledPage::sql_table_name(),
+                crate::sam::services::crawler::CrawledPage::sql_build_statement(),
+                crate::sam::services::crawler::CrawledPage::migrations(),
+            ),
         ];
 
         let mut current_client = client;
         for (table_name, build_statement, migrations) in tables {
-           
             // Run crawler index migrations after creating crawler tables
             if table_name == crate::sam::services::crawler::CrawlJob::sql_table_name() {
                 for idx_sql in crate::sam::services::crawler::CrawlJob::sql_indexes() {
                     match current_client.batch_execute(idx_sql).await {
-                        Ok(_) => log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql),
-                        Err(e) => log::debug!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
+                        Ok(_) => {
+                            log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql)
+                        }
+                        Err(e) => log::debug!(
+                            "POSTGRES: Failed to create index for '{}': {:?} ({})",
+                            table_name,
+                            idx_sql,
+                            e
+                        ),
                     }
                 }
             }
             if table_name == crate::sam::services::crawler::CrawledPage::sql_table_name() {
                 for idx_sql in crate::sam::services::crawler::CrawledPage::sql_indexes() {
                     match current_client.batch_execute(idx_sql).await {
-                        Ok(_) => log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql),
-                        Err(e) => log::debug!("POSTGRES: Failed to create index for '{}': {:?} ({})", table_name, idx_sql, e),
+                        Ok(_) => {
+                            log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql)
+                        }
+                        Err(e) => log::debug!(
+                            "POSTGRES: Failed to create index for '{}': {:?} ({})",
+                            table_name,
+                            idx_sql,
+                            e
+                        ),
                     }
                 }
             }
-            current_client = Self::build_table(current_client, table_name, build_statement, migrations).await;
-            
+            current_client =
+                Self::build_table(current_client, table_name, build_statement, migrations).await;
         }
-
-        
 
         Ok(())
     }
 
     /// Attempts to create the configured PostgreSQL database if it does not exist.
-    /// 
+    ///
     /// Connects to the PostgreSQL server (without specifying a database), then issues a
     /// `CREATE DATABASE` statement for the configured database name. If the database already
     /// exists, this will return an error.
@@ -321,7 +399,11 @@ impl Config {
                 if e.to_string().contains("already exists") {
                     log::info!("Database '{}' already exists", self.postgres.db_name);
                 } else {
-                    log::debug!("Failed to create database '{}': {}", self.postgres.db_name, e);
+                    log::debug!(
+                        "Failed to create database '{}': {}",
+                        self.postgres.db_name,
+                        e
+                    );
                     return Err(e.into());
                 }
             }
@@ -425,10 +507,7 @@ impl Config {
         let mut client = Config::client()?;
 
         // Use parameterized queries to prevent SQL injection
-        client.execute(
-            &format!("DELETE FROM {table_name} WHERE oid = $1"),
-            &[&oid],
-        )?;
+        client.execute(&format!("DELETE FROM {table_name} WHERE oid = $1"), &[&oid])?;
 
         let rows = client.query(
             &format!("SELECT 1 FROM {table_name} WHERE oid = $1"),
@@ -452,18 +531,12 @@ impl Config {
     /// # Errors
     /// Returns an error if the connection fails or the SQL statement fails.
     ///
-    pub async fn destroy_row_async(
-        oid: String,
-        table_name: String
-    ) -> Result<bool> {
+    pub async fn destroy_row_async(oid: String, table_name: String) -> Result<bool> {
         let config = crate::sam::memory::Config::new();
         let client = config.connect_pool().await?;
         // Use parameterized queries to prevent SQL injection
         client
-            .execute(
-                &format!("DELETE FROM {table_name} WHERE oid = $1"),
-                &[&oid],
-            )
+            .execute(&format!("DELETE FROM {table_name} WHERE oid = $1"), &[&oid])
             .await?;
 
         let rows = client
@@ -538,7 +611,6 @@ impl Config {
         Ok(())
     }
 
-
     /// Executes a SELECT query on the specified PostgreSQL table with optional filtering, ordering, and pagination.
     ///
     /// # Arguments
@@ -605,13 +677,15 @@ impl Config {
 
         // Execute query with or without parameters
         if let Some(pg_query) = query {
-            let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
-                match x {
+            let query_values: Vec<_> = pg_query
+                .queries
+                .iter()
+                .map(|x| match x {
                     PGCol::String(y) => y as &(dyn postgres::types::ToSql + Sync),
                     PGCol::Number(y) => y as &(dyn postgres::types::ToSql + Sync),
                     PGCol::Boolean(y) => y as &(dyn postgres::types::ToSql + Sync),
-                }
-            }).collect();
+                })
+                .collect();
 
             for row in client.query(execquery.as_str(), query_values.as_slice())? {
                 Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
@@ -631,8 +705,6 @@ impl Config {
 
         Ok(parsed_rows)
     }
-
-
 
     /// Asynchronously executes a SELECT query on the specified PostgreSQL table with optional filtering, ordering, and pagination.
     ///
@@ -656,7 +728,6 @@ impl Config {
         query: Option<PostgresQueries>,
         client: deadpool_postgres::Client,
     ) -> Result<Vec<String>> {
-
         let mut parsed_rows: Vec<String> = Vec::new();
 
         // Build SELECT clause
@@ -695,15 +766,20 @@ impl Config {
 
         // Execute query with or without parameters
         if let Some(pg_query) = query {
-            let query_values: Vec<_> = pg_query.queries.iter().map(|x| {
-                match x {
+            let query_values: Vec<_> = pg_query
+                .queries
+                .iter()
+                .map(|x| match x {
                     PGCol::String(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
                     PGCol::Number(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
                     PGCol::Boolean(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
-                }
-            }).collect();
+                })
+                .collect();
 
-            for row in client.query(execquery.as_str(), query_values.as_slice()).await? {
+            for row in client
+                .query(execquery.as_str(), query_values.as_slice())
+                .await?
+            {
                 Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
             }
         } else {
@@ -711,8 +787,6 @@ impl Config {
                 Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
             }
         }
-
-        
 
         Ok(parsed_rows)
     }
@@ -741,33 +815,59 @@ impl Config {
         }
 
         match table_name {
-            t if t == crate::sam::memory::cache::WikipediaSummary::sql_table_name() => { push_json!(crate::sam::memory::cache::WikipediaSummary, from_row); },
-            t if t == crate::sam::memory::Human::sql_table_name() => { push_json!(crate::sam::memory::Human, from_row); },
-            t if t == crate::sam::memory::human::FaceEncoding::sql_table_name() => { push_json!(crate::sam::memory::human::FaceEncoding, from_row); },
-            t if t == crate::sam::memory::Location::sql_table_name() => { push_json!(crate::sam::memory::Location, from_row); },
-            t if t == crate::sam::memory::human::Notification::sql_table_name() => { push_json!(crate::sam::memory::human::Notification, from_row); },
-            t if t == crate::sam::memory::Room::sql_table_name() => { push_json!(crate::sam::memory::Room, from_row); },
-            t if t == crate::sam::memory::config::Service::sql_table_name() => { push_json!(crate::sam::memory::config::Service, from_row); },
-            t if t == crate::sam::memory::Thing::sql_table_name() => { push_json!(crate::sam::memory::Thing, from_row); },
+            t if t == crate::sam::memory::cache::WikipediaSummary::sql_table_name() => {
+                push_json!(crate::sam::memory::cache::WikipediaSummary, from_row);
+            }
+            t if t == crate::sam::memory::Human::sql_table_name() => {
+                push_json!(crate::sam::memory::Human, from_row);
+            }
+            t if t == crate::sam::memory::human::FaceEncoding::sql_table_name() => {
+                push_json!(crate::sam::memory::human::FaceEncoding, from_row);
+            }
+            t if t == crate::sam::memory::Location::sql_table_name() => {
+                push_json!(crate::sam::memory::Location, from_row);
+            }
+            t if t == crate::sam::memory::human::Notification::sql_table_name() => {
+                push_json!(crate::sam::memory::human::Notification, from_row);
+            }
+            t if t == crate::sam::memory::Room::sql_table_name() => {
+                push_json!(crate::sam::memory::Room, from_row);
+            }
+            t if t == crate::sam::memory::config::Service::sql_table_name() => {
+                push_json!(crate::sam::memory::config::Service, from_row);
+            }
+            t if t == crate::sam::memory::Thing::sql_table_name() => {
+                push_json!(crate::sam::memory::Thing, from_row);
+            }
             t if t == crate::sam::memory::Observation::sql_table_name() => {
                 if columns.is_none() {
                     push_json!(crate::sam::memory::Observation, from_row);
                 } else {
                     push_json!(crate::sam::memory::Observation, from_row_lite);
                 }
-            },
-            t if t == crate::sam::memory::config::Setting::sql_table_name() => { push_json!(crate::sam::memory::config::Setting, from_row); },
-            t if t == crate::sam::memory::cache::WebSessions::sql_table_name() => { push_json!(crate::sam::memory::cache::WebSessions, from_row); },
-            t if t == crate::sam::memory::config::FileStorageLocation::sql_table_name() => { push_json!(crate::sam::memory::config::FileStorageLocation, from_row); },
+            }
+            t if t == crate::sam::memory::config::Setting::sql_table_name() => {
+                push_json!(crate::sam::memory::config::Setting, from_row);
+            }
+            t if t == crate::sam::memory::cache::WebSessions::sql_table_name() => {
+                push_json!(crate::sam::memory::cache::WebSessions, from_row);
+            }
+            t if t == crate::sam::memory::config::FileStorageLocation::sql_table_name() => {
+                push_json!(crate::sam::memory::config::FileStorageLocation, from_row);
+            }
             t if t == crate::sam::memory::storage::File::sql_table_name() => {
                 if columns.is_none() {
                     push_json!(crate::sam::memory::storage::File, from_row);
                 } else {
                     push_json!(crate::sam::memory::storage::File, from_row_lite);
                 }
-            },
-            t if t == crate::sam::services::crawler::CrawlJob::sql_table_name() => { push_json!(crate::sam::services::crawler::CrawlJob, from_row); },
-            t if t == crate::sam::services::crawler::CrawledPage::sql_table_name() => { push_json!(crate::sam::services::crawler::CrawledPage, from_row); },
+            }
+            t if t == crate::sam::services::crawler::CrawlJob::sql_table_name() => {
+                push_json!(crate::sam::services::crawler::CrawlJob, from_row);
+            }
+            t if t == crate::sam::services::crawler::CrawledPage::sql_table_name() => {
+                push_json!(crate::sam::services::crawler::CrawledPage, from_row);
+            }
             _ => {}
         }
         Ok(())
@@ -792,43 +892,72 @@ impl Config {
     ) -> Result<()> {
         macro_rules! push_json_async {
             ($ty:ty, $from_row_async:ident) => {
-                parsed_rows.push(serde_json::to_string(&<$ty>::$from_row_async(row).await?).unwrap())
+                parsed_rows
+                    .push(serde_json::to_string(&<$ty>::$from_row_async(row).await?).unwrap())
             };
         }
 
         match table_name {
-            t if t == crate::sam::memory::cache::WikipediaSummary::sql_table_name() => { push_json_async!(crate::sam::memory::cache::WikipediaSummary, from_row_async); },
-            t if t == crate::sam::memory::Human::sql_table_name() => { push_json_async!(crate::sam::memory::Human, from_row_async); },
-            t if t == crate::sam::memory::human::FaceEncoding::sql_table_name() => { push_json_async!(crate::sam::memory::human::FaceEncoding, from_row_async); },
-            t if t == crate::sam::memory::Location::sql_table_name() => { push_json_async!(crate::sam::memory::Location, from_row_async); },
-            t if t == crate::sam::memory::human::Notification::sql_table_name() => { push_json_async!(crate::sam::memory::human::Notification, from_row_async); },
-            t if t == crate::sam::memory::Room::sql_table_name() => { push_json_async!(crate::sam::memory::Room, from_row_async); },
-            t if t == crate::sam::memory::config::Service::sql_table_name() => { push_json_async!(crate::sam::memory::config::Service, from_row_async); },
-            t if t == crate::sam::memory::Thing::sql_table_name() => { push_json_async!(crate::sam::memory::Thing, from_row_async); },
+            t if t == crate::sam::memory::cache::WikipediaSummary::sql_table_name() => {
+                push_json_async!(crate::sam::memory::cache::WikipediaSummary, from_row_async);
+            }
+            t if t == crate::sam::memory::Human::sql_table_name() => {
+                push_json_async!(crate::sam::memory::Human, from_row_async);
+            }
+            t if t == crate::sam::memory::human::FaceEncoding::sql_table_name() => {
+                push_json_async!(crate::sam::memory::human::FaceEncoding, from_row_async);
+            }
+            t if t == crate::sam::memory::Location::sql_table_name() => {
+                push_json_async!(crate::sam::memory::Location, from_row_async);
+            }
+            t if t == crate::sam::memory::human::Notification::sql_table_name() => {
+                push_json_async!(crate::sam::memory::human::Notification, from_row_async);
+            }
+            t if t == crate::sam::memory::Room::sql_table_name() => {
+                push_json_async!(crate::sam::memory::Room, from_row_async);
+            }
+            t if t == crate::sam::memory::config::Service::sql_table_name() => {
+                push_json_async!(crate::sam::memory::config::Service, from_row_async);
+            }
+            t if t == crate::sam::memory::Thing::sql_table_name() => {
+                push_json_async!(crate::sam::memory::Thing, from_row_async);
+            }
             t if t == crate::sam::memory::Observation::sql_table_name() => {
                 if columns.is_none() {
                     push_json_async!(crate::sam::memory::Observation, from_row_async);
                 } else {
                     push_json_async!(crate::sam::memory::Observation, from_row_lite_async);
                 }
-            },
-            t if t == crate::sam::memory::config::Setting::sql_table_name() => { push_json_async!(crate::sam::memory::config::Setting, from_row_async); },
-            t if t == crate::sam::memory::cache::WebSessions::sql_table_name() => { push_json_async!(crate::sam::memory::cache::WebSessions, from_row_async); },
-            t if t == crate::sam::memory::config::FileStorageLocation::sql_table_name() => { push_json_async!(crate::sam::memory::config::FileStorageLocation, from_row_async); },
+            }
+            t if t == crate::sam::memory::config::Setting::sql_table_name() => {
+                push_json_async!(crate::sam::memory::config::Setting, from_row_async);
+            }
+            t if t == crate::sam::memory::cache::WebSessions::sql_table_name() => {
+                push_json_async!(crate::sam::memory::cache::WebSessions, from_row_async);
+            }
+            t if t == crate::sam::memory::config::FileStorageLocation::sql_table_name() => {
+                push_json_async!(
+                    crate::sam::memory::config::FileStorageLocation,
+                    from_row_async
+                );
+            }
             t if t == crate::sam::memory::storage::File::sql_table_name() => {
                 if columns.is_none() {
                     push_json_async!(crate::sam::memory::storage::File, from_row_async);
                 } else {
                     push_json_async!(crate::sam::memory::storage::File, from_row_lite_async);
                 }
-            },
-            t if t == crate::sam::services::crawler::CrawlJob::sql_table_name() => { push_json_async!(crate::sam::services::crawler::CrawlJob, from_row_async); },
-            t if t == crate::sam::services::crawler::CrawledPage::sql_table_name() => { push_json_async!(crate::sam::services::crawler::CrawledPage, from_row_async); },
+            }
+            t if t == crate::sam::services::crawler::CrawlJob::sql_table_name() => {
+                push_json_async!(crate::sam::services::crawler::CrawlJob, from_row_async);
+            }
+            t if t == crate::sam::services::crawler::CrawledPage::sql_table_name() => {
+                push_json_async!(crate::sam::services::crawler::CrawledPage, from_row_async);
+            }
             _ => {}
         }
         Ok(())
     }
-   
 
     /// Creates and returns a synchronous PostgreSQL client using the current configuration.
     ///
@@ -898,10 +1027,7 @@ impl Config {
 
     /// Checks if PostgreSQL (psql) is installed and available in PATH.
     pub fn check_postgres_installed() -> bool {
-        match Command::new("psql")
-            .arg("--version")
-            .output()
-        {
+        match Command::new("psql").arg("--version").output() {
             Ok(output) => {
                 if !output.status.success() {
                     return false;
@@ -937,7 +1063,9 @@ impl Config {
             .arg(create_user)
             .status()?;
         if !status_user.success() {
-            log::warn!("Could not create user 'sam' (may already exist or insufficient privileges)");
+            log::warn!(
+                "Could not create user 'sam' (may already exist or insufficient privileges)"
+            );
         }
         // Create database 'sam' owned by 'sam' if not exists
         // NOTE: CREATE DATABASE cannot be run inside DO/PLPGSQL blocks.
@@ -981,7 +1109,9 @@ impl Config {
             .arg(create_user)
             .status()?;
         if !status_user.success() {
-            log::warn!("Could not create user 'sam' (may already exist or insufficient privileges)");
+            log::warn!(
+                "Could not create user 'sam' (may already exist or insufficient privileges)"
+            );
         }
 
         // Create database 'sam' owned by 'sam' if not exists

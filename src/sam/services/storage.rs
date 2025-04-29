@@ -1,8 +1,8 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
@@ -57,7 +57,8 @@ pub fn handle(
     if request.url() == "/api/services/storage/locations" {
         // Handle storage locations
         if request.method() == "GET" {
-            let locations = crate::sam::memory::config::FileStorageLocation::select(None, None, None, None)?;
+            let locations =
+                crate::sam::memory::config::FileStorageLocation::select(None, None, None, None)?;
             return Ok(Response::json(&locations));
         }
 
@@ -99,7 +100,9 @@ pub fn handle(
             file.file_type = input.file_data.mime;
             file.file_data = Some(input.file_data.data);
             file.file_folder_tree = input.file_folder_tree;
-            file.storage_location_oid = input.storage_location_oid.unwrap_or_else(|| "SQL".to_string());
+            file.storage_location_oid = input
+                .storage_location_oid
+                .unwrap_or_else(|| "SQL".to_string());
             file.save()?;
 
             return Ok(Response::json(&file));
@@ -108,7 +111,8 @@ pub fn handle(
 
     if request.url().contains("/api/services/storage/file/") {
         // Handle file retrieval by OID
-        if let Some(oid) = request.url().split('/').nth(5) { // Fixed lifetime issue
+        if let Some(oid) = request.url().split('/').nth(5) {
+            // Fixed lifetime issue
             let file_path = format!("/opt/sam/files/{oid}");
             if Path::new(&file_path).exists() {
                 let file = File::open(&file_path)?;
@@ -117,12 +121,18 @@ pub fn handle(
 
             // Query file from database
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
-            pg_query.queries.push(crate::sam::memory::PGCol::String(oid.to_string()));
+            pg_query
+                .queries
+                .push(crate::sam::memory::PGCol::String(oid.to_string()));
             pg_query.query_columns.push("oid =".to_string());
 
-            let files = crate::sam::memory::storage::File::select(None, None, None, Some(pg_query))?;
+            let files =
+                crate::sam::memory::storage::File::select(None, None, None, Some(pg_query))?;
             if let Some(file) = files.first() {
-                return Ok(Response::from_data(file.file_type.clone(), file.file_data.clone().unwrap()));
+                return Ok(Response::from_data(
+                    file.file_type.clone(),
+                    file.file_data.clone().unwrap(),
+                ));
             } else {
                 return Ok(Response::empty_404());
             }

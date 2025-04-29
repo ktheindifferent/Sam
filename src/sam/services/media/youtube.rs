@@ -1,48 +1,50 @@
 use rouille::Request;
 use rouille::Response;
 
-
 use invidious::reqwest::blocking::Client;
 
-
-pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(
+    current_session: crate::sam::memory::cache::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/media/youtube" {
-
         let q_param = request.get_param("q");
 
         match q_param {
             Some(q) => {
                 let client = Client::new(String::from("https://vid.puffyan.us"));
-                let search_results = client.search(Some(format!("q={q}").as_str())).unwrap().items;
+                let search_results = client
+                    .search(Some(format!("q={q}").as_str()))
+                    .unwrap()
+                    .items;
                 return Ok(Response::json(&search_results));
-            },
+            }
             None => {
                 return Ok(Response::empty_404());
             }
-
         }
     }
 
     if request.url() == "/api/services/media/youtube/lucky" {
-
         let q_param = request.get_param("q");
 
         match q_param {
             Some(q) => {
                 let client = Client::new(String::from("https://vid.puffyan.us"));
-                let search_results = client.search(Some(format!("q={q}").as_str())).unwrap().items;
+                let search_results = client
+                    .search(Some(format!("q={q}").as_str()))
+                    .unwrap()
+                    .items;
                 let video = search_results[0].clone();
                 return Ok(Response::json(&video));
-            },
+            }
             None => {
                 return Ok(Response::empty_404());
             }
-
         }
     }
 
     if request.url() == "/api/services/media/youtube/stream" {
-
         let id_param = request.get_param("id");
         match id_param {
             Some(id) => {
@@ -53,18 +55,14 @@ pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: 
 
                 let response = Response::from_data("video/mp4", data);
                 return Ok(response);
-
-            },
+            }
             None => {
                 return Ok(Response::empty_404());
             }
-
         }
     }
 
-
     if request.url() == "/api/services/media/youtube/download" {
-
         let id = request.get_param("id").unwrap();
 
         let tube_id = rustube::Id::from_string(id)?;
@@ -76,13 +74,16 @@ pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: 
             .streams()
             .iter()
             .filter(|stream| stream.includes_video_track && stream.includes_audio_track)
-            .max_by_key(|stream| stream.quality_label).unwrap();
-
+            .max_by_key(|stream| stream.quality_label)
+            .unwrap();
 
         best_quality.blocking_download_to_dir("/opt/sam/tmp/youtube/downloads")?;
 
-        let data = std::fs::read(format!("/opt/sam/tmp/youtube/downloads/{}.mp4", tube_id.clone())).expect("Unable to read file");
-
+        let data = std::fs::read(format!(
+            "/opt/sam/tmp/youtube/downloads/{}.mp4",
+            tube_id.clone()
+        ))
+        .expect("Unable to read file");
 
         let mut file_folder_tree: Vec<String> = Vec::new();
         file_folder_tree.push("Videos".to_string());
@@ -96,7 +97,6 @@ pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: 
         file.storage_location_oid = "SQL".to_string();
         file.save()?;
 
-
         let mut notify = crate::sam::memory::human::Notification::new();
         notify.message = format!("{}.mp4 finished downloading!", tube_id.clone());
         notify.human_oid = current_session.human_oid;
@@ -107,14 +107,10 @@ pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: 
         return Ok(response);
     }
 
-
     if request.url() == "/api/services/media/youtube/cache" {
-
         let id_param = request.get_param("id");
         match id_param {
             Some(id) => {
-                
-
                 let tube_id = rustube::Id::from_string(id)?;
                 let video = rustube::blocking::Video::from_id(tube_id)?;
 
@@ -122,19 +118,16 @@ pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: 
                     .streams()
                     .iter()
                     .filter(|stream| stream.includes_video_track && stream.includes_audio_track)
-                    .min_by_key(|stream| stream.quality_label).unwrap();
-
+                    .min_by_key(|stream| stream.quality_label)
+                    .unwrap();
 
                 best_quality.blocking_download_to_dir("/opt/sam/tmp/youtube")?;
 
-
                 return Ok(Response::text("done"));
-
-            },
+            }
             None => {
                 return Ok(Response::empty_404());
             }
-
         }
     }
 

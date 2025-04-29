@@ -1,8 +1,8 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
@@ -11,7 +11,7 @@ use dasp::Frame;
 use hound::{WavReader, WavSpec, WavWriter};
 use noise_gate::NoiseGate;
 use std::{
-    fs::{File},
+    fs::File,
     io::BufWriter,
     path::{Path, PathBuf},
     thread,
@@ -31,12 +31,21 @@ pub fn cache_vwavs() {
     thread::spawn(move || {
         let pool = ThreadPool::new(12); // Configurable thread pool size
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String("HEARD".to_string()));
-        pg_query.query_columns.push("observation_type =".to_string());
-        pg_query.queries.push(crate::sam::memory::PGCol::String("%PERSON%".to_string()));
-        pg_query.query_columns.push(" AND observation_objects ilike".to_string());
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String("HEARD".to_string()));
+        pg_query
+            .query_columns
+            .push("observation_type =".to_string());
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String("%PERSON%".to_string()));
+        pg_query
+            .query_columns
+            .push(" AND observation_objects ilike".to_string());
 
-        let observations = crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)).unwrap();
+        let observations =
+            crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)).unwrap();
         let observations_len = observations.len();
         for (xrows, observation) in observations.iter().enumerate() {
             for human in &observation.observation_humans {
@@ -82,7 +91,9 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
     observation.observation_file = Some(std::fs::read(file_path).unwrap());
 
     if !prediction.stt.is_empty() {
-        observation.observation_objects.push(crate::sam::memory::ObservationObjects::PERSON);
+        observation
+            .observation_objects
+            .push(crate::sam::memory::ObservationObjects::PERSON);
     }
 
     if prediction.human.contains("Unknown") {
@@ -93,7 +104,9 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
         observation.observation_humans.push(human);
     } else {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(prediction.human.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(prediction.human.clone()));
         pg_query.query_columns.push("oid ilike".to_string());
         let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query)).unwrap();
         if !humans.is_empty() {
@@ -112,27 +125,32 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
 
 /// Stage One: Removes noise and trims silence.
 pub fn s1_init() {
-    thread::spawn(move || {
-        loop {
-            let thing_paths = std::fs::read_dir("/opt/sam/tmp/sound").unwrap();
-            for thing_path in thing_paths {
-                let tpath = thing_path.unwrap().path().display().to_string();
-                let paths = std::fs::read_dir(format!("{tpath}/s1")).unwrap();
+    thread::spawn(move || loop {
+        let thing_paths = std::fs::read_dir("/opt/sam/tmp/sound").unwrap();
+        for thing_path in thing_paths {
+            let tpath = thing_path.unwrap().path().display().to_string();
+            let paths = std::fs::read_dir(format!("{tpath}/s1")).unwrap();
 
-                for path in paths {
-                    let spath = path.unwrap().path().display().to_string();
-                    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+            for path in paths {
+                let spath = path.unwrap().path().display().to_string();
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64;
 
-                    if let Ok(reader) = WavReader::open(&spath) {
-                        let header = reader.spec();
-                        if let Ok(samples) = reader.into_samples::<i16>().map(|result| result.map(|sample| [sample])).collect::<Result<Vec<_>, _>>() {
-                            let release_time = (header.sample_rate as f32 * 1.3).round();
-                            let s2_path = PathBuf::from(format!("{tpath}/s2"));
-                            let mut sink = Sink::new(s2_path, format!("{timestamp}-"), header);
-                            let mut gate = NoiseGate::new(4000, release_time as usize);
-                            gate.process_frames(&samples, &mut sink);
-                            std::fs::remove_file(spath).ok();
-                        }
+                if let Ok(reader) = WavReader::open(&spath) {
+                    let header = reader.spec();
+                    if let Ok(samples) = reader
+                        .into_samples::<i16>()
+                        .map(|result| result.map(|sample| [sample]))
+                        .collect::<Result<Vec<_>, _>>()
+                    {
+                        let release_time = (header.sample_rate as f32 * 1.3).round();
+                        let s2_path = PathBuf::from(format!("{tpath}/s2"));
+                        let mut sink = Sink::new(s2_path, format!("{timestamp}-"), header);
+                        let mut gate = NoiseGate::new(4000, release_time as usize);
+                        gate.process_frames(&samples, &mut sink);
+                        std::fs::remove_file(spath).ok();
                     }
                 }
             }
@@ -228,7 +246,10 @@ pub fn s2_init() {
                 }
 
                 // Only stitch if we have a group of consecutive files and they're not too recent
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64;
                 for group in groups {
                     // Skip if any timestamp is too recent (avoid files still being written)
                     if group.iter().any(|&ts| ts >= now - 1) {
@@ -236,9 +257,11 @@ pub fn s2_init() {
                     }
 
                     // Collect file paths for this group, sorted by timestamp
-                    let mut files_to_stitch: Vec<String> = group.iter()
+                    let mut files_to_stitch: Vec<String> = group
+                        .iter()
                         .filter_map(|ts| {
-                            file_map.iter()
+                            file_map
+                                .iter()
                                 .find(|(t, _)| t == ts)
                                 .map(|(_, path)| path.clone())
                         })
@@ -260,12 +283,18 @@ pub fn s2_init() {
                         match WavReader::open(file_path) {
                             Ok(reader) => {
                                 let spec = reader.spec();
-                                let samples = match reader.into_samples::<i16>()
+                                let samples = match reader
+                                    .into_samples::<i16>()
                                     .map(|r| r.map(|s| [s]))
-                                    .collect::<Result<Vec<_>, _>>() {
+                                    .collect::<Result<Vec<_>, _>>()
+                                {
                                     Ok(s) => s,
                                     Err(e) => {
-                                        log::error!("Failed to read samples from {}: {}", file_path, e);
+                                        log::error!(
+                                            "Failed to read samples from {}: {}",
+                                            file_path,
+                                            e
+                                        );
                                         continue;
                                     }
                                 };
@@ -275,11 +304,17 @@ pub fn s2_init() {
                                     let out_file = match File::create(&out_path) {
                                         Ok(f) => f,
                                         Err(e) => {
-                                            log::error!("Failed to create output file {}: {}", out_path, e);
+                                            log::error!(
+                                                "Failed to create output file {}: {}",
+                                                out_path,
+                                                e
+                                            );
                                             break;
                                         }
                                     };
-                                    writer = Some(WavWriter::new(BufWriter::new(out_file), spec).unwrap());
+                                    writer = Some(
+                                        WavWriter::new(BufWriter::new(out_file), spec).unwrap(),
+                                    );
                                 }
 
                                 if let Some(w) = writer.as_mut() {
@@ -322,18 +357,14 @@ pub fn s2_init() {
     });
 }
 
-
-
-// Stage Three - 
+// Stage Three -
 /// Stage Three: Processes stitched audio files for speech-to-text (STT) and observation.
 /// Consumes files from /opt/sam/tmp/sound/*/s3, runs STT, observes, and cleans up.
 /// Uses a thread pool for parallel processing.
 pub fn s3_init() {
     thread::spawn(move || {
         // Use a thread pool with a configurable number of threads (default: 3)
-        let pool = threadpool::Builder::new()
-            .num_threads(3)
-            .build();
+        let pool = threadpool::Builder::new().num_threads(3).build();
 
         // Track files currently being processed to avoid duplicate work
         let mut processing_queue: Vec<String> = Vec::new();
@@ -385,7 +416,9 @@ pub fn s3_init() {
 
                         pool.execute(move || {
                             // Run STT prediction
-                            match crate::sam::services::stt::deep_speech_process(fpath_thread.clone()) {
+                            match crate::sam::services::stt::deep_speech_process(
+                                fpath_thread.clone(),
+                            ) {
                                 Ok(stt) if !stt.stt.is_empty() => {
                                     // Optionally play a notification sound
                                     // crate::sam::tools::uinx_cmd("aplay /opt/sam/beep.wav".to_string());
@@ -395,7 +428,11 @@ pub fn s3_init() {
                                 }
                                 Ok(_) => {} // No speech detected
                                 Err(e) => {
-                                    log::error!("STT processing failed for {}: {}", fpath_thread, e);
+                                    log::error!(
+                                        "STT processing failed for {}: {}",
+                                        fpath_thread,
+                                        e
+                                    );
                                 }
                             }
 
@@ -413,7 +450,6 @@ pub fn s3_init() {
         }
     });
 }
-
 
 pub struct Sink {
     output_dir: PathBuf,
@@ -436,7 +472,7 @@ impl Sink {
 
     fn get_writer(&mut self) -> &mut WavWriter<BufWriter<File>> {
         if self.writer.is_none() {
-            // Lazily initialize the writer. This lets us drop the writer when 
+            // Lazily initialize the writer. This lets us drop the writer when
             // sent an end_of_transmission and have it automatically start
             // writing to a new clip when necessary.
             let filename = self

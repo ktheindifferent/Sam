@@ -2,14 +2,14 @@
 //!
 //! Provides synchronous and asynchronous methods for interacting with location records in a PostgreSQL database.
 
-use serde::{Serialize, Deserialize};
+use crate::sam::memory::Result;
+use crate::sam::memory::{Config, PostgresQueries};
 use rand::distributions::Alphanumeric;
 use rand::thread_rng;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use crate::sam::memory::{Config, PostgresQueries};
-use crate::sam::memory::Result;
-use rand::Rng;
 
 /// Represents a location in the system.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -33,7 +33,7 @@ pub struct Location {
     /// Creation timestamp (seconds since UNIX_EPOCH).
     pub created_at: i64,
     /// Last update timestamp (seconds since UNIX_EPOCH).
-    pub updated_at: i64
+    pub updated_at: i64,
 }
 
 impl Default for Location {
@@ -45,18 +45,28 @@ impl Default for Location {
 impl Location {
     /// Creates a new Location with a random OID and current timestamps.
     pub fn new() -> Location {
-        let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
-        Location { 
+        let oid: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(15)
+            .map(char::from)
+            .collect();
+        Location {
             id: 0,
             oid,
-            name: String::new(), 
+            name: String::new(),
             address: String::new(),
             city: String::new(),
             state: String::new(),
             zip_code: String::new(),
             lifx_api_key: None,
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
-            updated_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            updated_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
         }
     }
 
@@ -89,35 +99,36 @@ impl Location {
             "ALTER TABLE public.locations ADD COLUMN lifx_api_key VARCHAR NULL;",
             "ALTER TABLE public.locations ADD COLUMN city VARCHAR NULL;",
             "ALTER TABLE public.locations ADD COLUMN state VARCHAR NULL;",
-            "ALTER TABLE public.locations ADD COLUMN zip_code VARCHAR NULL;"
+            "ALTER TABLE public.locations ADD COLUMN zip_code VARCHAR NULL;",
         ]
     }
 
     /// Returns the number of location records in the database.
-    pub fn count() -> Result<i64>{
+    pub fn count() -> Result<i64> {
         let mut client = Config::client()?;
-        let execquery = format!("SELECT COUNT(*)
-        FROM {}", Self::sql_table_name());
+        let execquery = format!(
+            "SELECT COUNT(*)
+        FROM {}",
+            Self::sql_table_name()
+        );
         let mut counter: i64 = 0;
         for row in client.query(execquery.as_str(), &[])? {
-           counter = row.get("count");
+            counter = row.get("count");
         }
-        match client.close(){
-            Ok(_) => {},
+        match client.close() {
+            Ok(_) => {}
             Err(e) => log::error!("failed to close connection to database: {}", e),
         }
         Ok(counter)
     }
 
     /// Saves the Location to the database. Updates if OID exists, inserts otherwise.
-    pub fn save(&self) -> Result<&Self>{
+    pub fn save(&self) -> Result<&Self> {
         let mut client = Config::client()?;
         // Search for OID matches
-        let statement = client.prepare("SELECT * FROM locations WHERE oid = $1 OR name ilike $2")?;
-        let rows = client.query(&statement, &[
-            &self.oid, 
-            &self.name,
-        ])?;
+        let statement =
+            client.prepare("SELECT * FROM locations WHERE oid = $1 OR name ilike $2")?;
+        let rows = client.query(&statement, &[&self.oid, &self.name])?;
         if rows.is_empty() {
             client.execute("INSERT INTO locations (oid, name, address, city, state, zip_code, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);",
                 &[&self.oid.clone(),
@@ -130,16 +141,13 @@ impl Location {
                 &self.updated_at]
             ).unwrap();
             if self.lifx_api_key.is_some() {
-                client.execute("UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;", 
-                &[
-                    &self.lifx_api_key.clone().unwrap(),
-                    &self.oid
-                ])?;
+                client.execute(
+                    "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
+                    &[&self.lifx_api_key.clone().unwrap(), &self.oid],
+                )?;
             }
             let statement = client.prepare("SELECT * FROM locations WHERE oid = $1")?;
-            let _rows_two = client.query(&statement, &[
-                &self.oid, 
-            ])?;
+            let _rows_two = client.query(&statement, &[&self.oid])?;
             Ok(self)
         } else {
             let ads = Self::from_row(&rows[0]).unwrap();
@@ -156,26 +164,36 @@ impl Location {
                     &ads.oid
                 ])?;
                 if self.lifx_api_key.is_some() {
-                    client.execute("UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;", 
-                    &[
-                        &self.lifx_api_key.clone().unwrap(),
-                        &ads.oid
-                    ])?;
+                    client.execute(
+                        "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
+                        &[&self.lifx_api_key.clone().unwrap(), &ads.oid],
+                    )?;
                 }
             }
             let statement_two = client.prepare("SELECT * FROM locations WHERE oid = $1")?;
-            let _rows_two = client.query(&statement_two, &[
-                &self.oid, 
-            ])?;
+            let _rows_two = client.query(&statement_two, &[&self.oid])?;
             Ok(self)
         }
     }
 
     /// Selects Location entries from the database with optional limit, offset, order, and query.
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>>{
+    pub fn select(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
-        for j in jsons{
+        let jsons = crate::sam::memory::Config::pg_select(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            None,
+        )?;
+        for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);
         }
@@ -187,19 +205,19 @@ impl Location {
         Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
-            name: row.get("name"), 
-            address: row.get("address"), 
-            city: row.get("city"), 
-            state: row.get("state"), 
+            name: row.get("name"),
+            address: row.get("address"),
+            city: row.get("city"),
+            state: row.get("state"),
             zip_code: row.get("zip_code"),
             lifx_api_key: row.get("lifx_api_key"),
             created_at: row.get("created_at"),
-            updated_at: row.get("updated_at")
+            updated_at: row.get("updated_at"),
         })
     }
 
     /// Deletes a Location from the database by OID.
-    pub fn destroy(oid: String) -> Result<bool>{
+    pub fn destroy(oid: String) -> Result<bool> {
         crate::sam::memory::Config::destroy_row(oid, "locations".to_string())
     }
 
@@ -215,7 +233,9 @@ impl Location {
     /// Asynchronously saves the Location to the database. Updates if OID exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<&Self> {
         let client = Config::client_async().await?;
-        let statement = client.prepare("SELECT * FROM locations WHERE oid = $1 OR name ilike $2").await?;
+        let statement = client
+            .prepare("SELECT * FROM locations WHERE oid = $1 OR name ilike $2")
+            .await?;
         let rows = client.query(&statement, &[&self.oid, &self.name]).await?;
         if rows.is_empty() {
             client.execute("INSERT INTO locations (oid, name, address, city, state, zip_code, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);",
@@ -229,11 +249,12 @@ impl Location {
                 &self.updated_at]
             ).await?;
             if self.lifx_api_key.is_some() {
-                client.execute("UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                &[
-                    &self.lifx_api_key.clone().unwrap(),
-                    &self.oid
-                ]).await?;
+                client
+                    .execute(
+                        "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
+                        &[&self.lifx_api_key.clone().unwrap(), &self.oid],
+                    )
+                    .await?;
             }
             Ok(self)
         } else {
@@ -250,11 +271,12 @@ impl Location {
                     &ads.oid
                 ]).await?;
                 if self.lifx_api_key.is_some() {
-                    client.execute("UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                    &[
-                        &self.lifx_api_key.clone().unwrap(),
-                        &ads.oid
-                    ]).await?;
+                    client
+                        .execute(
+                            "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
+                            &[&self.lifx_api_key.clone().unwrap(), &ads.oid],
+                        )
+                        .await?;
                 }
             }
             Ok(self)
@@ -262,11 +284,25 @@ impl Location {
     }
 
     /// Asynchronously selects Location entries from the database with optional limit, offset, order, and query.
-    pub async fn select_async(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub async fn select_async(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let config = crate::sam::memory::Config::new();
         let client = config.connect_pool().await?;
-        let jsons = crate::sam::memory::Config::pg_select_async(Self::sql_table_name(), None, limit, offset, order, query, client).await?;
+        let jsons = crate::sam::memory::Config::pg_select_async(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            client,
+        )
+        .await?;
         for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);

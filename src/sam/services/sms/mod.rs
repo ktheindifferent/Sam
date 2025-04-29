@@ -1,10 +1,9 @@
+pub mod plivo;
 pub mod twilio;
 pub mod vonage;
-pub mod plivo;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex as StdMutex;
-
 
 static SERVICE_RUNNING: AtomicBool = AtomicBool::new(false);
 

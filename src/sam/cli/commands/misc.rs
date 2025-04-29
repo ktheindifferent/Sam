@@ -61,7 +61,10 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         Ok(reply) => {
             let text = reply.text.clone();
             let output_lines = output_lines.clone();
-            tokio::spawn(crate::sam::cli::helpers::append_and_tts(output_lines, format!("┌─[sam]─> {text}")));
+            tokio::spawn(crate::sam::cli::helpers::append_and_tts(
+                output_lines,
+                format!("┌─[sam]─> {text}"),
+            ));
         }
         Err(e) => {
             let mut out = output_lines.lock().await;

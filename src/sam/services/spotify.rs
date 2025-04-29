@@ -1,10 +1,10 @@
 //! Spotify service for background music control
+use log::info;
+use once_cell::sync::Lazy;
+use reqwest::Client;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use once_cell::sync::Lazy;
-use log::info;
-use reqwest::Client;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SpotifyStatus {
@@ -139,10 +139,10 @@ impl SpotifyApi {
     /// Authenticate with Spotify (OAuth2 Client Credentials flow)
     pub async fn authenticate(&mut self) -> Result<(), String> {
         let auth = base64::encode(format!("{}:{}", self.client_id, self.client_secret));
-        let params = [
-            ("grant_type", "client_credentials"),
-        ];
-        let res = self.client.post("https://accounts.spotify.com/api/token")
+        let params = [("grant_type", "client_credentials")];
+        let res = self
+            .client
+            .post("https://accounts.spotify.com/api/token")
             .header("Authorization", format!("Basic {auth}"))
             .form(&params)
             .send()
@@ -152,7 +152,10 @@ impl SpotifyApi {
             return Err(format!("Spotify auth failed: {}", res.status()));
         }
         let json: serde_json::Value = res.json().await.map_err(|e| format!("JSON error: {e}"))?;
-        self.access_token = json.get("access_token").and_then(|v| v.as_str()).map(|s| s.to_string());
+        self.access_token = json
+            .get("access_token")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         Ok(())
     }
 
@@ -164,7 +167,9 @@ impl SpotifyApi {
     /// Play music (resume playback)
     pub async fn play(&self) -> Result<(), String> {
         let token = self.access_token.as_ref().ok_or("No access token")?;
-        let res = self.client.put("https://api.spotify.com/v1/me/player/play")
+        let res = self
+            .client
+            .put("https://api.spotify.com/v1/me/player/play")
             .bearer_auth(token)
             .send()
             .await
@@ -179,7 +184,9 @@ impl SpotifyApi {
     /// Pause playback
     pub async fn pause(&self) -> Result<(), String> {
         let token = self.access_token.as_ref().ok_or("No access token")?;
-        let res = self.client.put("https://api.spotify.com/v1/me/player/pause")
+        let res = self
+            .client
+            .put("https://api.spotify.com/v1/me/player/pause")
             .bearer_auth(token)
             .send()
             .await
@@ -195,7 +202,9 @@ impl SpotifyApi {
     pub async fn set_shuffle(&self, shuffle: bool) -> Result<(), String> {
         let token = self.access_token.as_ref().ok_or("No access token")?;
         let url = format!("https://api.spotify.com/v1/me/player/shuffle?state={shuffle}");
-        let res = self.client.put(&url)
+        let res = self
+            .client
+            .put(&url)
             .bearer_auth(token)
             .send()
             .await
@@ -210,7 +219,9 @@ impl SpotifyApi {
     /// Get current playback status
     pub async fn get_status(&self) -> Result<String, String> {
         let token = self.access_token.as_ref().ok_or("No access token")?;
-        let res = self.client.get("https://api.spotify.com/v1/me/player")
+        let res = self
+            .client
+            .get("https://api.spotify.com/v1/me/player")
             .bearer_auth(token)
             .send()
             .await

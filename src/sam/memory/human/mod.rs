@@ -2,14 +2,14 @@
 //!
 //! Provides synchronous and asynchronous methods for interacting with human records in a PostgreSQL database.
 
-use serde::{Serialize, Deserialize};
+use crate::sam::memory::Result;
+use crate::sam::memory::{Config, PostgresQueries};
 use rand::distributions::Alphanumeric;
 use rand::thread_rng;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use crate::sam::memory::{Config, PostgresQueries};
-use crate::sam::memory::Result;
-use rand::Rng;
 
 pub mod face_encoding;
 pub mod notification;
@@ -41,7 +41,7 @@ pub struct Human {
     /// Creation timestamp (seconds since UNIX_EPOCH).
     pub created_at: i64,
     /// Last update timestamp (seconds since UNIX_EPOCH).
-    pub updated_at: i64
+    pub updated_at: i64,
 }
 
 impl Default for Human {
@@ -53,19 +53,29 @@ impl Default for Human {
 impl Human {
     /// Creates a new Human with a random OID and current timestamps.
     pub fn new() -> Human {
-        let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
-        Human { 
+        let oid: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(15)
+            .map(char::from)
+            .collect();
+        Human {
             id: 0,
             oid: oid.clone(),
-            name: format!("unknown-{oid}"), 
+            name: format!("unknown-{oid}"),
             email: None,
             password: None,
             phone_number: None,
             heard_count: 0,
             seen_count: 0,
             authorization_level: 0,
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
-            updated_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            updated_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
         }
     }
 
@@ -90,13 +100,13 @@ impl Human {
             updated_at BIGINT NULL,
             CONSTRAINT humans_pkey PRIMARY KEY (id));"
     }
-    
+
     /// Returns a list of SQL migration statements for the humans table.
     pub fn migrations() -> Vec<&'static str> {
         vec![
             "ALTER TABLE public.humans ADD COLUMN password varchar NULL;",
             "ALTER TABLE public.humans ADD COLUMN created_at BIGINT NULL;",
-            "ALTER TABLE public.humans ADD COLUMN updated_at BIGINT NULL;"
+            "ALTER TABLE public.humans ADD COLUMN updated_at BIGINT NULL;",
         ]
     }
 
@@ -106,10 +116,10 @@ impl Human {
         let execquery = format!("SELECT COUNT(*) FROM {}", Self::sql_table_name());
         let mut counter: i64 = 0;
         for row in client.query(execquery.as_str(), &[])? {
-           counter = row.get("count");
+            counter = row.get("count");
         }
-        match client.close(){
-            Ok(_) => {},
+        match client.close() {
+            Ok(_) => {}
             Err(e) => log::error!("failed to close connection to database: {}", e),
         }
         Ok(counter)
@@ -120,15 +130,12 @@ impl Human {
         let mut client = Config::client()?;
         // Search for OID matches
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
         // Search for OID matches
-        let rows = Self::select(
-            None, 
-            None, 
-            None, 
-            Some(pg_query.clone())
-        ).unwrap();
+        let rows = Self::select(None, None, None, Some(pg_query.clone())).unwrap();
         if rows.is_empty() {
             client.execute("INSERT INTO humans (oid, name, heard_count, seen_count, authorization_level, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
                 &[  &self.oid.clone(),
@@ -141,25 +148,22 @@ impl Human {
                 ]
             ).unwrap();
             if self.phone_number.is_some() {
-                client.execute("UPDATE humans SET phone_number = $1 WHERE oid = $2;", 
-                &[
-                    &self.phone_number.clone().unwrap(),
-                    &self.oid
-                ])?;
+                client.execute(
+                    "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
+                    &[&self.phone_number.clone().unwrap(), &self.oid],
+                )?;
             }
             if self.email.is_some() {
-                client.execute("UPDATE humans SET email = $1 WHERE oid = $2;", 
-                &[
-                    &self.email.clone().unwrap(),
-                    &self.oid
-                ])?;
+                client.execute(
+                    "UPDATE humans SET email = $1 WHERE oid = $2;",
+                    &[&self.email.clone().unwrap(), &self.oid],
+                )?;
             }
             if self.password.is_some() {
-                client.execute("UPDATE humans SET password = $1 WHERE oid = $2;", 
-                &[
-                    &self.password.clone().unwrap(),
-                    &self.oid
-                ])?;
+                client.execute(
+                    "UPDATE humans SET password = $1 WHERE oid = $2;",
+                    &[&self.password.clone().unwrap(), &self.oid],
+                )?;
             }
             Ok(self)
         } else {
@@ -177,25 +181,22 @@ impl Human {
                     &ads.oid
                 ])?;
                 if self.phone_number.is_some() {
-                    client.execute("UPDATE humans SET phone_number = $1 WHERE oid = $2;", 
-                    &[
-                        &self.phone_number.clone().unwrap(),
-                        &ads.oid
-                    ])?;
+                    client.execute(
+                        "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
+                        &[&self.phone_number.clone().unwrap(), &ads.oid],
+                    )?;
                 }
                 if self.email.is_some() {
-                    client.execute("UPDATE humans SET email = $1 WHERE oid = $2;", 
-                    &[
-                        &self.email.clone().unwrap(),
-                        &ads.oid
-                    ])?;
+                    client.execute(
+                        "UPDATE humans SET email = $1 WHERE oid = $2;",
+                        &[&self.email.clone().unwrap(), &ads.oid],
+                    )?;
                 }
                 if self.password.is_some() {
-                    client.execute("UPDATE humans SET password = $1 WHERE oid = $2;", 
-                    &[
-                        &self.password.clone().unwrap(),
-                        &self.oid
-                    ])?;
+                    client.execute(
+                        "UPDATE humans SET password = $1 WHERE oid = $2;",
+                        &[&self.password.clone().unwrap(), &self.oid],
+                    )?;
                 }
             }
             Ok(self)
@@ -203,10 +204,23 @@ impl Human {
     }
 
     /// Selects Human entries from the database with optional limit, offset, order, and query.
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub fn select(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
-        for j in jsons{
+        let jsons = crate::sam::memory::Config::pg_select(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            None,
+        )?;
+        for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);
         }
@@ -221,7 +235,7 @@ impl Human {
         Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
-            name: row.get("name"), 
+            name: row.get("name"),
             email: sql_email,
             password: sql_password,
             phone_number: sql_phone_number,
@@ -229,7 +243,7 @@ impl Human {
             seen_count: row.get("seen_count"),
             authorization_level: row.get("authorization_level"),
             created_at: row.get("created_at"),
-            updated_at: row.get("updated_at")
+            updated_at: row.get("updated_at"),
         })
     }
 
@@ -251,7 +265,9 @@ impl Human {
     pub async fn save_async(&self) -> Result<&Self> {
         let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
         let rows = Self::select_async(None, None, None, Some(pg_query.clone())).await?;
         if rows.is_empty() {
@@ -266,25 +282,28 @@ impl Human {
                 ]
             ).await?;
             if self.phone_number.is_some() {
-                client.execute("UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                &[
-                    &self.phone_number.clone().unwrap(),
-                    &self.oid
-                ]).await?;
+                client
+                    .execute(
+                        "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
+                        &[&self.phone_number.clone().unwrap(), &self.oid],
+                    )
+                    .await?;
             }
             if self.email.is_some() {
-                client.execute("UPDATE humans SET email = $1 WHERE oid = $2;",
-                &[
-                    &self.email.clone().unwrap(),
-                    &self.oid
-                ]).await?;
+                client
+                    .execute(
+                        "UPDATE humans SET email = $1 WHERE oid = $2;",
+                        &[&self.email.clone().unwrap(), &self.oid],
+                    )
+                    .await?;
             }
             if self.password.is_some() {
-                client.execute("UPDATE humans SET password = $1 WHERE oid = $2;",
-                &[
-                    &self.password.clone().unwrap(),
-                    &self.oid
-                ]).await?;
+                client
+                    .execute(
+                        "UPDATE humans SET password = $1 WHERE oid = $2;",
+                        &[&self.password.clone().unwrap(), &self.oid],
+                    )
+                    .await?;
             }
             Ok(self)
         } else {
@@ -300,25 +319,28 @@ impl Human {
                     &ads.oid
                 ]).await?;
                 if self.phone_number.is_some() {
-                    client.execute("UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                    &[
-                        &self.phone_number.clone().unwrap(),
-                        &ads.oid
-                    ]).await?;
+                    client
+                        .execute(
+                            "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
+                            &[&self.phone_number.clone().unwrap(), &ads.oid],
+                        )
+                        .await?;
                 }
                 if self.email.is_some() {
-                    client.execute("UPDATE humans SET email = $1 WHERE oid = $2;",
-                    &[
-                        &self.email.clone().unwrap(),
-                        &ads.oid
-                    ]).await?;
+                    client
+                        .execute(
+                            "UPDATE humans SET email = $1 WHERE oid = $2;",
+                            &[&self.email.clone().unwrap(), &ads.oid],
+                        )
+                        .await?;
                 }
                 if self.password.is_some() {
-                    client.execute("UPDATE humans SET password = $1 WHERE oid = $2;",
-                    &[
-                        &self.password.clone().unwrap(),
-                        &self.oid
-                    ]).await?;
+                    client
+                        .execute(
+                            "UPDATE humans SET password = $1 WHERE oid = $2;",
+                            &[&self.password.clone().unwrap(), &self.oid],
+                        )
+                        .await?;
                 }
             }
             Ok(self)
@@ -326,11 +348,25 @@ impl Human {
     }
 
     /// Asynchronously selects Human entries from the database with optional limit, offset, order, and query.
-    pub async fn select_async(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub async fn select_async(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let config = crate::sam::memory::Config::new();
-let client = config.connect_pool().await?;
-        let jsons = crate::sam::memory::Config::pg_select_async(Self::sql_table_name(), None, limit, offset, order, query, client).await?;
+        let client = config.connect_pool().await?;
+        let jsons = crate::sam::memory::Config::pg_select_async(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            client,
+        )
+        .await?;
         for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);

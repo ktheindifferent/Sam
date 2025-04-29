@@ -2,15 +2,15 @@
 //!
 //! Provides synchronous and asynchronous methods for interacting with room records in a PostgreSQL database.
 
-use serde::{Serialize, Deserialize};
+use crate::sam::memory::Config;
+use crate::sam::memory::PostgresQueries;
+use crate::sam::memory::Result;
 use rand::distributions::Alphanumeric;
 use rand::thread_rng;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use crate::sam::memory::Config;
-use crate::sam::memory::Result;
-use rand::Rng;
-use crate::sam::memory::PostgresQueries;
 
 /// Represents a room in the system.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -28,7 +28,7 @@ pub struct Room {
     /// Creation timestamp (seconds since UNIX_EPOCH).
     pub created_at: i64,
     /// Last update timestamp (seconds since UNIX_EPOCH).
-    pub updated_at: i64
+    pub updated_at: i64,
 }
 
 impl Default for Room {
@@ -40,15 +40,25 @@ impl Default for Room {
 impl Room {
     /// Creates a new Room with a random OID and current timestamps.
     pub fn new() -> Room {
-        let oid: String = thread_rng().sample_iter(&Alphanumeric).take(15).map(char::from).collect();
-        Room { 
+        let oid: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(15)
+            .map(char::from)
+            .collect();
+        Room {
             id: 0,
             oid,
-            name: String::new(), 
+            name: String::new(),
             icon: "fa fa-solid fa-cube".to_string(),
             location_oid: String::new(),
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
-            updated_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            updated_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
         }
     }
 
@@ -75,21 +85,18 @@ impl Room {
         vec![
             "ALTER TABLE public.rooms ADD COLUMN icon varchar NULL;",
             "ALTER TABLE public.rooms ADD COLUMN created_at BIGINT NULL;",
-            "ALTER TABLE public.rooms ADD COLUMN updated_at BIGINT NULL;"
+            "ALTER TABLE public.rooms ADD COLUMN updated_at BIGINT NULL;",
         ]
     }
 
     /// Saves the Room to the database. Updates if OID or (location_oid+name) exists, inserts otherwise.
     pub fn save(&self) -> Result<&Self> {
         let mut client = Config::client()?;
-        
+
         // Search for OID matches
-        let statement = client.prepare("SELECT * FROM rooms WHERE oid = $1 OR (location_oid = $2 AND name = $3)")?;
-        let rows = client.query(&statement, &[
-            &self.oid, 
-            &self.location_oid,
-            &self.name,
-        ])?;
+        let statement = client
+            .prepare("SELECT * FROM rooms WHERE oid = $1 OR (location_oid = $2 AND name = $3)")?;
+        let rows = client.query(&statement, &[&self.oid, &self.location_oid, &self.name])?;
 
         if rows.is_empty() {
             client.execute("INSERT INTO rooms (oid, name, icon, location_oid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
@@ -105,28 +112,38 @@ impl Room {
 
             // Only save if newer than stored information
             if self.updated_at > ads.updated_at {
-                client.execute("UPDATE rooms SET name = $1, icon = $2, location_oid = $3 WHERE oid = $4;", 
-                &[
-                    &self.name,
-                    &self.icon,
-                    &self.location_oid,
-                    &ads.oid
-                ])?;
+                client.execute(
+                    "UPDATE rooms SET name = $1, icon = $2, location_oid = $3 WHERE oid = $4;",
+                    &[&self.name, &self.icon, &self.location_oid, &ads.oid],
+                )?;
             }
         }
         Ok(self)
     }
 
     /// Selects Room entries from the database with optional limit, offset, order, and query.
-    pub fn select(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub fn select(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
-        let jsons = crate::sam::memory::Config::pg_select(Self::sql_table_name(), None, limit, offset, order, query, None)?;
+        let jsons = crate::sam::memory::Config::pg_select(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            None,
+        )?;
 
-        for j in jsons{
+        for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);
         }
-        
+
         Ok(parsed_rows)
     }
 
@@ -141,11 +158,11 @@ impl Room {
         Ok(Self {
             id: row.get("id"),
             oid: row.get("oid"),
-            name: row.get("name"), 
-            icon, 
+            name: row.get("name"),
+            icon,
             location_oid: row.get("location_oid"),
             created_at: row.get("created_at"),
-            updated_at: row.get("updated_at")
+            updated_at: row.get("updated_at"),
         })
     }
 
@@ -157,8 +174,12 @@ impl Room {
     /// Asynchronously saves the Room to the database. Updates if OID or (location_oid+name) exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<&Self> {
         let client = Config::client_async().await?;
-        let statement = client.prepare("SELECT * FROM rooms WHERE oid = $1 OR (location_oid = $2 AND name = $3)").await?;
-        let rows = client.query(&statement, &[&self.oid, &self.location_oid, &self.name]).await?;
+        let statement = client
+            .prepare("SELECT * FROM rooms WHERE oid = $1 OR (location_oid = $2 AND name = $3)")
+            .await?;
+        let rows = client
+            .query(&statement, &[&self.oid, &self.location_oid, &self.name])
+            .await?;
         if rows.is_empty() {
             client.execute("INSERT INTO rooms (oid, name, icon, location_oid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
                 &[&self.oid.clone(),
@@ -172,24 +193,37 @@ impl Room {
         } else {
             let ads = Self::from_row(&rows[0]).unwrap();
             if self.updated_at > ads.updated_at {
-                client.execute("UPDATE rooms SET name = $1, icon = $2, location_oid = $3 WHERE oid = $4;",
-                &[
-                    &self.name,
-                    &self.icon,
-                    &self.location_oid,
-                    &ads.oid
-                ]).await?;
+                client
+                    .execute(
+                        "UPDATE rooms SET name = $1, icon = $2, location_oid = $3 WHERE oid = $4;",
+                        &[&self.name, &self.icon, &self.location_oid, &ads.oid],
+                    )
+                    .await?;
             }
             Ok(self)
         }
     }
 
     /// Asynchronously selects Room entries from the database with optional limit, offset, order, and query.
-    pub async fn select_async(limit: Option<usize>, offset: Option<usize>, order: Option<String>, query: Option<PostgresQueries>) -> Result<Vec<Self>> {
+    pub async fn select_async(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
         let mut parsed_rows: Vec<Self> = Vec::new();
         let config = crate::sam::memory::Config::new();
-let client = config.connect_pool().await?;
-        let jsons = crate::sam::memory::Config::pg_select_async(Self::sql_table_name(), None, limit, offset, order, query, client).await?;
+        let client = config.connect_pool().await?;
+        let jsons = crate::sam::memory::Config::pg_select_async(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            client,
+        )
+        .await?;
         for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);

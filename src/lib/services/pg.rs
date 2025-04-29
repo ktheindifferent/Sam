@@ -1,11 +1,11 @@
-use std::process::Command;
+use log::{error, info};
 use std::io;
-use log::{info, error};
 use std::path::Path;
+use std::process::Command;
 
 /*
 This Rust code provides functions to install and configure PostgreSQL on Windows, Linux, and macOS.
-It uses the `std::process::Command` API to run system commands. 
+It uses the `std::process::Command` API to run system commands.
 You may need to run your program with administrator/root privileges.
 
 Note: This is a simplified example. For production, use proper error handling and security practices.
@@ -68,19 +68,24 @@ pub fn create_sam_user_and_db() -> io::Result<()> {
     Ok(())
 }
 
-
-
 /// Clone and build PostgreSQL server version 17 from source.
 /// This function requires `git`, `make`, `gcc`, and other build tools to be installed.
 /// On success, the built binaries will be in the `postgres` directory.
 pub fn build_postgres_from_source() -> io::Result<()> {
-
     // 1. Clone the PostgreSQL 17 source if not already present
     let repo_url = "https://github.com/postgres/postgres.git";
     let dir = "postgres";
     if !Path::new(dir).exists() {
         let status = Command::new("git")
-            .args(["clone", "--branch", "REL_17_STABLE", "--depth", "1", repo_url, dir])
+            .args([
+                "clone",
+                "--branch",
+                "REL_17_STABLE",
+                "--depth",
+                "1",
+                repo_url,
+                dir,
+            ])
             .status()?;
         if !status.success() {
             error!("Failed to clone PostgreSQL source.");
@@ -95,7 +100,10 @@ pub fn build_postgres_from_source() -> io::Result<()> {
     let configure_path = format!("{dir}/configure");
     if !Path::new(&configure_path).exists() {
         error!("configure script not found in postgres directory.");
-        return Err(io::Error::new(io::ErrorKind::NotFound, "configure script missing"));
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "configure script missing",
+        ));
     }
     let status = Command::new("sh")
         .current_dir(dir)
@@ -108,9 +116,7 @@ pub fn build_postgres_from_source() -> io::Result<()> {
     info!("Ran configure.");
 
     // 3. Run make
-    let status = Command::new("make")
-        .current_dir(dir)
-        .status()?;
+    let status = Command::new("make").current_dir(dir).status()?;
     if !status.success() {
         error!("Failed to build PostgreSQL.");
         return Err(io::Error::other("make failed"));
@@ -132,15 +138,14 @@ pub fn build_postgres_from_source() -> io::Result<()> {
     Ok(())
 }
 
-
 #[cfg(target_os = "windows")]
 pub fn install_postgres(_user: &str) -> io::Result<()> {
-
-
     // 1. Fetch the EnterpriseDB binaries page
     let url = "https://www.enterprisedb.com/download-postgresql-binaries";
     let resp = get(url).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    let body = resp.text().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let body = resp
+        .text()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
     // 2. Parse the HTML to find the latest Windows x86-64 installer link
     let document = Html::parse_document(&body);
@@ -154,7 +159,13 @@ pub fn install_postgres(_user: &str) -> io::Result<()> {
         }
     }
     let latest_url = match latest_url {
-        Some(url) => if url.starts_with("http") { url } else { format!("https://www.enterprisedb.com{}", url) },
+        Some(url) => {
+            if url.starts_with("http") {
+                url
+            } else {
+                format!("https://www.enterprisedb.com{}", url)
+            }
+        }
         None => {
             log::error!("Could not find latest PostgreSQL Windows installer link.");
             return Ok(());
@@ -166,7 +177,8 @@ pub fn install_postgres(_user: &str) -> io::Result<()> {
     let installer_path = temp_dir.join("postgres_installer.exe");
     let mut resp = get(&latest_url).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     let mut out = fs::File::create(&installer_path)?;
-    resp.copy_to(&mut out).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    resp.copy_to(&mut out)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
     // 4. Run the installer in silent mode
     let install_dir = r"C:\\Program Files\\PostgreSQL\\latest";
@@ -192,10 +204,7 @@ pub fn install_postgres(_user: &str) -> io::Result<()> {
 #[cfg(target_os = "linux")]
 pub fn install_postgres(_user: &str) -> io::Result<()> {
     // Try apt-get (Debian/Ubuntu)
-    let status = Command::new("sudo")
-        .arg("apt-get")
-        .arg("update")
-        .status()?;
+    let status = Command::new("sudo").arg("apt-get").arg("update").status()?;
     if status.success() {
         let status = Command::new("sudo")
             .arg("apt-get")
@@ -311,9 +320,7 @@ pub async fn is_postgres_running() -> bool {
     }
     #[cfg(target_os = "macos")]
     {
-        let output = Command::new("brew")
-            .args(["services", "list"])
-            .output();
+        let output = Command::new("brew").args(["services", "list"]).output();
         if let Ok(output) = output {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
@@ -346,10 +353,7 @@ pub async fn install() {
     #[cfg(target_os = "linux")]
     {
         // Try apt-get (Debian/Ubuntu)
-        let status = Command::new("sudo")
-            .arg("apt-get")
-            .arg("update")
-            .status();
+        let status = Command::new("sudo").arg("apt-get").arg("update").status();
         if let Ok(status) = status {
             if status.success() {
                 let status = Command::new("sudo")
@@ -521,9 +525,7 @@ pub fn status() -> &'static str {
     }
     #[cfg(target_os = "macos")]
     {
-        let output = Command::new("brew")
-            .args(["services", "list"])
-            .output();
+        let output = Command::new("brew").args(["services", "list"]).output();
         if let Ok(output) = output {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {

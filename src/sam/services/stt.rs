@@ -1,35 +1,35 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
-use rouille::{Request, Response, post_input};
-use serde::{Serialize, Deserialize};
+use rouille::{post_input, Request, Response};
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Write;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod whisper;
- // Add missing import for tools module
+// Add missing import for tools module
 
 /// Represents the result of an STT prediction.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct STTPrediction {
-    pub stt: String,         // Transcribed text
-    pub human: String,       // Identified speaker
-    pub confidence: f64,     // Confidence score
+    pub stt: String,     // Transcribed text
+    pub human: String,   // Identified speaker
+    pub confidence: f64, // Confidence score
 }
 
 /// Represents the reply from the STT server.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct STTReply {
-    pub text: String,                // Transcribed text
-    pub time: f64,                   // Processing time
+    pub text: String,                  // Transcribed text
+    pub time: f64,                     // Processing time
     pub response_type: Option<String>, // Type of response (e.g., "stt")
 }
 
@@ -56,7 +56,9 @@ pub fn gpu_process(file_path: String) -> Result<STTPrediction, crate::sam::servi
 }
 
 // Processes audio using DeepSpeech and SPREC.
-pub fn deep_speech_process(file_path: String) -> Result<STTPrediction, crate::sam::services::Error> {
+pub fn deep_speech_process(
+    file_path: String,
+) -> Result<STTPrediction, crate::sam::services::Error> {
     let reply = upload(file_path.clone())?;
     let sprec = crate::sam::services::sprec::predict(&file_path)?;
     Ok(STTPrediction {
@@ -69,7 +71,9 @@ pub fn deep_speech_process(file_path: String) -> Result<STTPrediction, crate::sa
 // Runs Whisper on the provided audio file.
 pub fn whisper(file_path: String) -> Result<String, crate::sam::services::Error> {
     prepare_audio(&file_path)?;
-    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {file_path}.16.wav -otxt"))?;
+    crate::sam::tools::cmd(&format!(
+        "/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {file_path}.16.wav -otxt"
+    ))?;
     let data = read_and_cleanup(file_path)?;
     Ok(data)
 }
@@ -77,7 +81,9 @@ pub fn whisper(file_path: String) -> Result<String, crate::sam::services::Error>
 // Runs Whisper in quick mode with a smaller model.
 pub fn whisper_quick(file_path: String) -> Result<String, crate::sam::services::Error> {
     prepare_audio(&file_path)?;
-    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-tiny.bin -f {file_path}.16.wav -otxt -t 4"))?;
+    crate::sam::tools::cmd(&format!(
+        "/opt/sam/bin/whisper -m /opt/sam/models/ggml-tiny.bin -f {file_path}.16.wav -otxt -t 4"
+    ))?;
     let data = read_and_cleanup(file_path)?;
     Ok(data)
 }
@@ -107,15 +113,20 @@ fn read_and_cleanup(file_path: String) -> Result<String, crate::sam::services::E
 // Patches Whisper configuration files for compatibility.
 pub fn patch_whisper_wts(file_path: String) -> Result<(), crate::sam::services::Error> {
     let mut data = std::fs::read_to_string(&file_path)?;
-    data = data.replace("ffmpeg", "/opt/sam/bin/ffmpeg")
-               .replace("/System/Library/Fonts/Supplemental/Courier New Bold.ttf", "/opt/sam/fonts/courier.ttf");
+    data = data.replace("ffmpeg", "/opt/sam/bin/ffmpeg").replace(
+        "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+        "/opt/sam/fonts/courier.ttf",
+    );
     std::fs::remove_file(&file_path)?;
     std::fs::write(file_path, data)?;
     Ok(())
 }
 
 // Handles incoming STT requests and processes audio files.
-pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(
+    _current_session: crate::sam::memory::cache::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/stt" {
         let data = post_input!(request, { audio_data: rouille::input::post::BufferedFile })?;
         let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
@@ -130,7 +141,10 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
         file.write_all(&data.audio_data.data)?;
         let mut idk = upload(tmp_file_path)?;
         if idk.text.contains("sam") {
-            return Ok(Response::redirect_303(format!("/api/io?input={}", idk.text.replace("sam ", ""))));
+            return Ok(Response::redirect_303(format!(
+                "/api/io?input={}",
+                idk.text.replace("sam ", "")
+            )));
         }
         idk.response_type = Some("stt".to_string());
         return Ok(Response::json(&idk));
@@ -151,9 +165,15 @@ pub fn init() {
 
 // Uploads audio to the STT server and retrieves the transcription.
 pub fn upload(tmp_file_path: String) -> Result<STTReply, crate::sam::services::Error> {
-    let form = reqwest::blocking::multipart::Form::new().text("method", "base").file("speech", &tmp_file_path)?;
+    let form = reqwest::blocking::multipart::Form::new()
+        .text("method", "base")
+        .file("speech", &tmp_file_path)?;
     let client = reqwest::blocking::Client::builder().timeout(None).build()?;
-    let response = client.post("http://192.168.86.28:8050/api/services/whisper").multipart(form).send()?.json()?;
+    let response = client
+        .post("http://192.168.86.28:8050/api/services/whisper")
+        .multipart(form)
+        .send()?
+        .json()?;
     Ok(response)
 }
 

@@ -1,8 +1,8 @@
-// ███████     █████     ███    ███    
-// ██         ██   ██    ████  ████    
-// ███████    ███████    ██ ████ ██    
-//      ██    ██   ██    ██  ██  ██    
-// ███████ ██ ██   ██ ██ ██      ██ ██ 
+// ███████     █████     ███    ███
+// ██         ██   ██    ████  ████
+// ███████    ███████    ██ ████ ██
+//      ██    ██   ██    ██  ██  ██
+// ███████ ██ ██   ██ ██ ██      ██ ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
@@ -12,16 +12,15 @@
 // cp $HOME/.cargo/bin/librespot /bin/librespot
 // cp $HOME/.cargo/bin/librespot /usr/bin/librespot
 
-
 use std::fs::File;
-use std::io::{Write};
-use std::path::{Path};
+use std::io::Write;
+use std::path::Path;
 use std::thread;
 
-pub fn init(){
+pub fn init() {
     // Attempt to re-install snapserver if it doesn't already exist
     if !Path::new("/usr/bin/snapserver").exists() {
-        match install(){
+        match install() {
             Ok(_) => (),
             Err(e) => {
                 log::error!("snapserver install failed: {}", e);
@@ -31,14 +30,16 @@ pub fn init(){
 
     // Snapserver sevice doesn't work for debian bullsye so we need to launch manually.
     // Attempt to launch snapserver in new thread.....will fail if port are already in use by snapserver
-    let snap_cast_thread = thread::Builder::new().name("snapserver".to_string()).spawn(move || {
-        crate::sam::tools::uinx_cmd("snapserver");
-    });
-    
-    match snap_cast_thread{
+    let snap_cast_thread = thread::Builder::new()
+        .name("snapserver".to_string())
+        .spawn(move || {
+            crate::sam::tools::uinx_cmd("snapserver");
+        });
+
+    match snap_cast_thread {
         Ok(_) => {
             log::info!("snapcast server started successfully");
-        },
+        }
         Err(e) => {
             log::error!("failed to initialize snapcast server: {}", e);
         }
@@ -47,8 +48,7 @@ pub fn init(){
 
 // TODO - Automatically apply security settings and config
 // /etc/snapserver.conf
-pub fn configure(){
-
+pub fn configure() {
     let cfg = "[server]
 threads = -1
 pidfile = /var/run/snapserver/pid
@@ -72,7 +72,6 @@ source = pipe:///tmp/snapfifo?name=samfifo
 [logging]".to_string();
     log::info!("cfg: {:?}", cfg);
     std::fs::write("/etc/snapserver.conf", &cfg).expect("Unable to write file");
-
 }
 
 // Only one install() definition per compilation
@@ -124,7 +123,6 @@ pub fn install_snapcast_server_arm() -> std::io::Result<()> {
     crate::sam::tools::uinx_cmd("service snapserver start");
     Ok(())
 }
-
 
 // Backup: https://github.com/badaix/snapcast/releases/download/v0.27.0/snapserver_0.27.0-1_amd64.deb
 pub fn install_snapcast_server_amd64() -> std::io::Result<()> {

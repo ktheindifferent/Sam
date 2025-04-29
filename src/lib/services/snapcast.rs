@@ -1,8 +1,8 @@
+use std::env;
+use std::path::Path;
 use tokio::fs::File;
 use tokio::io::{self, AsyncWriteExt};
 use tokio::process::Command;
-use std::path::Path;
-use std::env;
 
 // TODO - Automatically apply security settings and config
 // /etc/snapserver.conf
@@ -36,7 +36,6 @@ pub async fn configure() {
 
 // Only one install() definition per compilation
 pub async fn install() -> io::Result<()> {
-
     // Determine the user: from SAM_USER env var or from /opt/sam/whoismyhuman file
     let user = if let Ok(val) = env::var("SAM_USER") {
         val
@@ -46,12 +45,10 @@ pub async fn install() -> io::Result<()> {
         "unknown".to_string()
     };
 
-    #[cfg(target_os = "macos")]{
+    #[cfg(target_os = "macos")]
+    {
         // Check if Homebrew is installed
-        let brew_status = Command::new("which")
-            .arg("brew")
-            .status()
-            .await?;
+        let brew_status = Command::new("which").arg("brew").status().await?;
 
         if brew_status.success() {
             log::info!("Attempting to install Snapcast via Homebrew...");
@@ -63,7 +60,7 @@ pub async fn install() -> io::Result<()> {
                 .arg("snapcast")
                 .status()
                 .await;
-        
+
             if let Ok(status) = &brew_status {
                 if status.success() {
                     log::info!("Snapcast installed via Homebrew.");
@@ -72,14 +69,15 @@ pub async fn install() -> io::Result<()> {
                     log::warn!("Homebrew install failed, falling back to source build.");
                 }
             } else {
-                log::warn!("Homebrew not available or failed to run, falling back to source build.");
+                log::warn!(
+                    "Homebrew not available or failed to run, falling back to source build."
+                );
             }
         } else {
             log::warn!("Homebrew is not installed. Will attempt to build snapcast from source. Please install homebrew if this installer fails to build snapcast from source.");
             return Err(io::Error::other("Homebrew not installed"));
         }
     }
-   
 
     // Fallback: build from source
     log::info!("Starting Snapcast install from source...");
@@ -90,7 +88,8 @@ pub async fn install() -> io::Result<()> {
     if Path::new(&src_dir).exists() {
         log::info!("Snapcast source exists, pulling latest...");
         let _ = Command::new("git")
-            .arg("-C").arg(&src_dir)
+            .arg("-C")
+            .arg(&src_dir)
             .arg("pull")
             .status()
             .await;
@@ -123,10 +122,7 @@ pub async fn install() -> io::Result<()> {
     }
 
     log::info!("Building Snapcast...");
-    let make_status = Command::new("make")
-        .current_dir(&build_dir)
-        .status()
-        .await;
+    let make_status = Command::new("make").current_dir(&build_dir).status().await;
     if !make_status.map(|s| s.success()).unwrap_or(false) {
         log::error!("Make build failed");
         return Err(io::Error::other("Make failed"));

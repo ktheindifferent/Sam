@@ -1,26 +1,26 @@
 use super::{commands, helpers};
-use std::io::{self, Write};
 use colored::*;
-use ratatui::{
-    backend::CrosstermBackend,
-    Terminal,
-    layout::{Layout, Constraint, Direction},
-    text::{Span, Line},
-};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use tokio::sync::Mutex;
-use std::sync::Arc;
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+    text::{Line, Span},
+    Terminal,
+};
+use std::io::{self, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-use std::io::BufRead;
-use tui_logger::{TuiLoggerWidget, TuiLoggerLevelOutput};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use std::io::BufRead;
+use std::io::Read;
 use std::sync::mpsc::{self, Sender};
-use std::io::{Read};
+use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget};
 // Add this import for catch_unwind on async blocks
 use futures::FutureExt;
 
@@ -48,8 +48,8 @@ impl Write for PipeWriter {
 struct ServiceStatus {
     crawler: String,
     redis: String,
-    docker: String, // Add docker status
-    sms: String, // Add sms status
+    docker: String,    // Add docker status
+    sms: String,       // Add sms status
     update_count: u64, // Add a counter to show updates
 }
 
@@ -63,7 +63,7 @@ pub async fn start_prompt() {
     // Initialize tui-logger (new crate)
     tui_logger::init_logger(log::LevelFilter::Info).unwrap();
     tui_logger::set_default_level(log::LevelFilter::Info);
- 
+
     // Only set log file if /opt/sam exists
     let log_dir = std::path::Path::new("/opt/sam");
     if log_dir.exists() && log_dir.is_dir() {
@@ -84,7 +84,6 @@ pub async fn start_prompt() {
 ///
 /// Handles user input, command execution, and UI rendering.
 async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
-
     // Only ONE service_status and updater spawn at the top
     let service_status = Arc::new(Mutex::new(ServiceStatus {
         crawler: "unknown".to_string(),
@@ -93,37 +92,48 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         sms: "unknown".to_string(), // Add sms status
         update_count: 0,
     }));
-   
+
     let service_status_clone = service_status.clone();
     tokio::spawn(async move {
         let mut count = 0u64;
         loop {
-            let crawler = std::panic::catch_unwind(|| crate::sam::services::crawler::service_status().to_string())
-                .unwrap_or_else(|_| {
-                    "error".to_string()
-                });
+            let crawler = std::panic::catch_unwind(|| {
+                crate::sam::services::crawler::service_status().to_string()
+            })
+            .unwrap_or_else(|_| "error".to_string());
 
             let redis_status_result = crate::sam::services::redis::status().await;
             let redis = std::panic::catch_unwind(|| redis_status_result.to_string())
-                .unwrap_or_else(|_| {
-                    "error".to_string()
-                });
+                .unwrap_or_else(|_| "error".to_string());
 
-            let docker = std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
-                .unwrap_or_else(|_| {
-                    "error".to_string()
-                });
+            let docker =
+                std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
+                    .unwrap_or_else(|_| "error".to_string());
 
             let sms = std::panic::catch_unwind(|| crate::sam::services::sms::status().to_string())
-                .unwrap_or_else(|_| {
-                    "error".to_string()
-                });
+                .unwrap_or_else(|_| "error".to_string());
 
             if let Ok(mut status) = service_status_clone.try_lock() {
-                status.crawler = if crawler.is_empty() { format!("unknown{}", count % 5) } else { crawler };
-                status.redis = if redis.is_empty() { format!("unknown{}", count % 5) } else { redis };
-                status.docker = if docker.is_empty() { format!("unknown{}", count % 5) } else { docker };
-                status.sms = if sms.is_empty() { format!("unknown{}", count % 5) } else { sms };
+                status.crawler = if crawler.is_empty() {
+                    format!("unknown{}", count % 5)
+                } else {
+                    crawler
+                };
+                status.redis = if redis.is_empty() {
+                    format!("unknown{}", count % 5)
+                } else {
+                    redis
+                };
+                status.docker = if docker.is_empty() {
+                    format!("unknown{}", count % 5)
+                } else {
+                    docker
+                };
+                status.sms = if sms.is_empty() {
+                    format!("unknown{}", count % 5)
+                } else {
+                    sms
+                };
                 status.update_count = count;
                 count += 1;
             }
@@ -137,21 +147,19 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
         // Try to restore terminal state
         let _ = disable_raw_mode();
-       
+
         // Flush to ensure message is visible
         let _ = io::stdout().flush();
         let _ = io::stderr().flush();
     }));
 
-    
     let backend = CrosstermBackend::new(io::stdout());
     enable_raw_mode()?;
     execute!(io::stdout(), EnterAlternateScreen)?;
-   
+
     let mut terminal = Terminal::new(backend)?;
 
     terminal.clear()?;
-
 
     // Ensure terminal is restored even if panic or error
     struct DropGuard;
@@ -159,7 +167,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         fn drop(&mut self) {
             let _ = execute!(io::stdout(), LeaveAlternateScreen);
             let _ = disable_raw_mode();
-           
+
             let _ = io::stdout().flush();
             let _ = io::stderr().flush();
         }
@@ -229,114 +237,143 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             lines.clone()
         };
 
-        let draw_result = catch_unwind(AssertUnwindSafe(|| {
-            let mut local_output_height = output_height;
-            let input_ref = &input;
-            let status = status.clone(); // already cloned, no lock held here
-            let output_lines_guard = &output_lines_snapshot;
+        let draw_result =
+            catch_unwind(AssertUnwindSafe(|| {
+                let mut local_output_height = output_height;
+                let input_ref = &input;
+                let status = status.clone(); // already cloned, no lock held here
+                let output_lines_guard = &output_lines_snapshot;
 
-            terminal.draw(|f| {
-                let size = f.size();
-                let main_chunks = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .margin(1)
-                    .constraints([
-                        Constraint::Percentage(66),
-                        Constraint::Percentage(34),
-                    ])
-                    .split(size);
+                terminal.draw(|f| {
+                    let size = f.size();
+                    let main_chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .margin(1)
+                        .constraints([Constraint::Percentage(66), Constraint::Percentage(34)])
+                        .split(size);
 
-                // Add a vertical split for left side: [status][output][input]
-                let left_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Length(3), // status block
-                        Constraint::Min(3),    // output
-                        Constraint::Length(3), // input
-                    ])
-                    .split(main_chunks[0]);
+                    // Add a vertical split for left side: [status][output][input]
+                    let left_chunks = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([
+                            Constraint::Length(3), // status block
+                            Constraint::Min(3),    // output
+                            Constraint::Length(3), // input
+                        ])
+                        .split(main_chunks[0]);
 
-                local_output_height = left_chunks[1].height.max(1) as usize;
+                    local_output_height = left_chunks[1].height.max(1) as usize;
 
-                let cursor_char = if show_cursor { "_" } else { " " };
-                let input_display = format!("{input_ref}{cursor_char}");
+                    let cursor_char = if show_cursor { "_" } else { " " };
+                    let input_display = format!("{input_ref}{cursor_char}");
 
-                // Service status block
-                let status_lines = vec![
-                    Line::from(vec![
-                        Span::styled("Crawler: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-                        Span::styled(
-                            &status.crawler,
-                            match status.crawler.as_str() {
-                                "running" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
-                                "stopped" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
-                                _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
-                            }
-                        ),
-                        Span::raw("    "),
-                        Span::styled("Redis: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-                        Span::styled(
-                            &status.redis,
-                            match status.redis.as_str() {
-                                "running" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
-                                "stopped" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
-                                "not installed" => ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
-                                _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
-                            }
-                        ),
-                        Span::raw("    "),
-                        Span::styled("Docker: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-                        Span::styled(
-                            &status.docker,
-                            match status.docker.as_str() {
-                                "running" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
-                                "stopped" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
-                                "not installed" => ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
-                                _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
-                            }
-                        ),
-                        Span::raw("    "),
-                        Span::styled("SMS: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-                        Span::styled(
-                            &status.sms,
-                            match status.sms.as_str() {
-                                "running" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
-                                "stopped" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
-                                _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
-                            }
-                        ),
-                    ])
-                ];
-                let status_widget = Paragraph::new(status_lines)
-                    .block(Block::default().borders(Borders::ALL).title("Service Status"));
+                    // Service status block
+                    let status_lines =
+                        vec![Line::from(vec![
+                            Span::styled(
+                                "Crawler: ",
+                                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+                            ),
+                            Span::styled(
+                                &status.crawler,
+                                match status.crawler.as_str() {
+                                    "running" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Green),
+                                    "stopped" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Red),
+                                    _ => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Gray),
+                                },
+                            ),
+                            Span::raw("    "),
+                            Span::styled(
+                                "Redis: ",
+                                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+                            ),
+                            Span::styled(
+                                &status.redis,
+                                match status.redis.as_str() {
+                                    "running" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Green),
+                                    "stopped" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Red),
+                                    "not installed" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::DarkGray),
+                                    _ => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Gray),
+                                },
+                            ),
+                            Span::raw("    "),
+                            Span::styled(
+                                "Docker: ",
+                                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+                            ),
+                            Span::styled(
+                                &status.docker,
+                                match status.docker.as_str() {
+                                    "running" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Green),
+                                    "stopped" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Red),
+                                    "not installed" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::DarkGray),
+                                    _ => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Gray),
+                                },
+                            ),
+                            Span::raw("    "),
+                            Span::styled(
+                                "SMS: ",
+                                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+                            ),
+                            Span::styled(
+                                &status.sms,
+                                match status.sms.as_str() {
+                                    "running" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Green),
+                                    "stopped" => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Red),
+                                    _ => ratatui::style::Style::default()
+                                        .fg(ratatui::style::Color::Gray),
+                                },
+                            ),
+                        ])];
+                    let status_widget = Paragraph::new(status_lines).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Service Status"),
+                    );
 
-                let output: Vec<Line> = output_lines_guard.iter().map(|l| Line::from(Span::raw(l))).collect();
+                    let output: Vec<Line> = output_lines_guard
+                        .iter()
+                        .map(|l| Line::from(Span::raw(l)))
+                        .collect();
 
-                let output_widget = Paragraph::new(output)
-                    .block(Block::default().borders(Borders::ALL).title("Output"))
-                    .scroll((scroll_offset, 0))
-                    .wrap(ratatui::widgets::Wrap { trim: false });
+                    let output_widget = Paragraph::new(output)
+                        .block(Block::default().borders(Borders::ALL).title("Output"))
+                        .scroll((scroll_offset, 0))
+                        .wrap(ratatui::widgets::Wrap { trim: false });
 
-                let input_widget = Paragraph::new(input_display)
-                    .block(Block::default().borders(Borders::ALL).title("Command"));
+                    let input_widget = Paragraph::new(input_display)
+                        .block(Block::default().borders(Borders::ALL).title("Command"));
 
-                // Instead of using a persistent tui_logger_widget, create it here:
-                let tui_logger_widget = TuiLoggerWidget::default()
-                    .block(Block::default().borders(Borders::ALL).title("Logs"))
-                    .output_separator('|')
-                    .output_level(Some(TuiLoggerLevelOutput::Long))
-                    .output_target(true)
-                    .output_timestamp(Some("%H:%M:%S".to_string()));
+                    // Instead of using a persistent tui_logger_widget, create it here:
+                    let tui_logger_widget = TuiLoggerWidget::default()
+                        .block(Block::default().borders(Borders::ALL).title("Logs"))
+                        .output_separator('|')
+                        .output_level(Some(TuiLoggerLevelOutput::Long))
+                        .output_target(true)
+                        .output_timestamp(Some("%H:%M:%S".to_string()));
 
-                // Render new status block
-                f.render_widget(status_widget, left_chunks[0]);
-                f.render_widget(output_widget, left_chunks[1]);
-                f.render_widget(input_widget, left_chunks[2]);
-                f.render_widget(tui_logger_widget, main_chunks[1]);
-            })?;
-            output_height = local_output_height;
-            Ok::<(), std::io::Error>(())
-        }));
+                    // Render new status block
+                    f.render_widget(status_widget, left_chunks[0]);
+                    f.render_widget(output_widget, left_chunks[1]);
+                    f.render_widget(input_widget, left_chunks[2]);
+                    f.render_widget(tui_logger_widget, main_chunks[1]);
+                })?;
+                output_height = local_output_height;
+                Ok::<(), std::io::Error>(())
+            }));
 
         if let Err(e) = draw_result {
             let mut lines = output_lines.lock().await;
@@ -372,7 +409,13 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             }
             if let Ok(Ok(Event::Key(key))) = read_result {
                 match key.code {
-                    KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => break,
+                    KeyCode::Char('c')
+                        if key
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
+                        break
+                    }
                     KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
                     KeyCode::PageDown => scroll_offset = scroll_offset.saturating_add(5),
                     KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
@@ -383,7 +426,11 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                             break;
                         }
                         if !cmd.is_empty() {
-                            helpers::append_line(&output_lines, format!("┌─[{human_name}]─> {cmd}")).await;
+                            helpers::append_line(
+                                &output_lines,
+                                format!("┌─[{human_name}]─> {cmd}"),
+                            )
+                            .await;
                             commands::handle_command(
                                 &cmd,
                                 &output_lines,
@@ -391,12 +438,15 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                                 &human_name,
                                 output_height,
                                 &mut scroll_offset,
-                            ).await;
+                            )
+                            .await;
                         }
                         input.clear();
                     }
                     KeyCode::Char(c) => input.push(c),
-                    KeyCode::Backspace => { input.pop(); },
+                    KeyCode::Backspace => {
+                        input.pop();
+                    }
                     _ => {}
                 }
             }

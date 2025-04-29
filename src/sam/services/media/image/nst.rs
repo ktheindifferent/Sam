@@ -5,18 +5,18 @@
 //   https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot
 // use tch::vision::{imagenet, vgg};
 // use tch::{nn, nn::OptimizerConfig, Device, Tensor};
-use std::path::Path;
-use std::fs;
-use std::fs::File;
-use std::io::{Write};
-use titlecase::titlecase;
-use serde::{Serialize, Deserialize};
 use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::thread;
+use titlecase::titlecase;
 
- // Add missing import for tools module
+// Add missing import for tools module
 
 const _STYLE_WEIGHT: f64 = 1e6;
 const _LEARNING_RATE: f64 = 1e-1;
@@ -24,21 +24,22 @@ const _TOTAL_STEPS: i64 = 10000;
 const _STYLE_INDEXES: [usize; 5] = [0, 2, 5, 7, 10];
 const _CONTENT_INDEXES: [usize; 1] = [7];
 
-
-pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
-    if request.url().contains("/styles"){
+pub fn handle(
+    _current_session: crate::sam::memory::cache::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::sam::http::Error> {
+    if request.url().contains("/styles") {
         return Ok(Response::json(&styles().unwrap()));
     }
 
-    if request.url().contains("/run"){
-
+    if request.url().contains("/run") {
         let input = post_input!(request, {
             image_id: String, // oid:<oid>, dropbox:<id>
             nst_style: String, // Fra Angelico, Vincent Van Gogh
         })?;
 
         let mut selected_style = "/opt/sam/models/nst/vincent_van_gogh.jpg".to_string();
-        for style in styles()?{
+        for style in styles()? {
             if style.name == input.nst_style.as_str() {
                 selected_style = style.file_path.to_string();
             }
@@ -47,14 +48,19 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
         // file
         if input.image_id.contains("oid:") {
             let oid = input.image_id.replace("oid:", "");
-            if Path::new(format!("/opt/sam/files/{oid}").as_str()).exists(){
-                let _ = thread::Builder::new().name("nst_thread".to_string()).spawn(move || {
-                    let _ = run(&selected_style, format!("/opt/sam/files/{oid}").as_str(), oid, input.nst_style);
-                });
+            if Path::new(format!("/opt/sam/files/{oid}").as_str()).exists() {
+                let _ = thread::Builder::new()
+                    .name("nst_thread".to_string())
+                    .spawn(move || {
+                        let _ = run(
+                            &selected_style,
+                            format!("/opt/sam/files/{oid}").as_str(),
+                            oid,
+                            input.nst_style,
+                        );
+                    });
             }
         }
-
-        
 
         // return Ok(Response::json(&styles().unwrap()));
     }
@@ -72,14 +78,17 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
 //     gram_matrix(m1).mse_loss(&gram_matrix(m2), tch::Reduction::Mean)
 // }
 
-pub fn run(_style_img: &str, _content_img: &str, _oid: String, _style: String) -> Result<(), crate::sam::services::Error> {
-
+pub fn run(
+    _style_img: &str,
+    _content_img: &str,
+    _oid: String,
+    _style: String,
+) -> Result<(), crate::sam::services::Error> {
     // log::info!("NST");
     // log::info!("style image: {:?}", style_img);
     // log::info!("content image: {:?}", content_img);
 
     // let device = Device::cuda_if_available();
-
 
     // let mut net_vs = tch::nn::VarStore::new(device);
     // let net = vgg::vgg16(&net_vs.root(), imagenet::CLASS_COUNT);
@@ -115,7 +124,6 @@ pub fn run(_style_img: &str, _content_img: &str, _oid: String, _style: String) -
     //         log::info!("{} {}", step_idx, f64::from(loss));
     //         imagenet::save_image(&input_var, &format!("/opt/sam/files/out{}.jpg", step_idx))?;
 
-
     //         let mut file = File::open(format!("/opt/sam/files/out{}.jpg", step_idx))?;
     //         let mut buf = Vec::new();
     //         file.read_to_end(&mut buf);
@@ -133,9 +141,6 @@ pub fn run(_style_img: &str, _content_img: &str, _oid: String, _style: String) -
     Ok(())
 }
 
-
-
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Style {
     pub name: String,
@@ -146,11 +151,16 @@ pub fn styles() -> Result<Vec<Style>, crate::sam::services::Error> {
     let mut styles: Vec<Style> = Vec::new();
     let paths = fs::read_dir("/opt/sam/models/nst/")?;
     for path in paths {
-
         let pth = path.unwrap().path().display().to_string();
 
-        let style = Style{
-            name: titlecase(&pth.clone().to_string().replace("/opt/sam/models/nst/", "").replace(".jpg", "").replace("_", " ")),
+        let style = Style {
+            name: titlecase(
+                &pth.clone()
+                    .to_string()
+                    .replace("/opt/sam/models/nst/", "")
+                    .replace(".jpg", "")
+                    .replace("_", " "),
+            ),
             file_path: pth.clone(),
         };
 
@@ -160,8 +170,9 @@ pub fn styles() -> Result<Vec<Style>, crate::sam::services::Error> {
 }
 
 pub fn install() -> Result<(), crate::sam::services::Error> {
-    if !Path::new("/opt/sam/models/vgg16.ot").exists(){
-        crate::sam::tools::cmd("wget -O /opt/sam/models/vgg16.ot https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot")?; // Fix `?` operator error by ensuring the command returns a compatible type
+    if !Path::new("/opt/sam/models/vgg16.ot").exists() {
+        crate::sam::tools::cmd("wget -O /opt/sam/models/vgg16.ot https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot")?;
+        // Fix `?` operator error by ensuring the command returns a compatible type
     }
 
     let data = include_bytes!("../../../../../packages/nst/fra_angelico.jpg");
