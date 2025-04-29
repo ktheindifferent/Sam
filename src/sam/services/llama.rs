@@ -195,10 +195,6 @@ impl LlamaService {
     }
 }
 
-/// Async install wrapper for CLI
-pub async fn install() -> io::Result<String> {
-    tokio::task::spawn_blocking(LlamaService::install_blocking).await?
-}
 
 // Example usage (not part of the service):
 // let model_path = Path::new("./models/llama-7b.bin");

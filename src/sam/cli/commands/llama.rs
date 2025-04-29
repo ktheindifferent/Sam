@@ -10,14 +10,23 @@ use tokio::sync::Mutex;
 pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match cmd {
         "llama install" => {
+            let output_lines_cloned = Arc::clone(output_lines);
             crate::sam::cli::spinner::run_with_spinner(
-                &output_lines,
+                output_lines,
                 "Installing llama models and binaries...",
                 |lines, _| lines.push("llama install: done.".to_string()),
-                || async {
-                    // Call the install logic (previously inside the match arm)
-                    // crate::sam::services::llama::LlamaService::install().await;
-                    "done".to_string()
+                move || {
+                    let output_lines = Arc::clone(&output_lines_cloned);
+                    async move {
+                        match libsam::services::llama::install(Some(&output_lines)).await {
+                            Ok(_) => {},
+                            Err(e) => {
+                                let mut out = output_lines.lock().await;
+                                out.push(format!("llama install error: {}", e));
+                            }
+                        }
+                        "done".to_string()
+                    }
                 },
             ).await;
         }

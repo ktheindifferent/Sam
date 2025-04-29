@@ -114,6 +114,8 @@ async fn main() -> Result<()> {
     let _ = libsam::services::darknet::install().await?;
     log::info!("Installing SPREC...");
     let _ = libsam::services::sprec::install().await?;
+    log::info!("Installing LLAMA...");
+    let _ = libsam::services::llama::install(None).await?;
 
     Ok(())
 }
