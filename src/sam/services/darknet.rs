@@ -68,12 +68,12 @@ pub async fn darknet_detect(image_path: &str) -> Result<DetectionResult, String>
     let cfg = "/opt/sam/models/yolov3.cfg";
     let weights = "/opt/sam/models/yolov3.weights";
     if !Path::new(cfg).exists() {
-        libsam::services::darknet::download_yolov3_cfg()
+        libsam::services::darknet::download_yolov3_cfg(None)
             .await
             .map_err(|e| format!("Failed to download cfg: {e}"))?;
     }
     if !Path::new(weights).exists() {
-        libsam::services::darknet::download_yolov3_model()
+        libsam::services::darknet::download_yolov3_model(None)
             .await
             .map_err(|e| format!("Failed to download weights: {e}"))?;
     }

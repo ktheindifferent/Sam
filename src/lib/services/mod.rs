@@ -7,3 +7,4 @@ pub mod sprec;
 pub mod stt;
 pub mod who;
 pub mod llama;
+pub mod http;

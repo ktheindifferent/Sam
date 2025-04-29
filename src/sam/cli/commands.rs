@@ -18,6 +18,53 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+#[cfg(unix)]
+pub async fn handle_ssh(
+    cmd: &str,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+    tui_takeover: impl FnOnce(Box<dyn FnMut(&[u8]) + Send>, Box<dyn FnMut() -> Option<Vec<u8>> + Send>),
+) {
+    use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::sync::mpsc::channel;
+    use std::thread;
+
+    let ssh_args = cmd.trim_start_matches("ssh ").trim();
+    let pty_system = NativePtySystem::default();
+    let pair = pty_system.openpty(PtySize {
+        rows: 30,
+        cols: 120,
+        pixel_width: 0,
+        pixel_height: 0,
+    }).unwrap();
+    let mut cmd_builder = CommandBuilder::new("ssh");
+    for arg in ssh_args.split_whitespace() {
+        cmd_builder.arg(arg);
+    }
+    let child = pair.slave.spawn_command(cmd_builder).unwrap();
+    let mut reader = pair.master.try_clone_reader().unwrap();
+    let mut writer = pair.master.take_writer().unwrap();
+
+    // Use tui_takeover to forward input/output
+    tui_takeover(
+        Box::new(move |input: &[u8]| {
+            let _ = writer.write_all(input);
+            let _ = writer.flush();
+        }),
+        Box::new(move || {
+            let mut buf = [0u8; 1024];
+            match reader.read(&mut buf) {
+                Ok(n) if n > 0 => Some(buf[..n].to_vec()),
+                _ => None,
+            }
+        })
+    );
+
+    let mut lines = output_lines.lock().await;
+    lines.push(format!("[ssh] Session ended: {cmd}"));
+}
+
 pub async fn handle_command(
     cmd: &str,
     output_lines: &Arc<Mutex<Vec<String>>>,
@@ -57,6 +104,18 @@ pub async fn handle_command(
         _ if cmd.starts_with("crawl search ") => crawler::handle_crawl_search(cmd, output_lines)
             .await
             .unwrap(),
+        _ if cmd.starts_with("ssh ") => {
+            #[cfg(unix)]
+            {
+                use crate::sam::cli::tui::tui_takeover_ssh_session;
+                handle_ssh(cmd, output_lines, tui_takeover_ssh_session).await
+            }
+            #[cfg(not(unix))]
+            {
+                let mut lines = output_lines.lock().await;
+                lines.push("[ssh] SSH interactive shell is only supported on Unix systems.".to_string());
+            }
+        }
         _ => misc::handle_default(cmd, output_lines).await,
     }
     // Scroll to bottom if needed

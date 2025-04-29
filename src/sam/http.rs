@@ -325,20 +325,20 @@ pub fn handle_with_session(
     Ok(response)
 }
 
-use std::fs::File;
+// use std::fs::File;
 
-use std::io::Write;
+// use std::io::Write;
 
-pub fn install() -> std::io::Result<()> {
-    let data = include_bytes!("../../packages/www.zip");
-    let mut pos = 0;
-    let mut buffer = File::create("/opt/sam/www.zip")?;
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..])?;
-        pos += bytes_written;
-    }
+// pub fn install() -> std::io::Result<()> {
+//     let data = include_bytes!("../../packages/www.zip");
+//     let mut pos = 0;
+//     let mut buffer = File::create("/opt/sam/www.zip")?;
+//     while pos < data.len() {
+//         let bytes_written = buffer.write(&data[pos..])?;
+//         pos += bytes_written;
+//     }
 
-    let _ = crate::sam::tools::extract_zip("/opt/sam/www.zip", "/opt/sam/");
+//     let _ = crate::sam::tools::extract_zip("/opt/sam/www.zip", "/opt/sam/");
 
-    Ok(())
-}
+//     Ok(())
+// }

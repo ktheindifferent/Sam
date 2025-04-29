@@ -456,3 +456,60 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     // DropGuard will restore terminal state here
     Ok(())
 }
+
+/// Take over the terminal for an interactive SSH session
+#[cfg(unix)]
+pub fn tui_takeover_ssh_session<In, Out>(mut send_input: In, mut read_output: Out)
+where
+    In: FnMut(&[u8]) + Send + 'static,
+    Out: FnMut() -> Option<Vec<u8>> + Send + 'static,
+{
+    use crossterm::{terminal::{disable_raw_mode, enable_raw_mode, LeaveAlternateScreen, EnterAlternateScreen}, execute, event::{self, Event, KeyCode}};
+    use std::io::{self, Write};
+
+    // Leave TUI alternate screen and raw mode
+    let _ = disable_raw_mode();
+    let _ = execute!(io::stdout(), LeaveAlternateScreen);
+    println!("[SSH session started. Press Ctrl+D or exit to return to TUI.]");
+
+    // Set terminal to raw mode for direct input
+    let _ = enable_raw_mode();
+    let mut stdout = io::stdout();
+    loop {
+        // Print any available SSH output
+        if let Some(data) = read_output() {
+            let _ = stdout.write_all(&data);
+            let _ = stdout.flush();
+        }
+        // Poll for user input
+        if event::poll(std::time::Duration::from_millis(30)).unwrap_or(false) {
+            if let Event::Key(key) = event::read().unwrap() {
+                match key.code {
+                    KeyCode::Char('d') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                        // Ctrl+D: send EOF and break
+                        send_input(&[4]);
+                        break;
+                    }
+                    KeyCode::Char(c) => {
+                        let mut buf = [0u8; 4];
+                        let n = c.encode_utf8(&mut buf).len();
+                        send_input(&buf[..n]);
+                    }
+                    KeyCode::Enter => send_input(&[b'\n']),
+                    KeyCode::Tab => send_input(&[b'\t']),
+                    KeyCode::Backspace => send_input(&[8]),
+                    KeyCode::Esc => send_input(&[27]),
+                    _ => {}
+                }
+            }
+        }
+        // End if SSH session output is closed
+        if read_output().is_none() {
+            break;
+        }
+    }
+    // Restore TUI alternate screen and raw mode
+    let _ = execute!(io::stdout(), EnterAlternateScreen);
+    let _ = enable_raw_mode();
+    println!("[SSH session ended. Returning to TUI...]");
+}

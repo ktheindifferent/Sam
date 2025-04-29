@@ -41,6 +41,15 @@ pub async fn cmd_async(command: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+pub async fn println(output_lines: Option<&std::sync::Arc<tokio::sync::Mutex<Vec<String>>>>, line: String) {
+    if let Some(lines) = output_lines {
+        let mut linesx = lines.lock().await;
+        linesx.push(line);
+    } else {
+        log::info!("{}", line);
+    }
+}
+
 pub fn cmd(command: &str) -> Result<String> {
     let output = Command::new("sh").arg("-c").arg(command).output()?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
