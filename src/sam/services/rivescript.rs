@@ -29,7 +29,7 @@ pub enum RiveScriptError {
     Other(String),
 }
 
-use std::io::Write;
+// use std::io::Write;
 
 #[allow(unexpected_cfgs)]
 pub fn query(input: &str) -> anyhow::Result<IOReply> {

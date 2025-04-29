@@ -5,6 +5,8 @@ use reqwest::Client;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SpotifyStatus {
@@ -27,7 +29,7 @@ static SPOTIFY_STATE: Lazy<Arc<Mutex<SpotifyService>>> = Lazy::new(|| {
     }))
 });
 
-static mut PLAYBACK_THREAD: Option<thread::JoinHandle<()>> = None;
+static PLAYBACK_THREAD: Lazy<Mutex<Option<thread::JoinHandle<()>>>> = Lazy::new(|| Mutex::new(None));
 
 /// Start the Spotify service (background music thread)
 pub async fn start() {
@@ -39,30 +41,29 @@ pub async fn start() {
     state.status = SpotifyStatus::Playing;
     info!("Starting Spotify playback thread");
     let state_arc = SPOTIFY_STATE.clone();
-    unsafe {
-        if PLAYBACK_THREAD.is_none() {
-            PLAYBACK_THREAD = Some(thread::spawn(move || {
-                loop {
-                    {
-                        let s = state_arc.lock().unwrap();
-                        match s.status {
-                            SpotifyStatus::Playing => {
-                                // Simulate playing music
-                                info!("[Spotify] Playing music... (shuffle: {})", s.shuffle);
-                            }
-                            SpotifyStatus::Paused => {
-                                info!("[Spotify] Paused");
-                            }
-                            SpotifyStatus::Stopped => {
-                                info!("[Spotify] Stopped");
-                                break;
-                            }
+    let mut thread_guard = PLAYBACK_THREAD.lock().unwrap();
+    if thread_guard.is_none() {
+        *thread_guard = Some(thread::spawn(move || {
+            loop {
+                {
+                    let s = state_arc.lock().unwrap();
+                    match s.status {
+                        SpotifyStatus::Playing => {
+                            // Simulate playing music
+                            info!("[Spotify] Playing music... (shuffle: {})", s.shuffle);
+                        }
+                        SpotifyStatus::Paused => {
+                            info!("[Spotify] Paused");
+                        }
+                        SpotifyStatus::Stopped => {
+                            info!("[Spotify] Stopped");
+                            break;
                         }
                     }
-                    thread::sleep(Duration::from_secs(2));
                 }
-            }));
-        }
+                thread::sleep(Duration::from_secs(2));
+            }
+        }));
     }
 }
 
@@ -71,10 +72,9 @@ pub async fn stop() {
     let mut state = SPOTIFY_STATE.lock().unwrap();
     state.status = SpotifyStatus::Stopped;
     info!("Stopping Spotify playback");
-    unsafe {
-        if let Some(handle) = PLAYBACK_THREAD.take() {
-            let _ = handle.join();
-        }
+    let mut thread_guard = PLAYBACK_THREAD.lock().unwrap();
+    if let Some(handle) = thread_guard.take() {
+        let _ = handle.join();
     }
 }
 
@@ -138,7 +138,7 @@ impl SpotifyApi {
 
     /// Authenticate with Spotify (OAuth2 Client Credentials flow)
     pub async fn authenticate(&mut self) -> Result<(), String> {
-        let auth = base64::encode(format!("{}:{}", self.client_id, self.client_secret));
+        let auth = STANDARD.encode(format!("{}:{}", self.client_id, self.client_secret));
         let params = [("grant_type", "client_credentials")];
         let res = self
             .client

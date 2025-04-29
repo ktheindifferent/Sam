@@ -4,7 +4,7 @@ use std::env;
 
 #[derive(Debug, Deserialize)]
 struct TwilioMessage {
-    sid: String,
+    _sid: String,
     from: String,
     to: String,
     body: String,

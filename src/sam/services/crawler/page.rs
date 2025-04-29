@@ -4,8 +4,8 @@
 
 use crate::sam::memory::{Config, PostgresQueries};
 use log;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+// use rand::distributions::Alphanumeric;
+// use rand::{thread_rng, Rng};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -35,11 +35,6 @@ impl Default for CrawledPage {
 }
 impl CrawledPage {
     pub fn new() -> CrawledPage {
-        let oid: String = thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(15)
-            .map(char::from)
-            .collect();
         CrawledPage {
             id: 0,
             crawl_job_oid: String::new(),

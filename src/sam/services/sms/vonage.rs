@@ -4,7 +4,7 @@ use std::env;
 
 #[derive(Debug, Deserialize)]
 struct VonageMessage {
-    message_id: Option<String>,
+    _message_id: Option<String>,
     to: Option<String>,
     msisdn: Option<String>,
     text: Option<String>,

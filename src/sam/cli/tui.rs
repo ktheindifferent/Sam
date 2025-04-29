@@ -1,5 +1,5 @@
 use super::{commands, helpers};
-use colored::*;
+// use colored::*;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -17,12 +17,12 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use ratatui::widgets::{Block, Borders, Paragraph};
-use std::io::BufRead;
-use std::io::Read;
+// use std::io::BufRead;
+// use std::io::Read;
 use std::sync::mpsc::{self, Sender};
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget};
 // Add this import for catch_unwind on async blocks
-use futures::FutureExt;
+// use futures::FutureExt;
 
 // Add this struct for a custom Write implementation
 struct PipeWriter {
@@ -188,11 +188,11 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         let tx_err = tx.clone();
 
         // Redirect stdout
-        let stdout_writer = PipeWriter { sender: tx_out };
+        let _stdout_writer = PipeWriter { sender: tx_out };
         // let _ = std::io::set_print(Some(Box::new(stdout_writer)));
 
         // Redirect stderr
-        let stderr_writer = PipeWriter { sender: tx_err };
+        let _stderr_writer = PipeWriter { sender: tx_err };
         // let _ = std::io::set_panic(Some(Box::new(stderr_writer)));
     }
     // Spawn a thread to forward lines from rx to output_lines
@@ -245,7 +245,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 let output_lines_guard = &output_lines_snapshot;
 
                 terminal.draw(|f| {
-                    let size = f.size();
+                    let size = f.area();
                     let main_chunks = Layout::default()
                         .direction(Direction::Horizontal)
                         .margin(1)

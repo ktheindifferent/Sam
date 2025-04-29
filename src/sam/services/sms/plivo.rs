@@ -4,11 +4,11 @@ use std::env;
 
 #[derive(Debug, Deserialize)]
 struct PlivoMessage {
-    message_uuid: Option<String>,
+    _message_uuid: Option<String>,
     from_number: Option<String>,
     to_number: Option<String>,
-    message_state: Option<String>,
-    message_direction: Option<String>,
+    _message_state: Option<String>,
+    _message_direction: Option<String>,
     message_time: Option<String>,
     message: Option<String>,
 }

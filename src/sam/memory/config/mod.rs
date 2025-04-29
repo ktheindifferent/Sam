@@ -134,13 +134,13 @@ impl Config {
                 .unwrap();
             let connector = MakeTlsConnector::new(connector);
 
-            let config_str = format!(
-                "host={} user={} password={} dbname={} sslmode=prefer",
-                self.postgres.address,
-                self.postgres.username,
-                self.postgres.password,
-                self.postgres.db_name
-            );
+            // let config_str = format!(
+            //     "host={} user={} password={} dbname={} sslmode=prefer",
+            //     self.postgres.address,
+            //     self.postgres.username,
+            //     self.postgres.password,
+            //     self.postgres.db_name
+            // );
             let mut pg_config = tokio_postgres::Config::new();
             pg_config
                 .host(&self.postgres.address)
@@ -780,11 +780,11 @@ impl Config {
                 .query(execquery.as_str(), query_values.as_slice())
                 .await?
             {
-                Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+                Self::serialize_row_async(&table_name, &columns, &row, &mut parsed_rows).await?;
             }
         } else {
             for row in client.query(execquery.as_str(), &[]).await? {
-                Self::serialize_row(&table_name, &columns, &row, &mut parsed_rows)?;
+                Self::serialize_row_async(&table_name, &columns, &row, &mut parsed_rows).await?;
             }
         }
 

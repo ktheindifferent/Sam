@@ -39,7 +39,7 @@ use url::ParseError;
 use crate::sam::services::crawler::job::CrawlJob;
 use crate::sam::services::crawler::page::CrawledPage;
 
-use deadpool_redis::redis::AsyncCommands;
+// use deadpool_redis::redis::AsyncCommands;
 use deadpool_redis::{Config as DeadpoolConfig, Pool, Runtime};
 
 static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
@@ -208,7 +208,7 @@ fn load_dns_cache(should_use_redis: bool) -> Pin<Box<dyn Future<Output = ()> + S
 /// # Async
 /// This function is async and should be awaited.
 async fn save_dns_cache() {
-    let mut should_fallback = false;
+    let should_fallback: bool;
     let cache = DNS_LOOKUP_CACHE.lock().await;
     let cache_bytes = match serde_json::to_vec(&*cache) {
         Ok(bytes) => bytes,
@@ -361,7 +361,7 @@ pub fn is_valid_url(s: &str) -> bool {
 async fn crawl_url_inner(
     job_oid: String,
     url: String,
-    depth: usize,
+    _depth: usize,
     client: std::sync::Arc<reqwest::Client>,
 ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
     // log::info!("Crawling URL: {}", url);
@@ -899,9 +899,9 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     // log::set_max_level(LevelFilter::Info);
 
     // Load common URLs, tokens, TLDs, prefixes, and words
-    let tlds = COMMON_TLDS.clone();
-    let prefixes = COMMON_PREFIXES.clone();
-    let words = COMMON_WORDS.clone();
+    // let tlds = COMMON_TLDS.clone();
+    // let prefixes = COMMON_PREFIXES.clone();
+    // let words = COMMON_WORDS.clone();
 
     // DNS resolver setup
     let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
@@ -970,7 +970,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             let concurrency = num_cpus::get() / 2; // At least 4 concurrent tasks
             loop {
                 // Collect all URLs at the current minimum depth
-                let (batch, current_depth) = {
+                let (batch, _current_depth) = {
                     let mut q = queue.lock().await;
                     let mut batch = Vec::new();
                     let mut min_depth: Option<usize> = None;
@@ -1227,7 +1227,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             words.dedup();
 
             // Sample words and prefixes to generate domains
-            let domains: Vec<String> = Vec::new();
+            let _domains: Vec<String> = Vec::new();
             use rayon::prelude::*;
 
             let mut rng = SmallRng::from_entropy();
