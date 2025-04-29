@@ -16,17 +16,25 @@ use std::process::Command;
 use std::os::unix::fs::PermissionsExt; // Added for `from_mode`
 
 use crate::sam::tools;
-use error_chain::error_chain; // Add missing import for tools module
+use thiserror::Error;
+pub type Result<T> = anyhow::Result<T>;
 
-#[allow(unexpected_cfgs)]
-error_chain! {
-    foreign_links {
-        Io(std::io::Error);
-        HttpRequest(reqwest::Error);
-        Postgres(postgres::Error);
-        Hound(hound::Error);
-    }
+#[derive(Error, Debug)]
+pub enum ToolsError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("HTTP request error: {0}")]
+    HttpRequest(#[from] reqwest::Error),
+    #[error("Postgres error: {0}")]
+    Postgres(#[from] postgres::Error),
+    #[error("Hound error: {0}")]
+    Hound(#[from] hound::Error),
+    #[error("Other error: {0}")]
+    Other(String),
 }
+
+pub type Error = ToolsError;
+
 pub static MIME_MAP: [(&str, &str); 157] = [
     (".3gp", "video/3gpp"),
     (".3g2", "video/3gpp2"),
@@ -202,9 +210,9 @@ pub static MIME_MAP: [(&str, &str); 157] = [
     (".zip", "application/zip"),
 ];
 
-impl From<zip::result::ZipError> for tools::Error {
+impl From<zip::result::ZipError> for ToolsError {
     fn from(err: zip::result::ZipError) -> Self {
-        tools::Error::from(err.to_string())
+        ToolsError::Other(err.to_string())
     }
 }
 
@@ -214,7 +222,7 @@ pub fn get_user_from_whois(user: &str) -> Result<String> {
     if whois_path.exists() {
         match fs::read_to_string(whois_path) {
             Ok(contents) => Ok(contents.trim().to_string()),
-            Err(e) => Err(Error::from(e)),
+            Err(e) => Err(ToolsError::from(e).into()),
         }
     } else {
         Ok(user.to_string())
@@ -226,7 +234,7 @@ pub fn python3(command: &str) -> Result<String> {
     let output = Command::new("python3")
         .arg(command)
         .output()
-        .map_err(Error::from)?;
+        .map_err(ToolsError::from)?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -236,7 +244,7 @@ pub fn cmd(command: &str) -> Result<String> {
         .arg("-c")
         .arg(command)
         .output()
-        .map_err(Error::from)?;
+        .map_err(ToolsError::from)?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -282,7 +290,9 @@ pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let outpath = Path::new(extract_path).join(file.enclosed_name().ok_or("Invalid path")?);
+        let outpath = Path::new(extract_path).join(
+            file.enclosed_name().ok_or_else(|| ToolsError::Other("Invalid path".to_string()))?
+        );
 
         if file.name().ends_with('/') {
             fs::create_dir_all(&outpath)?;

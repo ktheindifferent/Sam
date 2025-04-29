@@ -8,10 +8,10 @@
 // Licensed under GPLv3....see LICENSE file.
 
 // Required dependencies
-use error_chain::error_chain;
 use opencl3::device::{get_all_devices, CL_DEVICE_TYPE_GPU};
 use serde::{Deserialize, Serialize};
 use tokio::fs as async_fs;
+use thiserror::Error;
 
 use dialoguer::Confirm;
 use git2::{Cred, FetchOptions, RemoteCallbacks, Repository};
@@ -20,15 +20,22 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-// Define error handling
-error_chain! {
-    foreign_links {
-        Io(std::io::Error);
-        HttpRequest(reqwest::Error);
-        Postgres(postgres::Error);
-        Hound(hound::Error);
-        Git(git2::Error);
-    }
+pub type Result<T> = anyhow::Result<T>;
+
+#[derive(Error, Debug)]
+pub enum InstallerError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("HTTP request error: {0}")]
+    HttpRequest(#[from] reqwest::Error),
+    #[error("Postgres error: {0}")]
+    Postgres(#[from] postgres::Error),
+    #[error("Hound error: {0}")]
+    Hound(#[from] hound::Error),
+    #[error("Git error: {0}")]
+    Git(#[from] git2::Error),
+    #[error("Other error: {0}")]
+    Other(String),
 }
 
 #[cfg(target_os = "windows")]

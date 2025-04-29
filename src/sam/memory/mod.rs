@@ -32,20 +32,39 @@ pub use room::*;
 // pub use human_face_encoding::*;
 
 // ===== Shared error_chain! block =====
-use error_chain::error_chain;
-#[allow(unexpected_cfgs)]
-error_chain! {
-    foreign_links {
-        Io(std::io::Error);
-        HttpRequest(reqwest::Error);
-        TokioPg(tokio_postgres::Error);
-        Hound(hound::Error);
-        PostError(rouille::input::post::PostError);
-        ParseFloatError(std::num::ParseFloatError);
-        SerdeJsonError(serde_json::Error);
-        DeadpoolPostgresError(deadpool_postgres::PoolError);
-        JoinError(tokio::task::JoinError);
-        // TchError(tch::TchError);
+// Remove error_chain and use thiserror/anyhow
+use thiserror::Error;
+pub type Result<T> = anyhow::Result<T>;
+
+#[derive(Error, Debug)]
+pub enum MemoryError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("HTTP request error: {0}")]
+    HttpRequest(#[from] reqwest::Error),
+    #[error("Tokio Postgres error: {0}")]
+    TokioPg(#[from] tokio_postgres::Error),
+    #[error("Hound error: {0}")]
+    Hound(#[from] hound::Error),
+    #[error("Post input error: {0}")]
+    PostError(#[from] rouille::input::post::PostError),
+    #[error("Parse float error: {0}")]
+    ParseFloatError(#[from] std::num::ParseFloatError),
+    #[error("Serde JSON error: {0}")]
+    SerdeJsonError(#[from] serde_json::Error),
+    #[error("Deadpool Postgres error: {0}")]
+    DeadpoolPostgresError(#[from] deadpool_postgres::PoolError),
+    #[error("Join error: {0}")]
+    JoinError(#[from] tokio::task::JoinError),
+    #[error("Other error: {0}")]
+    Other(String),
+}
+
+pub type Error = MemoryError;
+
+impl From<anyhow::Error> for Error {
+    fn from(err: anyhow::Error) -> Self {
+        Error::Other(err.to_string())
     }
 }
 
@@ -384,6 +403,7 @@ impl std::str::FromStr for ObservationObjects {
             "CELL_PHONE" => Ok(ObservationObjects::CELL_PHONE),
             "MICROWAVE" => Ok(ObservationObjects::MICROWAVE),
             "OVEN" => Ok(ObservationObjects::OVEN),
+            "TOASTER" => Ok(ObservationObjects::TOASTER),
             "SINK" => Ok(ObservationObjects::SINK),
             "REFRIGERATOR" => Ok(ObservationObjects::REFRIGERATOR),
             "BOOK" => Ok(ObservationObjects::BOOK),

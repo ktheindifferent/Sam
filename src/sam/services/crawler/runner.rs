@@ -383,19 +383,15 @@ async fn crawl_url_inner(
 
     // Bugfix: Check if the URL is valid before proceeding
     if !is_valid_url(&url) {
-        return Err(crate::sam::memory::Error::from_kind(
-            crate::sam::memory::ErrorKind::Msg("Invalid URL".to_string()),
-        ));
+        return Err(crate::sam::memory::Error::Other("Invalid URL".to_string()).into());
     }
 
     // Return early if the URL looks like a search endpoint
     let url_lc = url.to_ascii_lowercase();
     if is_search_url(&url_lc) {
-        return Err(crate::sam::memory::Error::from_kind(
-            crate::sam::memory::ErrorKind::Msg(
-                "URL appears to be a search endpoint, skipping".to_string(),
-            ),
-        ));
+        return Err(crate::sam::memory::Error::Other(
+            "URL appears to be a search endpoint, skipping".to_string(),
+        ).into());
     } else {
         // log::debug!("Crawling URL: {}", url);
     }
@@ -493,14 +489,12 @@ async fn crawl_url_inner(
         // Optional: small delay between retries
         sleep(Duration::from_millis(100)).await;
     }
-    let resp = match resp {
+    let resp: Result<reqwest::Response, crate::sam::memory::Error> = match resp {
         Some(r) => Ok(r),
-        None => Err(crate::sam::memory::Error::from_kind(
-            crate::sam::memory::ErrorKind::Msg(format!(
-                "Request failed after retries: {}",
-                last_err.unwrap_or_else(|| "unknown".to_string())
-            )),
-        )),
+        None => Err(crate::sam::memory::Error::Other(format!(
+            "Request failed after retries: {}",
+            last_err.unwrap_or_else(|| "unknown".to_string())
+        )).into()),
     };
 
     let mut all_pages = Vec::new();
@@ -509,7 +503,7 @@ async fn crawl_url_inner(
         Ok(resp) => {
             let status = resp.status().as_u16();
 
-            if status == 200 {
+            if (status == 200) {
                 // Extract headers before consuming resp
                 let headers = resp.headers().clone();
                 let url_clone = url.clone();

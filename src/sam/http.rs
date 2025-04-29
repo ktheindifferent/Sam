@@ -60,6 +60,12 @@ impl From<&str> for Error {
     }
 }
 
+impl From<anyhow::Error> for Error {
+    fn from(err: anyhow::Error) -> Self {
+        Error::Other(err.to_string())
+    }
+}
+
 pub mod api;
 
 // TODO - Authenticate connections using a one time key and expiring Sessions

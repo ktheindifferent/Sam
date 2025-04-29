@@ -7,38 +7,36 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 use crate::sam::tools;
-use error_chain::error_chain;
-#[allow(unexpected_cfgs)]
-error_chain! {
-    foreign_links {
-        Io(std::io::Error);
-        HttpRequest(reqwest::Error);
-        Postgres(postgres::Error);
-        Hound(hound::Error);
-        // TchError(tch::TchError);
-        PostError(rouille::input::post::PostError);
-        ParseFloatError(std::num::ParseFloatError);
-        SamMemoryError(crate::sam::memory::Error);
-        // ClError(opencl3::error_codes::ClError);
-    }
+use thiserror::Error;
+pub type Result<T> = anyhow::Result<T>;
 
-    errors {
-        Other(msg: String) {
-            description("Other error")
-            display("{}", msg)
-        }
-    }
+#[derive(Error, Debug)]
+pub enum ServiceError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("HTTP request error: {0}")]
+    HttpRequest(#[from] reqwest::Error),
+    #[error("Postgres error: {0}")]
+    Postgres(#[from] postgres::Error),
+    #[error("Hound error: {0}")]
+    Hound(#[from] hound::Error),
+    #[error("Post input error: {0}")]
+    PostError(#[from] rouille::input::post::PostError),
+    #[error("Parse float error: {0}")]
+    ParseFloatError(#[from] std::num::ParseFloatError),
+    #[error("Sam memory error: {0}")]
+    SamMemoryError(#[from] crate::sam::memory::Error),
+    #[error("Tools error: {0}")]
+    ToolsError(#[from] crate::sam::tools::Error),
+    #[error("Other error: {0}")]
+    Other(String),
 }
-// impl From<reqwest::Error> for crate::sam::services::Error {
-//     fn from(err: reqwest::Error) -> Self {
-//         crate::sam::services::Error::from(err)
-//     }
-// }
-impl From<tools::Error> for crate::sam::services::Error {
-    fn from(err: tools::Error) -> Self {
-        crate::sam::services::Error::from_kind(crate::sam::services::ErrorKind::Other(
-            err.to_string(),
-        ))
+
+pub type Error = ServiceError;
+
+impl From<anyhow::Error> for Error {
+    fn from(err: anyhow::Error) -> Self {
+        Error::Other(err.to_string())
     }
 }
 

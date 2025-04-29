@@ -134,10 +134,9 @@ impl CrawledPage {
                 Ok(obj) => obj,
                 Err(e) => {
                     log::error!("Failed to deserialize CrawledPage: {}", e);
-                    return Err(crate::sam::memory::Error::with_chain(
-                        e,
-                        "Deserialization error",
-                    ));
+                    return Err(crate::sam::memory::Error::Other(
+                        format!("Deserialization error: {e}")
+                    ).into());
                 }
             };
             parsed_rows.push(object);

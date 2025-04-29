@@ -115,7 +115,7 @@ impl CrawlJob {
         )?;
         for j in jsons {
             let object: Self = serde_json::from_str(&j).map_err(|e| {
-                crate::sam::memory::Error::with_chain(e, "Failed to deserialize CrawlJob")
+                crate::sam::memory::Error::Other(format!("Failed to deserialize CrawlJob: {e}"))
             })?;
             parsed_rows.push(object);
         }
@@ -130,7 +130,7 @@ impl CrawlJob {
     ) -> crate::sam::memory::Result<Vec<Self>> {
         let result = tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query))
             .await
-            .map_err(|e| crate::sam::memory::Error::with_chain(e, "JoinError in select_async"))??;
+            .map_err(|e| crate::sam::memory::Error::Other(format!("JoinError in select_async: {e}")))??;
         Ok(result)
     }
     /// Save to DB (insert or update by oid).
@@ -270,7 +270,7 @@ impl CrawlJob {
         let rows = pg_client
             .execute(&query, &[&oid])
             .await
-            .map_err(|e| crate::sam::memory::Error::with_chain(e, "Failed to delete crawl job"))?;
+            .map_err(|e| crate::sam::memory::Error::Other(format!("Failed to delete crawl job: {e}")))?;
         Ok(rows > 0)
     }
 
