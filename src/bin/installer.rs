@@ -17,7 +17,7 @@ use dialoguer::Confirm;
 use git2::{Cred, FetchOptions, RemoteCallbacks, Repository};
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self};
 use std::path::Path;
 
 pub type Result<T> = anyhow::Result<T>;
@@ -46,7 +46,7 @@ const OS: &str = "macos";
 const OS: &str = "linux";
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     // Initialize logger with color, warning level, and timestamps
     simple_logger::SimpleLogger::new()
         .with_colors(true)
@@ -57,7 +57,7 @@ async fn main() {
 
     // Store the current username in the SAM_USER environment variable
     let whoami = whoami::username();
-    let opt_sam_path = Path::new("/opt/sam/");
+    // let opt_sam_path = Path::new("/opt/sam/");
     if whoami != "root" {
         env::set_var("SAM_USER", &whoami);
     }
@@ -107,13 +107,15 @@ async fn main() {
     }
 
     log::info!("Checking for GPU devices...");
-    // await check_gpu_devices().await;
+    let _ = check_gpu_devices().await?;
     log::info!("Compiling snapcast...");
-    libsam::services::snapcast::install().await;
+    let _ = libsam::services::snapcast::install().await?;
     log::info!("Installing darknet...");
-    libsam::services::darknet::install().await;
+    let _ = libsam::services::darknet::install().await?;
     log::info!("Installing SPREC...");
-    libsam::services::sprec::install().await;
+    let _ = libsam::services::sprec::install().await?;
+
+    Ok(())
 }
 //     // install_services();
 //     log::info!("Setting up default settings...");
@@ -209,13 +211,14 @@ async fn pre_install() -> Result<()> {
 }
 
 // Check for GPU devices and create a marker file if found
-fn check_gpu_devices() {
+async fn check_gpu_devices() -> Result<()> {
     let devices = get_all_devices(CL_DEVICE_TYPE_GPU);
     if devices.is_err() {
         log::info!("No GPU devices found!");
     } else {
-        let _ = libsam::cmd_async("touch /opt/sam/gpu");
+        let _ = libsam::cmd_async("touch /opt/sam/gpu").await?;
     }
+    Ok(())
 }
 
 // // Install various services and log their status
