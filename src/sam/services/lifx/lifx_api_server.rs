@@ -630,8 +630,8 @@ impl StopHandle {
 }
 
 pub fn start(config: Config) -> StopHandle {
-    sudo::with_env(&["SECRET_KEY"]).unwrap();
-    sudo::escalate_if_needed().unwrap();
+    // sudo::with_env(&["SECRET_KEY"]).unwrap();
+    // sudo::escalate_if_needed().unwrap();
 
     let mgr = Manager::new();
 

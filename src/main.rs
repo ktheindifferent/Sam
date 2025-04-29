@@ -52,6 +52,7 @@ extern crate log;
 use env_logger;
 
 use std::env;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::unix::fs::PermissionsExt;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -162,15 +163,19 @@ fn main() {
         // env::set_var("LD_LIBRARY_PATH", "${LIBTORCH}/lib:$LD_LIBRARY_PATH");
 
         // Ensure required environment variables are available for sudo context
-        sudo::with_env(&[
-            "LIBTORCH",
-            "LD_LIBRARY_PATH",
-            "PG_DBNAME",
-            "PG_USER",
-            "PG_PASS",
-            "PG_ADDRESS",
-        ])
-        .unwrap();
+        // dependent on OS
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            sudo::with_env(&[
+                "LIBTORCH",
+                "LD_LIBRARY_PATH",
+                "PG_DBNAME",
+                "PG_USER",
+                "PG_PASS",
+                "PG_ADDRESS",
+            ])
+            .unwrap();
+        }
 
         // Check for missing Postgres credentials and prompt user if missing
         // cli::check_postgres_env();
@@ -198,7 +203,12 @@ fn main() {
             // Start Postgres server
             println!("Starting Postgres...");
             crate::sam::services::pg::start_postgres(user.as_str()).unwrap();
-
+            // Check if Postgres is running
+            if crate::sam::services::pg::is_postgres_running().await {
+                println!("Postgres is running.");
+            } else {
+                println!("Postgres failed to start.");
+            }
             // --- Add Homebrew Postgres bin to PATH if on macOS ---
             #[cfg(target_os = "macos")]
             {

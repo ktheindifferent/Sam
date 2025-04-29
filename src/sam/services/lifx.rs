@@ -19,6 +19,10 @@ use rouille::post_input;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use once_cell::sync::Lazy;
+use error_chain::error_chain;
+use crate::sam::services::Error;
+use crate::sam::services::Result;
+
 
 // Add a static for the StopHandle
 static LIFX_SERVER_STOP_HANDLE: Lazy<Arc<Mutex<Option<crate::sam::services::lifx::lifx_api_server::StopHandle>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -134,7 +138,7 @@ pub fn init_server(key: String) {
 
 
 
-pub fn get_lifx_service_db_obj() -> Result<crate::sam::memory::config::Service, crate::sam::services::Error>{
+pub fn get_lifx_service_db_obj() -> Result<crate::sam::memory::config::Service>{
     let mut pg_query = crate::sam::memory::PostgresQueries::default();
     pg_query.queries.push(crate::sam::memory::PGCol::String("lifx".to_string()));
     pg_query.query_columns.push("identifier =".to_string());
@@ -142,7 +146,7 @@ pub fn get_lifx_service_db_obj() -> Result<crate::sam::memory::config::Service, 
     Ok(service[0].clone())
 }
 
-pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
+pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> std::result::Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/lifx/list_all" {
 
         match get_lifx_service_db_obj(){
@@ -296,7 +300,7 @@ pub fn select_lifx_endpoint(public: bool) -> String {
     }
 }
 
-pub fn get_all(key: String) -> Result<lifx::Lights, crate::sam::services::Error>{
+pub fn get_all(key: String) -> Result<lifx::Lights>{
     let mut api_endpoints: Vec<String> = Vec::new();
     api_endpoints.push(get_lifx_endpoint());
 
@@ -308,7 +312,7 @@ pub fn get_all(key: String) -> Result<lifx::Lights, crate::sam::services::Error>
     Ok(lifx::Light::list_all(config.clone())?)
 }
 
-pub fn get(key: String, public: bool) -> Result<lifx::Lights, crate::sam::services::Error>{
+pub fn get(key: String, public: bool) -> Result<lifx::Lights>{
     let mut api_endpoints: Vec<String> = Vec::new();
     api_endpoints.push(select_lifx_endpoint(public));
 

@@ -11,7 +11,12 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::process::Command;
+
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::unix::fs::PermissionsExt; // Added for `from_mode`
+
+
 use error_chain::error_chain;
 use crate::sam::tools; // Add missing import for tools module
 

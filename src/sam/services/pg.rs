@@ -47,7 +47,62 @@ pub fn create_sam_user_and_db() -> io::Result<()> {
 
 #[cfg(target_os = "windows")]
 pub fn install_postgres(_user: &str) -> io::Result<()> {
-    log::info!("Please download and run the PostgreSQL installer from https://www.postgresql.org/download/windows/");
+    use std::process::Stdio;
+    use std::env;
+    use reqwest::blocking::get;
+    use scraper::{Html, Selector};
+    use std::fs;
+    use std::io::Write;
+
+    // 1. Fetch the EnterpriseDB binaries page
+    let url = "https://www.enterprisedb.com/download-postgresql-binaries";
+    let resp = get(url).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let body = resp.text().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+    // 2. Parse the HTML to find the latest Windows x86-64 installer link
+    let document = Html::parse_document(&body);
+    let selector = Selector::parse("a").unwrap();
+    let mut latest_url = None;
+    for element in document.select(&selector) {
+        if let Some(href) = element.value().attr("href") {
+            if href.contains("windows-x64.exe") && href.contains("postgresql-") {
+                latest_url = Some(href.to_string());
+            }
+        }
+    }
+    let latest_url = match latest_url {
+        Some(url) => if url.starts_with("http") { url } else { format!("https://www.enterprisedb.com{}", url) },
+        None => {
+            log::error!("Could not find latest PostgreSQL Windows installer link.");
+            return Ok(());
+        }
+    };
+
+    // 3. Download the installer
+    let temp_dir = env::temp_dir();
+    let installer_path = temp_dir.join("postgres_installer.exe");
+    let mut resp = get(&latest_url).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let mut out = fs::File::create(&installer_path)?;
+    resp.copy_to(&mut out).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+    // 4. Run the installer in silent mode
+    let install_dir = r"C:\\Program Files\\PostgreSQL\\latest";
+    let data_dir = r"C:\\Program Files\\PostgreSQL\\latest\\data";
+    let password = "sam_password";
+    let install_cmd = format!(
+        "\"{}\" --mode unattended --unattendedmodeui minimal --superpassword {} --servicename postgresql-x64-latest --serviceaccount postgres --servicepassword {} --prefix \"{}\" --datadir \"{}\" --serverport 5432",
+        installer_path.display(), password, password, install_dir, data_dir
+    );
+    let status = Command::new("cmd")
+        .args(["/C", &install_cmd])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+    if !status.success() {
+        log::error!("Failed to run PostgreSQL installer.");
+        return Ok(());
+    }
+    log::info!("PostgreSQL installed successfully.");
     Ok(())
 }
 
@@ -126,23 +181,83 @@ pub fn start_postgres(user: &str) -> io::Result<()> {
 
     #[cfg(target_os = "windows")]
     {
-        // Try to start the Postgres server using Windows Service Control
-        let status = Command::new("net")
-            .args(&["start", "postgresql-x64-15"]) // Adjust service name as needed
-            .status()?;
-        if !status.success() {
-            log::info!("Warning: Could not start PostgreSQL service on Windows.");
+        // Query SC to check if the service is running
+        let output = Command::new("sc")
+            .args(&["query", "postgresql-x64-17"]) // Adjust service name as needed
+            .output()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains("RUNNING") {
+            println!("PostgreSQL service is already running.");
+            return Ok(());
+        } else if stdout.contains("STOPPED") {
+            // Start the PostgreSQL service
+            let status = Command::new("net")
+                .args(&["start", "postgresql-x64-17"]) // Adjust service name as needed
+                .status()?;
+            if !status.success() {
+                println!("Warning: Could not start PostgreSQL service on Windows.");
+            }
+        } else if stdout.contains("NOT FOUND") {
+            println!("Warning: Could not find PostgreSQL service on Windows.");
         }
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
     Ok(())
 }
 
+pub async fn is_postgres_running() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let output = Command::new("sc")
+            .args(&["query", "postgresql-x64-17"]) // Adjust service name as needed
+            .output();
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout.contains("RUNNING");
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let output = Command::new("systemctl")
+            .args(&["is-active", "postgresql"])
+            .output();
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout.trim() == "active";
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let output = Command::new("brew")
+            .args(["services", "list"])
+            .output();
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains("postgresql") && line.contains("started") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Install PostgreSQL using system package manager or Docker (if not installed)
 pub async fn install() {
     #[cfg(target_os = "windows")]
     {
-        info!("Please download and run the PostgreSQL installer from https://www.postgresql.org/download/windows/");
+        let status = Command::new("winget")
+            .arg("install")
+            .arg("PostgreSQL.PostgreSQL.17")
+            .status();
+        if let Ok(status) = status {
+            if status.success() {
+                info!("PostgreSQL installed successfully.");
+                return;
+            }
+        }
+        error!("Failed to install PostgreSQL. Please install manually.");
         return;
     }
     #[cfg(target_os = "linux")]
@@ -204,7 +319,7 @@ pub async fn start() {
     #[cfg(target_os = "windows")]
     {
         let status = Command::new("net")
-            .args(&["start", "postgresql-x64-15"]) // Adjust service name as needed
+            .args(&["start", "postgresql-x64-17"]) // Adjust service name as needed
             .status();
         if let Ok(status) = status {
             if status.success() {
