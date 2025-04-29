@@ -15,7 +15,6 @@ use std::process::Command;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::unix::fs::PermissionsExt; // Added for `from_mode`
 
-use crate::sam::tools;
 use thiserror::Error;
 pub type Result<T> = anyhow::Result<T>;
 

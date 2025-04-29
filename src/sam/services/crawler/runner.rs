@@ -503,7 +503,7 @@ async fn crawl_url_inner(
         Ok(resp) => {
             let status = resp.status().as_u16();
 
-            if (status == 200) {
+            if status == 200 {
                 // Extract headers before consuming resp
                 let headers = resp.headers().clone();
                 let url_clone = url.clone();
