@@ -13,7 +13,7 @@ pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: 
         match q_param {
             Some(q) => {
                 let client = Client::new(String::from("https://vid.puffyan.us"));
-                let search_results = client.search(Some(format!("q={}", q).as_str())).unwrap().items;
+                let search_results = client.search(Some(format!("q={q}").as_str())).unwrap().items;
                 return Ok(Response::json(&search_results));
             },
             None => {
@@ -30,7 +30,7 @@ pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: 
         match q_param {
             Some(q) => {
                 let client = Client::new(String::from("https://vid.puffyan.us"));
-                let search_results = client.search(Some(format!("q={}", q).as_str())).unwrap().items;
+                let search_results = client.search(Some(format!("q={q}").as_str())).unwrap().items;
                 let video = search_results[0].clone();
                 return Ok(Response::json(&video));
             },
@@ -46,7 +46,7 @@ pub fn handle(current_session: crate::sam::memory::cache::WebSessions, request: 
         let id_param = request.get_param("id");
         match id_param {
             Some(id) => {
-                let url = format!("https://youtu.be/{}", id);
+                let url = format!("https://youtu.be/{id}");
                 let path_to_video = rustube::blocking::download_worst_quality(url.as_str())?;
                 log::info!("path_to_video: {:?}", path_to_video);
                 let data = std::fs::read(path_to_video).expect("Unable to read file");

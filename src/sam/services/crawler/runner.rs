@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use futures::StreamExt;
-use log::{info, LevelFilter};
+use log::info;
 use once_cell::sync::Lazy;
 use rand::distributions::Alphanumeric;
 use rand::rngs::SmallRng;
@@ -40,7 +40,7 @@ use crate::sam::services::crawler::job::CrawlJob;
 use crate::sam::services::crawler::page::CrawledPage;
 
 use deadpool_redis::{Pool, Runtime, Config as DeadpoolConfig};
-use deadpool_redis::redis::{AsyncCommands, Cmd};
+use deadpool_redis::redis::AsyncCommands;
 
 static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
     reqwest::Client::builder()
@@ -111,7 +111,7 @@ static TIMEOUT_COUNT: once_cell::sync::Lazy<std::sync::Mutex<usize>> = once_cell
 static REDIS_URL: &str = "redis://127.0.0.1/";
 static REDIS_POOL: once_cell::sync::Lazy<Pool> = once_cell::sync::Lazy::new(|| {
 
-    let mut cfg = DeadpoolConfig::from_url(REDIS_URL);
+    let cfg = DeadpoolConfig::from_url(REDIS_URL);
 
     cfg.create_pool(Some(Runtime::Tokio1)).unwrap()
 });
@@ -291,7 +291,7 @@ pub async fn write_url_to_retry_cache(url: &str) {
             .open(retry_path)
             .await
         {
-            if let Err(e) = file.write_all(format!("{}\n", url).as_bytes()).await {
+            if let Err(e) = file.write_all(format!("{url}\n").as_bytes()).await {
                 log::warn!("Failed to write timed out URL to retry file: {}", e);
             }
         } else {
@@ -357,7 +357,7 @@ async fn crawl_url_inner(
 
     // Bugfix: Check if the URL is valid before proceeding
     if !is_valid_url(&url) {
-        return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg(format!("Invalid URL"))));
+        return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg("Invalid URL".to_string())));
     }
 
     // Return early if the URL looks like a search endpoint
@@ -411,7 +411,7 @@ async fn crawl_url_inner(
                     // Source: https://data.iana.org/TLD/tlds-alpha-by-domain.txt
                     let tlds = COMMON_TLDS.clone();
                     if !tlds.contains(&ext.to_string()) {
-                        Some(format!(".{}", ext))
+                        Some(format!(".{ext}"))
                     } else {
                         None
                     }
@@ -682,13 +682,13 @@ async fn crawl_url_inner(
 
                 tokens.retain(|token| {
                     !COMMON_TOKENS.contains(token)
-                        || date_regex.as_ref().map_or(false, |re| re.is_match(token))
-                        || date2_regex.as_ref().map_or(false, |re| re.is_match(token))
-                        || date3_regex.as_ref().map_or(false, |re| re.is_match(token))
-                        || date4_regex.as_ref().map_or(false, |re| re.is_match(token))
-                        || date5_regex.as_ref().map_or(false, |re| re.is_match(token))
-                        || date6_regex.as_ref().map_or(false, |re| re.is_match(token))
-                        || date7_regex.as_ref().map_or(false, |re| re.is_match(token))
+                        || date_regex.as_ref().is_ok_and(|re| re.is_match(token))
+                        || date2_regex.as_ref().is_ok_and(|re| re.is_match(token))
+                        || date3_regex.as_ref().is_ok_and(|re| re.is_match(token))
+                        || date4_regex.as_ref().is_ok_and(|re| re.is_match(token))
+                        || date5_regex.as_ref().is_ok_and(|re| re.is_match(token))
+                        || date6_regex.as_ref().is_ok_and(|re| re.is_match(token))
+                        || date7_regex.as_ref().is_ok_and(|re| re.is_match(token))
                 });
                 tokens.retain(|token| token.len() > 2 && token.len() < 50);
                 let url_tokens: HashSet<_> = url.split('/').map(|s| s.to_lowercase()).collect();
@@ -696,7 +696,7 @@ async fn crawl_url_inner(
                 if let Ok(domain) = Url::parse(&url).and_then(|u| {
                     u.domain()
                         .map(|d| d.to_string())
-                        .ok_or_else(|| ParseError::EmptyHost)
+                        .ok_or(ParseError::EmptyHost)
                 }) {
                     let domain_tokens: HashSet<_> = domain.split('.').map(|s| s.to_lowercase()).collect();
                     tokens.retain(|token| !domain_tokens.contains(&token.to_lowercase()));
@@ -869,7 +869,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     load_dns_cache(true).await;
 
     loop {
-        if (!CRAWLER_RUNNING.load(Ordering::SeqCst)) {
+        if !CRAWLER_RUNNING.load(Ordering::SeqCst) {
             sleep(Duration::from_secs(1)).await;
             continue;
         }
@@ -978,7 +978,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 let mut new_links = Vec::new();
                 for (url, depth, result) in results {
                     match result {
-                        Ok(mut pages) => {
+                        Ok(pages) => {
                             for page in &pages {
                                 for link in &page.links {
                                     let should_add = {
@@ -1020,11 +1020,11 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                                     log::debug!("Skipping search endpoint: {}", link);
                                                 } else {
 
-                                                    if {
+                                                    let res = {
                                                         let v = visited.lock().await;
                                                         let all_jobs = all_job_urls.lock().await;
                                                         !v.contains(&job.start_url) && !all_jobs.contains(&job.start_url)
-                                                    } {
+                                                    }; if res {
                                                         batch.push(job);
                                                         let mut v = all_job_urls.lock().await;
                                                         for job in batch.iter() {
@@ -1138,7 +1138,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     urls_to_try.extend(retry_urls);
                 }
                 // Remove the retry file after loading
-                let _ = fs::remove_file(retry_path).await.unwrap_or_else(|_| {
+                fs::remove_file(retry_path).await.unwrap_or_else(|_| {
                     log::warn!("Failed to remove retry file: {}", retry_path);
                 });
             }
@@ -1157,7 +1157,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             words.dedup();
 
             // Sample words and prefixes to generate domains
-            let mut domains: Vec<String> = Vec::new();
+            let domains: Vec<String> = Vec::new();
             use rayon::prelude::*;
 
             let mut rng = SmallRng::from_entropy();
@@ -1178,21 +1178,21 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
 
                 // word.tld and prefix.word.tld and prefix.word2.word.tld
                 for word in &sampled_words {
-                    local_domains.push(format!("{}.{}", word, tld));
+                    local_domains.push(format!("{word}.{tld}"));
                     for prefix in &prefixes {
-                        local_domains.push(format!("{}.{}.{}", prefix, word, tld));
+                        local_domains.push(format!("{prefix}.{word}.{tld}"));
                         for word2 in &sampled_words {
-                            local_domains.push(format!("{}.{}.{}.{}", prefix, word2, word, tld));
+                            local_domains.push(format!("{prefix}.{word2}.{word}.{tld}"));
                         }
                     }
                 }
                 // prefix.tld
                 for prefix in &prefixes {
-                    local_domains.push(format!("{}.{}", prefix, tld));
+                    local_domains.push(format!("{prefix}.{tld}"));
                 }
                 // word.tld (again, but dedup later)
                 for word in &sampled_words {
-                    local_domains.push(format!("{}.{}", word, tld));
+                    local_domains.push(format!("{word}.{tld}"));
                 }
                 local_domains
             }).collect();
@@ -1235,8 +1235,8 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             log::info!("DNS+HTTP lookups for {} domains took {:?}", domains.len(), dns_duration);
 
             for domain in found_domains {
-                urls_found.push(format!("https://{}/", domain));
-                urls_found.push(format!("http://{}/", domain));
+                urls_found.push(format!("https://{domain}/"));
+                urls_found.push(format!("http://{domain}/"));
             }
             urls_to_try.extend(urls_found);
             urls_to_try.sort();
@@ -1310,12 +1310,12 @@ async fn lookup_domain(
         ).await {
             Ok(Ok(lookup)) if lookup.iter().next().is_some() => {
                 // DNS exists, now check HTTP/HTTPS HEAD
-                let http_url = format!("http://{}/", domain);
-                let https_url = format!("https://{}/", domain);
+                let http_url = format!("http://{domain}/");
+                let https_url = format!("https://{domain}/");
 
               
                     let mut http_ok = false;
-                    let mut https_ok = false;
+                    let https_ok = false;
                     for http_attempt in 0..3 {
                         let http_fut = client.head(&http_url).send();
                         let https_fut = client.head(&https_url).send();
@@ -1367,7 +1367,7 @@ async fn lookup_domain(
 
 fn is_search_url(url: &str) -> bool {
     let url_lc = url.to_ascii_lowercase();
-    if url_lc.contains("/search/")
+    url_lc.contains("/search/")
         || url_lc.contains("search=")
         || url_lc.contains("q=")
         || url_lc.contains("/find/")
@@ -1410,12 +1410,7 @@ fn is_search_url(url: &str) -> bool {
         || url_lc.contains("search_terms=")
         || url_lc.contains("login?return_to=")
         || url_lc.contains("signup?return_to=")
-        || url_lc.contains("?return_to")
-        || url_lc.contains("/list/"){
-            return true;
-        } else {
-            return false;
-        }
+        || url_lc.contains("?return_to") || url_lc.contains("/list/")
 }
 
 /// Recursively extracts text tokens from an HTML element, skipping specified tags.

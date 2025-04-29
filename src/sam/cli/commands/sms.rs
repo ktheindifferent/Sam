@@ -28,7 +28,7 @@ pub async fn handle_sms(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         "sms status" => {
             let status = crate::sam::services::sms::status();
             let mut out = output_lines.lock().await;
-            out.push(format!("SMS service status: {}", status));
+            out.push(format!("SMS service status: {status}"));
         }
         _ => {
             let mut out = output_lines.lock().await;

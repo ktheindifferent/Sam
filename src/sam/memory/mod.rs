@@ -126,7 +126,7 @@ pub enum ObservationType {
 }
 impl fmt::Display for ObservationType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 impl std::str::FromStr for ObservationType {
@@ -306,7 +306,7 @@ pub enum ObservationObjects {
 }
 impl fmt::Display for ObservationObjects {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 impl std::str::FromStr for ObservationObjects {

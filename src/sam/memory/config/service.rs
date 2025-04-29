@@ -182,7 +182,7 @@ impl Service {
 
     /// Asynchronously saves the Service to the database. Updates if OID or identifier exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<&Self> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());

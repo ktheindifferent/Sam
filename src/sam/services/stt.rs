@@ -11,7 +11,6 @@ use rouille::{Request, Response, post_input};
 use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -70,7 +69,7 @@ pub fn deep_speech_process(file_path: String) -> Result<STTPrediction, crate::sa
 // Runs Whisper on the provided audio file.
 pub fn whisper(file_path: String) -> Result<String, crate::sam::services::Error> {
     prepare_audio(&file_path)?;
-    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -otxt", file_path))?;
+    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {file_path}.16.wav -otxt"))?;
     let data = read_and_cleanup(file_path)?;
     Ok(data)
 }
@@ -78,7 +77,7 @@ pub fn whisper(file_path: String) -> Result<String, crate::sam::services::Error>
 // Runs Whisper in quick mode with a smaller model.
 pub fn whisper_quick(file_path: String) -> Result<String, crate::sam::services::Error> {
     prepare_audio(&file_path)?;
-    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-tiny.bin -f {}.16.wav -otxt -t 4", file_path))?;
+    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-tiny.bin -f {file_path}.16.wav -otxt -t 4"))?;
     let data = read_and_cleanup(file_path)?;
     Ok(data)
 }
@@ -86,22 +85,22 @@ pub fn whisper_quick(file_path: String) -> Result<String, crate::sam::services::
 // Runs Whisper on GPU for faster processing.
 pub fn whisper_gpu(file_path: String) -> Result<String, crate::sam::services::Error> {
     prepare_audio(&file_path)?;
-    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper-gpu -m /opt/sam/models/ggml-tiny.bin -f {}.16.wav -otxt -t 8", file_path))?;
+    crate::sam::tools::cmd(&format!("/opt/sam/bin/whisper-gpu -m /opt/sam/models/ggml-tiny.bin -f {file_path}.16.wav -otxt -t 8"))?;
     let data = read_and_cleanup(file_path)?;
     Ok(data)
 }
 
 // Prepares audio for processing by converting or copying it.
 fn prepare_audio(file_path: &String) -> Result<(), crate::sam::services::Error> {
-    crate::sam::tools::cmd(&format!("cp {} {}.16.wav", file_path, file_path))?;
+    crate::sam::tools::cmd(&format!("cp {file_path} {file_path}.16.wav"))?;
     Ok(())
 }
 
 // Reads the processed file and cleans up temporary files.
 fn read_and_cleanup(file_path: String) -> Result<String, crate::sam::services::Error> {
-    let data = std::fs::read_to_string(format!("{}.16.wav.txt", file_path).as_str())?;
-    std::fs::remove_file(format!("{}.16.wav", file_path).as_str())?;
-    std::fs::remove_file(format!("{}.16.wav.txt", file_path).as_str())?;
+    let data = std::fs::read_to_string(format!("{file_path}.16.wav.txt").as_str())?;
+    std::fs::remove_file(format!("{file_path}.16.wav").as_str())?;
+    std::fs::remove_file(format!("{file_path}.16.wav.txt").as_str())?;
     Ok(data)
 }
 
@@ -126,7 +125,7 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
                 return Ok(Response::text("Internal server error").with_status_code(500));
             }
         };
-        let tmp_file_path = format!("/opt/sam/tmp/{}.wav", timestamp);
+        let tmp_file_path = format!("/opt/sam/tmp/{timestamp}.wav");
         let mut file = File::create(&tmp_file_path)?;
         file.write_all(&data.audio_data.data)?;
         let mut idk = upload(tmp_file_path)?;

@@ -1,14 +1,12 @@
 use std::fs;
-use std::io::{self, Error, Result};
+use std::io::{self, Result};
 use std::path::Path;
 use std::process::Command;
 use zip::read::ZipArchive;
-use zip::result::ZipError;
 use std::os::unix::fs::PermissionsExt;
-use zip::read::ZipFile;
 use tokio::fs as async_fs;
 use tokio::io::{self as async_io, AsyncWriteExt};
-use futures::stream::{self, StreamExt};
+use futures::stream::StreamExt;
 use tokio::process::Command as TokioCommand;
 
 pub mod services;
@@ -24,12 +22,12 @@ pub fn print_banner(user: String) {
     println!("     ██    ██   ██    ██  ██  ██    ");
     println!("███████ ██ ██   ██ ██ ██      ██ ██ ");
     println!("Smart Artificial Mind");
-    println!("VERSION: {:?}", VERSION);
+    println!("VERSION: {VERSION:?}");
     println!("Copyright 2021-2026 The Open Sam Foundation (OSF)");
     println!("Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)");
     println!("Licensed under GPLv3....see LICENSE file.");
     println!("================================================");
-    println!("Hello, {}", user);
+    println!("Hello, {user}");
     println!("================================================");
 }
 
@@ -39,8 +37,7 @@ pub async fn cmd_async(command: &str) -> Result<String> {
         .arg("-c")
         .arg(command)
         .output()
-        .await
-        .map_err(Error::from)?;
+        .await?;
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
@@ -49,8 +46,7 @@ pub fn cmd(command: &str) -> Result<String> {
     let output = Command::new("sh")
         .arg("-c")
         .arg(command)
-        .output()
-        .map_err(Error::from)?;
+        .output()?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -65,7 +61,7 @@ pub async fn extract_zip_async(zip_path: &str, extract_path: &str) -> Result<()>
     // Collect file metadata first to avoid borrow issues
     let mut file_infos = Vec::new();
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let mut file = archive.by_index(i).map_err(io::Error::other)?;
         let name = file.name().to_string();
         let is_dir = file.name().ends_with('/');
         let enclosed_name = file.enclosed_name().map(|p| p.to_owned());
@@ -83,7 +79,7 @@ pub async fn extract_zip_async(zip_path: &str, extract_path: &str) -> Result<()>
         async move {
             let outpath = match enclosed_name {
                 Some(p) => Path::new(&extract_path).join(p),
-                None => return Err(io::Error::new(io::ErrorKind::Other, "Invalid path")),
+                None => return Err(io::Error::other("Invalid path")),
             };
 
             if is_dir {
@@ -115,7 +111,7 @@ pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let outpath = Path::new(extract_path).join(
-            file.enclosed_name().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Invalid path"))?
+            file.enclosed_name().ok_or_else(|| io::Error::other("Invalid path"))?
         );
 
         if file.name().ends_with('/') {

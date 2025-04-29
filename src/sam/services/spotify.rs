@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use once_cell::sync::Lazy;
-use log::{info, error};
+use log::info;
 use reqwest::Client;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,7 +44,7 @@ pub async fn start() {
             PLAYBACK_THREAD = Some(thread::spawn(move || {
                 loop {
                     {
-                        let mut s = state_arc.lock().unwrap();
+                        let s = state_arc.lock().unwrap();
                         match s.status {
                             SpotifyStatus::Playing => {
                                 // Simulate playing music
@@ -143,15 +143,15 @@ impl SpotifyApi {
             ("grant_type", "client_credentials"),
         ];
         let res = self.client.post("https://accounts.spotify.com/api/token")
-            .header("Authorization", format!("Basic {}", auth))
+            .header("Authorization", format!("Basic {auth}"))
             .form(&params)
             .send()
             .await
-            .map_err(|e| format!("Request error: {}", e))?;
+            .map_err(|e| format!("Request error: {e}"))?;
         if !res.status().is_success() {
             return Err(format!("Spotify auth failed: {}", res.status()));
         }
-        let json: serde_json::Value = res.json().await.map_err(|e| format!("JSON error: {}", e))?;
+        let json: serde_json::Value = res.json().await.map_err(|e| format!("JSON error: {e}"))?;
         self.access_token = json.get("access_token").and_then(|v| v.as_str()).map(|s| s.to_string());
         Ok(())
     }
@@ -168,7 +168,7 @@ impl SpotifyApi {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Request error: {}", e))?;
+            .map_err(|e| format!("Request error: {e}"))?;
         if res.status().is_success() {
             Ok(())
         } else {
@@ -183,7 +183,7 @@ impl SpotifyApi {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Request error: {}", e))?;
+            .map_err(|e| format!("Request error: {e}"))?;
         if res.status().is_success() {
             Ok(())
         } else {
@@ -194,12 +194,12 @@ impl SpotifyApi {
     /// Toggle shuffle
     pub async fn set_shuffle(&self, shuffle: bool) -> Result<(), String> {
         let token = self.access_token.as_ref().ok_or("No access token")?;
-        let url = format!("https://api.spotify.com/v1/me/player/shuffle?state={}", shuffle);
+        let url = format!("https://api.spotify.com/v1/me/player/shuffle?state={shuffle}");
         let res = self.client.put(&url)
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Request error: {}", e))?;
+            .map_err(|e| format!("Request error: {e}"))?;
         if res.status().is_success() {
             Ok(())
         } else {
@@ -214,11 +214,11 @@ impl SpotifyApi {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Request error: {}", e))?;
+            .map_err(|e| format!("Request error: {e}"))?;
         if !res.status().is_success() {
             return Err(format!("Spotify status failed: {}", res.status()));
         }
-        let json: serde_json::Value = res.json().await.map_err(|e| format!("JSON error: {}", e))?;
+        let json: serde_json::Value = res.json().await.map_err(|e| format!("JSON error: {e}"))?;
         Ok(json.to_string())
     }
 }

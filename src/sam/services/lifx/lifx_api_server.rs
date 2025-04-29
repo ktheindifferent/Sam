@@ -23,7 +23,6 @@ use rouille::post_input;
 
 use serde::{Serialize, Deserialize};
 
-use palette::rgb::{Rgb, Srgb};
 use palette::{Hsv, FromColor};
 
 use colors_transform::{Rgb as TransformRgb, Color};
@@ -558,7 +557,7 @@ impl Manager {
                     }
                     Err(e) => log::info!("Error unpacking raw message from {}: {}", addr, e),
                 },
-                Err(e) => panic!("recv_from err {:?}", e),
+                Err(e) => panic!("recv_from err {e:?}"),
             }
         }
     }
@@ -957,7 +956,7 @@ pub fn start(config: Config) -> StopHandle {
                                     let hex_vec: Vec<&str> = hex_split.collect();
                                     let hex = hex_vec[1].to_string();
 
-                                    let rgb2 = TransformRgb::from_hex_str(format!("#{}", hex).as_str()).unwrap();
+                                    let rgb2 = TransformRgb::from_hex_str(format!("#{hex}").as_str()).unwrap();
                                     // Rgb { r: 255.0, g: 204.0, b: 0.0 }
 
                                     log::info!("{:?}", rgb2);

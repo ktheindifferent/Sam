@@ -8,14 +8,10 @@
 // Licensed under GPLv3....see LICENSE file.
 
 use std::fs::{self};
-use tokio::fs as async_fs;
-use tokio::io::AsyncWriteExt;
 
 use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use scraper::{Html, Selector};
-use tokio::fs::metadata;
 
 
 
@@ -43,7 +39,7 @@ pub fn darknet_image_with_gpu(file_path: String) -> Result<String, String> {
     let darknet = String::from_utf8_lossy(&output.stdout).to_string().replace("\n", "");
 
     if darknet.to_lowercase().contains("error") || darknet.is_empty() {
-        return Err(format!("deepvision_scan_image_with_cpu_error: {}", darknet))
+        return Err(format!("deepvision_scan_image_with_cpu_error: {darknet}"))
     }
 
     Ok(darknet)
@@ -79,13 +75,13 @@ pub async fn darknet_detect(image_path: &str) -> Result<DetectionResult, String>
     let cfg = "/opt/sam/models/yolov3.cfg";
     let weights = "/opt/sam/models/yolov3.weights";
     if !Path::new(cfg).exists() {
-        libsam::services::darknet::download_yolov3_cfg().await.map_err(|e| format!("Failed to download cfg: {}", e))?;
+        libsam::services::darknet::download_yolov3_cfg().await.map_err(|e| format!("Failed to download cfg: {e}"))?;
     }
     if !Path::new(weights).exists() {
-        libsam::services::darknet::download_yolov3_model().await.map_err(|e| format!("Failed to download weights: {}", e))?;
+        libsam::services::darknet::download_yolov3_model().await.map_err(|e| format!("Failed to download weights: {e}"))?;
     }
     if !Path::new(image_path).exists() {
-        return Err(format!("Image file does not exist: {}", image_path));
+        return Err(format!("Image file does not exist: {image_path}"));
     }
     // let image_filename = Path::new(image_path)
     //     .file_name()
@@ -99,7 +95,7 @@ pub async fn darknet_detect(image_path: &str) -> Result<DetectionResult, String>
         .arg(image_path)
         .stdout(Stdio::piped())
         .output()
-        .map_err(|e| format!("Failed to run darknet: {}", e))?;
+        .map_err(|e| format!("Failed to run darknet: {e}"))?;
 
     if !output.status.success() {
         return Err(format!(
@@ -113,5 +109,5 @@ pub async fn darknet_detect(image_path: &str) -> Result<DetectionResult, String>
     let json = &stdout[json_start..];
 
     serde_json::from_str::<DetectionResult>(json)
-        .map_err(|e| format!("Failed to parse darknet output: {}", e))
+        .map_err(|e| format!("Failed to parse darknet output: {e}"))
 }

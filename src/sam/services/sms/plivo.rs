@@ -25,7 +25,7 @@ pub async fn send_sms(to: &str, body: &str) -> Result<(), String> {
     let auth_token = env::var("PLIVO_AUTH_TOKEN").map_err(|_| "Missing PLIVO_AUTH_TOKEN")?;
     let from = env::var("PLIVO_FROM_NUMBER").map_err(|_| "Missing PLIVO_FROM_NUMBER")?;
 
-    let url = format!("https://api.plivo.com/v1/Account/{}/Message/", auth_id);
+    let url = format!("https://api.plivo.com/v1/Account/{auth_id}/Message/");
 
     let client = Client::new();
     let params = serde_json::json!({
@@ -40,7 +40,7 @@ pub async fn send_sms(to: &str, body: &str) -> Result<(), String> {
         .json(&params)
         .send()
         .await
-        .map_err(|e| format!("Plivo send error: {}", e))?;
+        .map_err(|e| format!("Plivo send error: {e}"))?;
 
     if res.status().is_success() {
         Ok(())
@@ -54,8 +54,7 @@ pub async fn receive_sms() -> Result<Vec<String>, String> {
     let auth_id = env::var("PLIVO_AUTH_ID").map_err(|_| "Missing PLIVO_AUTH_ID")?;
     let auth_token = env::var("PLIVO_AUTH_TOKEN").map_err(|_| "Missing PLIVO_AUTH_TOKEN")?;
     let mut url = format!(
-        "https://api.plivo.com/v1/Account/{}/Message/?limit=50&offset=0",
-        auth_id
+        "https://api.plivo.com/v1/Account/{auth_id}/Message/?limit=50&offset=0"
     );
 
     let client = Client::new();
@@ -69,13 +68,13 @@ pub async fn receive_sms() -> Result<Vec<String>, String> {
             .basic_auth(&auth_id, Some(&auth_token))
             .send()
             .await
-            .map_err(|e| format!("Plivo receive error: {}", e))?;
+            .map_err(|e| format!("Plivo receive error: {e}"))?;
 
         if !res.status().is_success() {
             return Err(format!("Plivo receive failed: {}", res.text().await.unwrap_or_default()));
         }
 
-        let resp: PlivoMessagesResponse = res.json().await.map_err(|e| format!("Plivo parse error: {}", e))?;
+        let resp: PlivoMessagesResponse = res.json().await.map_err(|e| format!("Plivo parse error: {e}"))?;
         for msg in &resp.objects {
             messages.push(format!(
                 "[{}] From: {} To: {} Body: {}",

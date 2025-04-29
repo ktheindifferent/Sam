@@ -205,7 +205,7 @@ impl Location {
 
     /// Asynchronously returns the number of location records in the database.
     pub async fn count_async() -> Result<i64> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let execquery = format!("SELECT COUNT(*) FROM {}", Self::sql_table_name());
         let rows = client.query(execquery.as_str(), &[]).await?;
         let counter: i64 = rows[0].get("count");
@@ -214,7 +214,7 @@ impl Location {
 
     /// Asynchronously saves the Location to the database. Updates if OID exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<&Self> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let statement = client.prepare("SELECT * FROM locations WHERE oid = $1 OR name ilike $2").await?;
         let rows = client.query(&statement, &[&self.oid, &self.name]).await?;
         if rows.is_empty() {

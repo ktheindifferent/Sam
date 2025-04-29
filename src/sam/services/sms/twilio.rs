@@ -24,8 +24,7 @@ pub async fn send_sms(to: &str, body: &str) -> Result<(), String> {
     let from = env::var("TWILIO_FROM_NUMBER").map_err(|_| "Missing TWILIO_FROM_NUMBER")?;
 
     let url = format!(
-        "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
-        account_sid
+        "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
     );
 
     let client = Client::new();
@@ -41,7 +40,7 @@ pub async fn send_sms(to: &str, body: &str) -> Result<(), String> {
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Twilio send error: {}", e))?;
+        .map_err(|e| format!("Twilio send error: {e}"))?;
 
     if res.status().is_success() {
         Ok(())
@@ -55,8 +54,7 @@ pub async fn receive_sms() -> Result<Vec<String>, String> {
     let account_sid = env::var("TWILIO_ACCOUNT_SID").map_err(|_| "Missing TWILIO_ACCOUNT_SID")?;
     let auth_token = env::var("TWILIO_AUTH_TOKEN").map_err(|_| "Missing TWILIO_AUTH_TOKEN")?;
     let url = format!(
-        "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json?PageSize=50",
-        account_sid
+        "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json?PageSize=50"
     );
 
     let client = Client::new();
@@ -74,13 +72,13 @@ pub async fn receive_sms() -> Result<Vec<String>, String> {
             .basic_auth(&account_sid, Some(&auth_token))
             .send()
             .await
-            .map_err(|e| format!("Twilio receive error: {}", e))?;
+            .map_err(|e| format!("Twilio receive error: {e}"))?;
 
         if !res.status().is_success() {
             return Err(format!("Twilio receive failed: {}", res.text().await.unwrap_or_default()));
         }
 
-        let resp: TwilioMessagesResponse = res.json().await.map_err(|e| format!("Twilio parse error: {}", e))?;
+        let resp: TwilioMessagesResponse = res.json().await.map_err(|e| format!("Twilio parse error: {e}"))?;
         for msg in &resp.messages {
             messages.push(format!(
                 "[{}] From: {} To: {} Body: {}",
@@ -90,7 +88,7 @@ pub async fn receive_sms() -> Result<Vec<String>, String> {
                 msg.body
             ));
         }
-        next_url = resp.next_page_uri.as_ref().map(|uri| format!("https://api.twilio.com{}", uri));
+        next_url = resp.next_page_uri.as_ref().map(|uri| format!("https://api.twilio.com{uri}"));
         if resp.next_page_uri.is_none() {
             break;
         }

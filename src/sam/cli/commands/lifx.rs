@@ -16,7 +16,7 @@ pub async fn handle_lifx(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         "lifx status" => {
             let status = crate::sam::services::lifx::status_service();
             let mut out = output_lines.lock().await;
-            out.push(format!("LIFX service status: {}", status));
+            out.push(format!("LIFX service status: {status}"));
         }
         _ => {
             let mut out = output_lines.lock().await;

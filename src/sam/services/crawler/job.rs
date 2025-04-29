@@ -204,7 +204,7 @@ impl CrawlJob {
 
         // Remove from Postgres
         let table = Self::sql_table_name();
-        let query = format!("DELETE FROM {} WHERE oid = $1", table);
+        let query = format!("DELETE FROM {table} WHERE oid = $1");
        
         // let pg_client = crate::sam::memory::Config::client_async().await.unwrap();
         // Spawn the connection to drive it

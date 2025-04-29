@@ -28,7 +28,7 @@ pub async fn handle_docker(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         "docker status" => {
             let status = crate::sam::services::docker::status();
             let mut out = output_lines.lock().await;
-            out.push(format!("Docker daemon status: {}", status));
+            out.push(format!("Docker daemon status: {status}"));
         }
         _ => {
             let mut out = output_lines.lock().await;

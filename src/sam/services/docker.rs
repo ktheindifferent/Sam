@@ -63,7 +63,7 @@ pub async fn stop() {
     #[cfg(target_os = "macos")]
     {
         let output = Command::new("osascript")
-            .args(&["-e", "quit app \"Docker\""])
+            .args(["-e", "quit app \"Docker\""])
             .output();
         match output {
             Ok(o) if o.status.success() => info!("Stopped Docker Desktop."),

@@ -3,7 +3,6 @@
 //! Provides synchronous and asynchronous methods for interacting with observation records in a PostgreSQL database.
 
 use serde::{Serialize, Deserialize};
-use std::fmt;
 use std::str::FromStr;
 use rand::distributions::Alphanumeric;
 use rand::thread_rng;
@@ -125,7 +124,7 @@ impl Observation {
 
             let mut obb_obv_str = String::new();
             for obv in &self.observation_objects{
-                obb_obv_str += format!("{},", obv).as_str();
+                obb_obv_str += format!("{obv},").as_str();
             }
 
             let mut obb_humans_str = String::new();
@@ -186,7 +185,7 @@ impl Observation {
 
             let mut obb_obv_str = String::new();
             for obv in &self.observation_objects{
-                obb_obv_str += format!("{},", obv).as_str();
+                obb_obv_str += format!("{obv},").as_str();
             }
 
             let mut obb_humans_str = String::new();
@@ -228,14 +227,14 @@ impl Observation {
 
     /// Asynchronously saves the Observation to the database. Updates if OID exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<Self> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
         let rows = Self::select_async(None, None, None, Some(pg_query.clone())).await?;
         let mut obb_obv_str = String::new();
         for obv in &self.observation_objects {
-            obb_obv_str += format!("{},", obv).as_str();
+            obb_obv_str += format!("{obv},").as_str();
         }
         let mut obb_humans_str = String::new();
         for hum in &self.observation_humans {

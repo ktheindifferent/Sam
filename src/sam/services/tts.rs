@@ -97,7 +97,7 @@ pub fn get(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
                 .take(16)
                 .map(char::from)
                 .collect();
-            let file_name = format!("{}.wav", rand_name);
+            let file_name = format!("{rand_name}.wav");
             let file_path = Path::new(TTS_TMP_DIR).join(&file_name);
             let mut file = File::create(&file_path)?;
             file.write_all(&x)?;
@@ -114,7 +114,7 @@ pub fn get(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
                         .take(16)
                         .map(char::from)
                         .collect();
-                    let file_name = format!("{}.wav", rand_name);
+                    let file_name = format!("{rand_name}.wav");
                     let file_path = Path::new(TTS_TMP_DIR).join(&file_name);
                     let mut file = File::create(&file_path)?;
                     file.write_all(&x)?;
@@ -131,7 +131,7 @@ pub fn get(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
                                 .take(16)
                                 .map(char::from)
                                 .collect();
-                            let file_name = format!("{}.wav", rand_name);
+                            let file_name = format!("{rand_name}.wav");
                             let file_path = Path::new(TTS_TMP_DIR).join(&file_name);
                             let mut file = File::create(&file_path)?;
                             file.write_all(&x)?;
@@ -150,7 +150,7 @@ pub fn get(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
 
 pub fn fetch_online(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
     let client = reqwest::blocking::Client::new();
-    let bytes = client.get(format!("https://tts.opensam.foundation/api/tts?text={}&speaker_id=&style_wav=", text))
+    let bytes = client.get(format!("https://tts.opensam.foundation/api/tts?text={text}&speaker_id=&style_wav="))
         .basic_auth("sam", Some("87654321"))
         .timeout(Duration::from_secs(5))
         .send()?.bytes()?;
@@ -159,7 +159,7 @@ pub fn fetch_online(text: String) -> Result<Vec<u8>, crate::sam::services::Error
 
 pub fn fetch_local(text: String) -> Result<Vec<u8>, crate::sam::services::Error> {
     let client = reqwest::blocking::Client::new();
-    let bytes = client.get(format!("http://localhost:5002/api/tts?text={}&speaker_id=&style_wav=", text))
+    let bytes = client.get(format!("http://localhost:5002/api/tts?text={text}&speaker_id=&style_wav="))
         .timeout(Duration::from_secs(5))
         .send()?.bytes()?;
     Ok(bytes.to_vec())
@@ -197,7 +197,7 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
             .take(10)
             .map(char::from)
             .collect();
-        let tmp_path = Path::new(TTS_TMP_DIR).join(format!("{}.wav", rand_name));
+        let tmp_path = Path::new(TTS_TMP_DIR).join(format!("{rand_name}.wav"));
         Command::new("say")
             .args(["-o", tmp_path.to_str().unwrap(), "--data-format=LEF32@22050", text])
             .output()?;

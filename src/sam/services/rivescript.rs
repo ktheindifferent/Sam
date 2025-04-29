@@ -7,7 +7,6 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
-use std::fs::File;
 use std::io::{Write};
 use error_chain::error_chain;
 use crate::sam::http::api::io::IOReply;
@@ -24,7 +23,7 @@ error_chain! {
 }
 
 pub fn query(input: &str) -> Result<IOReply> {
-    let rivescript_reply = crate::sam::tools::cmd(format!("python3 /opt/sam/scripts/rivescript/brain.py \"{}\"", input).as_str())?;
+    let rivescript_reply = crate::sam::tools::cmd(format!("python3 /opt/sam/scripts/rivescript/brain.py \"{input}\"").as_str())?;
 
     if rivescript_reply.contains(":::::"){
         // TODO - Parse Command

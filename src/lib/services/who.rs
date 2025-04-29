@@ -24,14 +24,14 @@ pub async fn install() -> Result<()> {
     // Write and extract Barack Obama dataset
     let obama_zip = "/opt/sam/scripts/who.io/dataset/barack_obama.zip";
     write_file(include_bytes!("../../../scripts/who.io/dataset/barack_obama.zip"), obama_zip).await?;
-    let _ = crate::extract_zip_async(obama_zip, "/opt/sam/scripts/who.io/dataset/").await?; // If extract_zip is async, add .await
-    let _ = crate::cmd_async(&format!("rm -rf {}", obama_zip)).await?;
+    crate::extract_zip_async(obama_zip, "/opt/sam/scripts/who.io/dataset/").await?; // If extract_zip is async, add .await
+    let _ = crate::cmd_async(&format!("rm -rf {obama_zip}")).await?;
 
     // Write and extract Donald Trump dataset
     let trump_zip = "/opt/sam/scripts/who.io/dataset/donald_trump.zip";
     write_file(include_bytes!("../../../scripts/who.io/dataset/donald_trump.zip"), trump_zip).await?;
-    let _ = crate::extract_zip_async(trump_zip, "/opt/sam/scripts/who.io/dataset/").await?; // If extract_zip is async, add .await
-    let _ = crate::cmd_async(&format!("rm -rf {}", trump_zip)).await?;
+    crate::extract_zip_async(trump_zip, "/opt/sam/scripts/who.io/dataset/").await?; // If extract_zip is async, add .await
+    let _ = crate::cmd_async(&format!("rm -rf {trump_zip}")).await?;
 
     Ok(())
 }

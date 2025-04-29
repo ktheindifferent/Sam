@@ -72,7 +72,7 @@ pub fn handle(request: &Request) -> Result<Response> {
     let sessions = crate::sam::memory::cache::WebSessions::select(None, None, None, None)?;
 
 
-    return Ok(session::session(request, "SID", 99999999999999999, |session| {
+    Ok(session::session(request, "SID", 99999999999999999, |session| {
 
         // Setup/Restore Current Session
         let mut current_session = crate::sam::memory::cache::WebSessions::new(session.id().to_string());
@@ -92,7 +92,7 @@ pub fn handle(request: &Request) -> Result<Response> {
                 Response::empty_404()
             }
         }
-    }));
+    }))
 }
 
 pub fn handle_with_session(current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response> {

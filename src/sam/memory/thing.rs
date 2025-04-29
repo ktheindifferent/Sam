@@ -7,8 +7,6 @@ use rand::distributions::Alphanumeric;
 use rand::thread_rng;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use std::fmt;
-use std::str::FromStr;
 use crate::sam::memory::{Config, PostgresQueries};
 use crate::sam::memory::Result;
 use rand::Rng;
@@ -214,7 +212,7 @@ impl Thing {
 
     /// Asynchronously saves the Thing to the database. Updates if OID exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<&Self> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());

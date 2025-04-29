@@ -1,11 +1,8 @@
 use std::process::Command;
 use log::{info, error};
 use std::time::Duration;
-use std::thread;
 use bollard::Docker;
 use bollard::container::ListContainersOptions;
-use futures_util::stream::TryStreamExt;
-use tokio::runtime::Runtime;
 use std::sync::Mutex;
 use std::time::{ Instant};
 use once_cell::sync::Lazy;
@@ -21,7 +18,7 @@ pub async fn install() {
     }
     info!("Pulling Redis Docker image...");
     let pull = Command::new("docker")
-        .args(&["pull", "redis:7"])
+        .args(["pull", "redis:7"])
         .output();
 
     match pull {
@@ -47,7 +44,7 @@ pub async fn start() {
     }
     info!("Starting Redis Docker container...");
     let run = Command::new("docker")
-        .args(&[
+        .args([
             "run", "-d",
             "--name", "sam-redis",
             "-p", "6379:6379",
@@ -78,7 +75,7 @@ pub async fn stop() {
     }
     info!("Stopping Redis Docker container...");
     let stop = Command::new("docker")
-        .args(&["stop", "sam-redis"])
+        .args(["stop", "sam-redis"])
         .output();
 
     match stop {
@@ -88,7 +85,7 @@ pub async fn stop() {
     }
     // Optionally remove the container after stopping
     let rm = Command::new("docker")
-        .args(&["rm", "sam-redis"])
+        .args(["rm", "sam-redis"])
         .output();
     match rm {
         Ok(status) if status.status.success() => info!("Redis Docker container removed."),
@@ -151,7 +148,7 @@ pub async fn is_running() -> bool {
     });
     let result = match docker.list_containers(options).await {
         Ok(containers) => containers.iter().any(|c| {
-            c.names.as_ref().map_or(false, |names| {
+            c.names.as_ref().is_some_and(|names| {
                 names.iter().any(|n| n.contains("sam-redis"))
             })
         }),
@@ -199,7 +196,7 @@ pub async fn is_installed() -> bool {
     });
     let result = match docker.list_containers(options).await {
         Ok(containers) => containers.iter().any(|c| {
-            c.names.as_ref().map_or(false, |names| {
+            c.names.as_ref().is_some_and(|names| {
                 names.iter().any(|n| n.contains("sam-redis"))
             })
         }),

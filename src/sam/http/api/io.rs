@@ -26,7 +26,7 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
     match input{
         Some(iput) => {
             
-            let rivescript_reply = crate::sam::tools::cmd(format!("python3 /opt/sam/scripts/rivescript/brain.py \"{}\"", iput).as_str());
+            let rivescript_reply = crate::sam::tools::cmd(format!("python3 /opt/sam/scripts/rivescript/brain.py \"{iput}\"").as_str());
 
             // Match on the reply before responding
             match rivescript_reply {

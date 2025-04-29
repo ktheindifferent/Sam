@@ -45,12 +45,12 @@ pub fn cache_vwavs() {
                 pool.execute(move || {
                     log::info!("CACHE VWAV build processed observation {}/{}", xrows + 1, observations_len);
                     let tmp_file_path = format!("/opt/sam/tmp/observations/vwav/{}.wav", th_obsv.oid);
-                    let cache_path = format!("{}.16.wav.mp4", tmp_file_path);
+                    let cache_path = format!("{tmp_file_path}.16.wav.mp4");
 
                     if !Path::new(&cache_path).exists() {
                         let xpath = format!("/opt/sam/scripts/sprec/audio/{}/{}.wav", human_oid, th_obsv.oid);
                         if Path::new(&xpath).exists() {
-                            crate::sam::tools::uinx_cmd(format!("cp {} {}", xpath, tmp_file_path).as_str());
+                            crate::sam::tools::uinx_cmd(format!("cp {xpath} {tmp_file_path}").as_str());
                         } else {
                             let mut full_pg_query = crate::sam::memory::PostgresQueries::default();
                             full_pg_query.queries.push(crate::sam::memory::PGCol::String(th_obsv.oid.clone()));
@@ -59,12 +59,12 @@ pub fn cache_vwavs() {
                             std::fs::write(&tmp_file_path, full_observation.observation_file.unwrap()).unwrap();
                         }
 
-                        crate::sam::tools::uinx_cmd(format!("ffmpeg -y -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav", tmp_file_path, tmp_file_path).as_str());
-                        crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts", tmp_file_path).as_str());
-                        crate::sam::services::stt::patch_whisper_wts(format!("{}.16.wav.wts", tmp_file_path)).unwrap();
-                        crate::sam::tools::uinx_cmd(format!("chmod +x {}.16.wav.wts", tmp_file_path).as_str());
-                        crate::sam::tools::uinx_cmd(format!("{}.16.wav.wts", tmp_file_path).as_str());
-                        crate::sam::tools::uinx_cmd(format!("rm {} {}.16.wav {}.16.wav.wts", tmp_file_path, tmp_file_path, tmp_file_path).as_str());
+                        crate::sam::tools::uinx_cmd(format!("ffmpeg -y -i {tmp_file_path} -ar 16000 -ac 1 -c:a pcm_s16le {tmp_file_path}.16.wav").as_str());
+                        crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {tmp_file_path}.16.wav -owts").as_str());
+                        crate::sam::services::stt::patch_whisper_wts(format!("{tmp_file_path}.16.wav.wts")).unwrap();
+                        crate::sam::tools::uinx_cmd(format!("chmod +x {tmp_file_path}.16.wav.wts").as_str());
+                        crate::sam::tools::uinx_cmd(format!("{tmp_file_path}.16.wav.wts").as_str());
+                        crate::sam::tools::uinx_cmd(format!("rm {tmp_file_path} {tmp_file_path}.16.wav {tmp_file_path}.16.wav.wts").as_str());
                     }
                 });
             }
@@ -117,7 +117,7 @@ pub fn s1_init() {
             let thing_paths = std::fs::read_dir("/opt/sam/tmp/sound").unwrap();
             for thing_path in thing_paths {
                 let tpath = thing_path.unwrap().path().display().to_string();
-                let paths = std::fs::read_dir(format!("{}/s1", tpath)).unwrap();
+                let paths = std::fs::read_dir(format!("{tpath}/s1")).unwrap();
 
                 for path in paths {
                     let spath = path.unwrap().path().display().to_string();
@@ -127,8 +127,8 @@ pub fn s1_init() {
                         let header = reader.spec();
                         if let Ok(samples) = reader.into_samples::<i16>().map(|result| result.map(|sample| [sample])).collect::<Result<Vec<_>, _>>() {
                             let release_time = (header.sample_rate as f32 * 1.3).round();
-                            let s2_path = PathBuf::from(format!("{}/s2", tpath));
-                            let mut sink = Sink::new(s2_path, format!("{}-", timestamp), header);
+                            let s2_path = PathBuf::from(format!("{tpath}/s2"));
+                            let mut sink = Sink::new(s2_path, format!("{timestamp}-"), header);
                             let mut gate = NoiseGate::new(4000, release_time as usize);
                             gate.process_frames(&samples, &mut sink);
                             std::fs::remove_file(spath).ok();
@@ -166,7 +166,7 @@ pub fn s2_init() {
                 };
 
                 let tpath_str = tpath.display().to_string();
-                let s2_dir = format!("{}/s2", tpath_str);
+                let s2_dir = format!("{tpath_str}/s2");
 
                 // Gather all .wav files in s2 directory
                 let paths = match std::fs::read_dir(&s2_dir) {
@@ -250,7 +250,7 @@ pub fn s2_init() {
                     }
 
                     // Output file path
-                    let out_dir = format!("{}/s3", tpath_str);
+                    let out_dir = format!("{tpath_str}/s3");
                     let _ = std::fs::create_dir_all(&out_dir);
                     let out_path = format!("{}/{}.incoming.wav", out_dir, group[0]);
 

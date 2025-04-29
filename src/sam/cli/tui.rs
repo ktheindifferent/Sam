@@ -1,6 +1,5 @@
-use super::{commands, helpers, spinner};
+use super::{commands, helpers};
 use std::io::{self, Write};
-use std::env;
 use colored::*;
 use ratatui::{
     backend::CrosstermBackend,
@@ -15,18 +14,9 @@ use crossterm::{
 };
 use tokio::sync::Mutex;
 use std::sync::Arc;
-use std::thread;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::io::Cursor;
-use rodio::{Decoder, OutputStream, Sink};
-use std::fs;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::os::unix::fs::PermissionsExt;
 
-use std::process::Command;
-use std::io::BufReader;
 use std::io::BufRead;
-use std::process::Stdio;
 use tui_logger::{TuiLoggerWidget, TuiLoggerLevelOutput};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use std::sync::mpsc::{self, Sender};
@@ -269,7 +259,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 local_output_height = left_chunks[1].height.max(1) as usize;
 
                 let cursor_char = if show_cursor { "_" } else { " " };
-                let input_display = format!("{}{}", input_ref, cursor_char);
+                let input_display = format!("{input_ref}{cursor_char}");
 
                 // Service status block
                 let status_lines = vec![
@@ -350,7 +340,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
 
         if let Err(e) = draw_result {
             let mut lines = output_lines.lock().await;
-            lines.push(format!("TUI draw panic: {:?}", e));
+            lines.push(format!("TUI draw panic: {e:?}"));
             log::error!("TUI draw panic: {:?}", e);
             break;
         }
@@ -367,16 +357,16 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
 
         if let Err(e) = poll_result {
             let mut lines = output_lines.lock().await;
-            lines.push(format!("TUI poll panic: {:?}", e));
+            lines.push(format!("TUI poll panic: {e:?}"));
             log::error!("TUI poll panic: {:?}", e);
             break;
         }
 
         if let Ok(Ok(true)) = poll_result {
-            let read_result = catch_unwind(AssertUnwindSafe(|| event::read()));
+            let read_result = catch_unwind(AssertUnwindSafe(event::read));
             if let Err(e) = read_result {
                 let mut lines = futures::executor::block_on(output_lines.lock());
-                lines.push(format!("TUI read panic: {:?}", e));
+                lines.push(format!("TUI read panic: {e:?}"));
                 log::error!("TUI read panic: {:?}", e);
                 break;
             }
@@ -393,7 +383,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                             break;
                         }
                         if !cmd.is_empty() {
-                            helpers::append_line(&output_lines, format!("┌─[{}]─> {}", human_name, cmd)).await;
+                            helpers::append_line(&output_lines, format!("┌─[{human_name}]─> {cmd}")).await;
                             commands::handle_command(
                                 &cmd,
                                 &output_lines,

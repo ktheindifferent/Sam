@@ -39,7 +39,7 @@ pub async fn handle_p2p(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         "p2p status" => {
             let status = crate::sam::services::p2p::status();
             let mut out = output_lines.lock().await;
-            out.push(format!("P2P status: {}", status));
+            out.push(format!("P2P status: {status}"));
         }
         _ => {
             let mut out = output_lines.lock().await;

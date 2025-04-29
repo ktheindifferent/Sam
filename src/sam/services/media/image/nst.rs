@@ -47,9 +47,9 @@ pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request:
         // file
         if input.image_id.contains("oid:") {
             let oid = input.image_id.replace("oid:", "");
-            if Path::new(format!("/opt/sam/files/{}", oid).as_str()).exists(){
+            if Path::new(format!("/opt/sam/files/{oid}").as_str()).exists(){
                 let _ = thread::Builder::new().name("nst_thread".to_string()).spawn(move || {
-                    let _ = run(&selected_style, format!("/opt/sam/files/{}", oid).as_str(), oid, input.nst_style);
+                    let _ = run(&selected_style, format!("/opt/sam/files/{oid}").as_str(), oid, input.nst_style);
                 });
             }
         }

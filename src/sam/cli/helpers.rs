@@ -37,7 +37,7 @@ pub fn check_postgres_env() {
         log::info!("{}", "Postgres credentials missing:".red().bold());
         for v in missing {
             loop {
-                print!("{}", format!("Enter value for {}: ", v).cyan().bold());
+                print!("{}", format!("Enter value for {v}: ").cyan().bold());
                 io::stdout().flush().unwrap();
                 let mut val = String::new();
                 if io::stdin().read_line(&mut val).is_ok() {
@@ -47,7 +47,7 @@ pub fn check_postgres_env() {
                         break;
                     }
                 }
-                log::info!("{}", format!("{} cannot be empty.", v).red());
+                log::info!("{}", format!("{v} cannot be empty.").red());
             }
         }
     }
@@ -97,11 +97,11 @@ pub async fn append_and_tts(output_lines: Arc<Mutex<Vec<String>>>, text: String)
     match crate::sam::services::tts::get(text.clone().replace("┌─[sam]─>", "")) {
         Ok(wav_bytes) => {
             if let Err(e) = play_wav_from_bytes_send(&wav_bytes) {
-                append_line(&output_lines, format!("TTS playback error: {}", e)).await;
+                append_line(&output_lines, format!("TTS playback error: {e}")).await;
             }
         }
         Err(e) => {
-            append_line(&output_lines, format!("TTS error: {}", e)).await;
+            append_line(&output_lines, format!("TTS error: {e}")).await;
         }
     }
 }

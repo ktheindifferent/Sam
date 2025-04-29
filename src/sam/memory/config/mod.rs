@@ -1,25 +1,13 @@
 use native_tls::{TlsConnector};
 use postgres_native_tls::MakeTlsConnector;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
 use rouille::Response;
 use serde::{Serialize, Deserialize};
-use std::env;
-use std::fmt;
-use std::str::FromStr;
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use std::path::Path;
 use std::process::Command;
 use crate::sam::memory::{PostgresQueries, PGCol};
 use crate::sam::memory::Result;
-use crate::sam::memory::cache::{WebSessions};
-use crate::sam::memory::human::{Human, FaceEncoding, Notification};
-use crate::sam::memory::location::{Location};
-use crate::sam::memory::room::Room;
 use crate::sam::memory::PostgresServer;
-use tokio::sync::MutexGuard;
 use deadpool_postgres::Pool;
 use once_cell::sync::OnceCell;
 use deadpool_postgres::Manager;
@@ -172,7 +160,7 @@ impl Config {
             Pool::builder(mgr).max_size(16).build().unwrap()
         });
 
-        let client = pool.get().await.map_err(|e| crate::sam::memory::Error::from(e))?;
+        let client = pool.get().await.map_err(crate::sam::memory::Error::from)?;
         Ok(client)
     }
 
@@ -438,12 +426,12 @@ impl Config {
 
         // Use parameterized queries to prevent SQL injection
         client.execute(
-            &format!("DELETE FROM {} WHERE oid = $1", table_name),
+            &format!("DELETE FROM {table_name} WHERE oid = $1"),
             &[&oid],
         )?;
 
         let rows = client.query(
-            &format!("SELECT 1 FROM {} WHERE oid = $1", table_name),
+            &format!("SELECT 1 FROM {table_name} WHERE oid = $1"),
             &[&oid],
         )?;
 
@@ -473,14 +461,14 @@ impl Config {
         // Use parameterized queries to prevent SQL injection
         client
             .execute(
-                &format!("DELETE FROM {} WHERE oid = $1", table_name),
+                &format!("DELETE FROM {table_name} WHERE oid = $1"),
                 &[&oid],
             )
             .await?;
 
         let rows = client
             .query(
-                &format!("SELECT 1 FROM {} WHERE oid = $1", table_name),
+                &format!("SELECT 1 FROM {table_name} WHERE oid = $1"),
                 &[&oid],
             )
             .await?;
@@ -580,9 +568,9 @@ impl Config {
 
         // Build SELECT clause
         let mut execquery = if let Some(cols) = &columns {
-            format!("SELECT {} FROM {}", cols, table_name)
+            format!("SELECT {cols} FROM {table_name}")
         } else {
-            format!("SELECT * FROM {}", table_name)
+            format!("SELECT * FROM {table_name}")
         };
 
         // Build WHERE clause if query is provided
@@ -590,9 +578,9 @@ impl Config {
             let mut counter = 1;
             for col in pg_query.query_columns {
                 if counter == 1 {
-                    execquery = format!("{} WHERE {} ${}", execquery, col, counter);
+                    execquery = format!("{execquery} WHERE {col} ${counter}");
                 } else {
-                    execquery = format!("{} {} ${}", execquery, col, counter);
+                    execquery = format!("{execquery} {col} ${counter}");
                 }
                 counter += 1;
             }
@@ -600,16 +588,16 @@ impl Config {
 
         // Add ORDER BY clause
         execquery = match order {
-            Some(order_val) => format!("{} ORDER BY {}", execquery, order_val),
-            None => format!("{} ORDER BY id DESC", execquery),
+            Some(order_val) => format!("{execquery} ORDER BY {order_val}"),
+            None => format!("{execquery} ORDER BY id DESC"),
         };
 
         // Add LIMIT and OFFSET
         if let Some(limit_val) = limit {
-            execquery = format!("{} LIMIT {}", execquery, limit_val);
+            execquery = format!("{execquery} LIMIT {limit_val}");
         }
         if let Some(offset_val) = offset {
-            execquery = format!("{} OFFSET {}", execquery, offset_val);
+            execquery = format!("{execquery} OFFSET {offset_val}");
         }
 
         // Prepare to collect results
@@ -673,9 +661,9 @@ impl Config {
 
         // Build SELECT clause
         let mut execquery = if let Some(cols) = &columns {
-            format!("SELECT {} FROM {}", cols, table_name)
+            format!("SELECT {cols} FROM {table_name}")
         } else {
-            format!("SELECT * FROM {}", table_name)
+            format!("SELECT * FROM {table_name}")
         };
 
         // Build WHERE clause if query is provided
@@ -683,9 +671,9 @@ impl Config {
             let mut counter = 1;
             for col in pg_query.query_columns.iter() {
                 if counter == 1 {
-                    execquery = format!("{} WHERE {} ${}", execquery, col, counter);
+                    execquery = format!("{execquery} WHERE {col} ${counter}");
                 } else {
-                    execquery = format!("{} {} ${}", execquery, col, counter);
+                    execquery = format!("{execquery} {col} ${counter}");
                 }
                 counter += 1;
             }
@@ -693,16 +681,16 @@ impl Config {
 
         // Add ORDER BY clause
         execquery = match order {
-            Some(order_val) => format!("{} ORDER BY {}", execquery, order_val),
-            None => format!("{} ORDER BY id DESC", execquery),
+            Some(order_val) => format!("{execquery} ORDER BY {order_val}"),
+            None => format!("{execquery} ORDER BY id DESC"),
         };
 
         // Add LIMIT and OFFSET
         if let Some(limit_val) = limit {
-            execquery = format!("{} LIMIT {}", execquery, limit_val);
+            execquery = format!("{execquery} LIMIT {limit_val}");
         }
         if let Some(offset_val) = offset {
-            execquery = format!("{} OFFSET {}", execquery, offset_val);
+            execquery = format!("{execquery} OFFSET {offset_val}");
         }
 
         // Execute query with or without parameters

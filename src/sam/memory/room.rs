@@ -156,7 +156,7 @@ impl Room {
 
     /// Asynchronously saves the Room to the database. Updates if OID or (location_oid+name) exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<&Self> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let statement = client.prepare("SELECT * FROM rooms WHERE oid = $1 OR (location_oid = $2 AND name = $3)").await?;
         let rows = client.query(&statement, &[&self.oid, &self.location_oid, &self.name]).await?;
         if rows.is_empty() {

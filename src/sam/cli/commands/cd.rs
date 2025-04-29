@@ -17,7 +17,7 @@ pub async fn handle_cd(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curren
             out.push(format!("Changed directory to {}", current_dir.display()));
         } else {
             let mut out = output_lines.lock().await;
-            out.push(format!("cd: no such directory: {}", new_dir));
+            out.push(format!("cd: no such directory: {new_dir}"));
         }
     } else {
         let mut out = output_lines.lock().await;

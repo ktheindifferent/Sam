@@ -68,24 +68,24 @@ pub fn init(){
 
 pub fn gen_rtsp_to_http_stream_script(address: String, identifier: String) -> String{
     let mut script = "#!/bin/bash\n".to_string();
-    script = format!("{}VIDSOURCE=\"{}\"\n", script, address);
-    script = format!("{}AUDIO_OPTS=\"-c:a aac -b:a 160000 -ac 2\"\n", script);
-    script = format!("{}VIDEO_OPTS=\"-s 854x480 -c:v libx264 -b:v 800000\"\n", script);
-    script = format!("{}OUTPUT_HLS=\"-hls_time 10 -hls_list_size 10 -start_number 1\"\n", script);
-    script = format!("{}ffmpeg -i \"$VIDSOURCE\" -y $AUDIO_OPTS $VIDEO_OPTS $OUTPUT_HLS /opt/sam/streams/{}.m3u8", script, identifier);
+    script = format!("{script}VIDSOURCE=\"{address}\"\n");
+    script = format!("{script}AUDIO_OPTS=\"-c:a aac -b:a 160000 -ac 2\"\n");
+    script = format!("{script}VIDEO_OPTS=\"-s 854x480 -c:v libx264 -b:v 800000\"\n");
+    script = format!("{script}OUTPUT_HLS=\"-hls_time 10 -hls_list_size 10 -start_number 1\"\n");
+    script = format!("{script}ffmpeg -i \"$VIDSOURCE\" -y $AUDIO_OPTS $VIDEO_OPTS $OUTPUT_HLS /opt/sam/streams/{identifier}.m3u8");
     script
 }
 
 pub fn gen_rtsp_to_wav_script(address: String, identifier: String) -> String{
-    let p = format!("/opt/sam/tmp/sound/{}", identifier);
+    let p = format!("/opt/sam/tmp/sound/{identifier}");
     if !Path::new(&p).exists() {
-        crate::sam::tools::uinx_cmd(&format!("mkdir -p {}/s1 {}/s2 {}/s3", p, p, p)); // Fixed path creation
+        crate::sam::tools::uinx_cmd(&format!("mkdir -p {p}/s1 {p}/s2 {p}/s3")); // Fixed path creation
     }
 
 
     let mut script = "#!/bin/bash\n".to_string();
-    script = format!("{}VIDSOURCE=\"{}\"\n", script, address);
-    script = format!("{}ffmpeg -i \"$VIDSOURCE\" -f segment -segment_time 1 -reset_timestamps 1 -strftime 1 -map 0:a /opt/sam/tmp/sound/{}/s1/%Y%m%d-%H%M%S.wav", script, identifier);
+    script = format!("{script}VIDSOURCE=\"{address}\"\n");
+    script = format!("{script}ffmpeg -i \"$VIDSOURCE\" -f segment -segment_time 1 -reset_timestamps 1 -strftime 1 -map 0:a /opt/sam/tmp/sound/{identifier}/s1/%Y%m%d-%H%M%S.wav");
     script
 }
 

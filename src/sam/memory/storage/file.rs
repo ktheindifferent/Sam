@@ -160,7 +160,7 @@ impl File {
 
     /// Asynchronously saves the File to the database. Updates if OID exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<&Self> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
@@ -369,7 +369,7 @@ let client = config.connect_pool().await?;
 
     /// Asynchronously caches all files from the database to disk if not already present.
     pub async fn cache_all_async() -> Result<()> {
-        tokio::task::spawn_blocking(|| Self::cache_all()).await??;
+        tokio::task::spawn_blocking(Self::cache_all).await??;
         Ok(())
     }
 

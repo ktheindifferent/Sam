@@ -23,9 +23,9 @@ pub async fn install() -> crate::Result<()> {
     let _ = crate::extract_zip_async("/opt/sam/scripts/sprec/noise/other.zip", "/opt/sam/scripts/sprec/noise/").await;
     let _ = crate::extract_zip_async("/opt/sam/scripts/sprec/noise/_background_noise_.zip", "/opt/sam/scripts/sprec/noise/").await;
     
-    let _ = fs::remove_file("/opt/sam/scripts/sprec/audio/Unknown.zip").await?;
-    let _ = fs::remove_file("/opt/sam/scripts/sprec/noise/other.zip").await?;
-    let _ = fs::remove_file("/opt/sam/scripts/sprec/noise/_background_noise_.zip").await?;
+    fs::remove_file("/opt/sam/scripts/sprec/audio/Unknown.zip").await?;
+    fs::remove_file("/opt/sam/scripts/sprec/noise/other.zip").await?;
+    fs::remove_file("/opt/sam/scripts/sprec/noise/_background_noise_.zip").await?;
 
     log::info!("Installing requirements for SPREC...");
     let _ = crate::cmd_async("pip3 install -r /opt/sam/scripts/sprec/requirements.txt").await?;

@@ -39,7 +39,7 @@ pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         "pg status" => {
             let status = libsam::services::pg::status();
             let mut out = output_lines.lock().await;
-            out.push(format!("PostgreSQL status: {}", status));
+            out.push(format!("PostgreSQL status: {status}"));
         }
         _ => {
             let mut out = output_lines.lock().await;

@@ -29,7 +29,7 @@ pub async fn handle_spotify(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Checking Spotify playback status...",
-                |lines, status| lines.push(format!("Spotify status: {}", status)),
+                |lines, status| lines.push(format!("Spotify status: {status}")),
                 || async {
                     crate::sam::services::spotify::status()
                 },

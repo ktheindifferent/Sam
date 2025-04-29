@@ -2,7 +2,6 @@ use crate::sam::services::crawler::page::CrawledPage;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use log::{info, error};
 use once_cell::sync::Lazy;
 

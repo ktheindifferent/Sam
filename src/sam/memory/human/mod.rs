@@ -7,7 +7,7 @@ use rand::distributions::Alphanumeric;
 use rand::thread_rng;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use crate::sam::memory::{Config, PostgresQueries, PGCol};
+use crate::sam::memory::{Config, PostgresQueries};
 use crate::sam::memory::Result;
 use rand::Rng;
 
@@ -57,7 +57,7 @@ impl Human {
         Human { 
             id: 0,
             oid: oid.clone(),
-            name: format!("unknown-{}", oid), 
+            name: format!("unknown-{oid}"), 
             email: None,
             password: None,
             phone_number: None,
@@ -240,7 +240,7 @@ impl Human {
 
     /// Asynchronously returns the number of human records in the database.
     pub async fn count_async() -> Result<i64> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let execquery = format!("SELECT COUNT(*) FROM {}", Self::sql_table_name());
         let rows = client.query(execquery.as_str(), &[]).await?;
         let counter: i64 = rows[0].get("count");
@@ -249,7 +249,7 @@ impl Human {
 
     /// Asynchronously saves the Human to the database. Updates if OID exists, inserts otherwise.
     pub async fn save_async(&self) -> Result<&Self> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
         pg_query.queries.push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());

@@ -76,7 +76,7 @@ pub async fn install() -> io::Result<()> {
             }
         } else {
             log::warn!("Homebrew is not installed. Will attempt to build snapcast from source. Please install homebrew if this installer fails to build snapcast from source.");
-            return Err(io::Error::new(io::ErrorKind::Other, "Homebrew not installed"));
+            return Err(io::Error::other("Homebrew not installed"));
         }
     }
    
@@ -84,7 +84,7 @@ pub async fn install() -> io::Result<()> {
     // Fallback: build from source
     log::info!("Starting Snapcast install from source...");
     let home_dir = env::var("HOME").unwrap_or("/tmp".to_string());
-    let src_dir = format!("{}/snapcast-src", home_dir);
+    let src_dir = format!("{home_dir}/snapcast-src");
 
     // Clone or pull latest Snapcast
     if Path::new(&src_dir).exists() {
@@ -105,7 +105,7 @@ pub async fn install() -> io::Result<()> {
     }
 
     // Create build directory
-    let build_dir = format!("{}/build", src_dir);
+    let build_dir = format!("{src_dir}/build");
     if !Path::new(&build_dir).exists() {
         let _ = tokio::fs::create_dir_all(&build_dir).await;
     }
@@ -119,7 +119,7 @@ pub async fn install() -> io::Result<()> {
         .await;
     if !cmake_status.map(|s| s.success()).unwrap_or(false) {
         log::error!("CMake configuration failed");
-        return Err(io::Error::new(io::ErrorKind::Other, "CMake failed"));
+        return Err(io::Error::other("CMake failed"));
     }
 
     log::info!("Building Snapcast...");
@@ -129,7 +129,7 @@ pub async fn install() -> io::Result<()> {
         .await;
     if !make_status.map(|s| s.success()).unwrap_or(false) {
         log::error!("Make build failed");
-        return Err(io::Error::new(io::ErrorKind::Other, "Make failed"));
+        return Err(io::Error::other("Make failed"));
     }
 
     // Install (may require sudo)
@@ -142,7 +142,7 @@ pub async fn install() -> io::Result<()> {
         .await;
     if !install_status.map(|s| s.success()).unwrap_or(false) {
         log::error!("Make install failed");
-        return Err(io::Error::new(io::ErrorKind::Other, "Make install failed"));
+        return Err(io::Error::other("Make install failed"));
     }
 
     log::info!("Snapcast installed successfully.");
@@ -152,10 +152,10 @@ pub async fn install() -> io::Result<()> {
     if !Path::new(bin_dir).exists() {
         let _ = tokio::fs::create_dir_all(bin_dir).await;
     }
-    let snapserver_src = format!("{}/snapserver", build_dir);
-    let snapclient_src = format!("{}/snapclient", build_dir);
-    let snapserver_dst = format!("{}/snapserver", bin_dir);
-    let snapclient_dst = format!("{}/snapclient", bin_dir);
+    let snapserver_src = format!("{build_dir}/snapserver");
+    let snapclient_src = format!("{build_dir}/snapclient");
+    let snapserver_dst = format!("{bin_dir}/snapserver");
+    let snapclient_dst = format!("{bin_dir}/snapclient");
     if Path::new(&snapserver_src).exists() {
         let _ = tokio::fs::copy(&snapserver_src, &snapserver_dst).await;
         log::info!("snapserver copied to /opt/sam/bin");

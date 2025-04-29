@@ -1,5 +1,3 @@
-use std::fs;
-use std::path::Path;
 
 // ███████     █████     ███    ███    
 // ██         ██   ██    ████  ████    
@@ -49,13 +47,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 //use tui_logger;
-use env_logger;
 
 use std::env;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::os::unix::fs::PermissionsExt;
-use std::fs::OpenOptions;
-use std::io::Write;
 
 // Store application version as a const, set at compile time
 // const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
@@ -158,7 +151,7 @@ fn main() {
                 let mut new_path = env::var("PATH").unwrap_or_default();
                 for bin in brew_bins.iter() {
                     if std::path::Path::new(bin).exists() && !new_path.contains(bin) {
-                        new_path = format!("{}:{}", bin, new_path);
+                        new_path = format!("{bin}:{new_path}");
                     }
                 }
                 env::set_var("PATH", &new_path);

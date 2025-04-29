@@ -109,7 +109,7 @@ pub fn handle(
     if request.url().contains("/api/services/storage/file/") {
         // Handle file retrieval by OID
         if let Some(oid) = request.url().split('/').nth(5) { // Fixed lifetime issue
-            let file_path = format!("/opt/sam/files/{}", oid);
+            let file_path = format!("/opt/sam/files/{oid}");
             if Path::new(&file_path).exists() {
                 let file = File::open(&file_path)?;
                 return Ok(Response::from_file("", file));

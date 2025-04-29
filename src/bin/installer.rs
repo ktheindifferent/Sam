@@ -14,16 +14,13 @@ use serde::{Serialize, Deserialize};
 use error_chain::error_chain;
 use opencl3::device::{get_all_devices, CL_DEVICE_TYPE_GPU};
 use tokio::fs as async_fs;
-use tokio::process::Command as AsyncCommand;
 
 use std::env;
-use std::process::{Command, Stdio};
 use std::fs;
 use std::path::Path;
 use std::io::{self, Write};
-use git2::{Repository, FetchOptions, Cred, RemoteCallbacks, Direction};
+use git2::{Repository, FetchOptions, Cred, RemoteCallbacks};
 use dialoguer::Confirm;
-use libsam::services;
 
 
 // Define error handling
@@ -57,7 +54,7 @@ async fn main() {
         .unwrap();
 
     // Store the current username in the SAM_USER environment variable
-    let mut whoami = whoami::username();
+    let whoami = whoami::username();
     let opt_sam_path = Path::new("/opt/sam/");
     if whoami != "root" {
         env::set_var("SAM_USER", &whoami);
@@ -90,7 +87,7 @@ async fn main() {
     // Store the current username in the SAM_USER environment variable
     // Cross platform way to get the username
     // let user = whoami::username();
-    let mut user = env::var("SAM_USER").unwrap_or_else(|_| whoami.clone());
+    let user = env::var("SAM_USER").unwrap_or_else(|_| whoami.clone());
     libsam::print_banner(user.clone());
     let opt_sam_path = Path::new("/opt/sam/");
     if user != "root" {
@@ -157,8 +154,7 @@ async fn pre_install() -> Result<()> {
                 .trim()
                 .to_string();
             let _ = libsam::cmd_async(&format!(
-                "sudo -u {} brew install x264 openssl unzip ffmpeg python3 git git-lfs wget boost opencv ffmpeg libsndfile pulseaudio opus flac alsa-lib avahi expat fdk-aa cmake",
-                user
+                "sudo -u {user} brew install x264 openssl unzip ffmpeg python3 git git-lfs wget boost opencv ffmpeg libsndfile pulseaudio opus flac alsa-lib avahi expat fdk-aa cmake"
             )).await?;
 
             log::debug!("Installing Python packages for MacOS...");
@@ -166,7 +162,7 @@ async fn pre_install() -> Result<()> {
         },
         &_ => {
             log::error!("Unsupported OS: {}", OS);
-            return Err(io::Error::new(io::ErrorKind::Other, "Unsupported OS").into());
+            return Err(io::Error::other("Unsupported OS").into());
         }
     }
 
@@ -197,7 +193,7 @@ async fn pre_install() -> Result<()> {
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 // Check for GPU devices and create a marker file if found
@@ -259,9 +255,9 @@ pub async fn update() -> Result<()> {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
     // Open the repository at the Cargo crate root (where Cargo.toml is located)
-    let repo = Repository::open(&crate_root)?;
+    let repo = Repository::open(crate_root)?;
     let head = repo.head()?;
-    let local_oid = head.target().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No HEAD found"))?;
+    let local_oid = head.target().ok_or_else(|| std::io::Error::other("No HEAD found"))?;
     let local_commit = repo.find_commit(local_oid)?;
     let local_short = local_commit.id().to_string();
 

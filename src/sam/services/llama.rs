@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, BufRead, BufReader};
+use std::io::{self};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -28,9 +28,8 @@ impl LlamaService {
         output_log.push_str(&String::from_utf8_lossy(&cmake_config.stdout));
         output_log.push_str(&String::from_utf8_lossy(&cmake_config.stderr));
         if !cmake_config.status.success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to configure llama.cpp with cmake\n{}", output_log),
+            return Err(io::Error::other(
+                format!("Failed to configure llama.cpp with cmake\n{output_log}"),
             ));
         }
 
@@ -46,9 +45,8 @@ impl LlamaService {
         output_log.push_str(&String::from_utf8_lossy(&cmake_build.stdout));
         output_log.push_str(&String::from_utf8_lossy(&cmake_build.stderr));
         if !cmake_build.status.success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to build llama.cpp with cmake\n{}", output_log),
+            return Err(io::Error::other(
+                format!("Failed to build llama.cpp with cmake\n{output_log}"),
             ));
         }
 
@@ -83,7 +81,7 @@ impl LlamaService {
         if !found_any {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("None of the expected llama binaries were found after cmake build\n{}", output_log),
+                format!("None of the expected llama binaries were found after cmake build\n{output_log}"),
             ));
         }
 
@@ -104,11 +102,10 @@ impl LlamaService {
 
         // Download the model file
         let mut resp = reqwest::blocking::get(model_url)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Download failed: {e}")))?;
+            .map_err(|e| io::Error::other(format!("Download failed: {e}")))?;
 
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("Failed to download model: HTTP {}", resp.status()),
             ));
         }
@@ -195,7 +192,7 @@ impl LlamaService {
 
 /// Async install wrapper for CLI
 pub async fn install() -> io::Result<String> {
-    tokio::task::spawn_blocking(|| LlamaService::install_blocking()).await?
+    tokio::task::spawn_blocking(LlamaService::install_blocking).await?
 }
 
 // Example usage (not part of the service):

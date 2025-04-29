@@ -1,12 +1,6 @@
 use std::process::Command;
 use std::io;
 use log::{info, error};
-use std::process::Stdio;
-use std::env;
-use reqwest::blocking::get;
-use scraper::{Html, Selector};
-use std::fs;
-use std::io::Write;
 use std::path::Path;
 
 /*
@@ -86,11 +80,11 @@ pub fn build_postgres_from_source() -> io::Result<()> {
     let dir = "postgres";
     if !Path::new(dir).exists() {
         let status = Command::new("git")
-            .args(&["clone", "--branch", "REL_17_STABLE", "--depth", "1", repo_url, dir])
+            .args(["clone", "--branch", "REL_17_STABLE", "--depth", "1", repo_url, dir])
             .status()?;
         if !status.success() {
             error!("Failed to clone PostgreSQL source.");
-            return Err(io::Error::new(io::ErrorKind::Other, "git clone failed"));
+            return Err(io::Error::other("git clone failed"));
         }
         info!("Cloned PostgreSQL 17 source.");
     } else {
@@ -98,7 +92,7 @@ pub fn build_postgres_from_source() -> io::Result<()> {
     }
 
     // 2. Run ./configure
-    let configure_path = format!("{}/configure", dir);
+    let configure_path = format!("{dir}/configure");
     if !Path::new(&configure_path).exists() {
         error!("configure script not found in postgres directory.");
         return Err(io::Error::new(io::ErrorKind::NotFound, "configure script missing"));
@@ -109,7 +103,7 @@ pub fn build_postgres_from_source() -> io::Result<()> {
         .status()?;
     if !status.success() {
         error!("Failed to run configure.");
-        return Err(io::Error::new(io::ErrorKind::Other, "configure failed"));
+        return Err(io::Error::other("configure failed"));
     }
     info!("Ran configure.");
 
@@ -119,7 +113,7 @@ pub fn build_postgres_from_source() -> io::Result<()> {
         .status()?;
     if !status.success() {
         error!("Failed to build PostgreSQL.");
-        return Err(io::Error::new(io::ErrorKind::Other, "make failed"));
+        return Err(io::Error::other("make failed"));
     }
     info!("PostgreSQL built successfully.");
 

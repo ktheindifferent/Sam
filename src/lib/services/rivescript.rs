@@ -7,9 +7,7 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
-use std::fs::File;
 use std::io::{Write};
-use error_chain::error_chain;
 
 use tokio::fs::File as TokioFile;
 use tokio::io::AsyncWriteExt;
@@ -36,7 +34,7 @@ pub async fn install() -> std::io::Result<()> {
     }
     buffer.flush().await?;
 
-    let _ = crate::extract_zip_async("/opt/sam/scripts/rivescript/eg.zip", "/opt/sam/scripts/rivescript/").await?;
+    crate::extract_zip_async("/opt/sam/scripts/rivescript/eg.zip", "/opt/sam/scripts/rivescript/").await?;
     let _ = crate::cmd_async("rm -rf /opt/sam/scripts/rivescript/eg.zip").await?;
 
     Ok(())

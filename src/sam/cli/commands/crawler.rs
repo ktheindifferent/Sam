@@ -23,7 +23,7 @@ pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             crate::sam::cli::spinner::run_with_spinner(
                 output_lines,
                 "Checking crawler service status...",
-                |lines, status| lines.push(format!("Crawler service status: {}", status)),
+                |lines, status| lines.push(format!("Crawler service status: {status}")),
                 || async {
                     crate::sam::services::crawler::service_status().to_string()
                 },
@@ -53,10 +53,10 @@ pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>
                     out.push(format!("Found {} results:", scored_pages.len()));
                     for (page, score) in scored_pages {
                         out.push(format!("URL: {}", page.url));
-                        out.push(format!("Score: {}", score));
+                        out.push(format!("Score: {score}"));
                         if !page.tokens.is_empty() {
                             let snippet: String = page.tokens.iter().take(20).cloned().collect::<Vec<_>>().join(" ");
-                            out.push(format!("Tokens: {}...", snippet));
+                            out.push(format!("Tokens: {snippet}..."));
                         }
                         out.push("-----------------------------".to_string());
                     }
@@ -67,7 +67,7 @@ pub async fn handle_crawl_search(cmd: &str, output_lines: &Arc<Mutex<Vec<String>
                 }
                 Err(e) => {
                     let mut out = output_lines.lock().await;
-                    out.push(format!("Search error: {}", e));
+                    out.push(format!("Search error: {e}"));
                 }
             }
         });

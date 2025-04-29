@@ -11,13 +11,10 @@ use tokio_postgres::Row;
 use serde_json;
 use log;
 use reqwest::Url;
-use regex;
-use std::sync::Arc;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use tokio::io::{AsyncReadExt,AsyncWriteExt};
-use base64::{engine::general_purpose, Engine as _};
 use std::collections::HashSet;
 
 /// Represents a crawled web page (tokens, links, timestamp, etc).
@@ -284,7 +281,7 @@ impl CrawledPage {
         pg_query.queries.push(crate::sam::memory::PGCol::String(like_pattern_zero));
         pg_query.query_columns.push(" OR tokens ilike".to_string());
         for token in &query_tokens {
-            let like_pattern = format!("%{}%", token);
+            let like_pattern = format!("%{token}%");
             pg_query.queries.push(crate::sam::memory::PGCol::String(like_pattern));
             pg_query.query_columns.push(" OR tokens ilike".to_string());
         }
@@ -319,16 +316,16 @@ impl CrawledPage {
                     }
                 }
 
-                if page.url.to_lowercase() == format!("https://www.{}.com/", query_lower)
-                    || page.url.to_lowercase() == format!("https://{}.com/", query_lower)
-                    || page.url.to_lowercase() == format!("https://www.{}.com", query_lower)
-                    || page.url.to_lowercase() == format!("https://{}.com", query_lower)
+                if page.url.to_lowercase() == format!("https://www.{query_lower}.com/")
+                    || page.url.to_lowercase() == format!("https://{query_lower}.com/")
+                    || page.url.to_lowercase() == format!("https://www.{query_lower}.com")
+                    || page.url.to_lowercase() == format!("https://{query_lower}.com")
                 {
                     score += 1000;
                 }
 
-                if page.url.to_lowercase() == format!("http://www.{}.com/", query_lower)
-                    || page.url.to_lowercase() == format!("http://{}.com/", query_lower)
+                if page.url.to_lowercase() == format!("http://www.{query_lower}.com/")
+                    || page.url.to_lowercase() == format!("http://{query_lower}.com/")
                 {
                     score += 700;
                 }
@@ -393,7 +390,7 @@ impl CrawledPage {
             Ok(p) => p,
             Err(e) => {
                 log::error!("Failed to select crawled pages: {}", e);
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+                return Err(std::io::Error::other(e.to_string()));
             }
         };
 
@@ -416,7 +413,7 @@ impl CrawledPage {
         tokio::task::spawn_blocking(move || {
             let mut file = File::create("/opt/sam/tmp/common.tokens")?;
             for token in tokens {
-                writeln!(file, "{}", token)?;
+                writeln!(file, "{token}")?;
             }
             Ok(())
         }).await?
@@ -435,7 +432,7 @@ impl CrawledPage {
     /// Send this CrawledPage to a peer over a TCP stream (async).
     /// The stream must be connected. The message is length-prefixed (u32, big-endian).
     pub async fn send_p2p<W: tokio::io::AsyncWrite + Unpin>(&self, mut writer: W) -> std::io::Result<()> {
-        let json = self.to_p2p_json().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let json = self.to_p2p_json().map_err(std::io::Error::other)?;
         let bytes = json.as_bytes();
         let len = bytes.len() as u32;
         writer.write_u32(len).await?;

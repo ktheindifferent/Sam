@@ -13,7 +13,7 @@ pub async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 
         let spinner_index = {
             let mut lines = output_lines.lock().await;
-            lines.push(format!("Running darknet_detect on: {}", image_path));
+            lines.push(format!("Running darknet_detect on: {image_path}"));
             lines.push("⠋ Detecting...".to_string());
             lines.len() - 1
         };
@@ -48,7 +48,7 @@ pub async fn handle_darknet(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                         }
                     }
                     Err(e) => {
-                        lines[spinner_index] = format!("darknet error: {}", e);
+                        lines[spinner_index] = format!("darknet error: {e}");
                     }
                 }
             }

@@ -12,23 +12,8 @@
 // Cloud -> Internal Cloud -> Localhost
 // TODO - Don't start docker unless localhost has been called
 
-use rouille::Request;
-use rouille::Response;
-use rouille::post_input;
-use serde::{Serialize, Deserialize};
-use std::fs::File;
-use std::io::Write;
-use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::path::Path;
-use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
-use std::io::{self};
-use std::process::{Command, Stdio};
 
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
-use tokio::fs;
-use std::env;
-use std::path::PathBuf;
 
 
 
@@ -37,6 +22,12 @@ pub struct WhisperWorker {
     pub is_working: bool,
     pub whisper_state: whisper_rs::WhisperState,
 }
+impl Default for WhisperWorker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WhisperWorker {
     pub fn new() -> WhisperWorker {
         let params = whisper_rs::WhisperContextParameters::default();

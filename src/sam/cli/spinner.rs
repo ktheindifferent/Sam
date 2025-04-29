@@ -18,7 +18,7 @@ pub async fn run_with_spinner<F, Fut>(
 
     let spinner_index = {
         let mut lines = output_lines.lock().await;
-        lines.push(format!("⠋ {}", message));
+        lines.push(format!("⠋ {message}"));
         lines.len() - 1
     };
 

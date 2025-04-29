@@ -11,7 +11,7 @@ pub async fn handle_setup() {
 }
 
 pub async fn handle_ls(output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &PathBuf) {
-    match std::fs::read_dir(&current_dir) {
+    match std::fs::read_dir(current_dir) {
         Ok(entries) => {
             let mut files = vec![];
             for entry in entries.flatten() {
@@ -19,7 +19,7 @@ pub async fn handle_ls(output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &Pat
                 let file_type = entry.file_type().ok();
                 if let Some(ft) = file_type {
                     if ft.is_dir() {
-                        files.push(format!("{}/", file_name));
+                        files.push(format!("{file_name}/"));
                     } else {
                         files.push(file_name);
                     }
@@ -34,7 +34,7 @@ pub async fn handle_ls(output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &Pat
         }
         Err(e) => {
             let mut out = output_lines.lock().await;
-            out.push(format!("ls error: {}", e));
+            out.push(format!("ls error: {e}"));
         }
     }
 }
@@ -61,11 +61,11 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         Ok(reply) => {
             let text = reply.text.clone();
             let output_lines = output_lines.clone();
-            tokio::spawn(crate::sam::cli::helpers::append_and_tts(output_lines, format!("┌─[sam]─> {}", text)));
+            tokio::spawn(crate::sam::cli::helpers::append_and_tts(output_lines, format!("┌─[sam]─> {text}")));
         }
         Err(e) => {
             let mut out = output_lines.lock().await;
-            out.push(format!("┌─[sam]─> [error: {}]", e));
+            out.push(format!("┌─[sam]─> [error: {e}]"));
         }
     }
 }

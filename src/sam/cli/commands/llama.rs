@@ -5,7 +5,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match cmd {
         "llama install" => {
             let output_lines = output_lines.clone();
-            let _ = output_lines.lock().await.push("Starting llama model installer...".to_string());
+            output_lines.lock().await.push("Starting llama model installer...".to_string());
             tokio::spawn(async move {
                 // ...existing code for llama install logic (cmake, build, copy, spinner, download, etc)...
                 // See original file for full implementation.
@@ -51,13 +51,13 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                         Ok(result) => {
                             let text = result.trim().to_string();
                             let output_lines = output_lines.clone();
-                            tokio::spawn(crate::sam::cli::helpers::append_and_tts(output_lines, format!("llama: {}", text)));
+                            tokio::spawn(crate::sam::cli::helpers::append_and_tts(output_lines, format!("llama: {text}")));
                         },
                         Err(e) => {
                             let output_lines = output_lines.clone();
                             tokio::spawn(async move {
                                 let mut out = output_lines.lock().await;
-                                out.push(format!("llama error: {}", e));
+                                out.push(format!("llama error: {e}"));
                             });
                         }
                     }
