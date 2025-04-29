@@ -129,11 +129,46 @@ impl CrawlJob {
     }
     /// Async save (no Redis support).
     pub async fn save_async(&self) -> crate::sam::memory::Result<Self> {
-        let this = self.clone();
-        match tokio::task::spawn_blocking(move || this.save()).await {
-            Ok(res) => res,
-            Err(e) => Err(crate::sam::memory::Error::with_chain(e, "JoinError in save_async")),
+        let config = crate::sam::memory::Config::new();
+        let client = config.connect_pool().await?;
+        // Check if job exists by oid
+        let select_query = "SELECT id FROM crawl_jobs WHERE oid = $1";
+        let rows = client.query(select_query, &[&self.oid]).await?;
+        if rows.is_empty() {
+            // Insert new job
+            let insert_query = "INSERT INTO crawl_jobs (oid, start_url, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)";
+            client.execute(insert_query, &[&self.oid, &self.start_url, &self.status, &self.created_at, &self.updated_at]).await?;
+        } else {
+            // Update existing job
+            let update_query = "UPDATE crawl_jobs SET start_url = $1, status = $2, updated_at = $3 WHERE oid = $4";
+            client.execute(update_query, &[&self.start_url, &self.status, &self.updated_at, &self.oid]).await?;
         }
+        Ok(self.clone())
+    }
+
+    /// Async batch save (insert or update by oid for multiple jobs).
+    pub async fn save_batch_async(jobs: &[Self]) -> crate::sam::memory::Result<()> {
+        if jobs.is_empty() {
+            return Ok(());
+        }
+        let config = crate::sam::memory::Config::new();
+        let client = config.connect_pool().await?;
+
+        for job in jobs {
+            // Check if job exists by oid
+            let select_query = "SELECT id FROM crawl_jobs WHERE oid = $1";
+            let rows = client.query(select_query, &[&job.oid]).await?;
+            if rows.is_empty() {
+                // Insert new job
+                let insert_query = "INSERT INTO crawl_jobs (oid, start_url, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)";
+                client.execute(insert_query, &[&job.oid, &job.start_url, &job.status, &job.created_at, &job.updated_at]).await?;
+            } else {
+                // Update existing job
+                let update_query = "UPDATE crawl_jobs SET start_url = $1, status = $2, updated_at = $3 WHERE oid = $4";
+                client.execute(update_query, &[&job.start_url, &job.status, &job.updated_at, &job.oid]).await?;
+            }
+        }
+        Ok(())
     }
 
 

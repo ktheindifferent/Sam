@@ -46,7 +46,7 @@ static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync:
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(5))
         .timeout(Duration::from_secs(30))
-        .pool_max_idle_per_host(16)
+        .pool_max_idle_per_host(8)
         .pool_idle_timeout(Some(Duration::from_secs(15)))
         .danger_accept_invalid_certs(true)
         .build()
@@ -344,6 +344,8 @@ async fn crawl_url_inner(
     client: std::sync::Arc<reqwest::Client>,
 ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
 
+    // log::info!("Crawling URL: {}", url);
+
     // Shared sleep logic: check if we should sleep before making a request
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     let sleep_until = SLEEP_UNTIL.load(Ordering::SeqCst);
@@ -360,59 +362,30 @@ async fn crawl_url_inner(
 
     // Return early if the URL looks like a search endpoint
     let url_lc = url.to_ascii_lowercase();
-    if url_lc.contains("/search/")
-        || url_lc.contains("search=")
-        || url_lc.contains("q=")
-        || url_lc.contains("/find/")
-        || url_lc.contains("/query/")
-        || url_lc.contains("query=")
-        || url_lc.contains("/websearch?")
-        || url_lc.contains("/search_history?")
-        || url_lc.contains("/search?")
-        || url_lc.contains("/search")
-        || url_lc.contains("/search/")
-        || url_lc.contains("/lookup/")
-        || url_lc.contains("lookup=")
-        || url_lc.contains("/results/")
-        || url_lc.contains("results=")
-        || url_lc.contains("/explore/")
-        || url_lc.contains("explore=")
-        || url_lc.contains("/filter/")
-        || url_lc.contains("filter=")
-        || url_lc.contains("/discover/")
-        || url_lc.contains("discover=")
-        || url_lc.contains("/browse/")
-        || url_lc.contains("browse=")
-        || url_lc.contains("u=")
-        || url_lc.contains("url=")
-        || url_lc.contains("id=")
-        || url_lc.contains("backURL=")
-        || url_lc.contains("text=")
-        || url_lc.contains("searchterm=")
-        || url_lc.contains("/list/")
-
-    {
+    if is_search_url(&url_lc) {
         return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg(
             "URL appears to be a search endpoint, skipping".to_string(),
         )));
+    } else {
+        // log::debug!("Crawling URL: {}", url);
     }
 
 
-    let mut pg_query = crate::sam::memory::PostgresQueries::default();
-    pg_query.queries.push(crate::sam::memory::PGCol::String(format!("{}",url.clone())));
-    pg_query.query_columns.push("url =".to_string());
-    let existing = match CrawledPage::select_async(Some(1), None, None, Some(pg_query).clone()).await {
-        Ok(pages) => pages,
-        Err(e) => {
-            log::debug!("Failed to query existing CrawledPage: {}", e);
-            Vec::new()
-        }
-    };
-    if !existing.is_empty() {
-        return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg(
-            format!("CrawledPage already exists for URL: {}", url),
-        )));
-    }
+    // let mut pg_query = crate::sam::memory::PostgresQueries::default();
+    // pg_query.queries.push(crate::sam::memory::PGCol::String(format!("{}",url.clone())));
+    // pg_query.query_columns.push("url =".to_string());
+    // let existing = match CrawledPage::select_async(Some(1), None, None, Some(pg_query).clone()).await {
+    //     Ok(pages) => pages,
+    //     Err(e) => {
+    //         log::debug!("Failed to query existing CrawledPage: {}", e);
+    //         Vec::new()
+    //     }
+    // };
+    // if !existing.is_empty() {
+    //     return Err(crate::sam::memory::Error::from_kind(crate::sam::memory::ErrorKind::Msg(
+    //         format!("CrawledPage already exists for URL: {}", url),
+    //     )));
+    // }
 
     let mut page = CrawledPage::new();
     page.crawl_job_oid = job_oid.clone();
@@ -495,7 +468,7 @@ async fn crawl_url_inner(
             }
         }
         // Optional: small delay between retries
-        sleep(Duration::from_millis(300)).await;
+        sleep(Duration::from_millis(100)).await;
     }
     let resp = match resp {
         Some(r) => Ok(r),
@@ -749,13 +722,23 @@ async fn crawl_url_inner(
                 
                 
             } else {
-                write_url_to_retry_cache(&url).await;
+                tokio::spawn({
+                    let url = url.clone();
+                    async move {
+                        write_url_to_retry_cache(&url).await;
+                    }
+                });
             }
         }
         Err(e) => {
             log::warn!("Error fetching URL {}: {}", url, e);
 
-            write_url_to_retry_cache(&url).await;
+            tokio::spawn({
+                let url = url.clone();
+                async move {
+                    write_url_to_retry_cache(&url).await;
+                }
+            });
 
             // If the error is a timeout, increment a static counter and occasionally sleep all threads
             
@@ -821,14 +804,8 @@ pub async fn start_service_async() {
         CRAWLER_RUNNING.store(true, Ordering::SeqCst);
    
         tokio::spawn(async {
-            let cpu_cores = 4;
-            log::info!("Starting crawler service with {} CPU cores", cpu_cores);
-            for _ in 0..cpu_cores {
-                tokio::spawn(async {
-                    if let Err(e) = run_crawler_service().await {
-                        log::error!("Error in crawler service: {}", e);
-                    }
-                });
+            if let Err(e) = run_crawler_service().await {
+                log::error!("Error in crawler service: {}", e);
             }
         });
             
@@ -874,7 +851,7 @@ pub fn service_status() -> &'static str {
 /// This function is async and should be awaited.
 pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     let client = Arc::new(REQWEST_CLIENT.clone());
-
+    let all_crawled_pages = Arc::new(tokio::sync::Mutex::new(Vec::new()));
     // Set up logging
     // log::set_max_level(LevelFilter::Info);
 
@@ -923,11 +900,27 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
 
             // Crawl start_url and discovered links (BFS, depth 2)
             let max_depth = 10;
-            let visited = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
-            let queue = Arc::new(tokio::sync::Mutex::new(VecDeque::from([(job.start_url.clone(), 0)])));
-            let all_crawled_pages = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+            // Initialize visited set with URLs from all CrawlJob entries in Postgres
+            let mut visited_urls = HashSet::new();
+            if let Ok(crawled_pages) = CrawledPage::select_async(None, None, None, None).await {
+                for page in crawled_pages {
+                    visited_urls.insert(page.url);
+                }
+            }
 
-            let concurrency = num_cpus::get().max(4); // At least 4 concurrent tasks
+            let mut job_urls = HashSet::new();
+            if let Ok(all_jobs) = CrawlJob::select_async(None, None, None, None).await {
+                for job in all_jobs {
+                    job_urls.insert(job.start_url);
+                }
+            }
+
+            let visited = Arc::new(tokio::sync::Mutex::new(visited_urls));
+            let all_job_urls = Arc::new(tokio::sync::Mutex::new(job_urls));
+            let queue = Arc::new(tokio::sync::Mutex::new(VecDeque::from([(job.start_url.clone(), 0)])));
+           
+
+            let concurrency = num_cpus::get() / 2; // At least 4 concurrent tasks
             loop {
                 // Collect all URLs at the current minimum depth
                 let (batch, current_depth) = {
@@ -965,38 +958,16 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                         v.insert(url.clone());
                     }
                 }
-                let all_crawled_pages_th = all_crawled_pages.clone();
-                
+          
                 // Crawl all URLs at this depth concurrently
                 use futures::stream;
                 let results = stream::iter(batch.into_iter()).map(|(url, depth)| {
                     let job_oid = job_oid.clone();
                    
                     let client = client.clone();
-                    let all_crawled_pages_th = all_crawled_pages_th.clone();
+                  
                     async move {
-                        // Save pages in batches of 10
-                        // Only do this if we have more than 100 pages to save
-                        // Save crawled pages in a separate task/thread to avoid blocking the main crawling loop
-                        {
-                            let mut all = all_crawled_pages_th.lock().await;
-                            if all.len() > 100 {
-                                for chunk in all.chunks(10) {
-                                    let chunk = chunk.to_vec();
-                                    
-                                    tokio::spawn(async move {
-                                        if let Err(e) = CrawledPage::save_async_batch(&chunk).await {
-                                            log::warn!("Failed to save batch of pages: {}", e);
-                                            for p in &chunk {
-                                                write_url_to_retry_cache(&p.url).await;
-                                            }
-                                        }
-                                    });
-                                }
-                                all.clear();
-                            }
-                        }
-
+         
                         // Crawl the URL
                         (url.clone(), depth, crawl_url(job_oid, url, client).await)
                     }
@@ -1015,17 +986,73 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                         !v.contains(link)
                                     };
                                     if should_add {
-                                        new_links.push((link.clone(), depth + 1));
+                                        if new_links.len() < 1000 {
+                                            let url_lc = link.clone();
+                                            if is_search_url(&url_lc) {
+                                                // Skip search endpoints
+                                                log::debug!("Skipping search endpoint: {}", link);
+                                            } else {
+                                                // Add to new links for further crawling
+                                                new_links.push((link.clone(), depth + 1));
+                                            }
+                                            
+                                        } else {
+                                            // Spawn a new thread to create and save the CrawlJob for this link
+                                            // Collect jobs in a batch and save them together for efficiency
+                                            static JOB_BATCH: once_cell::sync::Lazy<tokio::sync::Mutex<Vec<CrawlJob>>> = once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(Vec::new()));
+                                            {
+                                                let mut batch = JOB_BATCH.lock().await;
+                                                let mut job = CrawlJob::new();
+                                                job.start_url = link.clone();
+                                                job.status = "pending".to_string();
+                                                job.updated_at = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                                                    Ok(duration) => duration.as_secs() as i64,
+                                                    Err(e) => {
+                                                        log::debug!("SystemTime before UNIX EPOCH: {:?}", e);
+                                                        0
+                                                    }
+                                                };
+
+
+                                                let url_lc = link.clone();
+                                                if is_search_url(&url_lc) {
+                                                    // Skip search endpoints
+                                                    log::debug!("Skipping search endpoint: {}", link);
+                                                } else {
+
+                                                    if {
+                                                        let v = visited.lock().await;
+                                                        let all_jobs = all_job_urls.lock().await;
+                                                        !v.contains(&job.start_url) && !all_jobs.contains(&job.start_url)
+                                                    } {
+                                                        batch.push(job);
+                                                        let mut v = all_job_urls.lock().await;
+                                                        for job in batch.iter() {
+                                                            v.insert(job.start_url.clone());
+                                                        }
+                                                    }
+                                                }
+
+                                                if batch.len() >= 1000 {
+                                                    let jobs_to_save = batch.split_off(0);
+                                                    drop(batch); // Release lock before await
+                                                    if let Err(e) = CrawlJob::save_batch_async(&jobs_to_save).await {
+                                                        log::warn!("Failed to save batch crawl jobs: {}", e);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
                                     }
                                 }
                             }
                             // Add pages to all_crawled_pages in one lock
                             {
                                 let mut all = all_crawled_pages.lock().await;
-                                all.append(&mut pages);
-                                if all.len() > 100 {
-                                    // Batch save all crawled pages in chunks of 500
-                                    for chunk in all.chunks(10) {
+                                all.extend(pages.into_iter());
+                                if all.len() >= 1000 { // Save every 100 pages
+                                    log::info!("C: Saving {} crawled pages", all.len());
+                                    for chunk in all.chunks(100) {
                                         if let Err(e) = CrawledPage::save_async_batch(chunk).await {
                                             log::warn!("Failed to save batch of pages: {}", e);
                                             for p in chunk {
@@ -1034,6 +1061,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                         }
                                     }
                                     all.clear();
+                                    log::info!("C: Cleared all crawled pages");
                                 }
                             }
                         }
@@ -1055,13 +1083,11 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 }
             }
 
-            // Save any remaining crawled pages
-            let all_crawled_pages = match Arc::try_unwrap(all_crawled_pages) {
-                Ok(mutex) => mutex.into_inner(),
-                Err(arc) => arc.blocking_lock().clone(),
-            };
+            let mut all = all_crawled_pages.lock().await;
+        
             // Batch save all crawled pages in chunks of 500
-            for chunk in all_crawled_pages.chunks(500) {
+            log::info!("B: Saving {} crawled pages", all.len());
+            for chunk in all.chunks(10) {
                 if let Err(e) = CrawledPage::save_async_batch(chunk).await {
                     log::warn!("Failed to save batch of pages: {}", e);
                     for p in chunk {
@@ -1069,7 +1095,10 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     }
                 }
             }
-            drop(all_crawled_pages);
+            all.clear();
+            
+            drop(all);
+            // drop(all_crawled_pages);
             
             // Mark job as done
             job.status = "done".to_string();
@@ -1178,7 +1207,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             let mut urls_found = Vec::new();
 
             // Use concurrency to speed up DNS lookups
-            let concurrency = num_cpus::get();
+            let concurrency = num_cpus::get() / 2;
             log::info!("Starting DNS lookups for {} domains with concurrency {}", domains.len(), concurrency);
             let dns_start = tokio::time::Instant::now();
 
@@ -1334,6 +1363,59 @@ async fn lookup_domain(
         cache.insert(domain.to_string(), found);
     }
     found
+}
+
+fn is_search_url(url: &str) -> bool {
+    let url_lc = url.to_ascii_lowercase();
+    if url_lc.contains("/search/")
+        || url_lc.contains("search=")
+        || url_lc.contains("q=")
+        || url_lc.contains("/find/")
+        || (url_lc.matches("https://").count() >= 2)
+        || (url_lc.matches("http://").count() >= 2)
+        || (url_lc.contains("https://") && url_lc.contains("http://"))
+        || url_lc.contains("/query/")
+        || url_lc.contains("query=")
+        || url_lc.contains("https%3A%2F%2F")
+        || url_lc.contains("http%3A%2F%2F")
+        || url_lc.contains("/websearch?")
+        || url_lc.contains("/search_history?")
+        || url_lc.contains("/search?")
+        || url_lc.contains("/search")
+        || url_lc.contains("/search/")
+        || url_lc.contains("/lookup/")
+        || url_lc.contains("lookup=")
+        || url_lc.contains("/results/")
+        || url_lc.contains("results=")
+        || url_lc.contains("/explore/")
+        || url_lc.contains("explore=")
+        || url_lc.contains("/filter/")
+        || url_lc.contains("filter=")
+        || url_lc.contains("/discover/")
+        || url_lc.contains("discover=")
+        || url_lc.contains("/browse/")
+        || url_lc.contains("browse=")
+        || url_lc.contains("u=")
+        || url_lc.contains("url=")
+        || url_lc.contains("id=")
+        || url_lc.contains("redirect=")
+        || url_lc.contains("backurl=")
+        || url_lc.contains("redirecturi=")
+        || url_lc.contains("redirect_uri=")
+        || url_lc.contains("redirecturl=")
+        || url_lc.contains("redirect_url=")
+        || url_lc.contains("text=")
+        || url_lc.contains("searchterm=")
+        || url_lc.contains("search_term=")
+        || url_lc.contains("search_terms=")
+        || url_lc.contains("login?return_to=")
+        || url_lc.contains("signup?return_to=")
+        || url_lc.contains("?return_to")
+        || url_lc.contains("/list/"){
+            return true;
+        } else {
+            return false;
+        }
 }
 
 /// Recursively extracts text tokens from an HTML element, skipping specified tags.

@@ -150,12 +150,12 @@ fn main() {
         println!("================================================");
 
         // Initialize logger with color, warning level, and timestamps
-        // simple_logger::SimpleLogger::new()
-        //     .with_colors(true)
-        //     .with_level(log::LevelFilter::Info)
-        //     .with_timestamps(true)
-        //     .init()
-        //     .unwrap();
+        simple_logger::SimpleLogger::new()
+            .with_colors(true)
+            .with_level(log::LevelFilter::Info)
+            .with_timestamps(true)
+            .init()
+            .unwrap();
 
         // Optionally set environment variables for libraries (uncomment if needed)
         // env::set_var("LIBTORCH", "/app/libtorch/libtorch");
@@ -241,6 +241,15 @@ fn main() {
         } else {
             println!("Darknet binary found at /opt/sam/bin/darknet. Skipping install.");
         }
+
+
+
+
+        match crate::sam::services::stt::whisper::WhisperService::install().await {
+            Ok(_) => log::info!("whisper installed successfully"),
+            Err(e) => log::error!("Failed to install whisper: {}", e),
+        }
+        loop{}
 
         crate::sam::services::docker::install();
 

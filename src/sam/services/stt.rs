@@ -14,6 +14,8 @@ use std::io::Write;
 use std::path::Path;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+pub mod whisper;
  // Add missing import for tools module
 
 /// Represents the result of an STT prediction.

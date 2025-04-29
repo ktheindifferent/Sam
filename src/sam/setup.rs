@@ -116,7 +116,18 @@ fn install_services() {
             Ok(_) => log::info!("darknet installed successfully"),
             Err(e) => log::error!("Failed to install darknet: {}", e),
         }
+
+        match crate::sam::services::stt::whisper::WhisperService::install().await {
+            Ok(_) => log::info!("whisper installed successfully"),
+            Err(e) => log::error!("Failed to install whisper: {}", e),
+        }
+
+
+
     });
+
+
+
 
     let services = vec![
         // ("darknet", crate::sam::services::darknet::install as fn() -> std::result::Result<(), std::io::Error>), // REMOVE THIS LINE

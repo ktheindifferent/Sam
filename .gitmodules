@@ -4,3 +4,6 @@
 [submodule "scripts/llama.cpp"]
 	path = scripts/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp.git
+[submodule "scripts/whisper.cpp"]
+	path = scripts/whisper.cpp
+	url = https://github.com/ggml-org/whisper.cpp.git

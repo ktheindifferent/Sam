@@ -43,7 +43,7 @@ titlecase = "2.2.1"
 opencl3 = "0.9.3"
 colored = "3.0.0"
 nanoid = "0.4"
-termion = "4.0.5"
+whisper-rs = "0.14.2"
 crossterm = "0.29.0"
 tui-logger = "0.17.1"
 rodio = "0.17"
@@ -82,3 +82,7 @@ default = ["reqwest/default-tls", "trust-dns-resolver/dns-over-native-tls"]
 vendored-openssl = ["openssl/vendored"]
 rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
 
+[[bin]]
+name = "installer"
+test = false
+bench = false

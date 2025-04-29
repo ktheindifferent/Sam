@@ -28,14 +28,25 @@ TODO:
 - Use whisper for realtime STT/TTS using wasm2js
 - Keep exsting TTS/STT methods to be used as a backup
 - Add metadata to file storage api
-
 - PS1 emulation and native file support (.ps1) https://github.com/js-emulators/WASMpsx
-
 - NES emulation and native file support (.nes) https://github.com/takahirox/nes-rust
-
 - Gameboy emulation https://github.com/andrewimm/wasm-gb
-
 - Chip-8 Emulation (.ch8)
+- SSH command pipeline support for cli
+- Password manager
+- Vulnerability scanning and classification of internal network
+- Ext Web crawler for links, summaries, ports, etc.
+- P2P communications between sam instances for Job tasking, hive communications
+- Stablize windows build
+- Mobile App
+- Overhaul web interface for no jquery, gulp asset pipelines, etc
+- Overhaul help command
+
+0.0.4(WIP):
+- database restructured
+- crawler for deep web research
+- docker, redis, postgres installer workflow for automated setup
+
 
 0.0.3:
 - Fix file browser (dropbox, deleting files, moving files, etc.)
