@@ -21,7 +21,7 @@ pub async fn handle_status(
     let kernel = sysinfo::System::kernel_version().unwrap_or_default();
     let arch = std::env::consts::ARCH;
     let exe = std::env::current_exe().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).unwrap_or_else(|| "Unknown".to_string());
-    let version = format!("{:?}", crate::VERSION);
+    let version = format!("{:?}", libsam::VERSION);
 
     let lines = vec![
         format!("Executable: {}", exe),

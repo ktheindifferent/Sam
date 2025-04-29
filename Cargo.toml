@@ -69,6 +69,7 @@ env_logger = "0.10.0"
 base64 = "0.22.1"
 git2 = "0.18"
 lazy_static = "1.5.0"
+dialoguer = "0.11.0"
 nanorand = "0.7.0"
 rayon = "1.10.0"
 deadpool-postgres = "0.14.1"
@@ -85,3 +86,7 @@ rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
 name = "installer"
 test = false
 bench = false
+
+[lib]
+name = "libsam"
+path = "src/lib/mod.rs"

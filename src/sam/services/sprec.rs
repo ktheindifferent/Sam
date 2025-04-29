@@ -105,38 +105,3 @@ pub fn predict(file_path: &str) -> Result<SprecPrediction, crate::sam::services:
         })
     }
 }
-
-/// Installs the SPREC model and its dependencies.
-pub fn install() -> std::io::Result<()> {
-    let files = [
-        ("../../../scripts/sprec/build.py", "/opt/sam/scripts/sprec/build.py"),
-        ("../../../scripts/sprec/predict.py", "/opt/sam/scripts/sprec/predict.py"),
-        ("../../../scripts/sprec/requirements.txt", "/opt/sam/scripts/sprec/requirements.txt"),
-        ("../../../scripts/sprec/model.h5", "/opt/sam/scripts/sprec/model.h5"),
-        ("../../../scripts/sprec/labels.pickle", "/opt/sam/scripts/sprec/labels.pickle"),
-        ("../../../scripts/sprec/audio/Unknown.zip", "/opt/sam/scripts/sprec/audio/Unknown.zip"),
-        ("../../../scripts/sprec/noise/other.zip", "/opt/sam/scripts/sprec/noise/other.zip"),
-        ("../../../scripts/sprec/noise/_background_noise_.zip", "/opt/sam/scripts/sprec/noise/_background_noise_.zip"),
-    ];
-
-    for (_source, destination) in files.iter() {
-        let data = include_bytes!("../../../scripts/sprec/model.h5"); // Replace with the actual valid file path
-        let mut buffer = File::create(destination)?;
-        buffer.write_all(data)?;
-    }
-
-    let _ = crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/audio/Unknown.zip", "/opt/sam/scripts/sprec/audio/");
-    let _ = crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/other.zip", "/opt/sam/scripts/sprec/noise/");
-    let _ = crate::sam::tools::extract_zip("/opt/sam/scripts/sprec/noise/_background_noise_.zip", "/opt/sam/scripts/sprec/noise/");
-
-    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/audio/Unknown.zip");
-    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/noise/other.zip");
-    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/sprec/noise/_background_noise_.zip");
-
-    log::info!("Installing requirements for SPREC...");
-    crate::sam::tools::uinx_cmd("pip3 install -r /opt/sam/scripts/sprec/requirements.txt");
-
-    log::info!("Building initial SPREC model...");
-    build();
-    Ok(())
-}

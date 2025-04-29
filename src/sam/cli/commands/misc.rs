@@ -7,7 +7,7 @@ pub async fn handle_clear(output_lines: &Arc<Mutex<Vec<String>>>) {
 }
 
 pub async fn handle_setup() {
-    tokio::spawn(crate::sam::setup::install());
+    // tokio::spawn(crate::sam::setup::install());
 }
 
 pub async fn handle_ls(output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &PathBuf) {
@@ -47,7 +47,7 @@ pub async fn handle_version(output_lines: &Arc<Mutex<Vec<String>>>) {
         "     ██    ██   ██    ██  ██  ██    ".to_string(),
         "███████ ██ ██   ██ ██ ██      ██ ██ ".to_string(),
         "Smart Artificial Mind".to_string(),
-        format!("VERSION: {:?}", crate::VERSION),
+        format!("VERSION: {:?}", libsam::VERSION),
         "Copyright 2021-2026 The Open Sam Foundation (OSF)".to_string(),
         "Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)".to_string(),
         "Licensed under GPLv3....see LICENSE file.".to_string(),

@@ -115,44 +115,6 @@ pub fn patch_whisper_wts(file_path: String) -> Result<(), crate::sam::services::
     Ok(())
 }
 
-// Installs required models and binaries for Whisper.
-pub fn install() -> std::io::Result<()> {
-    let models = vec![
-        ("ggml-base.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"),
-        ("ggml-tiny.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"),
-        ("ggml-base.en.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"),
-        ("ggml-medium.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"),
-        ("ggml-large.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin"),
-    ];
-
-    for (file, url) in models {
-        if !Path::new(&format!("/opt/sam/models/{}", file)).exists() {
-            crate::sam::tools::uinx_cmd(&format!("wget -O /opt/sam/models/{} {}", file, url));
-        }
-    }
-
-    let binaries = vec![
-        ("../../../packages/whisper/main-amd64", "/opt/sam/bin/whisper"),
-        ("../../../packages/whisper/gpu/main", "/opt/sam/bin/whisper-gpu"),
-        ("../../../packages/whisper/gpu/quantize", "/opt/sam/bin/whisper-gpu-quantize"),
-        ("../../../fonts/courier.ttf", "/opt/sam/fonts/courier.ttf"),
-        ("../../../packages/ffmpeg/amd64/ffmpeg", "/opt/sam/bin/ffmpeg"),
-    ];
-
-    for (source, destination) in binaries {
-        // Since include_bytes! requires a string literal, you cannot use it with a variable.
-        // Instead, copy the file at runtime.
-        std::fs::create_dir_all(std::path::Path::new(destination).parent().unwrap())?;
-        std::fs::copy(source, destination)?;
-    }
-
-    crate::sam::tools::uinx_cmd("chmod +x /opt/sam/bin/ffmpeg");
-    crate::sam::tools::uinx_cmd("chmod +x /opt/sam/bin/whisper");
-    crate::sam::tools::uinx_cmd("chmod +x /opt/sam/bin/whisper-gpu");
-    crate::sam::tools::uinx_cmd("chmod +x /opt/sam/bin/whisper-gpu-quantize");
-    Ok(())
-}
-
 // Handles incoming STT requests and processes audio files.
 pub fn handle(_current_session: crate::sam::memory::cache::WebSessions, request: &Request) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/stt" {

@@ -38,30 +38,3 @@ pub fn query(input: &str) -> Result<IOReply> {
 
     Ok(io)
 }
-
-pub fn install() -> std::io::Result<()> {
-    let data = include_bytes!("../../../scripts/rivescript/brain.py");
-
-    let mut pos = 0;
-    let mut buffer = File::create("/opt/sam/scripts/rivescript/brain.py")?;
-
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..])?;
-        pos += bytes_written;
-    }
-
-    let data = include_bytes!("../../../scripts/rivescript/eg.zip");
-
-    let mut pos = 0;
-    let mut buffer = File::create("/opt/sam/scripts/rivescript/eg.zip")?;
-
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..])?;
-        pos += bytes_written;
-    }
-
-    let _ = crate::sam::tools::extract_zip("/opt/sam/scripts/rivescript/eg.zip", "/opt/sam/scripts/rivescript/");
-    crate::sam::tools::uinx_cmd("rm -rf /opt/sam/scripts/rivescript/eg.zip");
-
-    Ok(())
-}

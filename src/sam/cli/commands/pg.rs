@@ -9,7 +9,7 @@ pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 "Installing PostgreSQL...",
                 |lines, _| lines.push("PostgreSQL install complete.".to_string()),
                 || async {
-                    crate::sam::services::pg::install().await;
+                    libsam::services::pg::install().await;
                     "done".to_string()
                 },
             ).await;
@@ -20,7 +20,7 @@ pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 "Starting PostgreSQL...",
                 |lines, _| lines.push("PostgreSQL start command issued.".to_string()),
                 || async {
-                    crate::sam::services::pg::start().await;
+                    libsam::services::pg::start().await;
                     "done".to_string()
                 },
             ).await;
@@ -31,13 +31,13 @@ pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 "Stopping PostgreSQL...",
                 |lines, _| lines.push("PostgreSQL stop command issued.".to_string()),
                 || async {
-                    crate::sam::services::pg::stop().await;
+                    libsam::services::pg::stop().await;
                     "done".to_string()
                 },
             ).await;
         }
         "pg status" => {
-            let status = crate::sam::services::pg::status();
+            let status = libsam::services::pg::status();
             let mut out = output_lines.lock().await;
             out.push(format!("PostgreSQL status: {}", status));
         }

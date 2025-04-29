@@ -58,7 +58,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 
 // Store application version as a const, set at compile time
-const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
+// const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 
 /// Main entry point for the SAM application.
@@ -92,59 +92,13 @@ fn main() {
             }
         }
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        {
-            let opt_sam_path = Path::new("/opt/sam");
-            if !opt_sam_path.exists() {
-                if let Err(e) = fs::create_dir_all(opt_sam_path) {
-                    log::error!("Failed to create /opt/sam: {}", e);
-                } else if let Err(e) = fs::set_permissions(opt_sam_path, fs::Permissions::from_mode(0o755)) {
-                    log::error!("Failed to set permissions on /opt/sam: {}", e);
-                }
-            }
-            crate::sam::tools::uinx_cmd("chmod -R 777 /opt/sam");
-            crate::sam::tools::uinx_cmd("chown 1000 -R /opt/sam");
-        }
-
-        // Store the current username in the SAM_USER environment variable
-        // Cross platform way to get the username
-        // let user = whoami::username();
-        let mut user = whoami::username();
-        let opt_sam_path = Path::new("/opt/sam/");
-        if user != "root" {
-            let file_path = opt_sam_path.join("whoismyhuman");
-            if !file_path.exists() {
-                if let Err(e) = fs::write(&file_path, &user) {
-                    log::error!("Failed to create whoismyhuman: {}", e);
-                }
-            }
-            if opt_sam_path.exists() && opt_sam_path.is_dir() {
-                let file_path = opt_sam_path.join("whoismyhuman");
-                if let Err(e) = fs::write(&file_path, &user) {
-                    log::error!("Failed to write whoismyhuman: {}", e);
-                }
-            }
-        }
-
         // Attempt to read username from /opt/sam/whoismyhuman if it exists
-        user = crate::sam::tools::get_user_from_whois().unwrap_or_else(|_| {
+        let user = crate::sam::tools::get_user_from_whois("human").unwrap_or_else(|_| {
             log::error!("Failed to read whoismyhuman file. Defaulting to 'human'.");
             "human".to_string()
         });
 
-        sam::print_banner();
-
-        // Initialize logger with color, warning level, and timestamps
-        simple_logger::SimpleLogger::new()
-            .with_colors(true)
-            .with_level(log::LevelFilter::Info)
-            .with_timestamps(true)
-            .init()
-            .unwrap();
-
-        // Optionally set environment variables for libraries (uncomment if needed)
-        // env::set_var("LIBTORCH", "/app/libtorch/libtorch");
-        // env::set_var("LD_LIBRARY_PATH", "${LIBTORCH}/lib:$LD_LIBRARY_PATH");
+        libsam::print_banner(user.clone());
 
         // Ensure required environment variables are available for sudo context
         // dependent on OS
@@ -157,38 +111,32 @@ fn main() {
                 "PG_USER",
                 "PG_PASS",
                 "PG_ADDRESS",
+                "SAM_USER",
             ])
             .unwrap();
         }
 
-        // Check for missing Postgres credentials and prompt user if missing
-        // cli::check_postgres_env();
+        // Optionally escalate privileges if needed
+        sudo::escalate_if_needed().unwrap();
 
-        // // Optionally escalate privileges if needed
-        // // sudo::escalate_if_needed().unwrap();
 
-        // // Run setup/install if required (e.g., on first run or specific path exists)
-        // // if Path::new("/opt/sam").exists() {
-        // crate::sam::setup::install().await;
-        // // }
 
         // // Initialize configuration and memory
-
         if crate::sam::memory::Config::check_postgres_installed() {
             println!("Postgres is already installed.");
 
-            crate::sam::services::pg::start_postgres(user.as_str()).unwrap();
+            libsam::services::pg::start_postgres(user.as_str()).unwrap();
 
             crate::sam::memory::Config::create_user_and_database(user.as_str()).unwrap();
         } else {
             println!("Installing Postgres...");
-            crate::sam::services::pg::install().await;
+            libsam::services::pg::install().await;
 
             // Start Postgres server
             println!("Starting Postgres...");
-            crate::sam::services::pg::start_postgres(user.as_str()).unwrap();
+            libsam::services::pg::start_postgres(user.as_str()).unwrap();
             // Check if Postgres is running
-            if crate::sam::services::pg::is_postgres_running().await {
+            if libsam::services::pg::is_postgres_running().await {
                 println!("Postgres is running.");
             } else {
                 println!("Postgres failed to start.");
@@ -226,24 +174,7 @@ fn main() {
         std::env::set_var("PG_PASS", "sam");
         std::env::set_var("PG_ADDRESS", "localhost");
 
-        // Move blocking code BEFORE any .await
-        // Check if /opt/sam/bin/darknet exists before installing
-        let darknet_path = Path::new("/opt/sam/bin/darknet");
-        if (!darknet_path.exists()) {
-            println!("Darknet binary not found at /opt/sam/bin/darknet. Installing...");
-            crate::sam::services::darknet::install().await.unwrap();
-        } else {
-            println!("Darknet binary found at /opt/sam/bin/darknet. Skipping install.");
-        }
-
-
-
-
-        match crate::sam::services::stt::whisper::WhisperService::install().await {
-            Ok(_) => log::info!("whisper installed successfully"),
-            Err(e) => log::error!("Failed to install whisper: {}", e),
-        }
-        loop{}
+    
 
         crate::sam::services::docker::install();
 
