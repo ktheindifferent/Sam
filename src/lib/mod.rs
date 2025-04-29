@@ -1,7 +1,9 @@
 // use futures::stream::StreamExt;
 use std::fs;
 use std::io::{self, Result};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::PermissionsExt;
+
 use std::path::Path;
 use std::process::Command;
 use tokio::fs as async_fs;
@@ -32,13 +34,25 @@ pub fn print_banner(user: String) {
 }
 
 pub async fn cmd_async(command: &str) -> Result<String> {
-    let output = TokioCommand::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output()
-        .await?;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        let output = TokioCommand::new("sh")
+            .arg("-c")
+            .arg(command)
+            .output()
+            .await?;
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let output = TokioCommand::new("cmd")
+            .arg("/C")
+            .arg(command)
+            .output()
+            .await?;
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
 
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 pub async fn println(output_lines: Option<&std::sync::Arc<tokio::sync::Mutex<Vec<String>>>>, line: String) {

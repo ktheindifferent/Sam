@@ -1058,7 +1058,7 @@ impl Config {
         let status_user = Command::new("psql")
             .arg("postgres")
             .arg("-U")
-            .arg(user)
+            .arg("postgres")
             .arg("-c")
             .arg(create_user)
             .status()?;
@@ -1066,6 +1066,7 @@ impl Config {
             log::warn!(
                 "Could not create user 'sam' (may already exist or insufficient privileges)"
             );
+            println!("Could not create user 'sam' (may already exist or insufficient privileges)");
         }
         // Create database 'sam' owned by 'sam' if not exists
         // NOTE: CREATE DATABASE cannot be run inside DO/PLPGSQL blocks.
@@ -1074,7 +1075,7 @@ impl Config {
         let output = Command::new("psql")
             .arg("postgres")
             .arg("-U")
-            .arg(user)
+            .arg("postgres")
             .arg("-tAc")
             .arg(check_db)
             .output()?;
@@ -1082,15 +1083,18 @@ impl Config {
         if !db_exists {
             let status_db = Command::new("psql")
                 .arg("-U")
-                .arg(user)
+                .arg("postgres")
                 .arg("-c")
                 .arg("CREATE DATABASE sam OWNER sam;")
                 .status()?;
             if !status_db.success() {
                 log::warn!("Could not create database 'sam' (may already exist or insufficient privileges)");
+                println!("Could not create database 'sam' (may already exist or insufficient privileges)");
             }
         } else {
             log::info!("Database 'sam' already exists");
+            println!("Database 'sam' already exists");
+
         }
         Ok(())
     }

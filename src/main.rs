@@ -106,7 +106,7 @@ fn main() {
         }
 
         // Optionally escalate privileges if needed
-        sudo::escalate_if_needed().unwrap();
+        // sudo::escalate_if_needed().unwrap();
 
         // // Initialize configuration and memory
         if crate::sam::memory::Config::check_postgres_installed() {

@@ -408,6 +408,14 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 break;
             }
             if let Ok(Ok(Event::Key(key))) = read_result {
+                // On Windows, only handle key presses (not releases)
+                #[cfg(windows)]
+                {
+                    use crossterm::event::KeyEventKind;
+                    if key.kind != KeyEventKind::Press {
+                        continue;
+                    }
+                }
                 match key.code {
                     KeyCode::Char('c')
                         if key

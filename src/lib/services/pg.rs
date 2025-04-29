@@ -2,6 +2,11 @@ use log::{error, info};
 use std::io;
 use std::path::Path;
 use std::process::Command;
+use reqwest::blocking::get;
+use scraper::{Html, Selector};
+use std::process::Stdio;
+use std::env;
+use std::fs;
 
 /*
 This Rust code provides functions to install and configure PostgreSQL on Windows, Linux, and macOS.
