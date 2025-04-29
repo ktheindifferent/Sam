@@ -20,7 +20,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::io::Cursor;
 use rodio::{Decoder, OutputStream, Sink};
 use std::fs;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::unix::fs::PermissionsExt;
+
 use std::process::Command;
 use std::io::BufReader;
 use std::io::BufRead;

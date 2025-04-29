@@ -1,5 +1,5 @@
-use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
-use postgres_openssl::MakeTlsConnector;
+use native_tls::{TlsConnector};
+use postgres_native_tls::MakeTlsConnector;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use rouille::Response;
@@ -91,9 +91,11 @@ impl Config {
     /// Returns a new PostgreSQL client connection.
     pub async fn connect(&self) -> Result<tokio_postgres::Client> {
         // Build a TLS connector that skips certificate verification (for self-signed certs)
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        builder.set_verify(SslVerifyMode::NONE);
-        let connector = MakeTlsConnector::new(builder.build());
+        let connector = TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let connector = MakeTlsConnector::new(connector);
 
         // Connect to the PostgreSQL database
         let (client, connection) = tokio_postgres::connect(
@@ -142,9 +144,11 @@ impl Config {
         static POOL: OnceCell<Pool> = OnceCell::new();
 
         let pool = POOL.get_or_init(|| {
-            let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-            builder.set_verify(SslVerifyMode::NONE);
-            let connector = MakeTlsConnector::new(builder.build());
+            let connector = TlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .unwrap();
+            let connector = MakeTlsConnector::new(connector);
 
             let config_str = format!(
                 "host={} user={} password={} dbname={} sslmode=prefer",
@@ -206,9 +210,11 @@ impl Config {
     /// It is recommended to call this function only once during the application's lifecycle.
     /// It is also recommended to call this function only after the database has been created.
     pub async fn build_tables(&self) -> Result<()>{
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        builder.set_verify(SslVerifyMode::NONE);
-        let connector = MakeTlsConnector::new(builder.build());
+        let connector = TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let connector = MakeTlsConnector::new(connector);
 
         let (client, connection) = tokio_postgres::connect(format!("postgresql://{}:{}@{}/{}?sslmode=prefer", &self.postgres.username, &self.postgres.password, &self.postgres.address, &self.postgres.db_name).as_str(), connector).await?;
 
@@ -298,9 +304,11 @@ impl Config {
     /// It is also recommended to call this function only after the PostgreSQL server is running.
     pub async fn create_db(&self) -> Result<()> {
         // Build a TLS connector that skips certificate verification (for self-signed certs)
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        builder.set_verify(SslVerifyMode::NONE);
-        let connector = MakeTlsConnector::new(builder.build());
+        let connector = TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let connector = MakeTlsConnector::new(connector);
 
         // Connect to the server without specifying a database
         let conn_str = format!(
@@ -494,9 +502,11 @@ impl Config {
         let postgres = config.postgres.clone();
 
         // Build a TLS connector that skips certificate verification (for self-signed certs)
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        builder.set_verify(SslVerifyMode::NONE);
-        let connector = MakeTlsConnector::new(builder.build());
+        let connector = TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let connector = MakeTlsConnector::new(connector);
 
         // Connect to the PostgreSQL database
         let (client, connection) = tokio_postgres::connect(
@@ -843,9 +853,11 @@ impl Config {
         let config = Config::new();
 
         // Build a TLS connector that skips certificate verification (for self-signed certs)
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        builder.set_verify(SslVerifyMode::NONE);
-        let connector = MakeTlsConnector::new(builder.build());
+        let connector = TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let connector = MakeTlsConnector::new(connector);
 
         // Construct the connection string
         let conn_str = format!(
@@ -871,9 +883,11 @@ impl Config {
         let config = Config::new();
 
         // Build a TLS connector that skips certificate verification (for self-signed certs)
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        builder.set_verify(SslVerifyMode::NONE);
-        let connector = MakeTlsConnector::new(builder.build());
+        let connector = TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let connector = MakeTlsConnector::new(connector);
 
         // Construct the connection string
         let conn_str = format!(
@@ -922,9 +936,54 @@ impl Config {
         }
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn create_user_and_database(user: &str) -> Result<()> {
+        println!("Creating user and database...");
+        // Create user 'sam' if not exists
+        let create_user = "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'sam') THEN CREATE ROLE sam LOGIN PASSWORD 'sam'; END IF; END $$;";
+        let status_user = Command::new("psql")
+            .arg("postgres")
+            .arg("-U")
+            .arg(user)
+            .arg("-c")
+            .arg(create_user)
+            .status()?;
+        if !status_user.success() {
+            log::warn!("Could not create user 'sam' (may already exist or insufficient privileges)");
+        }
+        // Create database 'sam' owned by 'sam' if not exists
+        // NOTE: CREATE DATABASE cannot be run inside DO/PLPGSQL blocks.
+        // So we must check existence and run CREATE DATABASE as a separate statement.
+        let check_db = "SELECT 1 FROM pg_database WHERE datname = 'sam';";
+        let output = Command::new("psql")
+            .arg("postgres")
+            .arg("-U")
+            .arg(user)
+            .arg("-tAc")
+            .arg(check_db)
+            .output()?;
+        let db_exists = String::from_utf8_lossy(&output.stdout).trim() == "1";
+        if !db_exists {
+            let status_db = Command::new("psql")
+                .arg("-U")
+                .arg(user)
+                .arg("-c")
+                .arg("CREATE DATABASE sam OWNER sam;")
+                .status()?;
+            if !status_db.success() {
+                log::warn!("Could not create database 'sam' (may already exist or insufficient privileges)");
+            }
+        } else {
+            log::info!("Database 'sam' already exists");
+        }
+        Ok(())
+    }
+
     /// Creates the user 'sam' and database 'sam' if they do not exist.
     /// Requires superuser privileges (may prompt for password).
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     pub fn create_user_and_database(user: &str) -> Result<()> {
+        println!("Creating user and database...");
         // Create user 'sam' if not exists
         let create_user = "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'sam') THEN CREATE ROLE sam LOGIN PASSWORD 'sam'; END IF; END $$;";
         let status_user = Command::new("psql")

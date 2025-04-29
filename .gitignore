@@ -3,3 +3,4 @@
 *.weights
 *.dSYM
 *.out
+TaskTemplate:.yml

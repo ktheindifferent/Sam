@@ -10,6 +10,8 @@ use crate::sam::memory::{Config, PostgresQueries};
 use tokio_postgres::Row;
 use serde_json;
 use log;
+use native_tls::{TlsConnector};
+use postgres_native_tls::MakeTlsConnector;
 
 /// Represents a crawl job (start URL, status, timestamps).
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -177,9 +179,11 @@ impl CrawlJob {
         let config = Config::new();
 
         // Build a TLS connector that skips certificate verification (for self-signed certs)
-        let mut builder = openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls()).unwrap();
-        builder.set_verify(openssl::ssl::SslVerifyMode::NONE);
-        let connector = postgres_openssl::MakeTlsConnector::new(builder.build());
+        let connector = TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let connector = MakeTlsConnector::new(connector);
 
         // Construct the connection string
         let conn_str = format!(

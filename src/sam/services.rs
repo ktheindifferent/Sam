@@ -28,12 +28,18 @@ error_chain! {
         }
     }
 }
-
+// impl From<reqwest::Error> for crate::sam::services::Error {
+//     fn from(err: reqwest::Error) -> Self {
+//         crate::sam::services::Error::from(err)
+//     }
+// }
 impl From<tools::Error> for crate::sam::services::Error {
     fn from(err: tools::Error) -> Self {
         crate::sam::services::Error::from_kind(crate::sam::services::ErrorKind::Other(err.to_string()))
     }
 }
+
+
 
 pub mod darknet;
 pub mod dropbox;
