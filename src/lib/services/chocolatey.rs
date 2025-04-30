@@ -67,3 +67,14 @@ pub async fn install_packages(packages: &[&str]) -> Result<(), anyhow::Error> {
     }
     Ok(())
 }
+pub async fn verify() -> Result<(), anyhow::Error> {
+    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
+    log::info!("Verifying Chocolatey installation...");
+    if tokio::fs::metadata(choco_path).await.is_err() {
+        log::error!("Chocolatey is still not available after attempted install. Please ensure C:\\ProgramData\\chocolatey\\bin is in your PATH and choco.exe exists.");
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Chocolatey not found after install").into());
+    } else {
+        log::info!("Chocolatey found at {}", choco_path);
+    }
+    Ok(())
+}

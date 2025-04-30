@@ -21,6 +21,10 @@ use std::io::{self};
 use std::path::Path;
 use std::process::Command;
 
+// TODO: Wrap in a feature just in case we dont want it
+use opencl3::device::get_all_devices;
+use opencl3::device::CL_DEVICE_TYPE_GPU;
+
 pub type Result<T> = anyhow::Result<T>;
 
 #[derive(Error, Debug)]
@@ -100,8 +104,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    configure_opencl_and_clang_paths()?;
-
     // log::info!("Checking for GPU devices...");
     // let _ = check_gpu_devices().await?;
     log::info!("Compiling snapcast...");
@@ -134,6 +136,7 @@ async fn main() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 async fn pre_install() -> Result<()> {
+    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
     log::info!("Starting Windows pre-installation steps...");
 
     // 1. Ensure Chocolatey is installed and available
@@ -436,15 +439,15 @@ async fn pre_install() -> Result<()> {
 }
 
 // Check for GPU devices and create a marker file if found
-// async fn check_gpu_devices() -> Result<()> {
-//     let devices = get_all_devices(CL_DEVICE_TYPE_GPU);
-//     if devices.is_err() {
-//         log::info!("No GPU devices found!");
-//     } else {
-//         let _ = libsam::cmd_async("touch /opt/sam/gpu").await?;
-//     }
-//     Ok(())
-// }
+async fn check_gpu_devices() -> Result<()> {
+    let devices = get_all_devices(CL_DEVICE_TYPE_GPU);
+    if devices.is_err() {
+        log::info!("No GPU devices found!");
+    } else {
+        let _ = libsam::cmd_async("touch /opt/sam/gpu").await?;
+    }
+    Ok(())
+}
 
 // // Install various services and log their status
 // fn install_services() {
