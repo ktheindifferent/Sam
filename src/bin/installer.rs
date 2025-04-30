@@ -125,6 +125,48 @@ async fn main() -> Result<()> {
     log::info!("Installing Emulators...");
     let _ = libsam::services::emulators::install().await?;
 
+
+    log::info!("Building Sam in release mode...");
+    let build_status = Command::new("cargo")
+        .args(&["build", "--bin", "sam", "--release"])
+        .status();
+
+    match build_status {
+        Ok(status) if status.success() => {
+            log::info!("Sam built successfully.");
+            let target_dir = Path::new("target/release");
+            let binary_name = if cfg!(windows) { "sam.exe" } else { "sam" };
+            let src_bin = target_dir.join(binary_name);
+            let dest_bin = Path::new("/opt/sam/bin").join(binary_name);
+
+            if let Err(e) = fs::create_dir_all("/opt/sam/bin") {
+                log::error!("Failed to create /opt/sam/bin: {}", e);
+            }
+
+            match fs::copy(&src_bin, &dest_bin) {
+                Ok(_) => log::info!("Moved binary to {}", dest_bin.display()),
+                Err(e) => log::error!("Failed to move binary: {}", e),
+            }
+
+            // Add /opt/sam/bin to PATH if not already present
+            let path_var = env::var("PATH").unwrap_or_default();
+            if !path_var.split(':').any(|p| p == "/opt/sam/bin") {
+                let new_path = format!("/opt/sam/bin:{}", path_var);
+                env::set_var("PATH", &new_path);
+                log::info!("/opt/sam/bin added to PATH for this session.");
+                println!("To make this change permanent, add 'export PATH=/opt/sam/bin:$PATH' to your shell profile.");
+            }
+        }
+        Ok(status) => {
+            log::error!("Sam build failed with status: {}", status);
+        }
+        Err(e) => {
+            log::error!("Failed to run cargo build: {}", e);
+        }
+    }
+
+    log::info!("Installation complete!");
+
     Ok(())
 }
 //     // install_services();
@@ -343,44 +385,42 @@ async fn create_opt_sam_directories() {
 #[cfg(target_os = "linux")]
 async fn pre_install() -> Result<()> {
     log::debug!("Installing system dependencies for Linux...");
-    let _ = libsam::cmd_async("apt install libx264-dev libssl-dev unzip libavcodec-extra58 python3 pip git git-lfs wget libboost-dev libopencv-dev python3-opencv ffmpeg iputils-ping libasound2-dev libpulse-dev libvorbisidec-dev libvorbis-dev libopus-dev libflac-dev libsoxr-dev alsa-utils libavahi-client-dev avahi-daemon libexpat1-dev libfdk-aac-dev -y").await?;
+    let packages = vec![
+        "libx264-dev",
+        "libssl-dev",
+        "unzip",
+        "libavcodec-extra58",
+        "python3",
+        "pip",
+        "git",
+        "git-lfs",
+        "wget",
+        "libboost-dev",
+        "libopencv-dev",
+        "python3-opencv",
+        "ffmpeg",
+        "iputils-ping",
+        "libasound2-dev",
+        "libpulse-dev",
+        "libvorbisidec-dev",
+        "libvorbis-dev",
+        "libopus-dev",
+        "libflac-dev",
+        "libsoxr-dev",
+        "alsa-utils",
+        "libavahi-client-dev",
+        "avahi-daemon",
+        "libexpat1-dev",
+        "libfdk-aac-dev",
+    ];
+    libsam::services::package_managers::linux::install_packages(&packages).await?;
+
 
     log::debug!("Installing Python packages for Linux...");
     let _ = libsam::cmd_async("pip3 install rivescript pexpect").await?;
 
+    create_opt_sam_directories().await;
 
-    // Create necessary directories
-    let directories = vec![
-        "/opt/sam",
-        "/opt/sam/bin",
-        "/opt/sam/dat",
-        "/opt/sam/streams",
-        "/opt/sam/models",
-        "/opt/sam/models/nst",
-        "/opt/sam/files",
-        "/opt/sam/fonts",
-        "/opt/sam/games",
-        "/opt/sam/scripts",
-        "/opt/sam/scripts/rivescript",
-        "/opt/sam/scripts/who.io",
-        "/opt/sam/scripts/who.io/dataset",
-        "/opt/sam/scripts/sprec",
-        "/opt/sam/scripts/sprec/audio",
-        "/opt/sam/scripts/sprec/noise",
-        "/opt/sam/scripts/sprec/noise/_background_noise_",
-        "/opt/sam/scripts/sprec/noise/other",
-        "/opt/sam/tmp",
-        "/opt/sam/tmp/youtube",
-        "/opt/sam/tmp/youtube/downloads",
-        "/opt/sam/tmp/sound",
-        "/opt/sam/tmp/observations",
-        "/opt/sam/tmp/observations/vwav",
-    ];
-    for dir in directories {
-        if let Err(e) = async_fs::create_dir_all(dir).await {
-            log::warn!("Failed to create directory {}: {}", dir, e);
-        }
-    }
     let _ = libsam::cmd_async("chmod -R 777 /opt/sam").await;
     let _ = libsam::cmd_async("chown 1000 -R /opt/sam").await;
 
@@ -390,54 +430,37 @@ async fn pre_install() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 async fn pre_install() -> Result<()> {
-
+    libsam::services::package_managers::osx::brew::install().await?;
+    libsam::services::package_managers::osx::macports::install().await?;
     log::debug!("Installing system dependencies for MacOS...");
-    let user = async_fs::read_to_string("/opt/sam/whoismyhuman")
-        .await
-        .unwrap_or_else(|_| "sam".to_string())
-        .trim()
-        .to_string();
-    let _ = libsam::cmd_async(&format!(
-        "sudo -u {user} brew install x264 openssl unzip ffmpeg python3 git git-lfs wget boost opencv ffmpeg libsndfile pulseaudio opus flac alsa-lib avahi expat fdk-aa cmake"
-    )).await?;
+    let packages = vec![
+        "x264",
+        "openssl",
+        "unzip",
+        "ffmpeg",
+        "python3",
+        "git",
+        "git-lfs",
+        "wget",
+        "boost",
+        "opencv",
+        "libsndfile",
+        "pulseaudio",
+        "opus",
+        "flac",
+        "alsa-lib",
+        "avahi",
+        "expat",
+        "fdk-aa",
+        "cmake",
+    ];
+    libsam::services::package_managers::osx::install_packages(packages).await?;
 
     log::debug!("Installing Python packages for MacOS...");
     let _ = libsam::cmd_async("pip3 install rivescript pexpect --break-system-packages")
         .await?;
 
-    // Create necessary directories
-    let directories = vec![
-        "/opt/sam",
-        "/opt/sam/bin",
-        "/opt/sam/dat",
-        "/opt/sam/streams",
-        "/opt/sam/models",
-        "/opt/sam/models/nst",
-        "/opt/sam/files",
-        "/opt/sam/fonts",
-        "/opt/sam/games",
-        "/opt/sam/scripts",
-        "/opt/sam/scripts/rivescript",
-        "/opt/sam/scripts/who.io",
-        "/opt/sam/scripts/who.io/dataset",
-        "/opt/sam/scripts/sprec",
-        "/opt/sam/scripts/sprec/audio",
-        "/opt/sam/scripts/sprec/noise",
-        "/opt/sam/scripts/sprec/noise/_background_noise_",
-        "/opt/sam/scripts/sprec/noise/other",
-        "/opt/sam/tmp",
-        "/opt/sam/tmp/youtube",
-        "/opt/sam/tmp/youtube/downloads",
-        "/opt/sam/tmp/sound",
-        "/opt/sam/tmp/observations",
-        "/opt/sam/tmp/observations/vwav",
-    ];
-    for dir in directories {
-        if let Err(e) = async_fs::create_dir_all(dir).await {
-            log::warn!("Failed to create directory {}: {}", dir, e);
-        }
-    }
-
+    create_opt_sam_directories().await;
 
     let _ = libsam::cmd_async("chmod -R 777 /opt/sam").await;
     let _ = libsam::cmd_async("chown 1000 -R /opt/sam").await;
