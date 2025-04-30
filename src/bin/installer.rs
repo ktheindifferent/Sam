@@ -8,7 +8,7 @@
 // Licensed under GPLv3....see LICENSE file.
 
 // Required dependencies
-use opencl3::device::{get_all_devices, CL_DEVICE_TYPE_GPU};
+// use opencl3::device::{get_all_devices, CL_DEVICE_TYPE_GPU};
 use serde::{Deserialize, Serialize};
 use tokio::fs as async_fs;
 use thiserror::Error;
@@ -20,6 +20,10 @@ use std::fs;
 use std::io::{self};
 use std::path::Path;
 use std::process::Command;
+
+// TODO: Wrap in a feature just in case we dont want it
+use opencl3::device::get_all_devices;
+use opencl3::device::CL_DEVICE_TYPE_GPU;
 
 pub type Result<T> = anyhow::Result<T>;
 
@@ -100,8 +104,8 @@ async fn main() -> Result<()> {
         }
     }
 
-    log::info!("Checking for GPU devices...");
-    let _ = check_gpu_devices().await?;
+    // log::info!("Checking for GPU devices...");
+    // let _ = check_gpu_devices().await?;
     log::info!("Compiling snapcast...");
     let _ = libsam::services::snapcast::install().await?;
     log::info!("Installing darknet...");
@@ -129,60 +133,21 @@ async fn main() -> Result<()> {
 //     log::info!("Installation complete!");
 
 // }
+
 #[cfg(target_os = "windows")]
 async fn pre_install() -> Result<()> {
+    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
     log::info!("Starting Windows pre-installation steps...");
 
-    // Ensure Chocolatey is in PATH
-    let choco_bin = "C:\\ProgramData\\chocolatey\\bin";
-    log::info!("Adding Chocolatey bin to PATH: {}", choco_bin);
-    let mut paths = std::env::var_os("PATH").unwrap_or_default();
-    let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
-    new_path.push(std::path::PathBuf::from(choco_bin));
-    let joined = std::env::join_paths(new_path).unwrap();
-    std::env::set_var("PATH", &joined);
+    let _ = libsam::services::chocolatey::install().await?;
 
-    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
-    log::info!("Checking for Chocolatey at {}", choco_path);
-    let choco_exists = std::path::Path::new(choco_path).exists();
-    if !choco_exists {
-        log::warn!("Chocolatey not found, attempting installation...");
-        log::info!("Running Chocolatey install script via PowerShell...");
-        let result = libsam::run_and_log(
-            "powershell",
-            &["-NoProfile", "-InputFormat", "None", "-ExecutionPolicy", "Bypass", "-Scope", "Process", "-Command", "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"]
-        );
-        match result {
-            Ok(_) => log::info!("Chocolatey install script completed."),
-            Err(e) => log::error!("Chocolatey install script failed: {}", e),
-        }
-        // After install, add to PATH again in case it was just created
-        log::info!("Re-adding Chocolatey bin to PATH after install.");
-        let mut paths = std::env::var_os("PATH").unwrap_or_default();
-        let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
-        new_path.push(std::path::PathBuf::from(choco_bin));
-        let joined = std::env::join_paths(new_path).unwrap();
-        std::env::set_var("PATH", &joined);
-    }
-
-    log::info!("Verifying Chocolatey installation...");
-    if !std::path::Path::new(choco_path).exists() {
-        log::error!("Chocolatey is still not available after attempted install. Please ensure C:\\ProgramData\\chocolatey\\bin is in your PATH and choco.exe exists.");
-        return Err(io::Error::new(io::ErrorKind::NotFound, "Chocolatey not found after install").into());
-    } else {
-        log::info!("Chocolatey found at {}", choco_path);
-    }
+    let _ = libsam::services::chocolatey::verify().await?;
 
     // Install required packages using Chocolatey (including make)
     log::info!("Installing required packages using Chocolatey...");
-    let choco_args = ["install", "ffmpeg", "git-lfs", "opencv", "python3", "make", "-y"];
-    log::info!("Running: {} {}", choco_path, choco_args.join(" "));
-    let result = libsam::run_and_log(choco_path, &choco_args);
-    match result {
-        Ok(_) => log::info!("Chocolatey package installation succeeded."),
-        Err(e) => log::error!("Chocolatey package installation failed: {}", e),
-    }
-
+    let choco_packages = ["ffmpeg", "git-lfs", "opencv", "python3", "make"];
+    let _ = libsam::services::chocolatey::install_packages(choco_packages.to_vec()).await?;
+    
     // Refresh environment variables so newly installed tools are available
     log::info!("Refreshing environment variables with refreshenv...");
     let result = libsam::run_and_log("refreshenv", &[]);
@@ -201,22 +166,12 @@ async fn pre_install() -> Result<()> {
         Err(e) => log::error!("Python package installation failed: {}", e),
     }
 
-    // Install git using Chocolatey
-    // log::info!("Ensuring git is installed using Chocolatey...");
-    // let choco_git_args = ["install", "git", "-y"];
-    // log::info!("Running: {} {}", choco_path, choco_git_args.join(" "));
-    // let result = libsam::run_and_log(choco_path, &choco_git_args);
-    // match result {
-    //     Ok(_) => log::info!("Chocolatey git installation succeeded."),
-    //     Err(e) => log::error!("Chocolatey git installation failed: {}", e),
-    // }
-    
-    // Build git from source
-
-    // Download git zip
+    // Try to build git from source first
     let git_url = "https://github.com/git/git/archive/refs/tags/v2.49.0.zip";
     let git_zip_path = "C:\\git.zip";
     let git_dir = "C:\\git\\git-2.49.0";
+    let mut build_failed = false;
+
     if std::path::Path::new(git_zip_path).exists() {
         log::info!("Git zip already exists at {}", git_zip_path);
         if std::path::Path::new(git_dir).exists() {
@@ -226,7 +181,10 @@ async fn pre_install() -> Result<()> {
             let result = libsam::run_and_log("unzip", &["-o", git_zip_path, "-d", "C:\\git"]);
             match result {
                 Ok(_) => log::info!("Git unzipped successfully."),
-                Err(e) => log::error!("Failed to unzip git: {}", e),
+                Err(e) => {
+                    log::error!("Failed to unzip git: {}", e);
+                    build_failed = true;
+                }
             }
         }
     } else {
@@ -235,7 +193,39 @@ async fn pre_install() -> Result<()> {
         let result = libsam::run_and_log("curl", &["-L", git_url, "-o", git_zip_path]);
         match result {
             Ok(_) => log::info!("Git downloaded successfully."),
-            Err(e) => log::error!("Failed to download git: {}", e),
+            Err(e) => {
+                log::error!("Failed to download git: {}", e);
+                build_failed = true;
+            }
+        }
+    }
+
+    // Attempt to build git if previous steps succeeded
+    if !build_failed && std::path::Path::new(git_dir).exists() {
+        log::info!("Attempting to build git from source...");
+        // This is a placeholder for the actual build process
+        // You would need to implement the build logic here, e.g., using MSYS2/make
+        let build_result = libsam::run_and_log("make", &["-C", git_dir]);
+        match build_result {
+            Ok(_) => log::info!("Git built from source successfully."),
+            Err(e) => {
+                log::error!("Failed to build git from source: {}", e);
+                build_failed = true;
+            }
+        }
+    } else if !std::path::Path::new(git_dir).exists() {
+        build_failed = true;
+    }
+
+    // If building from source failed, fallback to Chocolatey
+    if build_failed {
+        log::info!("Building git from source failed or was not possible. Falling back to Chocolatey...");
+        let choco_git_args = ["install", "git", "-y"];
+        log::info!("Running: {} {}", choco_path, choco_git_args.join(" "));
+        let result = libsam::run_and_log(choco_path, &choco_git_args);
+        match result {
+            Ok(_) => log::info!("Chocolatey git installation succeeded."),
+            Err(e) => log::error!("Chocolatey git installation failed: {}", e),
         }
     }
 
@@ -469,7 +459,6 @@ async fn pre_install() -> Result<()> {
     Ok(())
 }
 
-// Pre-installation setup: Install required packages and create directories
 
 #[cfg(target_os = "linux")]
 async fn pre_install() -> Result<()> {
@@ -702,3 +691,9 @@ pub struct Package {
 pub fn uninstall() {
     // TODO: Implement uninstall logic
 }
+
+
+
+
+
+

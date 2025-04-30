@@ -2,6 +2,7 @@
 name = "sam"
 version = "0.0.2"
 edition = "2021"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -30,7 +31,7 @@ thiserror = "1"
 online = "4.0.0"
 wav = "1.0.0"
 portable-pty = "0.8"
-matc = "0.1.1"
+matc  = { git = "https://github.com/tom-code/rust-matc.git", version = "0.1.2" }
 simple-websockets = "0.1.4"
 hound = "3.4.0"
 noise-gate = { git = "https://github.com/Michael-F-Bryan/noise-gate.git", version = "0.1.1-alpha.0" }

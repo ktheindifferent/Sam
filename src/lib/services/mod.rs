@@ -9,3 +9,4 @@ pub mod who;
 pub mod llama;
 pub mod http;
 pub mod emulators;
+pub mod chocolatey;
