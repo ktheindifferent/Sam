@@ -10,5 +10,4 @@ pub mod llama;
 pub mod http;
 pub mod emulators;
 pub mod package_managers;
-pub mod chocolatey;
 pub mod vcpkg;
