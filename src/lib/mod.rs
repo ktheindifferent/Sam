@@ -56,7 +56,45 @@ pub async fn cmd_async(command: &str) -> Result<String> {
 
 }
 
-#[cfg(target_os = "windows")]
+pub async fn run_and_log_async(cmd: &str, args: &[&str]) -> Result<()> {
+    let output = TokioCommand::new(cmd)
+        .args(args)
+        .output()
+        .await;
+
+    match output {
+        Ok(output) => {
+            if !output.status.success() {
+                log::error!(
+                    "Command `{}` failed with status {}: {}",
+                    cmd,
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "Command `{}` failed with status {}: {}",
+                        cmd,
+                        output.status,
+                        String::from_utf8_lossy(&output.stderr)
+                    ),
+                ));
+            }
+            log::info!(
+                "Command `{}` output: {}",
+                cmd,
+                String::from_utf8_lossy(&output.stdout)
+            );
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to execute command `{}`: {}", cmd, e);
+            Err(e)
+        }
+    }
+}
+
 pub fn run_and_log(cmd: &str, args: &[&str]) -> Result<()> {
     let output = Command::new(cmd)
         .args(args)
