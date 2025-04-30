@@ -10,20 +10,20 @@ pub async fn handle_matter(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     parts.next(); // skip 'matter'
     match parts.next() {
         Some("pair") => {
-            // Usage: matter pair <device_address> <pin> <controller_id> <device_id> [cert_path] [local_address]
+            // Usage: matter pair <device_address> <pin> <controller_id> <device_id> [local_address]
             let device_address = parts.next();
             let pin = parts.next();
-            // let controller_id = parts.next();
-            // let device_id = parts.next();
+            let controller_id = parts.next();
+            let device_id = parts.next();
             let cert_path = "/opt/sam/keys/matter/";
             // let cert_path = parts.next().unwrap_or("./pem");
-            // let local_address = parts.next().unwrap_or("0.0.0.0:5555");
+            let local_address = parts.next().unwrap_or("0.0.0.0:5555");
             if let (Some(device_address), Some(pin), Some(controller_id), Some(device_id)) = (device_address, pin, controller_id, device_id) {
                 // Ensure cert_path directory exists, even if no parent
                 
                 let pin = pin.parse::<u32>().unwrap_or(20202021);
-                let controller_id = 100;
-                let device_id = 100;
+                let controller_id = controller_id.parse::<u64>().unwrap_or(100);
+                let device_id = device_id.parse::<u64>().unwrap_or(300);
                 let res = MatterDeviceController::pair_device(
                     device_address,
                     pin,
