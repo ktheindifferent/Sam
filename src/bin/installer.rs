@@ -106,22 +106,24 @@ async fn main() -> Result<()> {
 
     // log::info!("Checking for GPU devices...");
     // let _ = check_gpu_devices().await?;
-    log::info!("Compiling snapcast...");
-    let _ = libsam::services::snapcast::install().await?;
-    log::info!("Installing darknet...");
-    let _ = libsam::services::darknet::install(None).await?;
-    log::info!("Installing SPREC...");
-    let _ = libsam::services::sprec::install().await?;
-    log::info!("Installing LLAMA...");
-    let _ = libsam::services::llama::install(None).await?;
-    log::info!("Installing STT...");
-    let _ = libsam::services::stt::install(None).await?;
-    log::info!("Installing Rivescript...");
-    let _ = libsam::services::rivescript::install().await?;
-    log::info!("Installing Who.io...");
-    let _ = libsam::services::who::install().await?;
-    log::info!("Installing HTTP server...");
-    let _ = libsam::services::http::install().await?;
+    // log::info!("Compiling snapcast...");
+    // let _ = libsam::services::snapcast::install().await?;
+    // log::info!("Installing darknet...");
+    // let _ = libsam::services::darknet::install(None).await?;
+    // log::info!("Installing SPREC...");
+    // let _ = libsam::services::sprec::install().await?;
+    // log::info!("Installing LLAMA...");
+    // let _ = libsam::services::llama::install(None).await?;
+    // log::info!("Installing STT...");
+    // let _ = libsam::services::stt::install(None).await?;
+    // log::info!("Installing Rivescript...");
+    // let _ = libsam::services::rivescript::install().await?;
+    // log::info!("Installing Who.io...");
+    // let _ = libsam::services::who::install().await?;
+    // log::info!("Installing HTTP server...");
+    // let _ = libsam::services::http::install().await?;
+
+    let _ = libsam::services::emulators::install().await?;
 
     Ok(())
 }

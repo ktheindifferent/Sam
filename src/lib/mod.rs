@@ -55,6 +55,26 @@ pub async fn cmd_async(command: &str) -> Result<String> {
     }
 
 }
+/// Asynchronously determines the current human user for SAM.
+/// Tries `/opt/sam/whoismyhuman`, then `SAM_USER` env var, then falls back to "unknown_human".
+pub async fn get_human() -> String {
+    // Try reading from file
+    if let Ok(contents) = async_fs::read_to_string("/opt/sam/whoismyhuman").await {
+        let user = contents.trim();
+        if !user.is_empty() {
+            return user.to_string();
+        }
+    }
+    // Try environment variable
+    if let Ok(env_user) = std::env::var("SAM_USER") {
+        let user = env_user.trim();
+        if !user.is_empty() {
+            return user.to_string();
+        }
+    }
+    // Fallback
+    "unknown_human".to_string()
+}
 
 pub async fn run_and_log_async(cmd: &str, args: &[&str]) -> Result<()> {
     let output = TokioCommand::new(cmd)

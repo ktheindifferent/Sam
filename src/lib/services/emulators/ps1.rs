@@ -11,7 +11,7 @@ pub async fn install() -> Result<(), anyhow::Error> {
             .status()
             .await?;
         if !status.success() {
-            return Err("Failed to clone repository".into());
+            return Err(anyhow::anyhow!("Failed to clone repository"));
         }
     }
 
@@ -23,7 +23,7 @@ pub async fn install() -> Result<(), anyhow::Error> {
         .status()
         .await?;
     if !status.success() {
-        return Err("Failed to build project".into());
+        return Err(anyhow::anyhow!("Failed to build project"));
     }
     // Step 3: Copy the built binaries to /opt/sam/bin
     let bin_names = if cfg!(target_os = "macos") {

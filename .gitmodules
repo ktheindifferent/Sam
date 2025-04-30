@@ -7,3 +7,6 @@
 [submodule "scripts/whisper.cpp"]
 	path = scripts/whisper.cpp
 	url = https://github.com/ggml-org/whisper.cpp.git
+[submodule "scripts/px1-sam"]
+	path = scripts/px1-sam
+	url = https://github.com/ktheindifferent/px1-sam.git

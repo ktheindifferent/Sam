@@ -2,16 +2,16 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 /// Installs RetroArch using the appropriate package manager for the current OS.
-pub async fn install_retroarch() -> Result<(), anyhow::Error>> {
+pub async fn install() -> Result<(), anyhow::Error> {
     #[cfg(target_os = "macos")]
-    let cmd = {
+    let mut cmd = {
         // Homebrew
-        let mut c = Command::new("brew");
-        c.arg("install").arg("retroarch");
+        let mut c = Command::new("sudo");
+        c.arg("-u").arg(&crate::get_human().await).arg("brew").arg("install").arg("retroarch");
         c
     };
     #[cfg(target_os = "windows")]
-    let cmd = {
+    let mut cmd = {
         // Try winget, fallback to choco
         if Command::new("winget").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().await.is_ok() {
             let mut c = Command::new("winget");
@@ -24,7 +24,7 @@ pub async fn install_retroarch() -> Result<(), anyhow::Error>> {
         }
     };
     #[cfg(target_os = "linux")]
-    let cmd = {
+    let mut cmd = {
         // Try apt, dnf, yum, pacman, zypper
         if Command::new("apt").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().await.is_ok() {
             let mut c = Command::new("sudo");
@@ -50,14 +50,14 @@ pub async fn install_retroarch() -> Result<(), anyhow::Error>> {
             c.args(["zypper", "install", "-y", "retroarch"]);
             c
         } else {
-            return Err("No supported package manager found for RetroArch installation.".to_string());
+            return Err(anyhow::anyhow!("No supported package manager found for RetroArch installation."));
         }
     };
 
-    let status = cmd.status().await.map_err(|e| format!("Failed to run install command: {e}"))?;
+    let status = cmd.status().await.map_err(|e| anyhow::anyhow!("Failed to run install command: {e}"))?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("RetroArch install command failed with status: {status}"))
+        Err(anyhow::anyhow!("RetroArch install command failed with status: {status}"))
     }
 }
