@@ -68,11 +68,30 @@ pub async fn build_darknet(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Re
     let mut make_cmd = Command::new("make");
     make_cmd.current_dir(darknet_dir);
     run_command_stream_lines(make_cmd, output_lines, "make").await?;
-    let src_bin = format!("{darknet_dir}/darknet");
-    let dest_bin = format!("{output_dir}/darknet");
+    crate::println(output_lines, "darknet build: done.".to_string()).await;
+    crate::println(output_lines, "Copying darknet binary...".to_string()).await;
+    let src_bin = format!("{}/darknet", darknet_dir);
+    #[cfg(target_os = "windows")]
+    let src_bin = format!("{}/darknet.exe", darknet_dir);
+
+    let dest_bin = format!("{}/darknet", output_dir);
+    #[cfg(target_os = "windows")]
+    let dest_bin = format!("{}/darknet.exe", output_dir);
+    if metadata(&dest_bin).await.is_ok() {
+        crate::println(output_lines, "darknet binary already exists.".to_string()).await;
+        return Ok(());
+    }
+    if metadata(&src_bin).await.is_err() {
+        return Err(format!("darknet binary not found at {src_bin}"));
+    }
+    if metadata(output_dir).await.is_err() {
+        crate::println(output_lines, "Creating output directory...".to_string()).await;
+    }
     async_fs::create_dir_all(output_dir)
         .await
         .map_err(|e| format!("Failed to create output dir: {e}"))?;
+    
+    
     let bin_bytes = async_fs::read(&src_bin)
         .await
         .map_err(|e| format!("Failed to read binary: {e}"))?;
@@ -83,9 +102,12 @@ pub async fn build_darknet(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Re
         .write_all(&bin_bytes)
         .await
         .map_err(|e| format!("Failed to write binary: {e}"))?;
-    let mut chmod_cmd = Command::new("chmod");
-    chmod_cmd.arg("+x").arg(&dest_bin);
-    run_command_stream_lines(chmod_cmd, output_lines, "chmod").await?;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut chmod_cmd = Command::new("chmod");
+        chmod_cmd.arg("+x").arg(&dest_bin);
+        run_command_stream_lines(chmod_cmd, output_lines, "chmod").await?;
+    }
     crate::println(output_lines, "darknet build: done.".to_string()).await;
     Ok(())
 }
@@ -228,8 +250,11 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> std::io:
     download_yolov3_model(output_lines).await.map_err(std::io::Error::other)?;
     download_yolov3_cfg(output_lines).await.map_err(std::io::Error::other)?;
     download_cfg_index(output_lines).await.map_err(std::io::Error::other)?;
-    let mut chmod_cmd = Command::new("chmod");
-    chmod_cmd.arg("+x").arg("/opt/sam/bin/darknet");
-    let _ = run_command_stream_lines(chmod_cmd, output_lines, "chmod").await;
+    #[cfg(any(target_os="linux", target_os="macos"))]
+    {
+        let mut chmod_cmd = Command::new("chmod");
+        chmod_cmd.arg("+x").arg("/opt/sam/bin/darknet");
+        let _ = run_command_stream_lines(chmod_cmd, output_lines, "chmod").await;
+    }
     Ok(())
 }

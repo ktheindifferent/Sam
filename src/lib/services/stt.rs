@@ -74,21 +74,39 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> io::Resu
         ),
     ];
 
-    for (file, url) in models {
-        let model_path = format!("/opt/sam/models/{file}");
-        if !Path::new(&model_path).exists() {
-            let mut wget_cmd = Command::new("wget");
-            wget_cmd.arg("-O").arg(&model_path).arg(url);
-            run_command_stream_lines(wget_cmd, output_lines, "wget").await?;
+    #[cfg(any(target_os="linux", target_os="macos"))]
+    {
+        for (file, url) in models {
+            let model_path = format!("/opt/sam/models/{file}");
+            if !Path::new(&model_path).exists() {
+                let mut wget_cmd = Command::new("wget");
+                wget_cmd.arg("-O").arg(&model_path).arg(url);
+                run_command_stream_lines(wget_cmd, output_lines, "wget").await?;
+            }
+        }
+    }
+
+    #[cfg(target_os="windows")]
+    {
+        for (file,url) in models {
+            let model_path = format!("C:\\opt\\sam\\models\\{file}");
+            if !Path::new(&model_path).exists() {
+                let mut curl_cmd = Command::new("curl");
+                curl_cmd.arg("-L").arg("-o").arg(&model_path).arg(url);
+                run_command_stream_lines(curl_cmd, output_lines, "curl").await?;
+            }
         }
     }
 
     let _build = ensure_whisper_binary_with_output(output_lines).await?;
 
-    for bin in ["whisper-server", "whisper-bench", "whisper-cli"] {
-        let mut chmod_cmd = Command::new("chmod");
-        chmod_cmd.arg("+x").arg(format!("/opt/sam/bin/{}", bin));
-        let _ = run_command_stream_lines(chmod_cmd, output_lines, "chmod").await;
+    #[cfg(not(target_os="windows"))]
+    {
+        for bin in ["whisper-server", "whisper-bench", "whisper-cli"] {
+            let mut chmod_cmd = Command::new("chmod");
+            chmod_cmd.arg("+x").arg(format!("/opt/sam/bin/{}", bin));
+            let _ = run_command_stream_lines(chmod_cmd, output_lines, "chmod").await;
+        }
     }
     crate::println(output_lines, "Whisper install: done.".to_string()).await;
     Ok(())

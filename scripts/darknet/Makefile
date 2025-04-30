@@ -26,6 +26,12 @@ AR=ar
 ARFLAGS=rcs
 OPTS=-Ofast
 LDFLAGS= -lm -pthread 
+ifeq ($(OS),Windows_NT)
+EXEC=darknet.exe
+LDFLAGS += -lws2_32
+else
+EXEC=darknet
+endif
 COMMON= -Iinclude/ -Isrc/
 CFLAGS=-Wall -Wno-unused-result -Wno-unknown-pragmas -Wfatal-errors -fPIC
 
@@ -70,6 +76,8 @@ OBJS = $(addprefix $(OBJDIR), $(OBJ))
 DEPS = $(wildcard src/*.h) Makefile include/darknet.h
 
 all: obj backup results $(SLIB) $(ALIB) $(EXEC)
+	@echo "SAM | Build complete"
+	@if exist $(EXEC) (echo "$(EXEC) exists") else (echo "$(EXEC) missing")
 #all: obj  results $(SLIB) $(ALIB) $(EXEC)
 
 
@@ -78,25 +86,30 @@ $(EXEC): $(EXECOBJ) $(ALIB)
 
 $(ALIB): $(OBJS)
 	$(AR) $(ARFLAGS) $@ $^
+	@echo "SAM | Built static lib"
 
 $(SLIB): $(OBJS)
 	$(CC) $(CFLAGS) -shared $^ -o $@ $(LDFLAGS)
+	@echo "SAM | Built shared lib"
 
 $(OBJDIR)%.o: %.cpp $(DEPS)
 	$(CPP) $(COMMON) $(CFLAGS) -c $< -o $@
+	@echo "SAM | Completed rules for .cpp compiliaton"
 
 $(OBJDIR)%.o: %.c $(DEPS)
 	$(CC) $(COMMON) $(CFLAGS) -c $< -o $@
+	@echo "SAM | Completed rules for .c compiliaton"
 
 $(OBJDIR)%.o: %.cu $(DEPS)
 	$(NVCC) $(ARCH) $(COMMON) --compiler-options "$(CFLAGS)" -c $< -o $@
-
+	@echo "SAM | Completed rules for .cu compiliaton"
+# Windows compatibility
 obj:
-	mkdir -p obj
+	@if not exist obj mkdir obj
 backup:
-	mkdir -p backup
+	@if not exist backup mkdir backup
 results:
-	mkdir -p results
+	@if not exist results mkdir results
 
 .PHONY: clean
 

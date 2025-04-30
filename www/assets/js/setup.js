@@ -22,6 +22,12 @@ $(document).ready(function() {
     var ctx = canvas.getContext('2d');
     var intro_video = document.getElementById('intro_video');
 
+    // Mute the video and audio to allow autoplay
+    intro_video.muted = true;
+    audio_tell_me_about_you.muted = true;
+    audio_tell_me_about_install_location.muted = true;
+    audio_connect_srv_things.muted = true;
+
     // set canvas size = video size when known
     intro_video.addEventListener('loadedmetadata', function() {
       canvas.width = intro_video.videoWidth;
@@ -47,6 +53,11 @@ $(document).ready(function() {
 
     $('body').click(function(evnt) {
       if(!played_intro_video){
+        // Unmute after user interaction
+        intro_video.muted = false;
+        audio_tell_me_about_you.muted = false;
+        audio_tell_me_about_install_location.muted = false;
+        audio_connect_srv_things.muted = false;
         intro_video.play();
       }
     });

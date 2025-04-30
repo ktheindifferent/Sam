@@ -3,6 +3,12 @@
 #include <assert.h>
 #include <math.h>
 #include <unistd.h>
+// Windows Compatibility
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <sys/select.h>
+#endif
 
 int inverted = 1;
 int noi = 1;

@@ -49,6 +49,24 @@ pub async fn install() -> Result<(), anyhow::Error> {
     }
     Ok(())
 }
+
+pub async fn install_packages(packages: &[&str]) -> Result<(), anyhow::Error> {
+    log::info!("Installing Chocolatey packages: {:?}", packages);
+    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
+    let mut args = vec!["install".to_string()];
+    for pkg in packages {
+        args.push(format!("{}", pkg));
+    }
+    args.push("--yes".to_string()); // Automatically confirm installation
+    args.push("--no-progress".to_string()); // Suppress progress output
+    let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let result = crate::run_and_log_async(choco_path, &args_str).await;
+    match result {
+        Ok(_) => log::info!("Chocolatey packages installed: {:?}", packages),
+        Err(e) => log::error!("Failed to install Chocolatey packages: {}", e),
+    }
+    Ok(())
+}
 pub async fn verify() -> Result<(), anyhow::Error> {
     let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
     log::info!("Verifying Chocolatey installation...");
@@ -60,26 +78,3 @@ pub async fn verify() -> Result<(), anyhow::Error> {
     }
     Ok(())
 }
-
-
-    pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> {
-        let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
-        log::info!("Installing packages with Chocolatey: {:?}", packages);
-
-        if packages.is_empty() {
-            log::warn!("No packages specified for installation.");
-            return Ok(());
-        }
-
-        let mut choco_args = vec!["install"];
-        choco_args.extend(packages.iter().copied());
-        choco_args.push("-y");
-
-        log::info!("Running: {} {}", choco_path, choco_args.join(" "));
-        let result = crate::run_and_log_async(choco_path, &choco_args).await;
-        match result {
-            Ok(_) => log::info!("Chocolatey package installation succeeded."),
-            Err(e) => log::error!("Chocolatey package installation failed: {}", e),
-        }
-        Ok(())
-    }
