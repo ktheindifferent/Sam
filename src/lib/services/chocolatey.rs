@@ -49,3 +49,37 @@ pub async fn install() -> Result<(), anyhow::Error> {
     }
     Ok(())
 }
+pub async fn verify() -> Result<(), anyhow::Error> {
+    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
+    log::info!("Verifying Chocolatey installation...");
+    if tokio::fs::metadata(choco_path).await.is_err() {
+        log::error!("Chocolatey is still not available after attempted install. Please ensure C:\\ProgramData\\chocolatey\\bin is in your PATH and choco.exe exists.");
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Chocolatey not found after install").into());
+    } else {
+        log::info!("Chocolatey found at {}", choco_path);
+    }
+    Ok(())
+}
+
+
+    pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> {
+        let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
+        log::info!("Installing packages with Chocolatey: {:?}", packages);
+
+        if packages.is_empty() {
+            log::warn!("No packages specified for installation.");
+            return Ok(());
+        }
+
+        let mut choco_args = vec!["install"];
+        choco_args.extend(packages.iter().copied());
+        choco_args.push("-y");
+
+        log::info!("Running: {} {}", choco_path, choco_args.join(" "));
+        let result = crate::run_and_log_async(choco_path, &choco_args).await;
+        match result {
+            Ok(_) => log::info!("Chocolatey package installation succeeded."),
+            Err(e) => log::error!("Chocolatey package installation failed: {}", e),
+        }
+        Ok(())
+    }

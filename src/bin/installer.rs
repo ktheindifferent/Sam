@@ -21,6 +21,10 @@ use std::io::{self};
 use std::path::Path;
 use std::process::Command;
 
+// TODO: Wrap in a feature just in case we dont want it
+use opencl3::device::get_all_devices;
+use opencl3::device::CL_DEVICE_TYPE_GPU;
+
 pub type Result<T> = anyhow::Result<T>;
 
 #[derive(Error, Debug)]
@@ -100,8 +104,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    configure_opencl_and_clang_paths()?;
-
     // log::info!("Checking for GPU devices...");
     // let _ = check_gpu_devices().await?;
     log::info!("Compiling snapcast...");
@@ -134,30 +136,18 @@ async fn main() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 async fn pre_install() -> Result<()> {
+    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
     log::info!("Starting Windows pre-installation steps...");
 
     let _ = libsam::services::chocolatey::install().await?;
 
-    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
-
-    log::info!("Verifying Chocolatey installation...");
-    if !std::path::Path::new(choco_path).exists() {
-        log::error!("Chocolatey is still not available after attempted install. Please ensure C:\\ProgramData\\chocolatey\\bin is in your PATH and choco.exe exists.");
-        return Err(io::Error::new(io::ErrorKind::NotFound, "Chocolatey not found after install").into());
-    } else {
-        log::info!("Chocolatey found at {}", choco_path);
-    }
+    let _ = libsam::services::chocolatey::verify().await?;
 
     // Install required packages using Chocolatey (including make)
     log::info!("Installing required packages using Chocolatey...");
-    let choco_args = ["install", "ffmpeg", "git-lfs", "opencv", "python3", "make", "-y"];
-    log::info!("Running: {} {}", choco_path, choco_args.join(" "));
-    let result = libsam::run_and_log(choco_path, &choco_args);
-    match result {
-        Ok(_) => log::info!("Chocolatey package installation succeeded."),
-        Err(e) => log::error!("Chocolatey package installation failed: {}", e),
-    }
-
+    let choco_packages = ["ffmpeg", "git-lfs", "opencv", "python3", "make"];
+    let _ = libsam::services::chocolatey::install_packages(choco_packages.to_vec()).await?;
+    
     // Refresh environment variables so newly installed tools are available
     log::info!("Refreshing environment variables with refreshenv...");
     let result = libsam::run_and_log("refreshenv", &[]);
@@ -470,127 +460,6 @@ async fn pre_install() -> Result<()> {
 }
 
 
-#[cfg(target_os = "windows")]
-pub fn configure_opencl_and_clang_paths() -> Result<()> {
-    use std::env;
-    use std::io::{self, Write};
-    use std::fs;
-    use std::path::{Path, PathBuf};
-
-    fn prompt_for_path(lib_name: &str) -> Option<PathBuf> {
-        let mut input = String::new();
-        loop {
-            print!("Could not find {lib_name}. Please enter the full path to {lib_name} (or leave blank to skip): ");
-            io::stdout().flush().ok();
-            input.clear();
-            if io::stdin().read_line(&mut input).is_err() {
-                return None;
-            }
-            let trimmed = input.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            let path = PathBuf::from(trimmed);
-            if path.exists() && path.file_name().map_or(false, |f| f.eq_ignore_ascii_case(lib_name)) {
-                return Some(path);
-            } else {
-                println!("Invalid path or file name. Please try again.");
-            }
-        }
-    }
-
-    fn get_arch() -> &'static str {
-        if cfg!(target_pointer_width = "64") { "x64" } else { "x86" }
-    }
-
-    // Search for opencl.lib
-    let search_paths = [
-        r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\lib\x64",
-        r"C:\Program Files\LLVM\bin",
-    ];
-    let arch = get_arch();
-    let mut opencl_lib: Option<PathBuf> = None;
-    for base in &search_paths {
-        let path = Path::new(base);
-        if path.exists() {
-            if let Ok(entries) = fs::read_dir(path) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if let Some(name) = p.file_name() {
-                        if name.eq_ignore_ascii_case("opencl.lib") && p.exists() {
-                            opencl_lib = Some(p);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        if opencl_lib.is_some() { break; }
-    }
-    if opencl_lib.is_none() {
-        opencl_lib = prompt_for_path("opencl.lib");
-    }
-    if let Some(lib_path) = &opencl_lib {
-        if let Some(parent) = lib_path.parent() {
-            env::set_var("LIB", parent);
-            println!("LIB environment variable set to {}", parent.display());
-        }
-    } else {
-        println!("opencl.lib not found and not provided. LIB will not be set.");
-    }
-
-    // Search for libclang.dll
-    let mut clang_dll: Option<PathBuf> = None;
-    for base in &search_paths {
-        let path = Path::new(base);
-        if path.exists() {
-            if let Ok(entries) = fs::read_dir(path) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if let Some(name) = p.file_name() {
-                        if name.eq_ignore_ascii_case("libclang.dll") && p.exists() {
-                            clang_dll = Some(p);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        if clang_dll.is_some() { break; }
-    }
-    if clang_dll.is_none() {
-        clang_dll = prompt_for_path("libclang.dll");
-    }
-    if let Some(dll_path) = &clang_dll {
-        if let Some(parent) = dll_path.parent() {
-            env::set_var("LIBCLANG_PATH", parent);
-            println!("LIBCLANG_PATH environment variable set to {}", parent.display());
-        }
-    } else {
-        println!("libclang.dll not found and not provided. LIBCLANG_PATH will not be set.");
-    }
-
-    // Use opencl3 to verify OpenCL is available
-    #[link(name = "opencl")]
-    #[link(name = "clang")]
-    use opencl3::platform::get_platforms;
-    match get_platforms() {
-        Ok(platforms) if !platforms.is_empty() => {
-            println!("OpenCL platforms found: {}", platforms.len());
-            for (i, p) in platforms.iter().enumerate() {
-                println!("Platform {}: {}", i, p.name().unwrap_or_default());
-            }
-        }
-        Ok(_) => {
-            println!("No OpenCL platforms found. Check your LIB path and OpenCL installation.");
-        }
-        Err(e) => {
-            println!("Error querying OpenCL platforms: {e}");
-        }
-    }
-    Ok(())
-}
-
 #[cfg(target_os = "linux")]
 async fn pre_install() -> Result<()> {
     log::debug!("Installing system dependencies for Linux...");
@@ -697,15 +566,15 @@ async fn pre_install() -> Result<()> {
 }
 
 // Check for GPU devices and create a marker file if found
-// async fn check_gpu_devices() -> Result<()> {
-//     let devices = get_all_devices(CL_DEVICE_TYPE_GPU);
-//     if devices.is_err() {
-//         log::info!("No GPU devices found!");
-//     } else {
-//         let _ = libsam::cmd_async("touch /opt/sam/gpu").await?;
-//     }
-//     Ok(())
-// }
+async fn check_gpu_devices() -> Result<()> {
+    let devices = get_all_devices(CL_DEVICE_TYPE_GPU);
+    if devices.is_err() {
+        log::info!("No GPU devices found!");
+    } else {
+        let _ = libsam::cmd_async("touch /opt/sam/gpu").await?;
+    }
+    Ok(())
+}
 
 // // Install various services and log their status
 // fn install_services() {
