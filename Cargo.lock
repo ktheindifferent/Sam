@@ -2568,7 +2568,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.14",
  "pin-project-lite 0.2.15",
- "socket2 0.4.10",
+ "socket2 0.5.9",
  "tokio 1.42.1",
  "tower-service",
  "tracing",
@@ -3284,9 +3284,8 @@ dependencies = [
 
 [[package]]
 name = "matc"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce6f1655be045e342ff394e4655b5760edc948a4fba2cbc29ff4d654cbca2125"
+version = "0.1.2"
+source = "git+https://github.com/tom-code/rust-matc.git#33c76497bcef453357194317da034bae73a61570"
 dependencies = [
  "aes",
  "anyhow",
