@@ -13,6 +13,7 @@ pub mod sms;
 pub mod spotify;
 pub mod status;
 pub mod tts;
+pub mod matter;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -101,9 +102,8 @@ pub async fn handle_command(
         _ if cmd.starts_with("darknet ") => darknet::handle_darknet(cmd, output_lines).await,
         _ if cmd.starts_with("tts ") => tts::handle_tts(cmd, output_lines).await,
         _ if cmd.starts_with("llama") => llama::handle_llama(cmd, output_lines).await,
-        _ if cmd.starts_with("crawl search ") => crawler::handle_crawl_search(cmd, output_lines)
-            .await
-            .unwrap(),
+        _ if cmd.starts_with("matter ") => crate::sam::cli::commands::matter::handle_matter(cmd, output_lines).await,
+        _ if cmd.starts_with("crawl search ") => crawler::handle_crawl_search(cmd, output_lines).await.unwrap(),
         _ if cmd.starts_with("ssh ") => {
             #[cfg(unix)]
             {

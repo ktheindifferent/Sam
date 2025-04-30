@@ -43,6 +43,7 @@ pub mod darknet;
 pub mod docker;
 pub mod dropbox;
 pub mod jupiter;
+pub mod matter;
 pub mod lifx;
 pub mod llama;
 pub mod media;
