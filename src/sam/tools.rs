@@ -282,6 +282,26 @@ pub fn does_wav_have_sounds(audio_filename: &str) -> Result<bool> {
     Ok(has_sounds)
 }
 
+pub fn find_opencl_lib(start_dirs: &[&str]) -> Option<String> {
+    for dir in start_dirs {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(found) = find_opencl_lib(&[path.to_str().unwrap()]) {
+                        return Some(found);
+                    }
+                } else if let Some(name) = path.file_name() {
+                    if name == "OpenCL.lib" {
+                        return Some(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Extracts a ZIP file to the specified directory.
 pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
     let file = fs::File::open(zip_path)?;

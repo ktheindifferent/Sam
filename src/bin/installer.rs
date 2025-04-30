@@ -19,6 +19,7 @@ use std::env;
 use std::fs;
 use std::io::{self};
 use std::path::Path;
+use std::process::Command;
 
 pub type Result<T> = anyhow::Result<T>;
 
@@ -140,12 +141,304 @@ async fn main() -> Result<()> {
 async fn pre_install() -> Result<()> {
     match OS {
         "windows" => {
-            log::debug!("Installing system dependencies for Windows...");
-            let _ =
-                libsam::cmd_async("choco install ffmpeg git git-lfs boost opencv python3").await?;
+            log::info!("Starting Windows pre-installation steps...");
 
-            log::debug!("Installing Python packages for Windows...");
-            let _ = libsam::cmd_async("pip3 install rivescript pexpect").await?;
+            // Ensure Chocolatey is in PATH
+            let choco_bin = "C:\\ProgramData\\chocolatey\\bin";
+            log::info!("Adding Chocolatey bin to PATH: {}", choco_bin);
+            let mut paths = std::env::var_os("PATH").unwrap_or_default();
+            let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
+            new_path.push(std::path::PathBuf::from(choco_bin));
+            let joined = std::env::join_paths(new_path).unwrap();
+            std::env::set_var("PATH", &joined);
+
+            let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
+            log::info!("Checking for Chocolatey at {}", choco_path);
+            let choco_exists = std::path::Path::new(choco_path).exists();
+            if !choco_exists {
+                log::warn!("Chocolatey not found, attempting installation...");
+                log::info!("Running Chocolatey install script via PowerShell...");
+                let result = libsam::run_and_log(
+                    "powershell",
+                    &["-NoProfile", "-InputFormat", "None", "-ExecutionPolicy", "Bypass", "-Scope", "Process", "-Command", "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"]
+                );
+                match result {
+                    Ok(_) => log::info!("Chocolatey install script completed."),
+                    Err(e) => log::error!("Chocolatey install script failed: {}", e),
+                }
+                // After install, add to PATH again in case it was just created
+                log::info!("Re-adding Chocolatey bin to PATH after install.");
+                let mut paths = std::env::var_os("PATH").unwrap_or_default();
+                let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
+                new_path.push(std::path::PathBuf::from(choco_bin));
+                let joined = std::env::join_paths(new_path).unwrap();
+                std::env::set_var("PATH", &joined);
+            }
+
+            log::info!("Verifying Chocolatey installation...");
+            if !std::path::Path::new(choco_path).exists() {
+                log::error!("Chocolatey is still not available after attempted install. Please ensure C:\\ProgramData\\chocolatey\\bin is in your PATH and choco.exe exists.");
+                return Err(io::Error::new(io::ErrorKind::NotFound, "Chocolatey not found after install").into());
+            } else {
+                log::info!("Chocolatey found at {}", choco_path);
+            }
+
+            // Install required packages using Chocolatey (including make)
+            log::info!("Installing required packages using Chocolatey...");
+            let choco_args = ["install", "ffmpeg", "git-lfs", "opencv", "python3", "make", "-y"];
+            log::info!("Running: {} {}", choco_path, choco_args.join(" "));
+            let result = libsam::run_and_log(choco_path, &choco_args);
+            match result {
+                Ok(_) => log::info!("Chocolatey package installation succeeded."),
+                Err(e) => log::error!("Chocolatey package installation failed: {}", e),
+            }
+
+            // Refresh environment variables so newly installed tools are available
+            log::info!("Refreshing environment variables with refreshenv...");
+            let result = libsam::run_and_log("refreshenv", &[]);
+            match result {
+                Ok(_) => log::info!("Environment variables refreshed."),
+                Err(e) => log::warn!("Failed to refresh environment variables: {}", e),
+            }
+
+            // Install Python packages
+            let pip_path = "C:\\Python313\\Scripts\\pip3.exe";
+            let pip_args = ["install", "rivescript", "pexpect"];
+            log::info!("Running: {} {}", pip_path, pip_args.join(" "));
+            let result = libsam::run_and_log(pip_path, &pip_args);
+            match result {
+                Ok(_) => log::info!("Python package installation succeeded."),
+                Err(e) => log::error!("Python package installation failed: {}", e),
+            }
+
+            // Install git using Chocolatey
+            // log::info!("Ensuring git is installed using Chocolatey...");
+            // let choco_git_args = ["install", "git", "-y"];
+            // log::info!("Running: {} {}", choco_path, choco_git_args.join(" "));
+            // let result = libsam::run_and_log(choco_path, &choco_git_args);
+            // match result {
+            //     Ok(_) => log::info!("Chocolatey git installation succeeded."),
+            //     Err(e) => log::error!("Chocolatey git installation failed: {}", e),
+            // }
+            
+            // Build git from source
+
+            // Download git zip
+            let git_url = "https://github.com/git/git/archive/refs/tags/v2.49.0.zip";
+            let git_zip_path = "C:\\git.zip";
+            let git_dir = "C:\\git\\git-2.49.0";
+            if std::path::Path::new(git_zip_path).exists() {
+                log::info!("Git zip already exists at {}", git_zip_path);
+                if std::path::Path::new(git_dir).exists() {
+                    log::info!("Git directory already exists at {}", git_dir);
+                } else {
+                    log::info!("Unzipping git...");
+                    let result = libsam::run_and_log("unzip", &["-o", git_zip_path, "-d", "C:\\git"]);
+                    match result {
+                        Ok(_) => log::info!("Git unzipped successfully."),
+                        Err(e) => log::error!("Failed to unzip git: {}", e),
+                    }
+                }
+            } else {
+                log::info!("Git zip not found, downloading...");
+                log::info!("Downloading git from {}", git_url);
+                let result = libsam::run_and_log("curl", &["-L", git_url, "-o", git_zip_path]);
+                match result {
+                    Ok(_) => log::info!("Git downloaded successfully."),
+                    Err(e) => log::error!("Failed to download git: {}", e),
+                }
+            }
+
+            // Check for git.exe in all subdirectories of Program Files and Program Files (x86)
+            let mut found_git = false;
+            let search_dirs = [
+                "C:\\Program Files",
+                "C:\\Program Files (x86)",
+            ];
+            'outer: for base in &search_dirs {
+                if let Ok(entries) = std::fs::read_dir(base) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            let git_path = path.join("cmd").join("git.exe");
+                            if git_path.exists() {
+                                let git_dir = git_path.parent().unwrap();
+                                let mut paths = std::env::var_os("PATH").unwrap_or_default();
+                                let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
+                                new_path.push(git_dir.to_path_buf());
+                                let joined = std::env::join_paths(new_path).unwrap();
+                                std::env::set_var("PATH", &joined);
+                                log::info!("Added {} to PATH for git", git_dir.display());
+                                found_git = true;
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
+            }
+            if !found_git {
+                log::warn!("git.exe not found. Installing Git for Windows using Chocolatey...");
+                let result = libsam::run_and_log(choco_path, &["install", "git", "-y"]);
+                match result {
+                    Ok(_) => log::info!("Chocolatey git installation succeeded."),
+                    Err(e) => {
+                        log::error!("Chocolatey git installation failed: {}", e);
+                        return Err(e.into());
+                    }
+                }
+                // Search again after install
+                let mut found_git = false;
+                'outer2: for base in &search_dirs {
+                    if let Ok(entries) = std::fs::read_dir(base) {
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path.is_dir() {
+                                let git_path = path.join("cmd").join("git.exe");
+                                if git_path.exists() {
+                                    let git_dir = git_path.parent().unwrap();
+                                    let mut paths = std::env::var_os("PATH").unwrap_or_default();
+                                    let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
+                                    new_path.push(git_dir.to_path_buf());
+                                    let joined = std::env::join_paths(new_path).unwrap();
+                                    std::env::set_var("PATH", &joined);
+                                    log::info!("Added {} to PATH for git", git_dir.display());
+                                    found_git = true;
+                                    break 'outer2;
+                                }
+                            }
+                        }
+                    }
+                }
+                if !found_git {
+                    // Try to build git from source using MSYS2 if available, otherwise install MSYS2
+                    let msys2_bash = r"C:\\msys64\\usr\\bin\\bash.exe";
+                    // Detect system architecture and use the correct MSYS2 installer
+                    let is_64bit = cfg!(target_pointer_width = "64");
+                    let msys2_installer_url = if is_64bit {
+                        "https://github.com/msys2/msys2-installer/releases/latest/download/msys2-x86_64-latest.exe"
+                    } else {
+                        "https://github.com/msys2/msys2-installer/releases/latest/download/msys2-i686-latest.exe"
+                    };
+                    let msys2_installer_path = r"C:\\msys2-installer.exe";
+                    if !std::path::Path::new(msys2_bash).exists() {
+                        log::warn!("MSYS2 not found. Downloading and installing MSYS2...");
+                        let result = libsam::run_and_log("curl", &["-L", msys2_installer_url, "-o", msys2_installer_path]);
+                        match result {
+                            Ok(_) => log::info!("MSYS2 installer downloaded successfully."),
+                            Err(e) => {
+                                log::error!("Failed to download MSYS2 installer: {}", e);
+                                return Err(e.into());
+                            }
+                        }
+                        let result = std::process::Command::new(msys2_installer_path)
+                            .arg("/S") // Silent install
+                            .status();
+                        match result {
+                            Ok(status) if status.success() => log::info!("MSYS2 installed successfully."),
+                            Ok(status) => {
+                                log::error!("MSYS2 installer failed with exit code: {:?}", status.code());
+                                return Err(std::io::Error::new(std::io::ErrorKind::Other, "MSYS2 installer failed").into());
+                            }
+                            Err(e) => {
+                                log::error!("Failed to run MSYS2 installer: {}", e);
+                                return Err(e.into());
+                            }
+                        }
+                    }
+                    if std::path::Path::new(msys2_bash).exists() {
+                        log::info!("MSYS2 detected. Attempting to build git from source using MSYS2...");
+                        let git_src = "/c/git/git-2.49.0"; // MSYS2 uses Unix-style paths
+                        if !std::path::Path::new(msys2_bash).exists() {
+                            log::warn!("MSYS2 not found. Downloading and installing MSYS2...");
+                            let result = libsam::run_and_log("curl", &["-L", msys2_installer_url, "-o", msys2_installer_path]);
+                            match result {
+                                Ok(_) => log::info!("MSYS2 installer downloaded successfully."),
+                                Err(e) => {
+                                    log::error!("Failed to download MSYS2 installer: {}", e);
+                                    return Err(e.into());
+                                }
+                            }
+                            let result = std::process::Command::new(msys2_installer_path)
+                                .arg("/S") // Silent install
+                                .status();
+                            match result {
+                                Ok(status) if status.success() => log::info!("MSYS2 installed successfully."),
+                                Ok(status) => {
+                                    log::error!("MSYS2 installer failed with exit code: {:?}", status.code());
+                                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "MSYS2 installer failed").into());
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to run MSYS2 installer: {}", e);
+                                    return Err(e.into());
+                                }
+                            }
+                        }
+                        if std::path::Path::new(msys2_bash).exists() {
+                            log::info!("MSYS2 detected. Attempting to build git from source using MSYS2...");
+                            // Use MSYS2 bash with MinGW-w64 environment for native Windows build
+                            let msys2_bash = r"C:\\msys64\\usr\\bin\\bash.exe";
+                            let git_src = "/c/git/git-2.49.0"; // MSYS2 uses Unix-style paths
+                            if std::path::Path::new(msys2_bash).exists() {
+                                log::info!("MSYS2 bash detected. Attempting to build git from source using MinGW-w64 environment...");
+                                let build_script = format!(
+                                    "export MSYSTEM=MINGW64; export CHERE_INVOKING=1; \
+                                    pacman -Sy --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-perl mingw-w64-x86_64-python3 mingw-w64-x86_64-curl mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib mingw-w64-x86_64-gettext autoconf automake libtool base-devel && \
+                                    cd {} && make configure && ./configure --prefix=/mingw64 && make all && make install > /c/git/build.log 2>&1",
+                                    git_src
+                                );
+                                let status = std::process::Command::new(msys2_bash)
+                                    .arg("-l")
+                                    .arg("-c")
+                                    .arg(&build_script)
+                                    .status();
+                                match status {
+                                    Ok(status) if status.success() => {
+                                        log::info!("Git built and installed successfully using MinGW-w64 environment.");
+                                        // After build, try to find git.exe in mingw64/bin
+                                        let built_git_path = r"C:\\msys64\\mingw64\\bin\\git.exe";
+                                        if std::path::Path::new(built_git_path).exists() {
+                                            let git_dir = std::path::Path::new(built_git_path).parent().unwrap();
+                                            let mut paths = std::env::var_os("PATH").unwrap_or_default();
+                                            let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
+                                            new_path.push(git_dir.to_path_buf());
+                                            let joined = std::env::join_paths(new_path).unwrap();
+                                            std::env::set_var("PATH", &joined);
+                                            log::info!("Added {} to PATH for built git", git_dir.display());
+                                        } else {
+                                            log::error!("git.exe not found after MinGW-w64 build. Please check the build output in C:/msys64/mingw64/bin and C:/git/build.log.");
+                                            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "git not found after MinGW-w64 build").into());
+                                        }
+                                    }
+                                    Ok(status) => {
+                                        log::error!("MinGW-w64 build process failed with exit code: {:?}. See C:/git/build.log for details.", status.code());
+                                        return Err(std::io::Error::new(std::io::ErrorKind::Other, "MinGW-w64 build failed").into());
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to run MSYS2 bash: {}", e);
+                                        return Err(e.into());
+                                    }
+                                }
+                            } else {
+                                log::error!("MSYS2 bash not found. Please ensure MSYS2 is installed and bash.exe is available.");
+                                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "MSYS2 bash not found").into());
+                            }
+                        } else {
+                            log::error!("git.exe still not found after Chocolatey install and MSYS2 install failed. Please install Git for Windows manually and add it to your PATH, or install MSYS2 to build from source.");
+                            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "git not found after Chocolatey install and MSYS2 not available").into());
+                        }
+                    }
+                }
+            }
+            // Verify git is working
+            log::info!("Verifying git installation...");
+            let result = libsam::run_and_log("git", &["--version"]);
+            match result {
+                Ok(_) => log::info!("git is installed and working."),
+                Err(e) => {
+                    log::error!("git is not working: {}", e);
+                    return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "git not working after install").into());
+                }
+            }
         }
         "linux" => {
             log::debug!("Installing system dependencies for Linux...");
