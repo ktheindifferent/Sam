@@ -104,25 +104,25 @@ async fn main() -> Result<()> {
         }
     }
 
-    // log::info!("Checking for GPU devices...");
-    // let _ = check_gpu_devices().await?;
-    // log::info!("Compiling snapcast...");
-    // let _ = libsam::services::snapcast::install().await?;
-    // log::info!("Installing darknet...");
-    // let _ = libsam::services::darknet::install(None).await?;
-    // log::info!("Installing SPREC...");
-    // let _ = libsam::services::sprec::install().await?;
-    // log::info!("Installing LLAMA...");
-    // let _ = libsam::services::llama::install(None).await?;
-    // log::info!("Installing STT...");
-    // let _ = libsam::services::stt::install(None).await?;
-    // log::info!("Installing Rivescript...");
-    // let _ = libsam::services::rivescript::install().await?;
-    // log::info!("Installing Who.io...");
-    // let _ = libsam::services::who::install().await?;
-    // log::info!("Installing HTTP server...");
-    // let _ = libsam::services::http::install().await?;
-
+    log::info!("Checking for GPU devices...");
+    let _ = check_gpu_devices().await?;
+    log::info!("Compiling snapcast...");
+    let _ = libsam::services::snapcast::install().await?;
+    log::info!("Installing darknet...");
+    let _ = libsam::services::darknet::install(None).await?;
+    log::info!("Installing SPREC...");
+    let _ = libsam::services::sprec::install().await?;
+    log::info!("Installing LLAMA...");
+    let _ = libsam::services::llama::install(None).await?;
+    log::info!("Installing STT...");
+    let _ = libsam::services::stt::install(None).await?;
+    log::info!("Installing Rivescript...");
+    let _ = libsam::services::rivescript::install().await?;
+    log::info!("Installing Who.io...");
+    let _ = libsam::services::who::install().await?;
+    log::info!("Installing HTTP server...");
+    let _ = libsam::services::http::install().await?;
+    log::info!("Installing Emulators...");
     let _ = libsam::services::emulators::install().await?;
 
     Ok(())
@@ -146,7 +146,7 @@ async fn pre_install() -> Result<()> {
     // 2. Install required system packages via Chocolatey
     // install_choco_packages();
     let choco_packages = ["ffmpeg", "git-lfs", "opencv", "python3", "make", "unzip", "curl"];
-    libsam::services::chocolatey::install_packages(&choco_packages).await?;
+    libsam::services::package_managers::windows::chocolatey::install_packages(&choco_packages).await?;
     // 3. Ensure vcpkg is installed and bootstrapped & install deps
     let vcpkg_deps = ["libflac", "libogg", "libvorbis", "opus", "soxr", "boost", "curl"];
     libsam::services::vcpkg::install_packages(&vcpkg_deps, "x64-windows").await?;
@@ -165,8 +165,9 @@ async fn pre_install() -> Result<()> {
 }
 
 /// Installs Chocolatey and verifies its presence.
+#[cfg(target_os = "windows")]
 async fn ensure_chocolatey_installed() -> Result<()> {
-    let _ = libsam::services::chocolatey::install().await?;
+    let _ = libsam::services::package_managers::windows::chocolatey::install().await?;
     let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
     log::info!("Verifying Chocolatey installation...");
     if !std::path::Path::new(choco_path).exists() {
@@ -179,6 +180,7 @@ async fn ensure_chocolatey_installed() -> Result<()> {
 }
 
 /// Refreshes environment variables so newly installed tools are available.
+#[cfg(target_os = "windows")]
 fn refresh_env_vars() {
     log::info!("Refreshing environment variables with refreshenv...");
     // let result = libsam::run_and_log("refreshenv", &[]);
@@ -190,6 +192,7 @@ fn refresh_env_vars() {
     }
 }
 
+#[cfg(target_os = "windows")]
 fn ensure_python() {
     // Check if Python is installed and available in PATH
     let python_path = "C:\\ProgramData\\chocolatey\\bin\\python3.13.exe";
@@ -202,6 +205,7 @@ fn ensure_python() {
 }
 
 /// Installs required Python packages using pip.
+#[cfg(target_os = "windows")]
 fn install_python_packages() {
     // let python_path = "C:\\ProgramData\\chocolatey\\bin\\python3.13.exe";
     let result = libsam::run_and_log("python", &["-m", "ensurepip", "--upgrade"]);
@@ -221,6 +225,7 @@ fn install_python_packages() {
 }
 
 /// Ensures git is installed and available in PATH, using Chocolatey or MSYS2 as fallback.
+#[cfg(target_os = "windows")]
 async fn ensure_git_installed() -> Result<()> {
     let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
     let mut found_git = false;

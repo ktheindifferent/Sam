@@ -3,15 +3,28 @@ use tokio::fs;
 use std::path::Path;
 
 pub async fn install() -> Result<(), anyhow::Error> {
-    // Step 1: Clone the repository
-    if !Path::new("rustation-ng").exists() {
+    let repo_path = "scripts/px1-sam";
+    // Step 1: Clone or update the repository
+    if !Path::new(repo_path).exists() {
         let status = Command::new("git")
             .arg("clone")
             .arg("https://github.com/ktheindifferent/px1-sam.git")
+            .arg(repo_path)
             .status()
             .await?;
         if !status.success() {
             return Err(anyhow::anyhow!("Failed to clone repository"));
+        }
+    } else {
+        // If the directory exists, pull the latest changes
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(repo_path)
+            .arg("pull")
+            .status()
+            .await?;
+        if !status.success() {
+            return Err(anyhow::anyhow!("Failed to pull latest changes"));
         }
     }
 
@@ -19,7 +32,7 @@ pub async fn install() -> Result<(), anyhow::Error> {
     let status = Command::new("cargo")
         .arg("build")
         .arg("--release")
-        .current_dir("rustation-ng")
+        .current_dir(repo_path)
         .status()
         .await?;
     if !status.success() {
@@ -41,7 +54,7 @@ pub async fn install() -> Result<(), anyhow::Error> {
     }
 
     for bin_name in bin_names {
-        let src_path = format!("rustation-ng/target/release/{}", bin_name);
+        let src_path = format!("{}/target/release/{}", repo_path, bin_name);
         let dest_path = format!("{}/{}", dest_dir, bin_name);
         // Only copy if the source exists (some platforms may not build all files)
         if Path::new(&src_path).exists() {
