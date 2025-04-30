@@ -67,7 +67,7 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(
 
     // Build with CMake
     let mut cmake_cmd = Command::new("cmake");
-    cmake_cmd.arg(".").current_dir(&scripts_dir);
+    cmake_cmd.arg("-DLLAMA_CURL=OFF").arg("-DGGML_CCACHE=OFF").arg(".").current_dir(&scripts_dir);
     run_command_stream_lines(cmake_cmd, output_lines.clone(), "cmake").await?;
 
     let mut build_cmd = Command::new("cmake");

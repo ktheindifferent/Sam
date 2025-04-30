@@ -49,3 +49,21 @@ pub async fn install() -> Result<(), anyhow::Error> {
     }
     Ok(())
 }
+
+pub async fn install_packages(packages: &[&str]) -> Result<(), anyhow::Error> {
+    log::info!("Installing Chocolatey packages: {:?}", packages);
+    let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
+    let mut args = vec!["install".to_string()];
+    for pkg in packages {
+        args.push(format!("{}", pkg));
+    }
+    args.push("--yes".to_string()); // Automatically confirm installation
+    args.push("--no-progress".to_string()); // Suppress progress output
+    let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let result = crate::run_and_log_async(choco_path, &args_str).await;
+    match result {
+        Ok(_) => log::info!("Chocolatey packages installed: {:?}", packages),
+        Err(e) => log::error!("Failed to install Chocolatey packages: {}", e),
+    }
+    Ok(())
+}
