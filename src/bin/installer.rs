@@ -187,8 +187,8 @@ async fn pre_install() -> Result<()> {
     ensure_chocolatey_installed().await?;
     // 2. Install required system packages via Chocolatey
     // install_choco_packages();
-    let choco_packages = ["ffmpeg", "git-lfs", "opencv", "python3", "make", "unzip", "curl"];
-    libsam::services::package_managers::windows::chocolatey::install_packages(&choco_packages).await?;
+    let choco_packages = vec!["ffmpeg", "git-lfs", "opencv", "python3", "make", "unzip", "curl"];
+    libsam::services::package_managers::windows::chocolatey::install_packages(choco_packages).await?;
     // 3. Ensure vcpkg is installed and bootstrapped & install deps
     let vcpkg_deps = ["libflac", "libogg", "libvorbis", "opus", "soxr", "boost", "curl"];
     libsam::services::vcpkg::install_packages(&vcpkg_deps, "x64-windows").await?;
