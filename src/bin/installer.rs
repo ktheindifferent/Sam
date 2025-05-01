@@ -415,7 +415,6 @@ async fn pre_install() -> Result<()> {
     ];
     libsam::services::package_managers::linux::install_packages(&packages).await?;
 
-
     log::debug!("Installing Python packages for Linux...");
     let _ = libsam::cmd_async("pip3 install rivescript pexpect").await?;
 

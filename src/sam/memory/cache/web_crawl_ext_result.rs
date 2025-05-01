@@ -125,6 +125,31 @@ impl WebCrawlExtResult {
         Ok(parsed_rows)
     }
 
+    pub async fn from_row_async(row: &Row) -> Result<Self> {
+        let summaries_json: Option<String> = row.try_get("summaries").unwrap_or(None);
+        let summaries: HashMap<String, Option<String>> = if let Some(s) = summaries_json {
+            serde_json::from_str(&s).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+        let links_json: Option<String> = row.try_get("links").unwrap_or(None);
+        let links: Vec<String> = if let Some(l) = links_json {
+            serde_json::from_str(&l).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        Ok(Self {
+            id: row.get("id"),
+            oid: row.get("oid"),
+            url: row.get("url"),
+            summaries,
+            links,
+            timestamp: row.get("timestamp"),
+        })
+    }
+
     pub fn from_row(row: &Row) -> Result<Self> {
         let summaries_json: Option<String> = row.get("summaries");
         let summaries: HashMap<String, Option<String>> = if let Some(s) = summaries_json {
