@@ -298,6 +298,16 @@ impl Config {
                 crate::sam::services::crawler::CrawledPage::sql_build_statement(),
                 crate::sam::services::crawler::CrawledPage::migrations(),
             ),
+            (
+                crate::sam::memory::cache::WebCrawl::sql_table_name(),
+                crate::sam::memory::cache::WebCrawl::sql_build_statement(),
+                crate::sam::memory::cache::WebCrawl::migrations(),
+            ),
+            (
+                crate::sam::memory::cache::WebCrawlExtResult::sql_table_name(),
+                crate::sam::memory::cache::WebCrawlExtResult::sql_build_statement(),
+                crate::sam::memory::cache::WebCrawlExtResult::migrations(),
+            ),
         ];
 
         let mut current_client = client;
@@ -868,6 +878,12 @@ impl Config {
             t if t == crate::sam::services::crawler::CrawledPage::sql_table_name() => {
                 push_json!(crate::sam::services::crawler::CrawledPage, from_row);
             }
+            t if t == crate::sam::memory::cache::WebCrawl::sql_table_name() => {
+                push_json!(crate::sam::memory::cache::WebCrawl, from_row);
+            }
+            t if t == crate::sam::memory::cache::WebCrawlExtResult::sql_table_name() => {
+                push_json!(crate::sam::memory::cache::WebCrawlExtResult, from_row);
+            }
             _ => {}
         }
         Ok(())
@@ -953,6 +969,12 @@ impl Config {
             }
             t if t == crate::sam::services::crawler::CrawledPage::sql_table_name() => {
                 push_json_async!(crate::sam::services::crawler::CrawledPage, from_row_async);
+            }
+            t if t == crate::sam::memory::cache::WebCrawl::sql_table_name() => {
+                push_json_async!(crate::sam::memory::cache::WebCrawl, from_row_async);
+            }
+            t if t == crate::sam::memory::cache::WebCrawlExtResult::sql_table_name() => {
+                push_json_async!(crate::sam::memory::cache::WebCrawlExtResult, from_row_async);
             }
             _ => {}
         }

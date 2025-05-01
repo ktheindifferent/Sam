@@ -418,42 +418,10 @@ async fn crawl_url_inner(
 
     let mut file_mime: Option<&str> = None;
     let mut mime_tokens = Vec::new();
-    let url_lc = url.clone().to_ascii_lowercase();
-    let file_ext = {
-        let url_no_query = url_lc.split(&['?', '#'][..]).next().unwrap_or("");
-        let path = std::path::Path::new(url_no_query);
-        // Only treat as file if the last segment contains a dot (.) and is not a known TLD
-        if let Some(segment) = path.file_name().and_then(|s| s.to_str()) {
-            if segment.contains('.') {
-                if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
-                    // List of common TLDs to exclude
-                    // List of all known TLDs (as of 2024-06, from IANA root zone database)
-                    // Source: https://data.iana.org/TLD/tlds-alpha-by-domain.txt
-                    let tlds = COMMON_TLDS.clone();
-                    if !tlds.contains(&ext.to_string()) {
-                        Some(format!(".{ext}"))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    };
-
-    if let Some(ref ext) = file_ext {
-        for (map_ext, mime) in crate::sam::tools::MIME_MAP.iter() {
-            if ext.eq_ignore_ascii_case(map_ext) {
-                file_mime = Some(*mime);
-                break;
-            }
-        }
-    }
+    let mime_ext = mime_type_from_url(&url);
+    if !mime_ext.contains("unknown") {
+        file_mime = Some(mime_ext);
+    } 
 
     if let Some(ref mime) = file_mime {
         if mime.starts_with("text/") {
@@ -554,10 +522,10 @@ async fn crawl_url_inner(
                     ".html", ".htm", ".xhtml", ".shtml", ".php", ".asp", ".aspx", ".jsp", ".jspx",
                     ".cgi", ".pl", ".cfm", ".rb", ".py", ".xml", ".json", ".md", ".txt", "/",
                 ];
-                let is_document = match &file_ext {
-                    Some(ext) => doc_exts.iter().any(|d| ext.eq_ignore_ascii_case(d)),
-                    None => true,
-                };
+                let is_document = mime_tokens
+                    .iter()
+                    .any(|m| m.starts_with("text/") || m.starts_with("application/"))
+                    || doc_exts.iter().any(|ext| url.ends_with(ext));
 
                 if is_document && mime_tokens.iter().any(|m| m.starts_with("text/html")) {
                     let document = scraper::Html::parse_document(&html);
@@ -1037,7 +1005,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                         !v.contains(link)
                                     };
                                     if should_add {
-                                        if new_links.len() < 1000 {
+                                        if (new_links.len() < 1000) || !mime_type_from_url(link).contains("text/") {
                                             let url_lc = link.clone();
                                             if is_search_url(&url_lc) {
                                                 // Skip search endpoints
@@ -1050,27 +1018,14 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                             // Spawn a new thread to create and save the CrawlJob for this link
                                             // Collect jobs in a batch and save them together for efficiency
                                             static JOB_BATCH: once_cell::sync::Lazy<
-                                                tokio::sync::Mutex<Vec<CrawlJob>>,
+                                                tokio::sync::Mutex<Vec<crate::sam::memory::cache::WebCrawl>>,
                                             > = once_cell::sync::Lazy::new(|| {
                                                 tokio::sync::Mutex::new(Vec::new())
                                             });
                                             {
                                                 let mut batch = JOB_BATCH.lock().await;
-                                                let mut job = CrawlJob::new();
-                                                job.start_url = link.clone();
-                                                job.status = "pending".to_string();
-                                                job.updated_at = match std::time::SystemTime::now()
-                                                    .duration_since(std::time::UNIX_EPOCH)
-                                                {
-                                                    Ok(duration) => duration.as_secs() as i64,
-                                                    Err(e) => {
-                                                        log::debug!(
-                                                            "SystemTime before UNIX EPOCH: {:?}",
-                                                            e
-                                                        );
-                                                        0
-                                                    }
-                                                };
+                                                let mut cache_job = crate::sam::memory::cache::WebCrawl::new(link.clone());
+                                               
 
                                                 let url_lc = link.clone();
                                                 if is_search_url(&url_lc) {
@@ -1083,14 +1038,14 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                                     let res = {
                                                         let v = visited.lock().await;
                                                         let all_jobs = all_job_urls.lock().await;
-                                                        !v.contains(&job.start_url)
-                                                            && !all_jobs.contains(&job.start_url)
+                                                        !v.contains(&cache_job.url)
+                                                            && !all_jobs.contains(&cache_job.url)
                                                     };
                                                     if res {
-                                                        batch.push(job);
+                                                        batch.push(cache_job);
                                                         let mut v = all_job_urls.lock().await;
-                                                        for job in batch.iter() {
-                                                            v.insert(job.start_url.clone());
+                                                        for cache_job in batch.iter() {
+                                                            v.insert(cache_job.url.clone());
                                                         }
                                                     }
                                                 }
@@ -1099,7 +1054,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                                     let jobs_to_save = batch.split_off(0);
                                                     drop(batch); // Release lock before await
                                                     if let Err(e) =
-                                                        CrawlJob::save_batch_async(&jobs_to_save)
+                                                        crate::sam::memory::cache::WebCrawl::save_batch_async(jobs_to_save)
                                                             .await
                                                     {
                                                         log::warn!(
@@ -1553,4 +1508,36 @@ fn extract_text(
             _ => {}
         }
     }
+}
+
+
+/// Returns the MIME type for a given URL string based on its file extension.
+/// Falls back to "application/octet-stream" if unknown.
+///
+/// # Arguments
+/// * `url` - The URL string to analyze.
+///
+/// # Returns
+/// * A string slice representing the MIME type.
+pub fn mime_type_from_url(url: &str) -> &'static str {
+    let url_lc = url.to_ascii_lowercase();
+    let url_no_query = url_lc.split(&['?', '#'][..]).next().unwrap_or("");
+    let path = std::path::Path::new(url_no_query);
+    if let Some(segment) = path.file_name().and_then(|s| s.to_str()) {
+        if segment.contains('.') {
+            if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
+                // Check if the extension is a known TLD (like .com, .net, etc.)
+                if COMMON_TLDS.contains(&ext.to_ascii_lowercase()) {
+                    // It's a TLD, not a file extension, so treat as HTML
+                    return "text/html";
+                }
+                for (map_ext, mime) in crate::sam::tools::MIME_MAP.iter() {
+                    if ext.eq_ignore_ascii_case(map_ext.trim_start_matches('.')) {
+                        return mime;
+                    }
+                }
+            }
+        }
+    }
+    "text/unknown"
 }
