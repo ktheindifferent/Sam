@@ -45,13 +45,26 @@ pub async fn install() -> Result<(), anyhow::Error> {
 
 pub async fn install_package(package: &str) -> Result<(), anyhow::Error> {
     log::info!("Installing winget package: {}", package);
-    let args = ["install", package, "--accept-source-agreements", "--accept-package-agreements", "--silent"];
+    let args = [
+        "install",
+        package,
+        "--accept-source-agreements",
+        "--accept-package-agreements",
+        "--silent",
+        "--nowarn",
+        "--disable-interactivity",
+    ];
     let result = crate::run_and_log_async("winget", &args).await;
     match result {
         Ok(_) => log::info!("winget package installed: {}", package),
         Err(e) => {
-            log::error!("Failed to install winget package {}: {}", package, e);
-            return Err(e.into());
+            let msg = format!("{}", e);
+            if msg.contains("already installed") || msg.contains("No available upgrade found") || msg.contains("No newer package versions are available") {
+                log::info!("winget reports package '{}' is already installed or up to date.", package);
+            } else {
+                log::error!("Failed to install winget package {}: {}", package, e);
+                return Err(e.into());
+            }
         }
     }
     Ok(())
@@ -60,11 +73,26 @@ pub async fn install_package(package: &str) -> Result<(), anyhow::Error> {
 pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> {
     log::info!("Installing winget packages: {:?}", packages);
     for pkg in packages {
-        let args = ["install", pkg, "--accept-source-agreements", "--accept-package-agreements", "--silent"];
+        let args = [
+            "install",
+            pkg,
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+            "--silent",
+            "--nowarn",
+            "--disable-interactivity",
+        ];
         let result = crate::run_and_log_async("winget", &args).await;
         match result {
             Ok(_) => log::info!("winget package installed: {}", pkg),
-            Err(e) => log::error!("Failed to install winget package {}: {}", pkg, e),
+            Err(e) => {
+                let msg = format!("{}", e);
+                if msg.contains("already installed") || msg.contains("No available upgrade found") || msg.contains("No newer package versions are available") {
+                    log::info!("winget reports package '{}' is already installed or up to date.", pkg);
+                } else {
+                    log::error!("Failed to install winget package {}: {}", pkg, e);
+                }
+            }
         }
     }
     Ok(())

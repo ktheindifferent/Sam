@@ -85,11 +85,28 @@ pub async fn run_and_log_async(cmd: &str, args: &[&str]) -> Result<()> {
     match output {
         Ok(output) => {
             if !output.status.success() {
+                // Special handling for winget exit code 0x8a15002b (or -1980082133)
+                let code = output.status.code().unwrap_or(0);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if (code == 0x8a15002b_u32 as i32 || code == -1980082133)
+                    && (stdout.contains("already installed")
+                        || stdout.contains("No available upgrade found")
+                        || stdout.contains("No newer package versions are available"))
+                {
+                    log::info!(
+                        "Command `{}` exit code {} but stdout indicates already installed or up to date: {}",
+                        cmd,
+                        code,
+                        stdout
+                    );
+                    return Ok(());
+                }
                 log::error!(
                     "Command `{}` failed with status {}: {}",
                     cmd,
                     output.status,
-                    String::from_utf8_lossy(&output.stderr)
+                    stderr
                 );
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
@@ -97,7 +114,7 @@ pub async fn run_and_log_async(cmd: &str, args: &[&str]) -> Result<()> {
                         "Command `{}` failed with status {}: {}",
                         cmd,
                         output.status,
-                        String::from_utf8_lossy(&output.stderr)
+                        stderr
                     ),
                 ));
             }
