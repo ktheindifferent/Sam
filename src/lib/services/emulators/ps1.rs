@@ -5,22 +5,24 @@ use std::path::Path;
 pub async fn install() -> Result<(), anyhow::Error> {
     let repo_path = "scripts/px1-sam";
     // Step 1: Clone or update the repository
-    if !Path::new(repo_path).exists() {
+    // Check if the directory exists or is empty
+    if !Path::new(repo_path).exists() || fs::read_dir(repo_path).await?.next_entry().await?.is_none() {
+        println!("Cloning px1-sam repository...");
         let status = Command::new("git")
             .arg("clone")
             .arg("https://github.com/ktheindifferent/px1-sam.git")
             .arg(repo_path)
             .status()
             .await?;
+        println!("Cloned px1-sam repository to {}", repo_path);
         if !status.success() {
             return Err(anyhow::anyhow!("Failed to clone repository"));
         }
     } else {
-        // If the directory exists, pull the latest changes
+        // If the directory exists, pull the latest changes in the px1-sam repo
         let status = Command::new("git")
-            .arg("-C")
-            .arg(repo_path)
             .arg("pull")
+            .current_dir(repo_path)
             .status()
             .await?;
         if !status.success() {
