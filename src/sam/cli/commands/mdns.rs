@@ -61,10 +61,10 @@ pub async fn handle_mdns(cmd: &str, output_lines: Arc<Mutex<Vec<String>>>) {
             output_lines.lock().await.push("mDNS broadcast started.".to_string());
         }
         "mdns broadcast stop" => {
-            crate::sam::services::mdns::stop_broadcast();
             if let Some(handle) = BROADCAST_HANDLE.lock().await.take() {
                 handle.abort();
             }
+            crate::sam::services::mdns::stop_broadcast();
             output_lines.lock().await.push("mDNS broadcast stopped and responder dropped.".to_string());
         }
         "mdns status" => {

@@ -6,7 +6,7 @@ use tokio::time::{sleep, Duration};
 use futures_util::{pin_mut, stream::StreamExt};
 use rand::{distributions::Alphanumeric, Rng};
 
-const SERVICE_NAME: &str = "_opensam2";
+const SERVICE_NAME: &str = "_opensam3._tcp.local";
 const SERVICE_PORT: u16 = 5353;
 
 /// Generates a random secret key for the instance.
@@ -21,12 +21,14 @@ pub fn generate_secret_key() -> String {
 #[derive(Debug, Clone)]
 pub struct MDns {
     pub instance_id: String,
+    pub secret_key: String,
 }
 
 impl MDns {
     pub fn new() -> Self {
         Self {
             instance_id: generate_secret_key(),
+            secret_key: generate_secret_key(),
         }
     }
 
@@ -52,19 +54,24 @@ impl MDns {
     pub async fn broadcast_loop(&self) {
         let responder = libmdns::Responder::new().unwrap();
         let _svc = responder.register(
-            "_tcp".into(),
             SERVICE_NAME.to_string(),
+            self.instance_id.clone(),
             SERVICE_PORT,
             &[
                 "path=/",
                 &format!("id={}", self.instance_id),
+                &format!("secret={}", self.secret_key),
             ],
         );
-        println!("[mDNS] Broadcast started, responder created");
+        // println!("[mDNS] Broadcast started, responder created");
         {
             let mut global = BROADCAST_RESPONDER.lock().unwrap();
             *global = Some(responder);
-            println!("[mDNS] Responder stored in global handle");
+            // println!("[mDNS] Responder stored in global handle");
+        }
+        // Keep the responder alive
+        loop {
+            sleep(Duration::from_secs(60)).await;
         }
     }
 }
@@ -72,14 +79,14 @@ impl MDns {
 static BROADCAST_RESPONDER: once_cell::sync::Lazy<Arc<StdMutex<Option<libmdns::Responder>>>> = once_cell::sync::Lazy::new(|| Arc::new(StdMutex::new(None)));
 
 pub fn stop_broadcast() {
-    println!("[mDNS] Attempting to stop broadcast and drop responder");
+    // println!("[mDNS] Attempting to stop broadcast and drop responder");
     let mut global = BROADCAST_RESPONDER.lock().unwrap();
     let was_some = global.is_some();
     *global = None;
     if was_some {
-        println!("[mDNS] Responder dropped, broadcast should stop");
+        // println!("[mDNS] Responder dropped, broadcast should stop");
     } else {
-        println!("[mDNS] No responder was active");
+        // println!("[mDNS] No responder was active");
     }
 }
 
