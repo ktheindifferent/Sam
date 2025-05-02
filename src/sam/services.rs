@@ -65,3 +65,4 @@ pub mod crawler;
 pub mod p2p;
 pub mod sms;
 pub mod who;
+pub mod mdns;

@@ -1,5 +1,6 @@
 use crate::sam::services::crawler::page::CrawledPage;
 use log::{error, info};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::net::{TcpListener, TcpStream};
@@ -9,6 +10,65 @@ static P2P_RUNNING: AtomicBool = AtomicBool::new(false);
 static P2P_HANDLE: Lazy<Mutex<Option<tokio::task::JoinHandle<()>>>> =
     Lazy::new(|| Mutex::new(None));
 static P2P_TX: Lazy<Mutex<Option<broadcast::Sender<CrawledPage>>>> = Lazy::new(|| Mutex::new(None));
+
+struct P2PServer {
+    pub secret_key: String,
+    pub instance_id: String,
+    pub peers: Vec<(IpAddr, u16)>,
+}
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+enum P2PObjectType {
+    CrawledPage(CrawledPage),
+    // CacheWebSession(crate::sam::services::cache::CacheWebSession),
+    // Add more variants as needed
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct P2PObject {
+    pub obj: Option<P2PObjectType>,
+}
+
+impl P2PObject {
+    pub fn new(obj: P2PObjectType) -> Self {
+        Self { obj: Some(obj) }
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        let obj: P2PObject = serde_json::from_slice(bytes)?;
+        Ok(obj)
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        let bytes = serde_json::to_vec(self)?;
+        Ok(bytes)
+    }
+
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        let obj: P2PObject = serde_json::from_str(json)?;
+        Ok(obj)
+    }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        let json = serde_json::to_string(self)?;
+        Ok(json)
+    }
+    
+}
+
+/// Send this CrawledPage to a peer over a TCP stream (async).
+/// The stream must be connected. The message is length-prefixed (u32, big-endian).
+// pub async fn send_p2p<W: tokio::io::AsyncWrite + Unpin>(
+//     &self,
+//     mut writer: W,
+// ) -> std::io::Result<()> {
+//     let json = self.to_p2p_json().map_err(std::io::Error::other)?;
+//     let bytes = json.as_bytes();
+//     let len = bytes.len() as u32;
+//     writer.write_u32(len).await?;
+//     writer.write_all(bytes).await?;
+//     Ok(())
+// }
+
 
 /// Install P2P service (no-op for now, but could check dependencies)
 pub async fn install() {

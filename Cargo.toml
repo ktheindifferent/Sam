@@ -83,6 +83,8 @@ bollard = "0.15"
 futures-util = "0.3.31"
 postgres-native-tls = "0.5.1"
 native-tls = "0.2.14"
+mdns = "3.0.0"
+libmdns = "0.9.1"
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
