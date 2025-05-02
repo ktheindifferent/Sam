@@ -32,7 +32,7 @@ which = "7.0.3"
 online = "4.0.0"
 wav = "1.0.0"
 portable-pty = "0.8"
-matc  = { git = "https://github.com/tom-code/rust-matc.git", version = "0.1.2" }
+matc  = { git = "https://github.com/ktheindifferent/rust-matc.git", version = "0.1.3" }
 simple-websockets = "0.1.4"
 hound = "3.4.0"
 noise-gate = { git = "https://github.com/Michael-F-Bryan/noise-gate.git", version = "0.1.1-alpha.0" }

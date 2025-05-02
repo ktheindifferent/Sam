@@ -230,8 +230,43 @@ impl Thing {
         crate::sam::memory::Config::destroy_row(oid, "things".to_string())
     }
 
+    /// Asynchronously selects Thing entries from the database with optional limit, offset, order, and query.
+    pub async fn select_async(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
+        let config = crate::sam::memory::Config::new();
+        let client = config.connect_pool().await?;
+        let jsons = crate::sam::memory::Config::pg_select_async(
+            Self::sql_table_name(),
+            None,
+            limit,
+            offset,
+            order,
+            query,
+            client,
+        )
+        .await?;
+        let mut parsed_rows: Vec<Self> = Vec::new();
+        for j in jsons {
+            let object: Self = match serde_json::from_str(&j) {
+                Ok(obj) => obj,
+                Err(e) => {
+                    log::error!("Failed to deserialize Thing: {}", e);
+                    return Err(crate::sam::memory::Error::Other(
+                        format!("Deserialization error: {e}")
+                    ).into());
+                }
+            };
+            parsed_rows.push(object);
+        }
+        Ok(parsed_rows)
+    }
+
     /// Asynchronously saves the Thing to the database. Updates if OID exists, inserts otherwise.
-    pub async fn save_async(&self) -> Result<&Self> {
+    pub async fn save_async(&self) -> Result<Self> {
         let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
         pg_query
@@ -270,34 +305,7 @@ impl Thing {
                 ]).await?;
             }
         }
-        Ok(self)
-    }
-
-    /// Asynchronously selects Thing entries from the database with optional limit, offset, order, and query.
-    pub async fn select_async(
-        limit: Option<usize>,
-        offset: Option<usize>,
-        order: Option<String>,
-        query: Option<PostgresQueries>,
-    ) -> Result<Vec<Self>> {
-        let mut parsed_rows: Vec<Self> = Vec::new();
-        let config = crate::sam::memory::Config::new();
-        let client = config.connect_pool().await?;
-        let jsons = crate::sam::memory::Config::pg_select_async(
-            Self::sql_table_name(),
-            None,
-            limit,
-            offset,
-            order,
-            query,
-            client,
-        )
-        .await?;
-        for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
-            parsed_rows.push(object);
-        }
-        Ok(parsed_rows)
+        Ok(self.clone())
     }
 
     /// Asynchronously constructs a Thing from a PostgreSQL row.
@@ -309,4 +317,6 @@ impl Thing {
     pub async fn destroy_async(oid: String) -> Result<bool> {
         crate::sam::memory::Config::destroy_row_async(oid, "things".to_string()).await
     }
+
+    // TODO: Add async batch save similar to CrawledPage::save_async_batch if needed.
 }
