@@ -33,74 +33,21 @@ Licensed under GPLv3....see LICENSE file. -->
   <link href="/assets/css/vendor/toastr.min.css" rel="stylesheet" />
   <link href="/assets/css/vendor/black-dashboard.min.css?v=1.0.0" rel="stylesheet" />
   <link href="/assets/css/core.css" rel="stylesheet" />
-  <!-- <style>
-    .sidebar{
-      background: #1e1e2b !important;
-      box-shadow: none !important;
-    }
-
-
-
-
-  </style> -->
+  <script src="/assets/js/ui.js"></script>
 
 
 </head>
 
 <body class=" ">
   <div class="wrapper ">
-    <div class="sidebar">
-      <!--
-        Tip 1: You can change the color of the sidebar using: data-color="blue | green | orange | red | yellow"
-    -->
-      <div class="sidebar-wrapper">
-        
-        <ul class="nav" id="rooms_nav">
-      
-          <li>
+    <!-- SIDEBAR - DYNAMICALLY POPULATED -->
+    <div class="sidebar" id="sidebar">
 
-            <a href="/" class="controller-btn tab-btn">
-              <i class="fas fa-times"></i>
-              <p>Exit</p>
-            </a>
-      
-
-          </li>
-        </ul>
-      </div>
     </div>
     <div class="main-panel">
-      <!-- Navbar -->
-      <nav class="navbar navbar-expand-lg navbar-absolute navbar-transparent   ">
-        <div class="container-fluid">
+      <!-- NAVBAR - DYNAMICALLY POPULATED -->
+      <nav class="navbar navbar-expand-lg navbar-absolute navbar-transparent" id="navbar">
 
-
-
-
-
-          
-          <div class="navbar-wrapper">
-            <div class="navbar-toggle d-inline">
-              <button type="button" class="navbar-toggler">
-                <span class="navbar-toggler-bar bar1"></span>
-                <span class="navbar-toggler-bar bar2"></span>
-                <span class="navbar-toggler-bar bar3"></span>
-              </button>
-            </div>
-
-            <div id="Clock" class="glow">00:00:00</div>
-            <!-- <a class="navbar-brand" href="#">Hello, <span class="inject-human-name">...</span></a> -->
-          </div>
-          <div class="search-bar input-group topbar-right-buttons">
-
-            <button title="Notifications" class="btn btn-link" onclick="notifications.open();"><i class="fas fa-bell"></i></button>
-            <button title="Software Store" class="btn btn-link" style="margin-left: 0;" onclick="oss.show();"><i class="fas fa-store-alt"></i></button>
-            <button title="Search" class="btn btn-link" style="margin-left: 0;" onclick="search_widget.show();"><i class="fas fa-search"></i></button>
-            <button title="Console" class="btn btn-link" style="margin-left: 0;" onclick="window.open('/apps/console/index.html', 'signup', 'menubar=no, location=no, toolbar=no, scrollbars=no, height=300'); return false;"><i class="fas fa-terminal"></i></button>
-       
-          </div>
-  
-        </div>
       </nav>
      
       <!-- End Navbar -->

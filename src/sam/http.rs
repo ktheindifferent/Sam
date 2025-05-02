@@ -97,6 +97,57 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
         || request.url().contains(".woff")
         || request.url().contains(".woff2")
     {
+        // Special handling for .mp4 files to support HTTP Range requests (Safari compatibility)
+        if request.url().contains(".mp4") {
+            use std::fs::File;
+            use std::io::{Read, Seek, SeekFrom};
+            use std::borrow::Cow;
+            use rouille::ResponseBody;
+
+            #[cfg(debug_assertions)]
+            let file_path = format!("./www{}", request.url());
+            #[cfg(not(debug_assertions))]
+            let file_path = format!("/opt/sam/www{}", request.url());
+
+            if let Ok(mut file) = File::open(&file_path) {
+                if let Ok(metadata) = file.metadata() {
+                    let file_size = metadata.len();
+                    let range_header = request.header("Range");
+                    if let Some(range_header) = range_header {
+                        // Example: Range: bytes=0-1023
+                        if let Some(range) = range_header.strip_prefix("bytes=") {
+                            let mut parts = range.split('-');
+                            let start = parts.next().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+                            let end = parts.next().and_then(|e| e.parse::<u64>().ok()).unwrap_or(file_size - 1);
+                            let end = end.min(file_size - 1);
+                            let chunk_size = end - start + 1;
+                            if file.seek(SeekFrom::Start(start)).is_ok() {
+                                let mut buffer = vec![0u8; chunk_size as usize];
+                                if file.read_exact(&mut buffer).is_ok() {
+                                    let content_range = format!("bytes {}-{}/{}", start, end, file_size);
+                                    let content_length = chunk_size.to_string();
+                                    return Ok(Response::from_data("video/mp4", buffer)
+                                        .with_status_code(206)
+                                        .with_additional_header("Content-Range", Cow::Owned(content_range))
+                                        .with_additional_header("Accept-Ranges", "bytes")
+                                        .with_additional_header("Content-Length", Cow::Owned(content_length))
+                                        .with_additional_header("Access-Control-Allow-Origin", "*")
+                                    );
+                                }
+                            }
+                        }
+                    } else {
+                        // No Range header, serve the whole file
+                        return Ok(Response::from_file("video/mp4", file)
+                            .with_additional_header("Accept-Ranges", "bytes")
+                            .with_additional_header("Access-Control-Allow-Origin", "*")
+                        );
+                    }
+                }
+            }
+            // If file not found or error, fall through to match_assets
+        }
+
         #[cfg(debug_assertions)]
         {
             let xresponse = rouille::match_assets(request, "./www/");
