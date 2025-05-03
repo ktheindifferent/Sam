@@ -27,14 +27,14 @@ pub async fn handle_mdns(cmd: &str, output_lines: Arc<Mutex<Vec<String>>>) {
             });
             *DISCOVER_HANDLE.lock().await = Some(discover_handle);
 
-            // Start broadcast task (implement a loop in your broadcast method)
-            let broadcast_handle = tokio::spawn({
-                let mut mdns = mdns.clone();
-                async move {
-                    let _ = mdns.broadcast_loop().await;
-                }
-            });
-            *BROADCAST_HANDLE.lock().await = Some(broadcast_handle);
+            // // Start broadcast task (implement a loop in your broadcast method)
+            // let broadcast_handle = tokio::spawn({
+            //     let mut mdns = mdns.clone();
+            //     async move {
+            //         let _ = mdns.broadcast_loop().await;
+            //     }
+            // });
+            // *BROADCAST_HANDLE.lock().await = Some(broadcast_handle);
 
             output_lines.lock().await.push("mDNS started.".to_string());
         }
@@ -61,10 +61,10 @@ pub async fn handle_mdns(cmd: &str, output_lines: Arc<Mutex<Vec<String>>>) {
             output_lines.lock().await.push("mDNS broadcast started.".to_string());
         }
         "mdns broadcast stop" => {
+            crate::sam::services::mdns::stop_broadcast().await;
             if let Some(handle) = BROADCAST_HANDLE.lock().await.take() {
                 handle.abort();
             }
-            crate::sam::services::mdns::stop_broadcast();
             output_lines.lock().await.push("mDNS broadcast stopped and responder dropped.".to_string());
         }
         "mdns status" => {

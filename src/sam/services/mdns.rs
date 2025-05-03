@@ -1,13 +1,17 @@
 use libmdns::{Responder, Service};
 use mdns::RecordKind;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc};
+use tokio::sync::Mutex as StdMutex;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use futures_util::{pin_mut, stream::StreamExt};
 use rand::{distributions::Alphanumeric, Rng};
 
-const SERVICE_NAME: &str = "_opensam3._tcp.local";
+const SERVICE_NAME: &str = "_opensam-hive._tcp.local";
 const SERVICE_PORT: u16 = 5353;
+
+static BROADCAST_RESPONDER: once_cell::sync::Lazy<Arc<StdMutex<Option<libmdns::Responder>>>> = once_cell::sync::Lazy::new(|| Arc::new(StdMutex::new(None)));
+
 
 /// Generates a random secret key for the instance.
 pub fn generate_secret_key() -> String {
@@ -54,8 +58,8 @@ impl MDns {
     pub async fn broadcast_loop(&self) {
         let responder = libmdns::Responder::new().unwrap();
         let _svc = responder.register(
-            SERVICE_NAME.to_string(),
-            self.instance_id.clone(),
+            SERVICE_NAME.to_owned(),
+            "_tcp.local".to_string(),
             SERVICE_PORT,
             &[
                 "path=/",
@@ -63,45 +67,49 @@ impl MDns {
                 &format!("secret={}", self.secret_key),
             ],
         );
-        // println!("[mDNS] Broadcast started, responder created");
+        log::info!("[mDNS] Broadcast started, responder created");
         {
-            let mut global = BROADCAST_RESPONDER.lock().unwrap();
-            *global = Some(responder);
-            // println!("[mDNS] Responder stored in global handle");
-        }
-        // Keep the responder alive
+            let mut global = BROADCAST_RESPONDER.lock().await;
+            global.replace(responder);
+            log::info!("[mDNS] Responder stored in global handle");
+        } // MutexGuard dropped here, before any await
+        // Now safe to await
         loop {
-            sleep(Duration::from_secs(60)).await;
+            {
+                let global = BROADCAST_RESPONDER.lock().await;
+                if global.is_none() {
+                    log::info!("[mDNS] Responder dropped, stopping broadcast loop");
+                    break;
+                }
+            }
+            sleep(Duration::from_secs(5)).await;
         }
     }
 }
-
-static BROADCAST_RESPONDER: once_cell::sync::Lazy<Arc<StdMutex<Option<libmdns::Responder>>>> = once_cell::sync::Lazy::new(|| Arc::new(StdMutex::new(None)));
-
-pub fn stop_broadcast() {
-    // println!("[mDNS] Attempting to stop broadcast and drop responder");
-    let mut global = BROADCAST_RESPONDER.lock().unwrap();
+pub async fn stop_broadcast() {
+    log::info!("[mDNS] Attempting to stop broadcast and drop responder");
+    let mut global = BROADCAST_RESPONDER.lock().await;
     let was_some = global.is_some();
     *global = None;
     if was_some {
-        // println!("[mDNS] Responder dropped, broadcast should stop");
+        log::info!("[mDNS] Responder dropped, broadcast should stop");
     } else {
-        // println!("[mDNS] No responder was active");
+        log::info!("[mDNS] No responder was active");
     }
 }
 
-pub fn start(output_lines: std::sync::Arc<tokio::sync::Mutex<Vec<String>>>) {
-    let mut mdns = MDns::new();
+pub async fn start(output_lines: std::sync::Arc<tokio::sync::Mutex<Vec<String>>>) {
+    let mdns = MDns::new();
     tokio::spawn(async move {
         mdns.discover_with_output(output_lines).await;
     });
 }
 
-pub fn stop() {
+pub async fn stop() {
     // Implement stopping logic here
 }
 
-pub fn status() -> String {
+pub async fn status() -> String {
     // Implement status logic here
     "mDNS service is running".to_string()
 }
