@@ -63,6 +63,7 @@ fn main() {
         .expect("Failed to build Tokio runtime");
 
     runtime.block_on(async {
+      
         std::panic::set_hook(Box::new(|_info| {
             // Optionally log to a file or TUI logger instead
             // e.g., log::error!("Panic: {:?}", info);
@@ -104,6 +105,8 @@ fn main() {
             ])
             .unwrap();
         }
+
+        
 
         // Optionally escalate privileges if needed
         // sudo::escalate_if_needed().unwrap();
@@ -164,9 +167,11 @@ fn main() {
         // crate::sam::services::docker::install(); // This returns a Future, must be awaited or handled
         // let _ = crate::sam::services::docker::install(); // If install() returns Result or Future, handle appropriately
 
-        crate::sam::services::tts::init();
+        // crate::sam::services::tts::init();
 
-        crate::sam::services::crawler::start_service_async().await;
+        // crate::sam::services::crawler::start_service_async().await;
+
+        crate::sam::services::mdns::MDns::init().await;
 
         let config = crate::sam::memory::Config::new();
         config.init().await;
