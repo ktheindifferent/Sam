@@ -4,3 +4,4 @@
 *.dSYM
 *.out
 TaskTemplate:.yml
+scripts/llama.cpp # llama.cpp has mystery changes... can't find them... ignoring it.... :)

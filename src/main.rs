@@ -171,7 +171,9 @@ fn main() {
 
         // crate::sam::services::crawler::start_service_async().await;
 
-        crate::sam::services::mdns::MDns::init().await;
+        // if let Err(e) = crate::sam::services::mdns::MDns::init().await {
+        //     println!("[mDNS] Failed to initialize: {}", e);
+        // }
 
         let config = crate::sam::memory::Config::new();
         config.init().await;

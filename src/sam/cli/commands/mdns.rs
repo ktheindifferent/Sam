@@ -14,13 +14,8 @@ pub async fn handle_mdns(cmd: &str, output_lines: Arc<Mutex<Vec<String>>>) {
             output_lines.lock().await.push("mDNS stopped.".to_string());
         }
         "mdns broadcast" => {
-            let responder = libmdns::Responder::new().unwrap();
-            let _svc = responder.register(
-                "_tcp".to_owned(),
-                "_opensam".to_owned(),
-                5353,
-                &["path=/"],
-            );
+            log::info!("[mDNS] Starting broadcast via CLI command");
+            crate::sam::services::mdns::start_broadcast().await;
             output_lines.lock().await.push("mDNS broadcast started.".to_string());
         }
         "mdns broadcast stop" => {
