@@ -107,5 +107,9 @@ pub fn handle(
         }
     }
 
+    if request.url().contains("/api/things/matter") {
+        return Ok(crate::sam::services::matter::handle(request));
+    }
+
     Ok(Response::empty_404())
 }

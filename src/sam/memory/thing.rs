@@ -318,5 +318,14 @@ impl Thing {
         crate::sam::memory::Config::destroy_row_async(oid, "things".to_string()).await
     }
 
+    /// Loads a Thing from the database by OID (thing_id).
+    pub fn load_by_id(thing_id: &str) -> Result<Self> {
+        let mut pg_query = PostgresQueries::default();
+        pg_query.queries.push(crate::sam::memory::PGCol::String(thing_id.to_string()));
+        pg_query.query_columns.push("oid =".to_string());
+        let things = Self::select(None, None, None, Some(pg_query))?;
+        things.into_iter().next().ok_or_else(|| anyhow::anyhow!("Thing not found for oid: {}", thing_id))
+    }
+
     // TODO: Add async batch save similar to CrawledPage::save_async_batch if needed.
 }

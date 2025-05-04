@@ -7,7 +7,7 @@ use tokio::time::{sleep, Duration};
 use futures_util::{pin_mut, stream::StreamExt};
 use rand::{distributions::Alphanumeric, Rng};
 
-const SERVICE_NAME: &str = "_opensam-hive._tcp.local";
+const SERVICE_NAME: &str = "_opensam._tcp.local";
 const SERVICE_PORT: u16 = 5353;
 
 static BROADCAST_RESPONDER: once_cell::sync::Lazy<Arc<StdMutex<Option<libmdns::Responder>>>> = once_cell::sync::Lazy::new(|| Arc::new(StdMutex::new(None)));
