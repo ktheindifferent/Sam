@@ -61,8 +61,8 @@ pub async fn start_prompt() {
     log::info!("[sam cli] start_prompt() called");
     helpers::check_postgres_env();
     // Initialize tui-logger (new crate)
-    tui_logger::init_logger(log::LevelFilter::Info).unwrap();
-    tui_logger::set_default_level(log::LevelFilter::Info);
+    tui_logger::init_logger(log::LevelFilter::Debug).unwrap();
+    tui_logger::set_default_level(log::LevelFilter::Debug);
 
     // Only set log file if /opt/sam exists
     let log_dir = std::path::Path::new("/opt/sam");
