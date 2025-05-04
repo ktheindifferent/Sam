@@ -83,4 +83,40 @@ function newThing(type){
 
           
     }
+    if(type == 'matter'){
+        Swal.fire({
+            title: 'New Matter Device',
+            showCancelButton: true,
+            showConfirmButton: false,
+            html: `
+            
+                <form action="/api/things" method="post" >
+
+                    <input type="hidden" name="new_thing_type" id="new_thing_type" value="rtsp" />
+
+                    <div class="form-group">
+                        <label for="new_thing_name">Name</label>
+                        <input type="text" class="form-control" id="new_thing_name" name="new_thing_name"/>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="new_thing_ip">IP Address</label>
+                        <input type="text" class="form-control" id="new_thing_ip" name="new_thing_ip"/>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="new_thing_password">Pin Code (xxxx-xxx-xxxx)</label>
+                        <input type="password" class="form-control" id="new_thing_password" name="new_thing_password"/>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Save</button>
+
+                </form>
+            
+            `
+          });
+
+
+          
+    }
 }
