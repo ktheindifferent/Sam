@@ -44,13 +44,19 @@ pub fn cache_vwavs() {
             .query_columns
             .push(" AND observation_objects ilike".to_string());
 
-        let observations =
-            crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)).unwrap();
+        let observations = match crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)) {
+            Ok(obs) => obs,
+            Err(e) => {
+                log::error!("Failed to select observations for VWAV cache build: {}", e);
+                return Err(e);
+            }
+        };
+        
         let observations_len = observations.len();
         for (xrows, observation) in observations.iter().enumerate() {
             for human in &observation.observation_humans {
-                let human_oid = human.oid.clone(); // Fix unresolved variable
-                let th_obsv = observation.clone(); // Clone observation inside the closure scope
+                let human_oid = human.oid.clone();
+                let th_obsv = observation.clone();
                 pool.execute(move || {
                     log::info!("CACHE VWAV build processed observation {}/{}", xrows + 1, observations_len);
                     let tmp_file_path = format!("/opt/sam/tmp/observations/vwav/{}.wav", th_obsv.oid);
@@ -59,21 +65,48 @@ pub fn cache_vwavs() {
                     if !Path::new(&cache_path).exists() {
                         let xpath = format!("/opt/sam/scripts/sprec/audio/{}/{}.wav", human_oid, th_obsv.oid);
                         if Path::new(&xpath).exists() {
-                            crate::sam::tools::uinx_cmd(format!("cp {xpath} {tmp_file_path}").as_str());
+                            // Use safe command execution instead of deprecated uinx_cmd
+                            crate::sam::tools::safe_uinx_cmd("cp", &[&xpath, &tmp_file_path]);
                         } else {
                             let mut full_pg_query = crate::sam::memory::PostgresQueries::default();
                             full_pg_query.queries.push(crate::sam::memory::PGCol::String(th_obsv.oid.clone()));
                             full_pg_query.query_columns.push("oid =".to_string());
-                            let full_observation = crate::sam::memory::Observation::select(None, None, None, Some(full_pg_query)).unwrap()[0].clone();
-                            std::fs::write(&tmp_file_path, full_observation.observation_file.unwrap()).unwrap();
+                            
+                            match crate::sam::memory::Observation::select(None, None, None, Some(full_pg_query)) {
+                                Ok(observations) if !observations.is_empty() => {
+                                    let full_observation = &observations[0];
+                                    if let Some(ref observation_file) = full_observation.observation_file {
+                                        if let Err(e) = std::fs::write(&tmp_file_path, observation_file) {
+                                            log::error!("Failed to write observation file to {}: {}", tmp_file_path, e);
+                                            return;
+                                        }
+                                    } else {
+                                        log::error!("Observation {} has no file data", th_obsv.oid);
+                                        return;
+                                    }
+                                },
+                                Ok(_) => {
+                                    log::error!("No observations found for oid {}", th_obsv.oid);
+                                    return;
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to fetch full observation {}: {}", th_obsv.oid, e);
+                                    return;
+                                }
+                            }
                         }
 
-                        crate::sam::tools::uinx_cmd(format!("ffmpeg -y -i {tmp_file_path} -ar 16000 -ac 1 -c:a pcm_s16le {tmp_file_path}.16.wav").as_str());
-                        crate::sam::tools::uinx_cmd(format!("/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {tmp_file_path}.16.wav -owts").as_str());
-                        crate::sam::services::stt::patch_whisper_wts(format!("{tmp_file_path}.16.wav.wts")).unwrap();
-                        crate::sam::tools::uinx_cmd(format!("chmod +x {tmp_file_path}.16.wav.wts").as_str());
-                        crate::sam::tools::uinx_cmd(format!("{tmp_file_path}.16.wav.wts").as_str());
-                        crate::sam::tools::uinx_cmd(format!("rm {tmp_file_path} {tmp_file_path}.16.wav {tmp_file_path}.16.wav.wts").as_str());
+                        // Use safe command execution
+                        crate::sam::tools::safe_uinx_cmd("ffmpeg", &["-y", "-i", &tmp_file_path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", &format!("{}.16.wav", tmp_file_path)]);
+                        crate::sam::tools::safe_uinx_cmd("/opt/sam/bin/whisper", &["-m", "/opt/sam/models/ggml-large.bin", "-f", &format!("{}.16.wav", tmp_file_path), "-owts"]);
+                        
+                        if let Err(e) = crate::sam::services::stt::patch_whisper_wts(format!("{}.16.wav.wts", tmp_file_path)) {
+                            log::error!("Failed to patch whisper wts file: {}", e);
+                        }
+                        
+                        crate::sam::tools::safe_uinx_cmd("chmod", &["+x", &format!("{}.16.wav.wts", tmp_file_path)]);
+                        crate::sam::tools::safe_uinx_cmd("sh", &["-c", &format!("{}.16.wav.wts", tmp_file_path)]);
+                        crate::sam::tools::safe_uinx_cmd("rm", &[&tmp_file_path, &format!("{}.16.wav", tmp_file_path), &format!("{}.16.wav.wts", tmp_file_path)]);
                     }
                 });
             }

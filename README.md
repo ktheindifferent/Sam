@@ -22,25 +22,131 @@ Media Center Features:
   - App Support (Netflix, Youtube, Spotify, etc.)
   - Game Controller Support
 
-TODO:
+## 🚨 Security Notice
+
+**THIS SOFTWARE IS IN ACTIVE DEVELOPMENT AND NOT PRODUCTION READY**
+
+Before using S.A.M., please review the [SECURITY.md](SECURITY.md) file for important security considerations. Recent security fixes include:
+
+- ✅ Fixed critical command injection vulnerabilities
+- ✅ Fixed SQL injection prevention
+- ✅ Fixed application crash from network errors
+- 🔄 Ongoing work to replace unsafe `.unwrap()` calls
+
+## 🛠️ Installation & Setup
+
+### Prerequisites
+
+- **Rust 1.70+** - Install from [rustup.rs](https://rustup.rs/)
+- **PostgreSQL 13+** - Required for data storage
+- **Redis** (optional) - For caching and session management
+- **Docker** (optional) - For containerized services
+- **Python 3.8+** - For AI/ML components
+- **FFmpeg** - For media processing
+
+### Quick Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-org/sam.git
+   cd sam
+   ```
+
+2. **Install system dependencies**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt update
+   sudo apt install postgresql-client libpq-dev redis-server ffmpeg python3-pip
+
+   # macOS
+   brew install postgresql redis ffmpeg python3
+   
+   # Arch Linux
+   sudo pacman -S postgresql-libs redis ffmpeg python
+   ```
+
+3. **Setup database**
+   ```bash
+   # Create PostgreSQL database
+   createdb sam_db
+   
+   # Set environment variables
+   export DATABASE_URL="postgresql://username:password@localhost/sam_db"
+   export REDIS_URL="redis://localhost:6379"
+   ```
+
+4. **Build and run**
+   ```bash
+   cargo build --release
+   ./target/release/sam --help
+   ```
+
+### Configuration
+
+Create `/opt/sam/config.json` with your settings:
+```json
+{
+  "database_url": "postgresql://localhost/sam_db",
+  "redis_url": "redis://localhost:6379",
+  "http_port": 8000,
+  "enable_tts": true,
+  "enable_stt": true,
+  "log_level": "info"
+}
+```
+
+### Development Setup
+
+1. **Run installer (development mode)**
+   ```bash
+   cargo run --bin installer -- --dev-setup
+   ```
+
+2. **Start development server**
+   ```bash
+   cargo run -- serve --dev
+   ```
+
+3. **Run tests**
+   ```bash
+   cargo test
+   ```
+
+## 📋 TODO/Roadmap
+
+### Security & Stability (High Priority)
+- 🔄 Replace remaining `.unwrap()` calls with proper error handling
+- 🔄 Audit and fix remaining command injection vectors
+- ⏳ Add comprehensive input validation
+- ⏳ Implement proper session management
+- ⏳ Add rate limiting and DOS protection
+
+### Core Features
 - Add clock_widget_display_format setting for the clock widget
 - Intergrate Whisper as a primary STT/TTS engine https://github.com/ggerganov/whisper.cpp
 - Use whisper for realtime STT/TTS using wasm2js
 - Keep exsting TTS/STT methods to be used as a backup
 - Add metadata to file storage api
-- PS1 emulation and native file support (.ps1) https://github.com/js-emulators/WASMpsx
-- NES emulation and native file support (.nes) https://github.com/takahirox/nes-rust
-- Gameboy emulation https://github.com/andrewimm/wasm-gb
-- Chip-8 Emulation (.ch8)
 - SSH command pipeline support for cli
 - Password manager
 - Vulnerability scanning and classification of internal network
 - Ext Web crawler for links, summaries, ports, etc.
 - P2P communications between sam instances for Job tasking, hive communications
+
+### Platform Support
 - Stablize windows build
 - Mobile App
+- Docker containerization
+
+### UI/UX Improvements  
 - Overhaul web interface for no jquery, gulp asset pipelines, etc
 - Overhaul help command
+
+### Gaming & Emulation
+- PS1 emulation and native file support (.ps1) https://github.com/js-emulators/WASMpsx
+- NES emulation and native file support (.nes) https://github.com/takahirox/nes-rust
+- Gameboy emulation https://github.com/andrewimm/wasm-gb
+- Chip-8 Emulation (.ch8)
 
 0.0.4(WIP):
 - database restructured
