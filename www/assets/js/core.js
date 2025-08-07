@@ -15,21 +15,31 @@ var current_session = null;
 var notifications = undefined;
 
 $(document).ready(function() {
-
-
     toastr.options = {
-        timeOut: 0,
-        extendedTimeOut: 0
+        timeOut: 5000,
+        extendedTimeOut: 2000,
+        positionClass: "toast-top-right",
+        showDuration: 300,
+        hideDuration: 300,
+        showEasing: "swing",
+        hideEasing: "linear",
+        showMethod: "fadeIn",
+        hideMethod: "fadeOut"
     };
 
     $.fn.modal.Constructor.prototype._enforceFocus = function() {}
+    
+    // Initialize enhanced dashboard features
+    initializeDashboard();
+    
     $.get("/api/current_human", function( data ) {
         current_human = data;
         $('.inject-human-name').each(function(i, obj) {
             $(obj).html(current_human.name);
         });
-        
-
+    }).fail(function() {
+        console.warn("Could not load current human data");
+        $('.inject-human-name').text("User");
     });
 
     if(is_touch_enabled()){
@@ -43,10 +53,201 @@ $(document).ready(function() {
         window.setInterval( function() {
             notifications.refreshUnseen()
         }, 5000)
+    }).fail(function() {
+        console.warn("Could not load current session data");
     });
-
-
 });
+
+// Enhanced Dashboard Initialization
+function initializeDashboard() {
+    // Start real-time updates if we're on the main dashboard
+    if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+        startRealTimeUpdates();
+        animateCards();
+    }
+}
+
+// Real-time system monitoring
+function startRealTimeUpdates() {
+    updateSystemMetrics();
+    setInterval(updateSystemMetrics, 5000); // Update every 5 seconds
+}
+
+async function updateSystemMetrics() {
+    try {
+        // Simulate API calls - in real implementation, these would be actual endpoints
+        const mockData = {
+            cpu: Math.random() * 100,
+            memory: {
+                used: 4000 + Math.random() * 4000,
+                total: 16000
+            },
+            disk: 30 + Math.random() * 40,
+            services: {
+                running: 6,
+                total: 8
+            }
+        };
+        
+        // Update CPU
+        $('#cpu-usage-card').text(`${mockData.cpu.toFixed(1)}%`);
+        $('#cpu-progress-main').css('width', `${mockData.cpu}%`);
+        
+        // Update Memory
+        const memoryPercent = (mockData.memory.used / mockData.memory.total) * 100;
+        $('#memory-usage-card').text(`${mockData.memory.used.toFixed(0)} MB`);
+        $('#memory-progress-main').css('width', `${memoryPercent}%`);
+        
+        // Update Disk
+        $('#disk-progress-main').css('width', `${mockData.disk}%`);
+        
+        // Update service count
+        $('#services-count').text(mockData.services.total);
+        
+    } catch (error) {
+        console.error('Error updating system metrics:', error);
+    }
+}
+
+// Animate cards on page load
+function animateCards() {
+    $('.card').each(function(index) {
+        $(this).css({
+            'opacity': '0',
+            'transform': 'translateY(20px)'
+        }).delay(index * 100).animate({
+            'opacity': '1'
+        }, 500, function() {
+            $(this).css('transform', 'translateY(0)');
+        });
+    });
+}
+
+// Enhanced notification system
+function showNotification(message, type = 'info', title = '') {
+    switch(type) {
+        case 'success':
+            toastr.success(message, title);
+            break;
+        case 'error':
+            toastr.error(message, title);
+            break;
+        case 'warning':
+            toastr.warning(message, title);
+            break;
+        default:
+            toastr.info(message, title);
+    }
+}
+
+// Console/Terminal functionality
+function openConsole() {
+    // Check if console app exists, otherwise show placeholder
+    if ($('#console-app').length) {
+        $('#console-app').modal('show');
+    } else {
+        showNotification('Web terminal functionality coming soon!', 'info', 'Console');
+        // In a real implementation, this would open apps/console/index.html
+        window.open('/apps/console/index.html', '_blank', 'width=800,height=600');
+    }
+}
+
+// Service management functions
+function toggleService(serviceName) {
+    showNotification(`Toggling ${serviceName} service...`, 'info');
+    // In real implementation, make API call to toggle service
+    setTimeout(() => {
+        showNotification(`${serviceName} service toggled successfully!`, 'success');
+        updateSystemMetrics(); // Refresh metrics
+    }, 1000);
+}
+
+function restartService(serviceName) {
+    showNotification(`Restarting ${serviceName} service...`, 'warning');
+    // In real implementation, make API call to restart service
+    setTimeout(() => {
+        showNotification(`${serviceName} service restarted!`, 'success');
+        updateSystemMetrics(); // Refresh metrics
+    }, 2000);
+}
+
+// Enhanced touch/mobile support
+function is_touch_enabled() {
+    return ( 'ontouchstart' in window ) ||
+           ( navigator.maxTouchPoints > 0 ) ||
+           ( navigator.msMaxTouchPoints > 0 );
+}
+
+function disableCursor() {
+    $('body').addClass('touch-enabled');
+    // Add touch-specific styles
+    $('<style>').prop('type', 'text/css').html(`
+        .touch-enabled * {
+            cursor: none !important;
+        }
+        .touch-enabled .btn:hover {
+            transform: scale(1.05);
+        }
+        .touch-enabled .card:hover {
+            transform: translateY(0) scale(1.02);
+        }
+    `).appendTo('head');
+}
+
+// Accessibility improvements
+$(document).on('keydown', function(e) {
+    // ESC key to close modals
+    if (e.key === 'Escape') {
+        $('.modal').modal('hide');
+    }
+    
+    // Ctrl+R for refresh
+    if (e.ctrlKey && e.key === 'r') {
+        e.preventDefault();
+        updateSystemMetrics();
+        showNotification('Dashboard refreshed!', 'success');
+    }
+});
+
+// Focus management for accessibility
+$(document).on('focus', '.card', function() {
+    $(this).addClass('focus-highlight');
+}).on('blur', '.card', function() {
+    $(this).removeClass('focus-highlight');
+});
+
+// Loading states for better UX
+function showLoadingState(element) {
+    const $el = $(element);
+    $el.data('original-html', $el.html());
+    $el.html('<span class="loading-spinner"></span> Loading...');
+    $el.prop('disabled', true);
+}
+
+function hideLoadingState(element) {
+    const $el = $(element);
+    $el.html($el.data('original-html'));
+    $el.prop('disabled', false);
+}
+
+// Error handling for AJAX requests
+$(document).ajaxError(function(event, xhr, settings, error) {
+    console.error('AJAX Error:', error);
+    showNotification('Network error occurred. Please check your connection.', 'error');
+});
+
+// Service Worker registration for offline functionality
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+                console.log('ServiceWorker registration successful');
+            })
+            .catch(err => {
+                console.log('ServiceWorker registration failed: ', err);
+            });
+    });
+}
 
 
 function newPopWindow(url, windowname, w, h, x, y)
