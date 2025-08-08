@@ -7,9 +7,10 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
-pub mod cli;
-pub mod http;
-pub mod memory;
-pub mod security;
-pub mod services;
-pub mod tools;
+pub mod enhanced;
+pub mod legacy;
+
+pub use enhanced::{TtsConfig, TtsService, TtsRequest, TtsResult, AudioFormat};
+
+// Re-export legacy functions for backward compatibility
+pub use legacy::{handle, init, get, fetch_online, fetch_local, tts_cross_platform, tts_cross_platform_wav};

@@ -15,7 +15,7 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod whisper;
-// Add missing import for tools module
+pub mod whisper_enhanced;
 
 /// Represents the result of an STT prediction.
 #[derive(Serialize, Deserialize, Debug, Clone)]

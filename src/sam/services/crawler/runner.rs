@@ -369,15 +369,20 @@ async fn crawl_url_inner(
     _depth: usize,
     client: std::sync::Arc<reqwest::Client>,
 ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
-    // Extract domain from URL for various checks
-    let domain = if let Ok(parsed_url) = Url::parse(&url) {
-        parsed_url.host_str().unwrap_or_default().to_string()
-    } else {
-        return Err(crate::sam::memory::Error::Other(
-            "Invalid URL format".to_string(),
-        )
-        .into());
+    // Validate URL for security (SSRF protection)
+    let parsed_url = match crate::sam::security::validate_url(&url) {
+        Ok(valid_url) => valid_url,
+        Err(e) => {
+            log::warn!("URL validation failed for {}: {}", url, e);
+            return Err(crate::sam::memory::Error::Other(
+                format!("URL validation failed: {}", e),
+            )
+            .into());
+        }
     };
+    
+    // Extract domain from URL for various checks
+    let domain = parsed_url.host_str().unwrap_or_default().to_string();
 
     // Check robots.txt compliance
     if !super::robots::is_url_allowed(&url).await {

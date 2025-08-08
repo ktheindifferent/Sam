@@ -129,10 +129,14 @@ pub fn handle(
             let files =
                 crate::sam::memory::storage::File::select(None, None, None, Some(pg_query))?;
             if let Some(file) = files.first() {
-                return Ok(Response::from_data(
-                    file.file_type.clone(),
-                    file.file_data.clone().unwrap(),
-                ));
+                if let Some(file_data) = file.file_data.clone() {
+                    return Ok(Response::from_data(
+                        file.file_type.clone(),
+                        file_data,
+                    ));
+                } else {
+                    return Ok(Response::empty_404());
+                }
             } else {
                 return Ok(Response::empty_404());
             }
