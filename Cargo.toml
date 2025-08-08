@@ -98,3 +98,17 @@ bench = false
 [lib]
 name = "libsam"
 path = "src/lib/mod.rs"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.8"
+wiremock = "0.5"
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+proptest = "1.3"
+quickcheck = "1.0"
+quickcheck_macros = "1.0"
+mockall = "0.11"
+uuid = { version = "1.5", features = ["v4"] }
+nix = "0.27"
+assert_matches = "1.5"
+serial_test = "3.0"
