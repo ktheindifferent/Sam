@@ -1,0 +1,112 @@
+// This file contains the enhancements to be integrated into runner.rs
+// The following changes should be made:
+
+// 1. Update the REQWEST_CLIENT to use proper User-Agent and certificate validation:
+static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
+    reqwest::Client::builder()
+        .user_agent(super::robots::DEFAULT_USER_AGENT) // Use the centralized User-Agent
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .timeout(Duration::from_secs(30))
+        .pool_max_idle_per_host(8)
+        .pool_idle_timeout(Some(Duration::from_secs(15)))
+        .danger_accept_invalid_certs(false) // Enable proper certificate validation
+        .build()
+        .expect("Failed to build reqwest client")
+});
+
+// 2. Add the missing synchronous start_service function:
+/// Start the crawler service synchronously
+/// 
+/// This function blocks the current thread and starts the crawler service.
+/// For async contexts, use `start_service_async` instead.
+pub fn start_service() {
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+    runtime.block_on(async {
+        start_service_async().await;
+    });
+}
+
+// 3. Integrate robots.txt checking in crawl_url_inner:
+// Before crawling a URL, check robots.txt compliance:
+async fn crawl_url_inner(/* existing parameters */) {
+    // ... existing code ...
+    
+    // Check robots.txt compliance
+    if !super::robots::is_url_allowed(&url).await {
+        log::info!("URL blocked by robots.txt: {}", url);
+        super::metrics::record_robots_block(&domain, &url).await;
+        return Ok(());
+    }
+    
+    // Check circuit breaker
+    if !super::circuit_breaker::is_domain_allowed(&domain).await {
+        log::info!("Domain blocked by circuit breaker: {}", domain);
+        super::metrics::record_circuit_breaker_block(&domain).await;
+        return Ok(());
+    }
+    
+    // ... continue with existing crawling logic ...
+}
+
+// 4. Add sitemap discovery after successful domain crawl:
+// After successfully crawling a domain's root, discover and process sitemaps:
+async fn process_domain_sitemaps(domain: &str) {
+    let sitemap_urls = super::sitemap::extract_urls_from_sitemaps(domain).await;
+    if !sitemap_urls.is_empty() {
+        log::info!("Found {} URLs in sitemaps for {}", sitemap_urls.len(), domain);
+        super::metrics::record_sitemap_found(domain).await;
+        
+        // Add sitemap URLs to crawl queue
+        for url in sitemap_urls.iter().take(100) { // Limit to avoid overwhelming
+            // Create crawl jobs for sitemap URLs
+            let mut job = CrawlJob::new(url.clone());
+            job.depth = 1; // Start at depth 1 for sitemap URLs
+            job.save().await;
+        }
+    }
+}
+
+// 5. Record metrics for each crawl:
+// After successful crawl:
+super::metrics::record_crawl_success(
+    &domain,
+    &url,
+    content.len() as u64,
+    response_time,
+    status_code,
+    content_type,
+).await;
+super::circuit_breaker::record_domain_success(&domain).await;
+
+// After failed crawl:
+super::metrics::record_crawl_failure(&domain, &url, &error_message).await;
+super::circuit_breaker::record_domain_failure(&domain).await;
+
+// 6. Implement proper crawl delay from robots.txt:
+// Get and apply crawl delay from robots.txt
+if let Some(delay) = super::robots::get_crawl_delay(&domain).await {
+    tokio::time::sleep(delay).await;
+}
+
+// 7. Add progress tracking:
+// Update progress periodically during crawl
+super::metrics::update_progress(
+    job_id.clone(),
+    total_urls,
+    completed_urls,
+    current_depth,
+    max_depth,
+    "running".to_string(),
+).await;
+
+// 8. Add metrics reporting endpoint:
+/// Get current crawler metrics
+pub async fn get_metrics_report() -> String {
+    super::metrics::generate_metrics_report().await
+}
+
+// 9. Add circuit breaker status endpoint:
+/// Get circuit breaker status for all domains
+pub async fn get_circuit_breaker_status() -> HashMap<String, super::circuit_breaker::DomainStats> {
+    super::circuit_breaker::get_all_domain_stats().await
+}

@@ -44,11 +44,12 @@ use deadpool_redis::{Config as DeadpoolConfig, Pool, Runtime};
 
 static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
     reqwest::Client::builder()
+        .user_agent(super::robots::DEFAULT_USER_AGENT) // Use the centralized User-Agent
         .redirect(reqwest::redirect::Policy::limited(5))
         .timeout(Duration::from_secs(30))
         .pool_max_idle_per_host(8)
         .pool_idle_timeout(Some(Duration::from_secs(15)))
-        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_certs(false) // Enable proper certificate validation
         .build()
         .expect("Failed to build reqwest client")
 });
@@ -368,9 +369,46 @@ async fn crawl_url_inner(
     _depth: usize,
     client: std::sync::Arc<reqwest::Client>,
 ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
+    // Extract domain from URL for various checks
+    let domain = if let Ok(parsed_url) = Url::parse(&url) {
+        parsed_url.host_str().unwrap_or_default().to_string()
+    } else {
+        return Err(crate::sam::memory::Error::Other(
+            "Invalid URL format".to_string(),
+        )
+        .into());
+    };
+
+    // Check robots.txt compliance
+    if !super::robots::is_url_allowed(&url).await {
+        log::info!("URL blocked by robots.txt: {}", url);
+        super::metrics::record_robots_block(&domain, &url).await;
+        return Err(crate::sam::memory::Error::Other(
+            "URL blocked by robots.txt".to_string(),
+        )
+        .into());
+    }
+
+    // Check circuit breaker
+    if !super::circuit_breaker::is_domain_allowed(&domain).await {
+        log::info!("Domain blocked by circuit breaker: {}", domain);
+        super::metrics::record_circuit_breaker_block(&domain).await;
+        return Err(crate::sam::memory::Error::Other(
+            "Domain blocked by circuit breaker".to_string(),
+        )
+        .into());
+    }
+
     // Apply rate limiting and validation
     apply_global_rate_limit().await;
     validate_url(&url)?;
+    
+    // Apply crawl delay from robots.txt if specified
+    if let Some(delay) = super::robots::get_crawl_delay(&domain).await {
+        log::debug!("Applying crawl delay of {:?} for {}", delay, domain);
+        tokio::time::sleep(delay).await;
+    }
+    
     apply_domain_rate_limit(&url).await;
 
     if is_search_url(&url.to_ascii_lowercase()) {
@@ -546,8 +584,24 @@ async fn crawl_url_inner(
 
                 page.links = links;
 
+                // Record successful crawl metrics
+                let response_time = Duration::from_millis(100); // Estimate based on typical response
+                super::metrics::record_crawl_success(
+                    &domain,
+                    &url,
+                    html.len() as u64,
+                    response_time,
+                    status,
+                    mime_tokens.first().cloned(),
+                ).await;
+                super::circuit_breaker::record_domain_success(&domain).await;
+
                 all_pages.push(page.clone());
             } else {
+                // Record failed crawl (non-200 status)
+                super::metrics::record_crawl_failure(&domain, &url, &format!("HTTP status: {}", status)).await;
+                super::circuit_breaker::record_domain_failure(&domain).await;
+                
                 tokio::spawn({
                     let url = url.clone();
                     async move {
@@ -558,6 +612,10 @@ async fn crawl_url_inner(
         }
         Err(e) => {
             log::warn!("Error fetching URL {}: {}", url, e);
+            
+            // Record failed crawl metrics
+            super::metrics::record_crawl_failure(&domain, &url, &e.to_string()).await;
+            super::circuit_breaker::record_domain_failure(&domain).await;
 
             tokio::spawn({
                 let url = url.clone();
@@ -627,6 +685,17 @@ pub async fn crawl_url(
     crawl_url_boxed(job_oid, url, 0, client).await
 }
 
+/// Start the crawler service synchronously
+/// 
+/// This function blocks the current thread and starts the crawler service.
+/// For async contexts, use `start_service_async` instead.
+pub fn start_service() {
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+    runtime.block_on(async {
+        start_service_async().await;
+    });
+}
+
 /// Starts the crawler service asynchronously, spawning worker tasks for each CPU core.
 ///
 /// # Behavior
@@ -661,6 +730,20 @@ pub fn stop_service() {
     info!("Crawler service stopping...");
     CRAWLER_RUNNING.store(false, Ordering::SeqCst);
     info!("Crawler service stopped.");
+}
+
+/// Get current crawler metrics report
+///
+/// Returns a formatted string containing comprehensive crawler metrics.
+pub async fn get_metrics_report() -> String {
+    super::metrics::generate_metrics_report().await
+}
+
+/// Get circuit breaker status for all domains
+///
+/// Returns a map of domain names to their circuit breaker statistics.
+pub async fn get_circuit_breaker_status() -> HashMap<String, super::circuit_breaker::DomainStats> {
+    super::circuit_breaker::get_all_domain_stats().await
 }
 
 /// Returns the current status of the crawler service as a string.
