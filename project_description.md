@@ -40,7 +40,7 @@ S.A.M. (Smart Artificial Mind) is an ambitious open-source AI assistant platform
 - ✅ Created HTTP middleware for rate limiting and DOS protection
 - ✅ Built secure password manager with AES-256 encryption
 - ✅ Enhanced web crawler with link summaries and port scanning
-- ✅ Created comprehensive CI/CD pipeline with GitHub Actions
+- ✅ Designed comprehensive CI/CD pipeline (requires manual setup due to GitHub permissions)
 - ✅ Built vulnerability scanner for network security assessment
 - ✅ Completed Docker containerization with multi-stage builds
 
