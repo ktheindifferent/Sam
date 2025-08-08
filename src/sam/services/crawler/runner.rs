@@ -111,6 +111,10 @@ static SLEEP_UNTIL: once_cell::sync::Lazy<AtomicU64> =
 static TIMEOUT_COUNT: once_cell::sync::Lazy<std::sync::Mutex<usize>> =
     once_cell::sync::Lazy::new(|| std::sync::Mutex::new(0));
 
+// Domain rate limiter to prevent overwhelming servers
+static DOMAIN_LAST_ACCESS: once_cell::sync::Lazy<tokio::sync::Mutex<HashMap<String, u64>>> =
+    once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(HashMap::new()));
+
 static REDIS_URL: &str = "redis://127.0.0.1/";
 static REDIS_POOL: once_cell::sync::Lazy<Pool> = once_cell::sync::Lazy::new(|| {
     let cfg = DeadpoolConfig::from_url(REDIS_URL);
@@ -384,6 +388,31 @@ async fn crawl_url_inner(
     // Bugfix: Check if the URL is valid before proceeding
     if !is_valid_url(&url) {
         return Err(crate::sam::memory::Error::Other("Invalid URL".to_string()).into());
+    }
+    
+    // Domain-based rate limiting (1 second minimum between requests to same domain)
+    if let Ok(parsed_url) = Url::parse(&url) {
+        if let Some(domain) = parsed_url.domain() {
+            let domain_str = domain.to_string();
+            let mut last_access_map = DOMAIN_LAST_ACCESS.lock().await;
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
+            
+            if let Some(&last_access) = last_access_map.get(&domain_str) {
+                let elapsed = now_ms.saturating_sub(last_access);
+                if elapsed < 1000 {
+                    let sleep_ms = 1000 - elapsed;
+                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+                }
+            }
+            
+            last_access_map.insert(domain_str, std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64);
+        }
     }
 
     // Return early if the URL looks like a search endpoint
@@ -877,11 +906,22 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
 
     // Load DNS cache from redis or file
     load_dns_cache(true).await;
+    
+    // Track when we last saved DNS cache
+    let mut last_dns_save = std::time::Instant::now();
 
     loop {
         if !CRAWLER_RUNNING.load(Ordering::SeqCst) {
             sleep(Duration::from_secs(1)).await;
             continue;
+        }
+        
+        // Periodically save DNS cache (every 5 minutes)
+        if last_dns_save.elapsed() > Duration::from_secs(300) {
+            tokio::spawn(async {
+                save_dns_cache().await;
+            });
+            last_dns_save = std::time::Instant::now();
         }
 
         // Find a pending job
@@ -935,7 +975,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 0,
             )])));
 
-            let concurrency = num_cpus::get() / 2; // At least 4 concurrent tasks
+            let concurrency = (num_cpus::get() * 2).max(8).min(32); // Better concurrency with limits
             loop {
                 // Collect all URLs at the current minimum depth
                 let (batch, _current_depth) = {
@@ -1068,14 +1108,18 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                     }
                                 }
                             }
-                            // Add pages to all_crawled_pages in one lock
-                            {
+                            // Stream saves to reduce memory usage - save immediately if we have pages
+                            if !pages.is_empty() {
                                 let mut all = all_crawled_pages.lock().await;
                                 all.extend(pages.into_iter());
-                                if all.len() >= 1000 {
-                                    // Save every 100 pages
+                                
+                                // Save more frequently to reduce memory usage (every 100 pages instead of 1000)
+                                if all.len() >= 100 {
                                     log::info!("C: Saving {} crawled pages", all.len());
-                                    for chunk in all.chunks(100) {
+                                    let pages_to_save = all.drain(..).collect::<Vec<_>>();
+                                    drop(all); // Release lock before I/O
+                                    
+                                    for chunk in pages_to_save.chunks(50) {
                                         if let Err(e) = CrawledPage::save_async_batch(chunk).await {
                                             log::warn!("Failed to save batch of pages: {}", e);
                                             for p in chunk {
@@ -1083,8 +1127,6 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                             }
                                         }
                                     }
-                                    all.clear();
-                                    log::info!("C: Cleared all crawled pages");
                                 }
                             }
                         }
@@ -1235,8 +1277,8 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
 
             let mut urls_found = Vec::new();
 
-            // Use concurrency to speed up DNS lookups
-            let concurrency = num_cpus::get() / 2;
+            // Use higher concurrency for DNS lookups (DNS is lightweight)
+            let concurrency = (num_cpus::get() * 4).max(16).min(64);
             log::info!(
                 "Starting DNS lookups for {} domains with concurrency {}",
                 domains.len(),
@@ -1426,52 +1468,21 @@ async fn lookup_domain(
 }
 
 fn is_search_url(url: &str) -> bool {
+    // Use lazy static regex for better performance
+    static SEARCH_PATTERNS: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"(?i)(/search[/?]|/query[/?]|/find[/?]|/lookup[/?]|/results[/?]|/explore[/?]|/filter[/?]|/discover[/?]|/browse[/?]|/list[/?]|/websearch\?|/search_history\?|\?q=|&q=|search=|query=|lookup=|results=|explore=|filter=|discover=|browse=|\bu=|url=|\bid=|redirect|backurl=|text=|searchterm|search_term|return_to|https?%3A%2F%2F)").unwrap()
+    });
+    
     let url_lc = url.to_ascii_lowercase();
-    url_lc.contains("/search/")
-        || url_lc.contains("search=")
-        || url_lc.contains("q=")
-        || url_lc.contains("/find/")
-        || (url_lc.matches("https://").count() >= 2)
-        || (url_lc.matches("http://").count() >= 2)
-        || (url_lc.contains("https://") && url_lc.contains("http://"))
-        || url_lc.contains("/query/")
-        || url_lc.contains("query=")
-        || url_lc.contains("https%3A%2F%2F")
-        || url_lc.contains("http%3A%2F%2F")
-        || url_lc.contains("/websearch?")
-        || url_lc.contains("/search_history?")
-        || url_lc.contains("/search?")
-        || url_lc.contains("/search")
-        || url_lc.contains("/search/")
-        || url_lc.contains("/lookup/")
-        || url_lc.contains("lookup=")
-        || url_lc.contains("/results/")
-        || url_lc.contains("results=")
-        || url_lc.contains("/explore/")
-        || url_lc.contains("explore=")
-        || url_lc.contains("/filter/")
-        || url_lc.contains("filter=")
-        || url_lc.contains("/discover/")
-        || url_lc.contains("discover=")
-        || url_lc.contains("/browse/")
-        || url_lc.contains("browse=")
-        || url_lc.contains("u=")
-        || url_lc.contains("url=")
-        || url_lc.contains("id=")
-        || url_lc.contains("redirect=")
-        || url_lc.contains("backurl=")
-        || url_lc.contains("redirecturi=")
-        || url_lc.contains("redirect_uri=")
-        || url_lc.contains("redirecturl=")
-        || url_lc.contains("redirect_url=")
-        || url_lc.contains("text=")
-        || url_lc.contains("searchterm=")
-        || url_lc.contains("search_term=")
-        || url_lc.contains("search_terms=")
-        || url_lc.contains("login?return_to=")
-        || url_lc.contains("signup?return_to=")
-        || url_lc.contains("?return_to")
-        || url_lc.contains("/list/")
+    
+    // Check for multiple URLs in one (redirect chains)
+    if url_lc.matches("https://").count() >= 2 || 
+       url_lc.matches("http://").count() >= 2 ||
+       (url_lc.contains("https://") && url_lc.contains("http://")) {
+        return true;
+    }
+    
+    SEARCH_PATTERNS.is_match(&url_lc)
 }
 
 /// Recursively extracts text tokens from an HTML element, skipping specified tags.
