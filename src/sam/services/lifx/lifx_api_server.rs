@@ -562,7 +562,19 @@ impl Manager {
                     }
                     Err(e) => log::info!("Error unpacking raw message from {}: {}", addr, e),
                 },
-                Err(e) => panic!("recv_from err {e:?}"),
+                Err(e) => {
+                    log::error!("recv_from network error: {:?}", e);
+                    // For transient network errors, continue the loop
+                    // For fatal errors, we might want to break and restart the server
+                    match e.kind() {
+                        std::io::ErrorKind::Interrupted => continue,
+                        std::io::ErrorKind::WouldBlock => continue,
+                        _ => {
+                            log::error!("Fatal network error in LIFX server, breaking discovery loop");
+                            break;
+                        }
+                    }
+                },
             }
         }
     }
