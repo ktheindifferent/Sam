@@ -229,17 +229,21 @@ pub fn get_user_from_whois(user: &str) -> Result<String> {
 }
 
 /// Executes a Python 3 script file and returns its output as a `String`.
-/// 
+///
 /// # Security Note
 /// This function only accepts script file paths, not arbitrary commands.
 /// For command arguments, use `python3_with_args` instead.
 pub fn python3(script_path: &str) -> Result<String> {
     // Validate that the path looks like a file (no shell metacharacters)
-    if script_path.contains(';') || script_path.contains('|') || script_path.contains('&') 
-        || script_path.contains('`') || script_path.contains('$') {
+    if script_path.contains(';')
+        || script_path.contains('|')
+        || script_path.contains('&')
+        || script_path.contains('`')
+        || script_path.contains('$')
+    {
         return Err(ToolsError::Other("Invalid characters in script path".to_string()).into());
     }
-    
+
     let output = Command::new("python3")
         .arg(script_path)
         .output()
@@ -248,16 +252,20 @@ pub fn python3(script_path: &str) -> Result<String> {
 }
 
 /// Executes a Python 3 script with arguments and returns its output as a `String`.
-/// 
+///
 /// # Security Note
 /// This function prevents command injection by treating each argument separately.
 pub fn python3_with_args(script_path: &str, args: &[&str]) -> Result<String> {
     // Validate script path
-    if script_path.contains(';') || script_path.contains('|') || script_path.contains('&') 
-        || script_path.contains('`') || script_path.contains('$') {
+    if script_path.contains(';')
+        || script_path.contains('|')
+        || script_path.contains('&')
+        || script_path.contains('`')
+        || script_path.contains('$')
+    {
         return Err(ToolsError::Other("Invalid characters in script path".to_string()).into());
     }
-    
+
     let output = Command::new("python3")
         .arg(script_path)
         .args(args)
@@ -267,13 +275,15 @@ pub fn python3_with_args(script_path: &str, args: &[&str]) -> Result<String> {
 }
 
 /// Executes a shell command and returns its output as a `String`.
-/// 
+///
 /// # WARNING: DEPRECATED - COMMAND INJECTION VULNERABILITY
 /// This function is vulnerable to command injection attacks. Use `safe_cmd` instead.
 /// This function is kept for backward compatibility but should not be used with user input.
 #[deprecated(note = "Use safe_cmd instead to prevent command injection")]
 pub fn cmd(command: &str) -> Result<String> {
-    log::warn!("SECURITY WARNING: Using deprecated cmd() function with command injection vulnerability");
+    log::warn!(
+        "SECURITY WARNING: Using deprecated cmd() function with command injection vulnerability"
+    );
     let output = Command::new("sh")
         .arg("-c")
         .arg(command)
@@ -283,7 +293,7 @@ pub fn cmd(command: &str) -> Result<String> {
 }
 
 /// Executes a command safely with separate arguments to prevent injection.
-/// 
+///
 /// # Security Note
 /// This function prevents command injection by executing commands with separate arguments
 /// instead of passing everything through a shell.
@@ -296,7 +306,7 @@ pub fn safe_cmd(program: &str, args: &[&str]) -> Result<String> {
 }
 
 /// Executes a Linux shell command and logs the result.
-/// 
+///
 /// # WARNING: DEPRECATED - COMMAND INJECTION VULNERABILITY  
 /// This function is vulnerable to command injection attacks. Use `safe_uinx_cmd` instead.
 /// This function is kept for backward compatibility but should not be used with user input.
@@ -319,7 +329,7 @@ pub fn uinx_cmd(command: &str) {
 }
 
 /// Executes a command safely with separate arguments and logs the result.
-/// 
+///
 /// # Security Note
 /// This function prevents command injection by executing commands with separate arguments.
 pub fn safe_uinx_cmd(program: &str, args: &[&str]) {
@@ -328,10 +338,18 @@ pub fn safe_uinx_cmd(program: &str, args: &[&str]) {
 
     match output {
         Ok(cmd) if cmd.status.success() => {
-            log::info!("{}:{}", command_display, String::from_utf8_lossy(&cmd.stdout));
+            log::info!(
+                "{}:{}",
+                command_display,
+                String::from_utf8_lossy(&cmd.stdout)
+            );
         }
         Ok(cmd) => {
-            log::error!("{}:{}", command_display, String::from_utf8_lossy(&cmd.stderr));
+            log::error!(
+                "{}:{}",
+                command_display,
+                String::from_utf8_lossy(&cmd.stderr)
+            );
         }
         Err(e) => {
             log::error!("Failed to execute command '{}': {}", command_display, e);
@@ -385,7 +403,8 @@ pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let outpath = Path::new(extract_path).join(
-            file.enclosed_name().ok_or_else(|| ToolsError::Other("Invalid path".to_string()))?
+            file.enclosed_name()
+                .ok_or_else(|| ToolsError::Other("Invalid path".to_string()))?,
         );
 
         if file.name().ends_with('/') {

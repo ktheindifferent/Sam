@@ -44,69 +44,136 @@ pub fn cache_vwavs() {
             .query_columns
             .push(" AND observation_objects ilike".to_string());
 
-        let observations = match crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)) {
-            Ok(obs) => obs,
-            Err(e) => {
-                log::error!("Failed to select observations for VWAV cache build: {}", e);
-                return Err(e);
-            }
-        };
-        
+        let observations =
+            match crate::sam::memory::Observation::select_lite(None, None, None, Some(pg_query)) {
+                Ok(obs) => obs,
+                Err(e) => {
+                    log::error!("Failed to select observations for VWAV cache build: {}", e);
+                    return Err(e);
+                }
+            };
+
         let observations_len = observations.len();
         for (xrows, observation) in observations.iter().enumerate() {
             for human in &observation.observation_humans {
                 let human_oid = human.oid.clone();
                 let th_obsv = observation.clone();
                 pool.execute(move || {
-                    log::info!("CACHE VWAV build processed observation {}/{}", xrows + 1, observations_len);
-                    let tmp_file_path = format!("/opt/sam/tmp/observations/vwav/{}.wav", th_obsv.oid);
+                    log::info!(
+                        "CACHE VWAV build processed observation {}/{}",
+                        xrows + 1,
+                        observations_len
+                    );
+                    let tmp_file_path =
+                        format!("/opt/sam/tmp/observations/vwav/{}.wav", th_obsv.oid);
                     let cache_path = format!("{tmp_file_path}.16.wav.mp4");
 
                     if !Path::new(&cache_path).exists() {
-                        let xpath = format!("/opt/sam/scripts/sprec/audio/{}/{}.wav", human_oid, th_obsv.oid);
+                        let xpath = format!(
+                            "/opt/sam/scripts/sprec/audio/{}/{}.wav",
+                            human_oid, th_obsv.oid
+                        );
                         if Path::new(&xpath).exists() {
                             // Use safe command execution instead of deprecated uinx_cmd
                             crate::sam::tools::safe_uinx_cmd("cp", &[&xpath, &tmp_file_path]);
                         } else {
                             let mut full_pg_query = crate::sam::memory::PostgresQueries::default();
-                            full_pg_query.queries.push(crate::sam::memory::PGCol::String(th_obsv.oid.clone()));
+                            full_pg_query
+                                .queries
+                                .push(crate::sam::memory::PGCol::String(th_obsv.oid.clone()));
                             full_pg_query.query_columns.push("oid =".to_string());
-                            
-                            match crate::sam::memory::Observation::select(None, None, None, Some(full_pg_query)) {
+
+                            match crate::sam::memory::Observation::select(
+                                None,
+                                None,
+                                None,
+                                Some(full_pg_query),
+                            ) {
                                 Ok(observations) if !observations.is_empty() => {
                                     let full_observation = &observations[0];
-                                    if let Some(ref observation_file) = full_observation.observation_file {
-                                        if let Err(e) = std::fs::write(&tmp_file_path, observation_file) {
-                                            log::error!("Failed to write observation file to {}: {}", tmp_file_path, e);
+                                    if let Some(ref observation_file) =
+                                        full_observation.observation_file
+                                    {
+                                        if let Err(e) =
+                                            std::fs::write(&tmp_file_path, observation_file)
+                                        {
+                                            log::error!(
+                                                "Failed to write observation file to {}: {}",
+                                                tmp_file_path,
+                                                e
+                                            );
                                             return;
                                         }
                                     } else {
                                         log::error!("Observation {} has no file data", th_obsv.oid);
                                         return;
                                     }
-                                },
+                                }
                                 Ok(_) => {
                                     log::error!("No observations found for oid {}", th_obsv.oid);
                                     return;
-                                },
+                                }
                                 Err(e) => {
-                                    log::error!("Failed to fetch full observation {}: {}", th_obsv.oid, e);
+                                    log::error!(
+                                        "Failed to fetch full observation {}: {}",
+                                        th_obsv.oid,
+                                        e
+                                    );
                                     return;
                                 }
                             }
                         }
 
                         // Use safe command execution
-                        crate::sam::tools::safe_uinx_cmd("ffmpeg", &["-y", "-i", &tmp_file_path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", &format!("{}.16.wav", tmp_file_path)]);
-                        crate::sam::tools::safe_uinx_cmd("/opt/sam/bin/whisper", &["-m", "/opt/sam/models/ggml-large.bin", "-f", &format!("{}.16.wav", tmp_file_path), "-owts"]);
-                        
-                        if let Err(e) = crate::sam::services::stt::patch_whisper_wts(format!("{}.16.wav.wts", tmp_file_path)) {
+                        crate::sam::tools::safe_uinx_cmd(
+                            "ffmpeg",
+                            &[
+                                "-y",
+                                "-i",
+                                &tmp_file_path,
+                                "-ar",
+                                "16000",
+                                "-ac",
+                                "1",
+                                "-c:a",
+                                "pcm_s16le",
+                                &format!("{}.16.wav", tmp_file_path),
+                            ],
+                        );
+                        crate::sam::tools::safe_uinx_cmd(
+                            "/opt/sam/bin/whisper",
+                            &[
+                                "-m",
+                                "/opt/sam/models/ggml-large.bin",
+                                "-f",
+                                &format!("{}.16.wav", tmp_file_path),
+                                "-owts",
+                            ],
+                        );
+
+                        if let Err(e) = crate::sam::services::stt::patch_whisper_wts(format!(
+                            "{}.16.wav.wts",
+                            tmp_file_path
+                        )) {
                             log::error!("Failed to patch whisper wts file: {}", e);
                         }
-                        
-                        crate::sam::tools::safe_uinx_cmd("chmod", &["+x", &format!("{}.16.wav.wts", tmp_file_path)]);
-                        crate::sam::tools::safe_uinx_cmd("sh", &["-c", &format!("{}.16.wav.wts", tmp_file_path)]);
-                        crate::sam::tools::safe_uinx_cmd("rm", &[&tmp_file_path, &format!("{}.16.wav", tmp_file_path), &format!("{}.16.wav.wts", tmp_file_path)]);
+
+                        crate::sam::tools::safe_uinx_cmd(
+                            "chmod",
+                            &["+x", &format!("{}.16.wav.wts", tmp_file_path)],
+                        );
+                        crate::sam::tools::safe_uinx_cmd(
+                            "sh",
+                            &["-c", &format!("{}.16.wav.wts", tmp_file_path)],
+                        );
+                        crate::sam::tools::safe_uinx_cmd(
+                            "rm",
+                            &[
+                                &tmp_file_path,
+                                &format!("{}.16.wav", tmp_file_path),
+                                &format!("{}.16.wav.wts", tmp_file_path),
+                            ],
+                        );
                     }
                 });
             }

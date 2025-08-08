@@ -1,7 +1,7 @@
 use crate::sam::services::crawler::page::CrawledPage;
 use log::{error, info};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use once_cell::sync::Lazy;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
@@ -52,7 +52,6 @@ impl P2PObject {
         let json = serde_json::to_string(self)?;
         Ok(json)
     }
-    
 }
 
 /// Send this CrawledPage to a peer over a TCP stream (async).
@@ -68,7 +67,6 @@ impl P2PObject {
 //     writer.write_all(bytes).await?;
 //     Ok(())
 // }
-
 
 /// Install P2P service (no-op for now, but could check dependencies)
 pub async fn install() {

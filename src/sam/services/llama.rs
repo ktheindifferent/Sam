@@ -195,7 +195,6 @@ impl LlamaService {
     }
 }
 
-
 // Example usage (not part of the service):
 // let model_path = Path::new("./models/llama-7b.bin");
 // let response = LlamaService::query(model_path, "What is Rust?")?;

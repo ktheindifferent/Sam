@@ -570,11 +570,13 @@ impl Manager {
                         std::io::ErrorKind::Interrupted => continue,
                         std::io::ErrorKind::WouldBlock => continue,
                         _ => {
-                            log::error!("Fatal network error in LIFX server, breaking discovery loop");
+                            log::error!(
+                                "Fatal network error in LIFX server, breaking discovery loop"
+                            );
                             break;
                         }
                     }
-                },
+                }
             }
         }
     }

@@ -22,10 +22,7 @@ impl Default for WebCrawl {
 
 impl WebCrawl {
     pub fn new(url: String) -> Self {
-        Self {
-            id: 0,
-            url,
-        }
+        Self { id: 0, url }
     }
 
     pub fn sql_table_name() -> String {
@@ -54,11 +51,10 @@ impl WebCrawl {
         // Search for OID matches
         let rows = Self::select(None, None, None, Some(pg_query.clone()))?;
 
- 
         if rows.is_empty() {
             client.execute(
                 "INSERT INTO cache_web_crawl (url) VALUES ($1)",
-                &[&object.url]
+                &[&object.url],
             )?;
 
             // Search for OID matches
@@ -73,52 +69,52 @@ impl WebCrawl {
         if objects.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         let mut client = Config::client_async().await?;
-        
+
         // Collect all URLs for batch checking
         let urls: Vec<String> = objects.iter().map(|o| o.url.clone()).collect();
-        
+
         // Build a single query to check all URLs at once
-        let placeholders: Vec<String> = (1..=urls.len())
-            .map(|i| format!("${}", i))
-            .collect();
+        let placeholders: Vec<String> = (1..=urls.len()).map(|i| format!("${}", i)).collect();
         let query = format!(
             "SELECT url FROM cache_web_crawl WHERE url IN ({})",
             placeholders.join(", ")
         );
-        
+
         // Convert urls to references for the query
-        let url_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            urls.iter().map(|u| u as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
-        
+        let url_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = urls
+            .iter()
+            .map(|u| u as &(dyn tokio_postgres::types::ToSql + Sync))
+            .collect();
+
         // Get existing URLs
         let rows = client.query(&query, &url_refs[..]).await?;
-        let existing_urls: std::collections::HashSet<String> = rows
-            .iter()
-            .map(|row| row.get::<_, String>("url"))
-            .collect();
-        
+        let existing_urls: std::collections::HashSet<String> =
+            rows.iter().map(|row| row.get::<_, String>("url")).collect();
+
         // Filter out existing URLs
         let new_objects: Vec<Self> = objects
             .into_iter()
             .filter(|o| !existing_urls.contains(&o.url))
             .collect();
-        
+
         if new_objects.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         // Bulk insert new URLs using UNNEST for better performance
         let new_urls: Vec<String> = new_objects.iter().map(|o| o.url.clone()).collect();
-        
-        client.execute(
-            "INSERT INTO cache_web_crawl (url) 
+
+        client
+            .execute(
+                "INSERT INTO cache_web_crawl (url) 
              SELECT DISTINCT * FROM UNNEST($1::varchar[]) 
              ON CONFLICT (url) DO NOTHING",
-            &[&new_urls]
-        ).await?;
-        
+                &[&new_urls],
+            )
+            .await?;
+
         // Return the inserted objects
         Ok(new_objects)
     }
@@ -134,12 +130,13 @@ impl WebCrawl {
         // Search for OID matches
         let rows = Self::select_async(None, None, None, Some(pg_query.clone())).await?;
 
-
         if rows.is_empty() {
-            client.execute(
-                "INSERT INTO cache_web_crawl (url) VALUES ($1)",
-                &[&object.url]
-            ).await?;
+            client
+                .execute(
+                    "INSERT INTO cache_web_crawl (url) VALUES ($1)",
+                    &[&object.url],
+                )
+                .await?;
 
             // Search for OID matches
             let rows_two = Self::select_async(None, None, None, Some(pg_query)).await?;
@@ -190,7 +187,8 @@ impl WebCrawl {
             order,
             query,
             client,
-        ).await?;
+        )
+        .await?;
         for j in jsons {
             let object: Self = serde_json::from_str(&j).unwrap();
             parsed_rows.push(object);
