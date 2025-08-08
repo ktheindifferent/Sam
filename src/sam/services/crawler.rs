@@ -5,6 +5,7 @@
 // use tokio::sync::Mutex;
 
 pub mod circuit_breaker;
+pub mod enhanced;
 pub mod job;
 pub mod metrics;
 pub mod page;
@@ -19,3 +20,4 @@ pub use robots::{is_url_allowed, DEFAULT_USER_AGENT};
 pub use sitemap::{extract_urls_from_sitemaps, fetch_sitemap};
 pub use circuit_breaker::{is_domain_allowed, record_domain_failure, record_domain_success};
 pub use metrics::{get_crawler_metrics, generate_metrics_report, record_crawl_success, record_crawl_failure};
+pub use enhanced::{EnhancedCrawler, EnhancedCrawlResult};

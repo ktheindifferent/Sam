@@ -49,6 +49,7 @@ pub mod matter;
 pub mod media;
 pub mod notifications;
 pub mod osf;
+pub mod password_manager;
 pub mod pg;
 pub mod redis;
 pub mod rivescript;

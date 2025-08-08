@@ -1,4 +1,6 @@
 pub mod input_validation;
+pub mod session;
+pub mod http_middleware;
 
 pub use input_validation::{
     validate_url,
@@ -11,4 +13,17 @@ pub use input_validation::{
     validate_email,
     validate_username,
     RateLimiter,
+};
+
+pub use session::{
+    Session,
+    SessionManager,
+    SessionMiddleware,
+};
+
+pub use http_middleware::{
+    HttpSecurityMiddleware,
+    RateLimitConfig,
+    DosProtectionConfig,
+    headers,
 };
