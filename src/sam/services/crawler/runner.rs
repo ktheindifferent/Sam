@@ -368,61 +368,16 @@ async fn crawl_url_inner(
     _depth: usize,
     client: std::sync::Arc<reqwest::Client>,
 ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
-    // log::info!("Crawling URL: {}", url);
+    // Apply rate limiting and validation
+    apply_global_rate_limit().await;
+    validate_url(&url)?;
+    apply_domain_rate_limit(&url).await;
 
-    // Shared sleep logic: check if we should sleep before making a request
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let sleep_until = SLEEP_UNTIL.load(Ordering::SeqCst);
-    if now < sleep_until {
-        let sleep_secs = sleep_until - now;
-        log::debug!(
-            "Global sleep in effect, sleeping for {} seconds",
-            sleep_secs
-        );
-        tokio::time::sleep(std::time::Duration::from_secs(sleep_secs)).await;
-    }
-
-    // Bugfix: Check if the URL is valid before proceeding
-    if !is_valid_url(&url) {
-        return Err(crate::sam::memory::Error::Other("Invalid URL".to_string()).into());
-    }
-    
-    // Domain-based rate limiting (1 second minimum between requests to same domain)
-    if let Ok(parsed_url) = Url::parse(&url) {
-        if let Some(domain) = parsed_url.domain() {
-            let domain_str = domain.to_string();
-            let mut last_access_map = DOMAIN_LAST_ACCESS.lock().await;
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64;
-            
-            if let Some(&last_access) = last_access_map.get(&domain_str) {
-                let elapsed = now_ms.saturating_sub(last_access);
-                if elapsed < 1000 {
-                    let sleep_ms = 1000 - elapsed;
-                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
-                }
-            }
-            
-            last_access_map.insert(domain_str, std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64);
-        }
-    }
-
-    // Return early if the URL looks like a search endpoint
-    let url_lc = url.to_ascii_lowercase();
-    if is_search_url(&url_lc) {
+    if is_search_url(&url.to_ascii_lowercase()) {
         return Err(crate::sam::memory::Error::Other(
             "URL appears to be a search endpoint, skipping".to_string(),
-        ).into());
-    } else {
-        // log::debug!("Crawling URL: {}", url);
+        )
+        .into());
     }
 
     // let mut pg_query = crate::sam::memory::PostgresQueries::default();
@@ -441,25 +396,8 @@ async fn crawl_url_inner(
     //     )));
     // }
 
-    let mut page = CrawledPage::new();
-    page.crawl_job_oid = job_oid.clone();
-    page.url = url.clone();
-
-    let mut file_mime: Option<&str> = None;
-    let mut mime_tokens = Vec::new();
-    let mime_ext = mime_type_from_url(&url);
-    if !mime_ext.contains("unknown") {
-        file_mime = Some(mime_ext);
-    } 
-
-    if let Some(ref mime) = file_mime {
-        if mime.starts_with("text/") {
-            mime_tokens.push(mime.to_string());
-        } else {
-            page.tokens = vec![mime.to_string()];
-            return Ok(vec![page]);
-        }
-    }
+    let mut page = create_crawled_page(&job_oid, &url);
+    let (file_mime, mut mime_tokens) = process_mime_type(&url, &mut page)?;
 
     let mut resp = None;
     let mut last_err = None;
@@ -491,7 +429,8 @@ async fn crawl_url_inner(
         None => Err(crate::sam::memory::Error::Other(format!(
             "Request failed after retries: {}",
             last_err.unwrap_or_else(|| "unknown".to_string())
-        )).into()),
+        ))
+        .into()),
     };
 
     let mut all_pages = Vec::new();
@@ -505,25 +444,7 @@ async fn crawl_url_inner(
                 let headers = resp.headers().clone();
                 let url_clone = url.clone();
                 let headers_clone = headers.clone();
-                // Try to extract the MIME type from the Content-Type header, ignoring parameters like charset
-                let mut mime_from_header: Option<String> = None;
-                if let Some(mimeh) = headers_clone
-                    .get("Content-Type")
-                    .or_else(|| headers_clone.get("content-type"))
-                {
-                    if let Ok(mime_str) = mimeh.to_str() {
-                        // Only take the part before ';' (ignore charset, etc.), trim, and lowercase
-                        let mime_main = mime_str
-                            .split(';')
-                            .next()
-                            .unwrap_or(mime_str)
-                            .trim()
-                            .to_ascii_lowercase();
-                        if !mime_main.is_empty() {
-                            mime_from_header = Some(mime_main);
-                        }
-                    }
-                }
+                let mime_from_header = extract_mime_from_headers(&headers_clone);
                 // Await the response text here, outside spawn_blocking
                 let html = match resp.text().await {
                     Ok(text) => text,
@@ -586,98 +507,7 @@ async fn crawl_url_inner(
                             extract_text(&body, &skip_selector, &mut tokens);
                         }
 
-                        let a_selector = scraper::Selector::parse("a[href]").ok();
-                        if let Some(a_selector) = a_selector {
-                            for element in document.select(&a_selector) {
-                                if let Some(link) = element.value().attr("href") {
-                                    if let Ok(abs) = Url::parse(link).or_else(|_| {
-                                        Url::parse(&url_clone).and_then(|base| base.join(link))
-                                    }) {
-                                        links.push(abs.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        let img_selector = scraper::Selector::parse("img[src]").ok();
-                        if let Some(img_selector) = img_selector {
-                            for element in document.select(&img_selector) {
-                                if let Some(src) = element.value().attr("src") {
-                                    if let Ok(abs) = Url::parse(src).or_else(|_| {
-                                        Url::parse(&url_clone).and_then(|base| base.join(src))
-                                    }) {
-                                        links.push(abs.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        let audio_selector = scraper::Selector::parse("audio[src]").ok();
-                        if let Some(audio_selector) = audio_selector {
-                            for element in document.select(&audio_selector) {
-                                if let Some(src) = element.value().attr("src") {
-                                    if let Ok(abs) = Url::parse(src).or_else(|_| {
-                                        Url::parse(&url_clone).and_then(|base| base.join(src))
-                                    }) {
-                                        links.push(abs.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        let source_selector =
-                            scraper::Selector::parse("audio source[src], video source[src]").ok();
-                        if let Some(source_selector) = source_selector {
-                            for element in document.select(&source_selector) {
-                                if let Some(src) = element.value().attr("src") {
-                                    if let Ok(abs) = Url::parse(src).or_else(|_| {
-                                        Url::parse(&url_clone).and_then(|base| base.join(src))
-                                    }) {
-                                        links.push(abs.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        let video_selector = scraper::Selector::parse("video[src]").ok();
-                        if let Some(video_selector) = video_selector {
-                            for element in document.select(&video_selector) {
-                                if let Some(src) = element.value().attr("src") {
-                                    if let Ok(abs) = Url::parse(src).or_else(|_| {
-                                        Url::parse(&url_clone).and_then(|base| base.join(src))
-                                    }) {
-                                        links.push(abs.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        let link_selector =
-                            scraper::Selector::parse("link[rel=\"stylesheet\"]").ok();
-                        if let Some(link_selector) = link_selector {
-                            for element in document.select(&link_selector) {
-                                if let Some(href) = element.value().attr("href") {
-                                    if let Ok(abs) = Url::parse(href).or_else(|_| {
-                                        Url::parse(&url_clone).and_then(|base| base.join(href))
-                                    }) {
-                                        links.push(abs.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        let script_selector = scraper::Selector::parse("script[src]").ok();
-                        if let Some(script_selector) = script_selector {
-                            for element in document.select(&script_selector) {
-                                if let Some(src) = element.value().attr("src") {
-                                    if let Ok(abs) = Url::parse(src).or_else(|_| {
-                                        Url::parse(&url_clone).and_then(|base| base.join(src))
-                                    }) {
-                                        links.push(abs.to_string());
-                                    }
-                                }
-                            }
-                        }
+                        extract_links_from_document(&document, &url_clone, &mut links);
 
                         // (mime_tokens, tokens, links)
                     }
@@ -699,38 +529,7 @@ async fn crawl_url_inner(
                 links.sort();
                 links.dedup();
 
-                let date_regex = regex::Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$");
-                let date2_regex = regex::Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$");
-                let date3_regex = regex::Regex::new(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$");
-                let date4_regex = regex::Regex::new(r"^\d{8}$");
-                let date5_regex = regex::Regex::new(r"^\d{4}\.\d{1,2}\.\d{1,2}$");
-                let date6_regex = regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$");
-                let date7_regex = regex::Regex::new(
-                    r"^\d{4}-\d{2}-\2}(T\d{2}:\d{2}(:\d{2})?(Z|([+-]\d{2}:\d{2}))?)?$",
-                );
-
-                tokens.retain(|token| {
-                    !COMMON_TOKENS.contains(token)
-                        || date_regex.as_ref().is_ok_and(|re| re.is_match(token))
-                        || date2_regex.as_ref().is_ok_and(|re| re.is_match(token))
-                        || date3_regex.as_ref().is_ok_and(|re| re.is_match(token))
-                        || date4_regex.as_ref().is_ok_and(|re| re.is_match(token))
-                        || date5_regex.as_ref().is_ok_and(|re| re.is_match(token))
-                        || date6_regex.as_ref().is_ok_and(|re| re.is_match(token))
-                        || date7_regex.as_ref().is_ok_and(|re| re.is_match(token))
-                });
-                tokens.retain(|token| token.len() > 2 && token.len() < 50);
-                let url_tokens: HashSet<_> = url.split('/').map(|s| s.to_lowercase()).collect();
-                tokens.retain(|token| !url_tokens.contains(&token.to_lowercase()));
-                if let Ok(domain) = Url::parse(&url).and_then(|u| {
-                    u.domain()
-                        .map(|d| d.to_string())
-                        .ok_or(ParseError::EmptyHost)
-                }) {
-                    let domain_tokens: HashSet<_> =
-                        domain.split('.').map(|s| s.to_lowercase()).collect();
-                    tokens.retain(|token| !domain_tokens.contains(&token.to_lowercase()));
-                }
+                filter_tokens(&mut tokens, &url);
 
                 let mut all_tokens = mime_tokens;
                 all_tokens.extend(tokens);
@@ -906,7 +705,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
 
     // Load DNS cache from redis or file
     load_dns_cache(true).await;
-    
+
     // Track when we last saved DNS cache
     let mut last_dns_save = std::time::Instant::now();
 
@@ -915,7 +714,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             sleep(Duration::from_secs(1)).await;
             continue;
         }
-        
+
         // Periodically save DNS cache (every 5 minutes)
         if last_dns_save.elapsed() > Duration::from_secs(300) {
             tokio::spawn(async {
@@ -1045,7 +844,9 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                         !v.contains(link)
                                     };
                                     if should_add {
-                                        if (new_links.len() < 1000) || !mime_type_from_url(link).contains("text/") {
+                                        if (new_links.len() < 1000)
+                                            || !mime_type_from_url(link).contains("text/")
+                                        {
                                             let url_lc = link.clone();
                                             if is_search_url(&url_lc) {
                                                 // Skip search endpoints
@@ -1058,14 +859,18 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                             // Spawn a new thread to create and save the CrawlJob for this link
                                             // Collect jobs in a batch and save them together for efficiency
                                             static JOB_BATCH: once_cell::sync::Lazy<
-                                                tokio::sync::Mutex<Vec<crate::sam::memory::cache::WebCrawl>>,
+                                                tokio::sync::Mutex<
+                                                    Vec<crate::sam::memory::cache::WebCrawl>,
+                                                >,
                                             > = once_cell::sync::Lazy::new(|| {
                                                 tokio::sync::Mutex::new(Vec::new())
                                             });
                                             {
                                                 let mut batch = JOB_BATCH.lock().await;
-                                                let mut cache_job = crate::sam::memory::cache::WebCrawl::new(link.clone());
-                                               
+                                                let mut cache_job =
+                                                    crate::sam::memory::cache::WebCrawl::new(
+                                                        link.clone(),
+                                                    );
 
                                                 let url_lc = link.clone();
                                                 if is_search_url(&url_lc) {
@@ -1112,13 +917,13 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                             if !pages.is_empty() {
                                 let mut all = all_crawled_pages.lock().await;
                                 all.extend(pages.into_iter());
-                                
+
                                 // Save more frequently to reduce memory usage (every 100 pages instead of 1000)
                                 if all.len() >= 100 {
                                     log::info!("C: Saving {} crawled pages", all.len());
                                     let pages_to_save = all.drain(..).collect::<Vec<_>>();
                                     drop(all); // Release lock before I/O
-                                    
+
                                     for chunk in pages_to_save.chunks(50) {
                                         if let Err(e) = CrawledPage::save_async_batch(chunk).await {
                                             log::warn!("Failed to save batch of pages: {}", e);
@@ -1469,19 +1274,22 @@ async fn lookup_domain(
 
 fn is_search_url(url: &str) -> bool {
     // Use lazy static regex for better performance
-    static SEARCH_PATTERNS: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
-        regex::Regex::new(r"(?i)(/search[/?]|/query[/?]|/find[/?]|/lookup[/?]|/results[/?]|/explore[/?]|/filter[/?]|/discover[/?]|/browse[/?]|/list[/?]|/websearch\?|/search_history\?|\?q=|&q=|search=|query=|lookup=|results=|explore=|filter=|discover=|browse=|\bu=|url=|\bid=|redirect|backurl=|text=|searchterm|search_term|return_to|https?%3A%2F%2F)").unwrap()
-    });
-    
+    static SEARCH_PATTERNS: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(
+        || {
+            regex::Regex::new(r"(?i)(/search[/?]|/query[/?]|/find[/?]|/lookup[/?]|/results[/?]|/explore[/?]|/filter[/?]|/discover[/?]|/browse[/?]|/list[/?]|/websearch\?|/search_history\?|\?q=|&q=|search=|query=|lookup=|results=|explore=|filter=|discover=|browse=|\bu=|url=|\bid=|redirect|backurl=|text=|searchterm|search_term|return_to|https?%3A%2F%2F)").unwrap()
+        },
+    );
+
     let url_lc = url.to_ascii_lowercase();
-    
+
     // Check for multiple URLs in one (redirect chains)
-    if url_lc.matches("https://").count() >= 2 || 
-       url_lc.matches("http://").count() >= 2 ||
-       (url_lc.contains("https://") && url_lc.contains("http://")) {
+    if url_lc.matches("https://").count() >= 2
+        || url_lc.matches("http://").count() >= 2
+        || (url_lc.contains("https://") && url_lc.contains("http://"))
+    {
         return true;
     }
-    
+
     SEARCH_PATTERNS.is_match(&url_lc)
 }
 
@@ -1521,7 +1329,6 @@ fn extract_text(
     }
 }
 
-
 /// Returns the MIME type for a given URL string based on its file extension.
 /// Falls back to "application/octet-stream" if unknown.
 ///
@@ -1551,4 +1358,191 @@ pub fn mime_type_from_url(url: &str) -> &'static str {
         }
     }
     "text/unknown"
+}
+
+/// Extracts MIME type from HTTP headers
+fn extract_mime_from_headers(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    headers
+        .get("Content-Type")
+        .or_else(|| headers.get("content-type"))
+        .and_then(|mimeh| mimeh.to_str().ok())
+        .map(|mime_str| {
+            mime_str
+                .split(';')
+                .next()
+                .unwrap_or(mime_str)
+                .trim()
+                .to_ascii_lowercase()
+        })
+        .filter(|mime| !mime.is_empty())
+}
+
+/// Extracts links from an HTML document
+fn extract_links_from_document(document: &scraper::Html, base_url: &str, links: &mut Vec<String>) {
+    const LINK_SELECTORS: &[(&str, &str)] = &[
+        ("a[href]", "href"),
+        ("img[src]", "src"),
+        ("audio[src]", "src"),
+        ("video[src]", "src"),
+        ("audio source[src], video source[src]", "src"),
+        ("link[rel=\"stylesheet\"]", "href"),
+        ("script[src]", "src"),
+    ];
+
+    for (selector_str, attr_name) in LINK_SELECTORS {
+        if let Ok(selector) = scraper::Selector::parse(selector_str) {
+            for element in document.select(&selector) {
+                if let Some(attr_value) = element.value().attr(attr_name) {
+                    if let Ok(abs_url) = resolve_url(base_url, attr_value) {
+                        links.push(abs_url);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Resolves a potentially relative URL to an absolute URL
+fn resolve_url(base_url: &str, url: &str) -> Result<String, url::ParseError> {
+    Url::parse(url)
+        .or_else(|_| Url::parse(base_url).and_then(|base| base.join(url)))
+        .map(|u| u.to_string())
+}
+
+/// Filters tokens based on various criteria
+fn filter_tokens(tokens: &mut Vec<String>, url: &str) {
+    // Create date regex patterns
+    let date_patterns = create_date_regex_patterns();
+
+    // Filter out common tokens unless they match date patterns
+    tokens.retain(|token| is_date_token(token, &date_patterns) || !COMMON_TOKENS.contains(token));
+
+    // Filter by length
+    tokens.retain(|token| token.len() > 2 && token.len() < 50);
+
+    // Remove tokens that are part of the URL
+    remove_url_tokens(tokens, url);
+
+    // Remove tokens that are part of the domain
+    remove_domain_tokens(tokens, url);
+}
+
+/// Creates regex patterns for various date formats
+fn create_date_regex_patterns() -> Vec<regex::Regex> {
+    vec![
+        regex::Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$").unwrap(),
+        regex::Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$").unwrap(),
+        regex::Regex::new(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$").unwrap(),
+        regex::Regex::new(r"^\d{8}$").unwrap(),
+        regex::Regex::new(r"^\d{4}\.\d{1,2}\.\d{1,2}$").unwrap(),
+        regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$").unwrap(),
+        regex::Regex::new(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|([+-]\d{2}:\d{2}))?)?$")
+            .unwrap(),
+    ]
+}
+
+/// Checks if a token matches any date pattern
+fn is_date_token(token: &str, patterns: &[regex::Regex]) -> bool {
+    patterns.iter().any(|re| re.is_match(token))
+}
+
+/// Removes tokens that are part of the URL path
+fn remove_url_tokens(tokens: &mut Vec<String>, url: &str) {
+    let url_tokens: HashSet<_> = url.split('/').map(|s| s.to_lowercase()).collect();
+    tokens.retain(|token| !url_tokens.contains(&token.to_lowercase()));
+}
+
+/// Removes tokens that are part of the domain name
+fn remove_domain_tokens(tokens: &mut Vec<String>, url: &str) {
+    if let Ok(parsed_url) = Url::parse(url) {
+        if let Some(domain) = parsed_url.domain() {
+            let domain_tokens: HashSet<_> = domain.split('.').map(|s| s.to_lowercase()).collect();
+            tokens.retain(|token| !domain_tokens.contains(&token.to_lowercase()));
+        }
+    }
+}
+
+/// Applies global rate limiting based on sleep-until timestamp
+async fn apply_global_rate_limit() {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let sleep_until = SLEEP_UNTIL.load(Ordering::SeqCst);
+
+    if now < sleep_until {
+        let sleep_secs = sleep_until - now;
+        log::debug!(
+            "Global sleep in effect, sleeping for {} seconds",
+            sleep_secs
+        );
+        tokio::time::sleep(Duration::from_secs(sleep_secs)).await;
+    }
+}
+
+/// Validates that the URL is properly formed
+fn validate_url(url: &str) -> crate::sam::memory::Result<()> {
+    if !is_valid_url(url) {
+        Err(crate::sam::memory::Error::Other("Invalid URL".to_string()).into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Applies domain-specific rate limiting
+async fn apply_domain_rate_limit(url: &str) {
+    if let Ok(parsed_url) = Url::parse(url) {
+        if let Some(domain) = parsed_url.domain() {
+            let domain_str = domain.to_string();
+            let mut last_access_map = DOMAIN_LAST_ACCESS.lock().await;
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
+
+            if let Some(&last_access) = last_access_map.get(&domain_str) {
+                let elapsed = now_ms.saturating_sub(last_access);
+                if elapsed < 1000 {
+                    let sleep_ms = 1000 - elapsed;
+                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+                }
+            }
+
+            last_access_map.insert(domain_str, now_ms);
+        }
+    }
+}
+
+/// Creates a new CrawledPage instance
+fn create_crawled_page(job_oid: &str, url: &str) -> CrawledPage {
+    let mut page = CrawledPage::new();
+    page.crawl_job_oid = job_oid.to_string();
+    page.url = url.to_string();
+    page
+}
+
+/// Processes MIME type for the URL
+fn process_mime_type(
+    url: &str,
+    page: &mut CrawledPage,
+) -> crate::sam::memory::Result<(Option<&'static str>, Vec<String>)> {
+    let mut mime_tokens = Vec::new();
+    let mime_ext = mime_type_from_url(url);
+
+    let file_mime = if !mime_ext.contains("unknown") {
+        Some(mime_ext)
+    } else {
+        None
+    };
+
+    if let Some(mime) = file_mime {
+        if mime.starts_with("text/") {
+            mime_tokens.push(mime.to_string());
+        } else {
+            page.tokens = vec![mime.to_string()];
+            return Err(crate::sam::memory::Error::Other("Non-text MIME type".to_string()).into());
+        }
+    }
+
+    Ok((file_mime, mime_tokens))
 }

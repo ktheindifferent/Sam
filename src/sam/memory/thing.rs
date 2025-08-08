@@ -255,9 +255,10 @@ impl Thing {
                 Ok(obj) => obj,
                 Err(e) => {
                     log::error!("Failed to deserialize Thing: {}", e);
-                    return Err(crate::sam::memory::Error::Other(
-                        format!("Deserialization error: {e}")
-                    ).into());
+                    return Err(crate::sam::memory::Error::Other(format!(
+                        "Deserialization error: {e}"
+                    ))
+                    .into());
                 }
             };
             parsed_rows.push(object);
@@ -321,10 +322,15 @@ impl Thing {
     /// Loads a Thing from the database by OID (thing_id).
     pub fn load_by_id(thing_id: &str) -> Result<Self> {
         let mut pg_query = PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(thing_id.to_string()));
+        pg_query
+            .queries
+            .push(crate::sam::memory::PGCol::String(thing_id.to_string()));
         pg_query.query_columns.push("oid =".to_string());
         let things = Self::select(None, None, None, Some(pg_query))?;
-        things.into_iter().next().ok_or_else(|| anyhow::anyhow!("Thing not found for oid: {}", thing_id))
+        things
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Thing not found for oid: {}", thing_id))
     }
 
     // TODO: Add async batch save similar to CrawledPage::save_async_batch if needed.

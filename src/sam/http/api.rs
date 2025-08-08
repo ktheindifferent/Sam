@@ -15,59 +15,73 @@ pub fn handle_api_request(
     current_session: crate::sam::memory::cache::WebSessions,
     request: &Request,
 ) -> Result<Response, crate::sam::http::Error> {
-    if request.url() == "/api/sid" {
-        return Ok(Response::text(current_session.sid));
+    let url = request.url();
+
+    // Handle exact route matches
+    if let Some(response) = handle_exact_routes(&current_session, url)? {
+        return Ok(response);
     }
 
-    // TODO: Fetch Human and append to response
-    if request.url() == "/api/current_session" {
-        return Ok(Response::json(&current_session));
-    }
-
-    if request.url() == "/api/current_human" {
-        // Search for OID matches
-        let mut pg_query = crate::sam::memory::PostgresQueries::default();
-        pg_query.queries.push(crate::sam::memory::PGCol::String(
-            current_session.human_oid.clone(),
-        ));
-        pg_query.query_columns.push("oid =".to_string());
-
-        let human = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
-        return Ok(Response::json(&human[0]));
-    }
-
-    // IO: GET
-    if request.url().contains("/api/io") {
-        return io::handle(current_session, request);
-    }
-
-    if request.url().contains("/api/humans") {
-        return humans::handle(current_session, request);
-    }
-
-    if request.url().contains("/api/locations") {
-        return locations::handle(current_session, request);
-    }
-
-    if request.url().contains("/api/observations") {
-        return observations::handle(current_session, request);
-    }
-
-    if request.url().contains("/api/rooms") {
-        return rooms::handle(current_session, request);
-    }
-
-    if request.url().contains("/api/services") {
-        return services::handle(current_session, request);
-    }
-
-    if request.url().contains("/api/settings") {
-        return settings::handle(current_session, request);
-    }
-
-    if request.url().contains("/api/things") {
-        return things::handle(current_session, request);
+    // Handle prefix-based routes
+    if let Some(response) = handle_prefix_routes(current_session, request, url)? {
+        return Ok(response);
     }
 
     Ok(Response::empty_404())
+}
+
+fn handle_exact_routes(
+    session: &crate::sam::memory::cache::WebSessions,
+    url: &str,
+) -> Result<Option<Response>, crate::sam::http::Error> {
+    match url {
+        "/api/sid" => Ok(Some(Response::text(session.sid.clone()))),
+        "/api/current_session" => Ok(Some(Response::json(session))),
+        "/api/current_human" => handle_current_human(session),
+        _ => Ok(None),
+    }
+}
+
+fn handle_current_human(
+    session: &crate::sam::memory::cache::WebSessions,
+) -> Result<Option<Response>, crate::sam::http::Error> {
+    let mut pg_query = crate::sam::memory::PostgresQueries::default();
+    pg_query
+        .queries
+        .push(crate::sam::memory::PGCol::String(session.human_oid.clone()));
+    pg_query.query_columns.push("oid =".to_string());
+
+    let human = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
+    Ok(Some(Response::json(&human[0])))
+}
+
+fn handle_prefix_routes(
+    session: crate::sam::memory::cache::WebSessions,
+    request: &Request,
+    url: &str,
+) -> Result<Option<Response>, crate::sam::http::Error> {
+    const ROUTE_HANDLERS: &[(
+        &str,
+        fn(
+            crate::sam::memory::cache::WebSessions,
+            &Request,
+        ) -> Result<Response, crate::sam::http::Error>,
+    )] = &[
+        ("/api/io", |s, r| io::handle(s, r)),
+        ("/api/humans", |s, r| humans::handle(s, r)),
+        ("/api/locations", |s, r| locations::handle(s, r)),
+        ("/api/observations", |s, r| observations::handle(s, r)),
+        ("/api/rooms", |s, r| rooms::handle(s, r)),
+        ("/api/services", |s, r| services::handle(s, r)),
+        ("/api/settings", |s, r| settings::handle(s, r)),
+        ("/api/things", |s, r| things::handle(s, r)),
+    ];
+
+    for (prefix, handler) in ROUTE_HANDLERS {
+        if url.contains(prefix) {
+            return handler(session, request).map(Some);
+        }
+    }
+
+    Ok(None)
 }

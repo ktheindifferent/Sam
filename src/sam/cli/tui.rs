@@ -62,13 +62,13 @@ struct ServiceStatus {
 // Navigation state for TUI
 #[derive(Debug, Clone, PartialEq)]
 enum TuiMode {
-    Command,     // Default command input mode
-    Services,    // Service management view
-    Logs,        // Log viewer mode
-    SystemInfo,  // System information view
-    Database,    // Database management view
-    Files,       // File browser mode
-    Help,        // Help screen
+    Command,    // Default command input mode
+    Services,   // Service management view
+    Logs,       // Log viewer mode
+    SystemInfo, // System information view
+    Database,   // Database management view
+    Files,      // File browser mode
+    Help,       // Help screen
 }
 
 #[derive(Debug, Default, Clone)]
@@ -126,8 +126,11 @@ fn render_command_mode(
     scroll_offset: u16,
     output_height: &mut usize,
 ) {
-    use ratatui::{widgets::Paragraph, layout::{Layout, Direction, Constraint}};
-    
+    use ratatui::{
+        layout::{Constraint, Direction, Layout},
+        widgets::Paragraph,
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(66), Constraint::Percentage(34)])
@@ -149,29 +152,54 @@ fn render_command_mode(
 
     // Enhanced service status block
     let status_lines = vec![
+        Line::from(vec![Span::styled(
+            "Services: ",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
+        )]),
         Line::from(vec![
-            Span::styled("Services: ", ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)),
-        ]),
-        Line::from(vec![
-            Span::styled("Crawler: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(
+                "Crawler: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
             Span::styled(&status.crawler, get_status_color(&status.crawler)),
             Span::raw("  "),
-            Span::styled("Redis: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(
+                "Redis: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
             Span::styled(&status.redis, get_status_color(&status.redis)),
             Span::raw("  "),
-            Span::styled("PostgreSQL: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(
+                "PostgreSQL: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
             Span::styled(&status.postgres, get_status_color(&status.postgres)),
         ]),
         Line::from(vec![
-            Span::styled("System: ", ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)),
-            Span::styled("CPU: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-            Span::styled(&status.cpu_usage, ratatui::style::Style::default().fg(ratatui::style::Color::White)),
+            Span::styled(
+                "System: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
+            ),
+            Span::styled(
+                "CPU: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(
+                &status.cpu_usage,
+                ratatui::style::Style::default().fg(ratatui::style::Color::White),
+            ),
             Span::raw("  "),
-            Span::styled("Memory: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-            Span::styled(&status.memory_usage, ratatui::style::Style::default().fg(ratatui::style::Color::White)),
+            Span::styled(
+                "Memory: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(
+                &status.memory_usage,
+                ratatui::style::Style::default().fg(ratatui::style::Color::White),
+            ),
         ]),
     ];
-    
+
     let status_widget = Paragraph::new(status_lines).block(
         Block::default()
             .borders(Borders::ALL)
@@ -184,12 +212,19 @@ fn render_command_mode(
         .collect();
 
     let output_widget = Paragraph::new(output)
-        .block(Block::default().borders(Borders::ALL).title("Command Output"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Command Output"),
+        )
         .scroll((scroll_offset, 0))
         .wrap(ratatui::widgets::Wrap { trim: false });
 
-    let input_widget = Paragraph::new(input_display)
-        .block(Block::default().borders(Borders::ALL).title("Command Input"));
+    let input_widget = Paragraph::new(input_display).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Command Input"),
+    );
 
     let tui_logger_widget = TuiLoggerWidget::default()
         .block(Block::default().borders(Borders::ALL).title("System Logs"))
@@ -211,8 +246,11 @@ fn render_services_mode(
     status: &ServiceStatus,
     selected: usize,
 ) {
-    use ratatui::{widgets::{Paragraph, List, ListItem, ListState}, layout::{Layout, Direction, Constraint}};
-    
+    use ratatui::{
+        layout::{Constraint, Direction, Layout},
+        widgets::{List, ListItem, ListState, Paragraph},
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
@@ -234,7 +272,9 @@ fn render_services_mode(
         .enumerate()
         .map(|(i, (name, status_val))| {
             let style = if i == selected {
-                ratatui::style::Style::default().bg(ratatui::style::Color::Yellow).fg(ratatui::style::Color::Black)
+                ratatui::style::Style::default()
+                    .bg(ratatui::style::Color::Yellow)
+                    .fg(ratatui::style::Color::Black)
             } else {
                 ratatui::style::Style::default()
             };
@@ -247,7 +287,11 @@ fn render_services_mode(
 
     let service_list = List::new(service_items)
         .block(Block::default().borders(Borders::ALL).title("Services"))
-        .highlight_style(ratatui::style::Style::default().bg(ratatui::style::Color::Yellow).fg(ratatui::style::Color::Black));
+        .highlight_style(
+            ratatui::style::Style::default()
+                .bg(ratatui::style::Color::Yellow)
+                .fg(ratatui::style::Color::Black),
+        );
 
     let mut list_state = ListState::default();
     list_state.select(Some(selected));
@@ -261,25 +305,38 @@ fn render_services_mode(
 
     let details_lines = vec![
         Line::from(vec![
-            Span::styled("Service: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-            Span::styled(selected_name, ratatui::style::Style::default().fg(ratatui::style::Color::White)),
+            Span::styled(
+                "Service: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(
+                selected_name,
+                ratatui::style::Style::default().fg(ratatui::style::Color::White),
+            ),
         ]),
         Line::from(vec![
-            Span::styled("Status: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(
+                "Status: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
             Span::styled(selected_status, get_status_color(selected_status)),
         ]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Actions:", ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Actions:",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
+        )]),
         Line::from("  [Space] Start/Stop Service"),
         Line::from("  [R] Restart Service"),
         Line::from("  [L] View Logs"),
         Line::from("  [Enter] Service Details"),
     ];
 
-    let details_widget = Paragraph::new(details_lines)
-        .block(Block::default().borders(Borders::ALL).title("Service Details"));
+    let details_widget = Paragraph::new(details_lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Service Details"),
+    );
 
     f.render_stateful_widget(service_list, chunks[0], &mut list_state);
     f.render_widget(details_widget, chunks[1]);
@@ -291,8 +348,11 @@ fn render_system_info_mode(
     area: ratatui::layout::Rect,
     status: &ServiceStatus,
 ) {
-    use ratatui::{widgets::Paragraph, layout::{Layout, Direction, Constraint}};
-    
+    use ratatui::{
+        layout::{Constraint, Direction, Layout},
+        widgets::Paragraph,
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -300,58 +360,102 @@ fn render_system_info_mode(
 
     // System metrics
     let system_lines = vec![
+        Line::from(vec![Span::styled(
+            "System Information",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
+        )]),
+        Line::from(""),
         Line::from(vec![
-            Span::styled("System Information", ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)),
+            Span::styled(
+                "CPU Usage: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(
+                &status.cpu_usage,
+                ratatui::style::Style::default().fg(ratatui::style::Color::White),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Memory Usage: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(
+                &status.memory_usage,
+                ratatui::style::Style::default().fg(ratatui::style::Color::White),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Disk Usage: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(
+                &status.disk_usage,
+                ratatui::style::Style::default().fg(ratatui::style::Color::White),
+            ),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("CPU Usage: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-            Span::styled(&status.cpu_usage, ratatui::style::Style::default().fg(ratatui::style::Color::White)),
-        ]),
-        Line::from(vec![
-            Span::styled("Memory Usage: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-            Span::styled(&status.memory_usage, ratatui::style::Style::default().fg(ratatui::style::Color::White)),
-        ]),
-        Line::from(vec![
-            Span::styled("Disk Usage: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-            Span::styled(&status.disk_usage, ratatui::style::Style::default().fg(ratatui::style::Color::White)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("Update Count: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
-            Span::styled(status.update_count.to_string(), ratatui::style::Style::default().fg(ratatui::style::Color::White)),
+            Span::styled(
+                "Update Count: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(
+                status.update_count.to_string(),
+                ratatui::style::Style::default().fg(ratatui::style::Color::White),
+            ),
         ]),
     ];
 
-    let system_widget = Paragraph::new(system_lines)
-        .block(Block::default().borders(Borders::ALL).title("System Metrics"));
+    let system_widget = Paragraph::new(system_lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("System Metrics"),
+    );
 
     // Service overview
     let service_lines = vec![
-        Line::from(vec![
-            Span::styled("Service Overview", ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Service Overview",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
+        )]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("Crawler: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(
+                "Crawler: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
             Span::styled(&status.crawler, get_status_color(&status.crawler)),
         ]),
         Line::from(vec![
-            Span::styled("Redis: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(
+                "Redis: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
             Span::styled(&status.redis, get_status_color(&status.redis)),
         ]),
         Line::from(vec![
-            Span::styled("PostgreSQL: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(
+                "PostgreSQL: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
             Span::styled(&status.postgres, get_status_color(&status.postgres)),
         ]),
         Line::from(vec![
-            Span::styled("HTTP Server: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(
+                "HTTP Server: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
             Span::styled(&status.http_server, get_status_color(&status.http_server)),
         ]),
     ];
 
-    let service_widget = Paragraph::new(service_lines)
-        .block(Block::default().borders(Borders::ALL).title("Service Status"));
+    let service_widget = Paragraph::new(service_lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Service Status"),
+    );
 
     f.render_widget(system_widget, chunks[0]);
     f.render_widget(service_widget, chunks[1]);
@@ -360,7 +464,11 @@ fn render_system_info_mode(
 /// Render other modes (placeholder implementations)
 fn render_logs_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _filter_level: &str) {
     let tui_logger_widget = TuiLoggerWidget::default()
-        .block(Block::default().borders(Borders::ALL).title("System Logs - Full View"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("System Logs - Full View"),
+        )
         .output_separator('|')
         .output_level(Some(TuiLoggerLevelOutput::Long))
         .output_target(true)
@@ -369,7 +477,12 @@ fn render_logs_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _filter
     f.render_widget(tui_logger_widget, area);
 }
 
-fn render_database_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _tables: &[String], _selected: usize) {
+fn render_database_mode(
+    f: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    _tables: &[String],
+    _selected: usize,
+) {
     let placeholder = Paragraph::new("Database management mode\n\nFeatures coming soon:\n- Table browser\n- Query executor\n- Schema viewer")
         .block(Block::default().borders(Borders::ALL).title("Database Management"));
     f.render_widget(placeholder, area);
@@ -383,9 +496,15 @@ fn render_files_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _path:
 
 fn render_help_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _scroll: u16) {
     let help_text = vec![
-        Line::from(vec![Span::styled("S.A.M. TUI Help", ratatui::style::Style::default().fg(ratatui::style::Color::Cyan))]),
+        Line::from(vec![Span::styled(
+            "S.A.M. TUI Help",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
+        )]),
         Line::from(""),
-        Line::from(vec![Span::styled("Navigation:", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow))]),
+        Line::from(vec![Span::styled(
+            "Navigation:",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+        )]),
         Line::from("  F1 - Command Mode (default)"),
         Line::from("  F2 - Services Management"),
         Line::from("  F3 - System Logs"),
@@ -394,26 +513,39 @@ fn render_help_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _scroll
         Line::from("  F6 - File Browser"),
         Line::from("  F7 - This Help Screen"),
         Line::from(""),
-        Line::from(vec![Span::styled("Commands:", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow))]),
+        Line::from(vec![Span::styled(
+            "Commands:",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+        )]),
         Line::from("  Ctrl+C - Exit application"),
         Line::from("  Page Up/Down - Scroll output"),
         Line::from("  Up/Down - Navigate lists"),
         Line::from("  Enter - Execute command/action"),
         Line::from("  Tab - Auto-complete (in command mode)"),
         Line::from(""),
-        Line::from(vec![Span::styled("Service Management:", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow))]),
+        Line::from(vec![Span::styled(
+            "Service Management:",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+        )]),
         Line::from("  Space - Start/Stop service"),
         Line::from("  R - Restart service"),
         Line::from("  L - View service logs"),
         Line::from(""),
-        Line::from(vec![Span::styled("Tips:", ratatui::style::Style::default().fg(ratatui::style::Color::Green))]),
+        Line::from(vec![Span::styled(
+            "Tips:",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Green),
+        )]),
         Line::from("  - Use arrow keys to navigate"),
         Line::from("  - Status colors: Green=running, Red=stopped, Gray=unknown"),
         Line::from("  - System metrics update every 2 seconds"),
     ];
 
     let help_widget = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL).title("Help & Documentation"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Help & Documentation"),
+        )
         .wrap(ratatui::widgets::Wrap { trim: true });
 
     f.render_widget(help_widget, area);
@@ -422,9 +554,15 @@ fn render_help_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _scroll
 /// Get color style based on status string
 fn get_status_color(status: &str) -> ratatui::style::Style {
     match status {
-        "running" | "connected" | "online" => ratatui::style::Style::default().fg(ratatui::style::Color::Green),
-        "stopped" | "disconnected" | "offline" => ratatui::style::Style::default().fg(ratatui::style::Color::Red),
-        "not installed" | "disabled" => ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
+        "running" | "connected" | "online" => {
+            ratatui::style::Style::default().fg(ratatui::style::Color::Green)
+        }
+        "stopped" | "disconnected" | "offline" => {
+            ratatui::style::Style::default().fg(ratatui::style::Color::Red)
+        }
+        "not installed" | "disabled" => {
+            ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray)
+        }
         "error" => ratatui::style::Style::default().fg(ratatui::style::Color::Magenta),
         _ => ratatui::style::Style::default().fg(ratatui::style::Color::Gray),
     }
@@ -448,14 +586,15 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         disk_usage: "0%".to_string(),
         update_count: 0,
     }));
-    
+
     // Initialize TUI state
     let tui_state = Arc::new(Mutex::new(TuiState {
         mode: TuiMode::Command,
         selected_service: 0,
         log_filter_level: "INFO".to_string(),
         help_scroll: 0,
-        file_browser_path: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        file_browser_path: std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from(".")),
         db_table_list: Vec::new(),
         selected_table: 0,
     }));
@@ -464,11 +603,11 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         let mut count = 0u64;
         let mut sys = sysinfo::System::new_all();
-        
+
         loop {
             // Update system information
             sys.refresh_all();
-            
+
             // Service statuses
             let crawler = std::panic::catch_unwind(|| {
                 crate::sam::services::crawler::service_status().to_string()
@@ -479,33 +618,39 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             let redis = std::panic::catch_unwind(|| redis_status_result.to_string())
                 .unwrap_or_else(|_| "error".to_string());
 
-            let docker = std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
-                .unwrap_or_else(|_| "error".to_string());
+            let docker =
+                std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
+                    .unwrap_or_else(|_| "error".to_string());
 
             let sms = std::panic::catch_unwind(|| crate::sam::services::sms::status().to_string())
                 .unwrap_or_else(|_| "error".to_string());
-            
+
             // Check PostgreSQL connection
             let postgres = match crate::sam::memory::config::Config::client() {
                 Ok(_) => "connected".to_string(),
                 Err(_) => "disconnected".to_string(),
             };
-            
+
             // Check LIFX service
             let lifx = "unknown".to_string(); // TODO: Add LIFX status check
-            
+
             // Check HTTP server (assume running if we got here)
             let http_server = "running".to_string();
-            
+
             // System metrics
             let memory_usage = {
                 let total = sys.total_memory() as f64 / 1024.0 / 1024.0; // MB
                 let used = sys.used_memory() as f64 / 1024.0 / 1024.0; // MB
-                format!("{:.0}/{:.0} MB ({:.1}%)", used, total, (used / total) * 100.0)
+                format!(
+                    "{:.0}/{:.0} MB ({:.1}%)",
+                    used,
+                    total,
+                    (used / total) * 100.0
+                )
             };
-            
+
             let cpu_usage = format!("{:.1}%", sys.global_cpu_info().cpu_usage());
-            
+
             let disk_usage = {
                 let mut total_space = 0u64;
                 let mut available_space = 0u64;
@@ -516,10 +661,12 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 if total_space > 0 {
                     let used_space = total_space - available_space;
                     let usage_percent = (used_space as f64 / total_space as f64) * 100.0;
-                    format!("{:.1}% ({:.1}/{:.1} GB)", 
-                           usage_percent,
-                           used_space as f64 / 1024.0 / 1024.0 / 1024.0,
-                           total_space as f64 / 1024.0 / 1024.0 / 1024.0)
+                    format!(
+                        "{:.1}% ({:.1}/{:.1} GB)",
+                        usage_percent,
+                        used_space as f64 / 1024.0 / 1024.0 / 1024.0,
+                        total_space as f64 / 1024.0 / 1024.0 / 1024.0
+                    )
                 } else {
                     "N/A".to_string()
                 }
@@ -640,77 +787,100 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             lines.clone()
         };
 
-        let draw_result =
-            catch_unwind(AssertUnwindSafe(|| {
-                let mut local_output_height = output_height;
-                let input_ref = &input;
-                let status = status.clone();
-                let tui_state_local = current_tui_state.clone();
-                let output_lines_guard = &output_lines_snapshot;
+        let draw_result = catch_unwind(AssertUnwindSafe(|| {
+            let mut local_output_height = output_height;
+            let input_ref = &input;
+            let status = status.clone();
+            let tui_state_local = current_tui_state.clone();
+            let output_lines_guard = &output_lines_snapshot;
 
-                terminal.draw(|f| {
-                    let size = f.area();
-                    
-                    // Create navigation bar at top
-                    let main_chunks = Layout::default()
-                        .direction(Direction::Vertical)
-                        .margin(1)
-                        .constraints([
-                            Constraint::Length(3), // Navigation bar
-                            Constraint::Min(0),    // Main content
-                        ])
-                        .split(size);
-                    
-                    // Navigation bar
-                    let nav_items = vec![
-                        ("F1", "Command", tui_state_local.mode == TuiMode::Command),
-                        ("F2", "Services", tui_state_local.mode == TuiMode::Services),
-                        ("F3", "Logs", tui_state_local.mode == TuiMode::Logs),
-                        ("F4", "System", tui_state_local.mode == TuiMode::SystemInfo),
-                        ("F5", "Database", tui_state_local.mode == TuiMode::Database),
-                        ("F6", "Files", tui_state_local.mode == TuiMode::Files),
-                        ("F7", "Help", tui_state_local.mode == TuiMode::Help),
-                    ];
-                    
-                    let nav_line = Line::from(
-                        nav_items
-                            .iter()
-                            .flat_map(|(key, name, active)| {
-                                let style = if *active {
-                                    ratatui::style::Style::default()
-                                        .fg(ratatui::style::Color::Black)
-                                        .bg(ratatui::style::Color::Yellow)
-                                } else {
-                                    ratatui::style::Style::default()
-                                        .fg(ratatui::style::Color::Yellow)
-                                };
-                                vec![
-                                    Span::styled(*key, style),
-                                    Span::styled(format!(" {} ", name), style),
-                                    Span::raw(" "),
-                                ]
-                            })
-                            .collect::<Vec<_>>()
-                    );
-                    
-                    let nav_widget = Paragraph::new(nav_line)
-                        .block(Block::default().borders(Borders::ALL).title("Navigation"));
-                    f.render_widget(nav_widget, main_chunks[0]);
-                    
-                    // Render content based on current mode
-                    match tui_state_local.mode {
-                        TuiMode::Command => render_command_mode(f, main_chunks[1], &status, input_ref, show_cursor, output_lines_guard, scroll_offset, &mut local_output_height),
-                        TuiMode::Services => render_services_mode(f, main_chunks[1], &status, tui_state_local.selected_service),
-                        TuiMode::Logs => render_logs_mode(f, main_chunks[1], &tui_state_local.log_filter_level),
-                        TuiMode::SystemInfo => render_system_info_mode(f, main_chunks[1], &status),
-                        TuiMode::Database => render_database_mode(f, main_chunks[1], &tui_state_local.db_table_list, tui_state_local.selected_table),
-                        TuiMode::Files => render_files_mode(f, main_chunks[1], &tui_state_local.file_browser_path),
-                        TuiMode::Help => render_help_mode(f, main_chunks[1], tui_state_local.help_scroll),
+            terminal.draw(|f| {
+                let size = f.area();
+
+                // Create navigation bar at top
+                let main_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(1)
+                    .constraints([
+                        Constraint::Length(3), // Navigation bar
+                        Constraint::Min(0),    // Main content
+                    ])
+                    .split(size);
+
+                // Navigation bar
+                let nav_items = vec![
+                    ("F1", "Command", tui_state_local.mode == TuiMode::Command),
+                    ("F2", "Services", tui_state_local.mode == TuiMode::Services),
+                    ("F3", "Logs", tui_state_local.mode == TuiMode::Logs),
+                    ("F4", "System", tui_state_local.mode == TuiMode::SystemInfo),
+                    ("F5", "Database", tui_state_local.mode == TuiMode::Database),
+                    ("F6", "Files", tui_state_local.mode == TuiMode::Files),
+                    ("F7", "Help", tui_state_local.mode == TuiMode::Help),
+                ];
+
+                let nav_line = Line::from(
+                    nav_items
+                        .iter()
+                        .flat_map(|(key, name, active)| {
+                            let style = if *active {
+                                ratatui::style::Style::default()
+                                    .fg(ratatui::style::Color::Black)
+                                    .bg(ratatui::style::Color::Yellow)
+                            } else {
+                                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)
+                            };
+                            vec![
+                                Span::styled(*key, style),
+                                Span::styled(format!(" {} ", name), style),
+                                Span::raw(" "),
+                            ]
+                        })
+                        .collect::<Vec<_>>(),
+                );
+
+                let nav_widget = Paragraph::new(nav_line)
+                    .block(Block::default().borders(Borders::ALL).title("Navigation"));
+                f.render_widget(nav_widget, main_chunks[0]);
+
+                // Render content based on current mode
+                match tui_state_local.mode {
+                    TuiMode::Command => render_command_mode(
+                        f,
+                        main_chunks[1],
+                        &status,
+                        input_ref,
+                        show_cursor,
+                        output_lines_guard,
+                        scroll_offset,
+                        &mut local_output_height,
+                    ),
+                    TuiMode::Services => render_services_mode(
+                        f,
+                        main_chunks[1],
+                        &status,
+                        tui_state_local.selected_service,
+                    ),
+                    TuiMode::Logs => {
+                        render_logs_mode(f, main_chunks[1], &tui_state_local.log_filter_level)
                     }
-                })?;
-                output_height = local_output_height;
-                Ok::<(), std::io::Error>(())
-            }));
+                    TuiMode::SystemInfo => render_system_info_mode(f, main_chunks[1], &status),
+                    TuiMode::Database => render_database_mode(
+                        f,
+                        main_chunks[1],
+                        &tui_state_local.db_table_list,
+                        tui_state_local.selected_table,
+                    ),
+                    TuiMode::Files => {
+                        render_files_mode(f, main_chunks[1], &tui_state_local.file_browser_path)
+                    }
+                    TuiMode::Help => {
+                        render_help_mode(f, main_chunks[1], tui_state_local.help_scroll)
+                    }
+                }
+            })?;
+            output_height = local_output_height;
+            Ok::<(), std::io::Error>(())
+        }));
 
         if let Err(e) = draw_result {
             let mut lines = output_lines.lock().await;
@@ -790,52 +960,52 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                         let mut state = tui_state.lock().await;
                         state.mode = TuiMode::Help;
                     }
-                    
+
                     // Handle different modes
                     _ => {
                         let current_mode = {
                             let state = tui_state.lock().await;
                             state.mode.clone()
                         };
-                        
+
                         match current_mode {
-                            TuiMode::Command => {
-                                match key.code {
-                                    KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
-                                    KeyCode::PageDown => scroll_offset = scroll_offset.saturating_add(5),
-                                    KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
-                                    KeyCode::Down => scroll_offset = scroll_offset.saturating_add(1),
-                                    KeyCode::Enter => {
-                                        let cmd = input.trim().to_string();
-                                        if cmd == "exit" || cmd == "quit" {
-                                            break;
-                                        }
-                                        if !cmd.is_empty() {
-                                            helpers::append_line(
-                                                &output_lines,
-                                                format!("┌─[{human_name}]─> {cmd}"),
-                                            )
-                                            .await;
-                                            commands::handle_command(
-                                                &cmd,
-                                                &output_lines,
-                                                &mut current_dir,
-                                                &human_name,
-                                                output_height,
-                                                &mut scroll_offset,
-                                            )
-                                            .await;
-                                        }
-                                        input.clear();
-                                    }
-                                    KeyCode::Char(c) => input.push(c),
-                                    KeyCode::Backspace => {
-                                        input.pop();
-                                    }
-                                    _ => {}
+                            TuiMode::Command => match key.code {
+                                KeyCode::PageUp => scroll_offset = scroll_offset.saturating_sub(5),
+                                KeyCode::PageDown => {
+                                    scroll_offset = scroll_offset.saturating_add(5)
                                 }
-                            }
-                            
+                                KeyCode::Up => scroll_offset = scroll_offset.saturating_sub(1),
+                                KeyCode::Down => scroll_offset = scroll_offset.saturating_add(1),
+                                KeyCode::Enter => {
+                                    let cmd = input.trim().to_string();
+                                    if cmd == "exit" || cmd == "quit" {
+                                        break;
+                                    }
+                                    if !cmd.is_empty() {
+                                        helpers::append_line(
+                                            &output_lines,
+                                            format!("┌─[{human_name}]─> {cmd}"),
+                                        )
+                                        .await;
+                                        commands::handle_command(
+                                            &cmd,
+                                            &output_lines,
+                                            &mut current_dir,
+                                            &human_name,
+                                            output_height,
+                                            &mut scroll_offset,
+                                        )
+                                        .await;
+                                    }
+                                    input.clear();
+                                }
+                                KeyCode::Char(c) => input.push(c),
+                                KeyCode::Backspace => {
+                                    input.pop();
+                                }
+                                _ => {}
+                            },
+
                             TuiMode::Services => {
                                 match key.code {
                                     KeyCode::Up => {
@@ -846,7 +1016,8 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                     KeyCode::Down => {
                                         let mut state = tui_state.lock().await;
-                                        if state.selected_service < 6 { // 7 services (0-6)
+                                        if state.selected_service < 6 {
+                                            // 7 services (0-6)
                                             state.selected_service += 1;
                                         }
                                     }
@@ -854,45 +1025,50 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                                         // TODO: Start/Stop service
                                         helpers::append_line(
                                             &output_lines,
-                                            "Service start/stop functionality coming soon".to_string(),
-                                        ).await;
+                                            "Service start/stop functionality coming soon"
+                                                .to_string(),
+                                        )
+                                        .await;
                                     }
                                     KeyCode::Char('r') | KeyCode::Char('R') => {
                                         // TODO: Restart service
                                         helpers::append_line(
                                             &output_lines,
                                             "Service restart functionality coming soon".to_string(),
-                                        ).await;
+                                        )
+                                        .await;
                                     }
                                     KeyCode::Enter => {
                                         // TODO: Show service details
                                         helpers::append_line(
                                             &output_lines,
                                             "Service details view coming soon".to_string(),
-                                        ).await;
+                                        )
+                                        .await;
                                     }
                                     _ => {}
                                 }
                             }
-                            
-                            TuiMode::Help => {
-                                match key.code {
-                                    KeyCode::Up => {
-                                        let mut state = tui_state.lock().await;
-                                        state.help_scroll = state.help_scroll.saturating_sub(1);
-                                    }
-                                    KeyCode::Down => {
-                                        let mut state = tui_state.lock().await;
-                                        state.help_scroll = state.help_scroll.saturating_add(1);
-                                    }
-                                    _ => {}
+
+                            TuiMode::Help => match key.code {
+                                KeyCode::Up => {
+                                    let mut state = tui_state.lock().await;
+                                    state.help_scroll = state.help_scroll.saturating_sub(1);
                                 }
-                            }
-                            
+                                KeyCode::Down => {
+                                    let mut state = tui_state.lock().await;
+                                    state.help_scroll = state.help_scroll.saturating_add(1);
+                                }
+                                _ => {}
+                            },
+
                             // Other modes - basic navigation for now
                             _ => {
                                 match key.code {
-                                    KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown => {
+                                    KeyCode::Up
+                                    | KeyCode::Down
+                                    | KeyCode::PageUp
+                                    | KeyCode::PageDown => {
                                         // Handle navigation for other modes
                                     }
                                     _ => {}
@@ -916,7 +1092,11 @@ where
     In: FnMut(&[u8]) + Send + 'static,
     Out: FnMut() -> Option<Vec<u8>> + Send + 'static,
 {
-    use crossterm::{terminal::{disable_raw_mode, enable_raw_mode, LeaveAlternateScreen, EnterAlternateScreen}, execute, event::{self, Event, KeyCode}};
+    use crossterm::{
+        event::{self, Event, KeyCode},
+        execute,
+        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    };
     use std::io::{self, Write};
 
     // Leave TUI alternate screen and raw mode
@@ -937,7 +1117,11 @@ where
         if event::poll(std::time::Duration::from_millis(30)).unwrap_or(false) {
             if let Event::Key(key) = event::read().unwrap() {
                 match key.code {
-                    KeyCode::Char('d') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                    KeyCode::Char('d')
+                        if key
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
                         // Ctrl+D: send EOF and break
                         send_input(&[4]);
                         break;

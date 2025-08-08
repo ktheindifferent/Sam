@@ -19,7 +19,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     let output_lines = Arc::clone(&output_lines_cloned);
                     async move {
                         match libsam::services::llama::install(Some(&output_lines)).await {
-                            Ok(_) => {},
+                            Ok(_) => {}
                             Err(e) => {
                                 let mut out = output_lines.lock().await;
                                 out.push(format!("llama install error: {}", e));
@@ -28,7 +28,8 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                         "done".to_string()
                     }
                 },
-            ).await;
+            )
+            .await;
         }
         _ if cmd.starts_with("llama v2 ") => {
             let prompt = cmd.trim_start_matches("llama v2 ").trim().to_string();
@@ -47,7 +48,8 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                                 .unwrap_or_else(|e| format!("llama v2 error: {}", e))
                         }
                     },
-                ).await;
+                )
+                .await;
             }
         }
         _ if cmd.starts_with("llama v2-tiny ") => {
@@ -67,7 +69,8 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                                 .unwrap_or_else(|e| format!("llama v2-tiny error: {}", e))
                         }
                     },
-                ).await;
+                )
+                .await;
             }
         }
         _ if cmd.starts_with("llama ") => {
@@ -92,7 +95,8 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                                 .unwrap_or_else(|e| format!("llama error: {}", e))
                         }
                     },
-                ).await;
+                )
+                .await;
             }
         }
         _ => {

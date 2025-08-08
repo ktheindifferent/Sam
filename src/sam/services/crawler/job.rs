@@ -130,7 +130,9 @@ impl CrawlJob {
     ) -> crate::sam::memory::Result<Vec<Self>> {
         let result = tokio::task::spawn_blocking(move || Self::select(limit, offset, order, query))
             .await
-            .map_err(|e| crate::sam::memory::Error::Other(format!("JoinError in select_async: {e}")))??;
+            .map_err(|e| {
+                crate::sam::memory::Error::Other(format!("JoinError in select_async: {e}"))
+            })??;
         Ok(result)
     }
     /// Save to DB (insert or update by oid).
@@ -267,10 +269,9 @@ impl CrawlJob {
         // let pg_client = crate::sam::memory::Config::client_async().await.unwrap();
         // Spawn the connection to drive it
         // tokio::spawn(connection);
-        let rows = pg_client
-            .execute(&query, &[&oid])
-            .await
-            .map_err(|e| crate::sam::memory::Error::Other(format!("Failed to delete crawl job: {e}")))?;
+        let rows = pg_client.execute(&query, &[&oid]).await.map_err(|e| {
+            crate::sam::memory::Error::Other(format!("Failed to delete crawl job: {e}"))
+        })?;
         Ok(rows > 0)
     }
 

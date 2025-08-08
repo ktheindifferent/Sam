@@ -1,20 +1,22 @@
 use futures_util::{pin_mut, stream::StreamExt};
-use mdns_sd::{ServiceDaemon, ServiceInfo, ServiceEvent};
+use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use once_cell::sync::Lazy;
 use rand::{distributions::Alphanumeric, Rng};
-use std::sync::{Arc};
+use std::sync::Arc;
 use tokio::sync::Mutex as StdMutex;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
-use once_cell::sync::Lazy;
 
 const SERVICE_NAME: &str = "_opensam._tcp.local.";
 const SERVICE_TYPE: &str = "_opensam._tcp";
 const SERVICE_PORT: u16 = 5959;
 
 // Global handles for singleton instance and tasks
-static DISCOVER_HANDLE: Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
-static BROADCAST_HANDLE: Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+static DISCOVER_HANDLE: Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
+static BROADCAST_HANDLE: Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
 
 /// Generates a random secret key for the instance.
 pub fn generate_secret_key() -> String {
@@ -39,51 +41,81 @@ impl MDns {
         }
     }
 
-    pub async fn discover_with_output(&self, output_lines: Arc<Mutex<Vec<String>>>) -> Result<(), anyhow::Error> {
-        use mdns::{RecordKind, Error as MdnsError};
-        log::info!("[mDNS] Starting discovery for service: {} (mdns crate)", SERVICE_NAME);
-        let stream = mdns::discover::all("hive.".to_owned() + SERVICE_NAME, std::time::Duration::from_secs(15))?.listen();
+    pub async fn discover_with_output(
+        &self,
+        output_lines: Arc<Mutex<Vec<String>>>,
+    ) -> Result<(), anyhow::Error> {
+        use mdns::{Error as MdnsError, RecordKind};
+        log::info!(
+            "[mDNS] Starting discovery for service: {} (mdns crate)",
+            SERVICE_NAME
+        );
+        let stream = mdns::discover::all(
+            "hive.".to_owned() + SERVICE_NAME,
+            std::time::Duration::from_secs(15),
+        )?
+        .listen();
         tokio::pin!(stream);
         while let Some(Ok(response)) = stream.next().await {
-            let name = response.records().find_map(|r| {
-                if let RecordKind::PTR(ref ptr) = r.kind {
-                    Some(ptr.clone())
-                } else {
-                    None
-                }
-            }).unwrap_or_else(|| "<unknown>".to_string());
+            let name = response
+                .records()
+                .find_map(|r| {
+                    if let RecordKind::PTR(ref ptr) = r.kind {
+                        Some(ptr.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| "<unknown>".to_string());
 
-            let addrs = response.records().filter_map(|r| match r.kind {
-                RecordKind::A(addr) => Some(addr.to_string()),
-                RecordKind::AAAA(addr) => Some(addr.to_string()),
-                RecordKind::SRV { priority, weight, port, ref target } => {
-                    Some(format!("SRV: {}:{} (prio {}, weight {})", target, port, priority, weight))
-                }
-                RecordKind::MX { preference, ref exchange } => {
-                    Some(format!("MX: {} (pref {})", exchange, preference))
-                }
-                RecordKind::TXT(ref txt) => {
-                    Some(format!("TXT: {}", txt.join(", ")))
-                }
-                _ => None,
-            }).collect::<Vec<_>>();
+            let addrs = response
+                .records()
+                .filter_map(|r| match r.kind {
+                    RecordKind::A(addr) => Some(addr.to_string()),
+                    RecordKind::AAAA(addr) => Some(addr.to_string()),
+                    RecordKind::SRV {
+                        priority,
+                        weight,
+                        port,
+                        ref target,
+                    } => Some(format!(
+                        "SRV: {}:{} (prio {}, weight {})",
+                        target, port, priority, weight
+                    )),
+                    RecordKind::MX {
+                        preference,
+                        ref exchange,
+                    } => Some(format!("MX: {} (pref {})", exchange, preference)),
+                    RecordKind::TXT(ref txt) => Some(format!("TXT: {}", txt.join(", "))),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
 
             log::info!("[mDNS] Discovered: {} at {:?}", name, addrs);
             let mut lines = output_lines.lock().await;
             lines.push(format!("[mDNS] Discovered: {} at {:?}", name, addrs));
         }
-        log::info!("[mDNS] Discovery loop ended for service: {} (mdns crate)", SERVICE_NAME);
+        log::info!(
+            "[mDNS] Discovery loop ended for service: {} (mdns crate)",
+            SERVICE_NAME
+        );
         Ok(())
     }
 
     /// Broadcasts the mDNS service in a loop.
     pub async fn broadcast_loop(&self) {
-        log::info!("[mDNS] Starting broadcast for service: {} (mdns-sd)", SERVICE_TYPE);
+        log::info!(
+            "[mDNS] Starting broadcast for service: {} (mdns-sd)",
+            SERVICE_TYPE
+        );
         let mdns = ServiceDaemon::new().expect("Failed to create mDNS daemon");
         let instance_name = "hive".to_string(); // TODO: Use a more meaningful instance name
         let host_ipv4: std::net::IpAddr = "127.0.0.1".parse().unwrap();
         let ip_list: &[std::net::IpAddr] = &[host_ipv4];
-        let txt_records: &[(&str, &str)] = &[("id", self.instance_id.as_str()), ("secret", self.secret_key.as_str())];
+        let txt_records: &[(&str, &str)] = &[
+            ("id", self.instance_id.as_str()),
+            ("secret", self.secret_key.as_str()),
+        ];
         let service_info = ServiceInfo::new(
             SERVICE_NAME, // must end in .local.
             &instance_name,
@@ -91,8 +123,10 @@ impl MDns {
             ip_list,
             SERVICE_PORT,
             txt_records,
-        ).expect("Valid service info");
-        mdns.register(service_info).expect("Failed to register mDNS service");
+        )
+        .expect("Valid service info");
+        mdns.register(service_info)
+            .expect("Failed to register mDNS service");
         log::info!("[mDNS] Broadcast registered for {}", instance_name);
         loop {
             sleep(Duration::from_secs(60)).await;
@@ -120,14 +154,21 @@ impl MDns {
             ip_list,
             SERVICE_PORT,
             txt_records,
-        ).expect("Valid service info");
-        println!("[mDNS] Service info created successfully: {:?}", service_info);
+        )
+        .expect("Valid service info");
+        println!(
+            "[mDNS] Service info created successfully: {:?}",
+            service_info
+        );
         // mdns.register(service_info).expect("Failed to register mDNS service");
         if let Err(e) = mdns.register(service_info) {
             println!("[mDNS] Failed to register mDNS service: {}", e);
             return Err(anyhow::anyhow!(e));
         }
-        println!("[mDNS] mDNS initialized and service registered: {}", instance_name);
+        println!(
+            "[mDNS] mDNS initialized and service registered: {}",
+            instance_name
+        );
 
         Ok(())
     }
@@ -154,9 +195,12 @@ pub async fn start_discovery(output_lines: Arc<Mutex<Vec<String>>>) {
     let discover_handle = tokio::spawn({
         async move {
             let output_lines = output_lines.clone();
-            let _ = MDns::new().discover_with_output(output_lines).await.unwrap_or_else(|e| {
-                log::error!("[mDNS] Discovery error: {}", e);
-            });
+            let _ = MDns::new()
+                .discover_with_output(output_lines)
+                .await
+                .unwrap_or_else(|e| {
+                    log::error!("[mDNS] Discovery error: {}", e);
+                });
         }
     });
     *DISCOVER_HANDLE.lock().await = Some(discover_handle);
@@ -186,7 +230,17 @@ pub async fn stop_broadcast_and_task() {
 }
 
 pub async fn mdns_status() -> (bool, bool) {
-    let discover_running = DISCOVER_HANDLE.lock().await.as_ref().map(|h| !h.is_finished()).unwrap_or(false);
-    let broadcast_running = BROADCAST_HANDLE.lock().await.as_ref().map(|h| !h.is_finished()).unwrap_or(false);
+    let discover_running = DISCOVER_HANDLE
+        .lock()
+        .await
+        .as_ref()
+        .map(|h| !h.is_finished())
+        .unwrap_or(false);
+    let broadcast_running = BROADCAST_HANDLE
+        .lock()
+        .await
+        .as_ref()
+        .map(|h| !h.is_finished())
+        .unwrap_or(false);
     (discover_running, broadcast_running)
 }

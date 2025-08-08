@@ -627,21 +627,35 @@ impl Config {
         if identifier.is_empty() {
             return Err(MemoryError::Other("SQL identifier cannot be empty".to_string()).into());
         }
-        
+
         if identifier.len() > 63 {
-            return Err(MemoryError::Other("SQL identifier too long (max 63 characters)".to_string()).into());
+            return Err(MemoryError::Other(
+                "SQL identifier too long (max 63 characters)".to_string(),
+            )
+            .into());
         }
-        
+
         if !identifier.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Err(MemoryError::Other(format!("Invalid SQL identifier '{}': only alphanumeric characters and underscores allowed", identifier)).into());
+            return Err(MemoryError::Other(format!(
+                "Invalid SQL identifier '{}': only alphanumeric characters and underscores allowed",
+                identifier
+            ))
+            .into());
         }
-        
+
         // Check for SQL keywords that shouldn't be used as identifiers
-        let sql_keywords = ["SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER", "TABLE", "DATABASE"];
+        let sql_keywords = [
+            "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
+            "TABLE", "DATABASE",
+        ];
         if sql_keywords.contains(&identifier.to_uppercase().as_str()) {
-            return Err(MemoryError::Other(format!("SQL identifier '{}' is a reserved keyword", identifier)).into());
+            return Err(MemoryError::Other(format!(
+                "SQL identifier '{}' is a reserved keyword",
+                identifier
+            ))
+            .into());
         }
-        
+
         Ok(())
     }
 
@@ -650,7 +664,7 @@ impl Config {
         if columns.trim() == "*" {
             return Ok(());
         }
-        
+
         for column in columns.split(',') {
             let column = column.trim();
             Self::validate_sql_identifier(column)?;
@@ -662,26 +676,30 @@ impl Config {
     fn validate_order_clause(order: &str) -> Result<()> {
         let order = order.trim();
         let parts: Vec<&str> = order.split_whitespace().collect();
-        
+
         if parts.is_empty() {
             return Err(MemoryError::Other("ORDER BY clause cannot be empty".to_string()).into());
         }
-        
+
         // Validate column name
         Self::validate_sql_identifier(parts[0])?;
-        
+
         // Validate optional direction
         if parts.len() > 1 {
             let direction = parts[1].to_uppercase();
             if direction != "ASC" && direction != "DESC" {
-                return Err(MemoryError::Other(format!("Invalid ORDER BY direction '{}': must be ASC or DESC", parts[1])).into());
+                return Err(MemoryError::Other(format!(
+                    "Invalid ORDER BY direction '{}': must be ASC or DESC",
+                    parts[1]
+                ))
+                .into());
             }
         }
-        
+
         if parts.len() > 2 {
             return Err(MemoryError::Other("ORDER BY clause too complex".to_string()).into());
         }
-        
+
         Ok(())
     }
 
@@ -711,27 +729,29 @@ impl Config {
     ) -> Result<Vec<String>> {
         // Validate table name to prevent SQL injection
         Self::validate_sql_identifier(&table_name)?;
-        
+
         // Validate columns if provided
         if let Some(ref cols) = columns {
             Self::validate_column_list(cols)?;
         }
-        
+
         // Validate order clause if provided
         if let Some(ref order_val) = order {
             Self::validate_order_clause(order_val)?;
         }
-        
+
         // Validate limit and offset
         if let Some(limit_val) = limit {
             if limit_val > 10000 {
                 return Err(MemoryError::Other("Limit too large (max 10000)".to_string()).into());
             }
         }
-        
+
         if let Some(offset_val) = offset {
             if offset_val > 1000000 {
-                return Err(MemoryError::Other("Offset too large (max 1000000)".to_string()).into());
+                return Err(
+                    MemoryError::Other("Offset too large (max 1000000)".to_string()).into(),
+                );
             }
         }
 
@@ -754,7 +774,7 @@ impl Config {
             for col in pg_query.query_columns {
                 // Validate each query column to prevent injection
                 Self::validate_sql_identifier(&col)?;
-                
+
                 if counter == 1 {
                     execquery = format!("{execquery} WHERE {col} ${counter}");
                 } else {
@@ -1212,7 +1232,6 @@ impl Config {
         } else {
             log::info!("Database 'sam' already exists");
             println!("Database 'sam' already exists");
-
         }
         Ok(())
     }

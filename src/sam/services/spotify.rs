@@ -1,12 +1,12 @@
 //! Spotify service for background music control
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use log::info;
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SpotifyStatus {
@@ -29,7 +29,8 @@ static SPOTIFY_STATE: Lazy<Arc<Mutex<SpotifyService>>> = Lazy::new(|| {
     }))
 });
 
-static PLAYBACK_THREAD: Lazy<Mutex<Option<thread::JoinHandle<()>>>> = Lazy::new(|| Mutex::new(None));
+static PLAYBACK_THREAD: Lazy<Mutex<Option<thread::JoinHandle<()>>>> =
+    Lazy::new(|| Mutex::new(None));
 
 /// Start the Spotify service (background music thread)
 pub async fn start() {
