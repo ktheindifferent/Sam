@@ -37,9 +37,12 @@ pub fn init() {
                         message
                     );
                     // retrieve this client's `Responder`:
-                    let responder = clients.get(&client_id).unwrap();
-                    // echo the message back:
-                    responder.send(message);
+                    if let Some(responder) = clients.get(&client_id) {
+                        // echo the message back:
+                        responder.send(message);
+                    } else {
+                        log::error!("Client #{} not found in clients map", client_id);
+                    }
                 }
             }
         }

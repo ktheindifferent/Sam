@@ -10,5 +10,6 @@
 pub mod cli;
 pub mod http;
 pub mod memory;
+pub mod security;
 pub mod services;
 pub mod tools;

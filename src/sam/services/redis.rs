@@ -121,7 +121,13 @@ pub async fn is_running() -> bool {
     let now = Instant::now();
     // Check cache before await
     {
-        let cache = IS_RUNNING_CACHE.lock().unwrap();
+        let cache = match IS_RUNNING_CACHE.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                error!("Failed to acquire lock for IS_RUNNING_CACHE: poisoned");
+                poisoned.into_inner()
+            }
+        };
         if let Some((cached, timestamp)) = cache.value {
             if now.duration_since(timestamp) < Duration::from_secs(600) {
                 return cached;
@@ -132,8 +138,9 @@ pub async fn is_running() -> bool {
     let docker = match Docker::connect_with_local_defaults() {
         Ok(d) => d,
         Err(_) => {
-            let mut cache = IS_RUNNING_CACHE.lock().unwrap();
-            cache.value = Some((false, now));
+            if let Ok(mut cache) = IS_RUNNING_CACHE.lock() {
+                cache.value = Some((false, now));
+            }
             return false;
         }
     };
@@ -154,8 +161,9 @@ pub async fn is_running() -> bool {
         }),
         Err(_) => false,
     };
-    let mut cache = IS_RUNNING_CACHE.lock().unwrap();
-    cache.value = Some((result, now));
+    if let Ok(mut cache) = IS_RUNNING_CACHE.lock() {
+        cache.value = Some((result, now));
+    }
     result
 }
 
@@ -171,7 +179,13 @@ pub async fn is_installed() -> bool {
     let now = Instant::now();
     // Check cache before await
     {
-        let cache = IS_INSTALLED_CACHE.lock().unwrap();
+        let cache = match IS_INSTALLED_CACHE.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                error!("Failed to acquire lock for IS_INSTALLED_CACHE: poisoned");
+                poisoned.into_inner()
+            }
+        };
         if let Some((cached, timestamp)) = cache.value {
             if now.duration_since(timestamp) < Duration::from_secs(600) {
                 return cached;
@@ -181,8 +195,9 @@ pub async fn is_installed() -> bool {
     let docker = match Docker::connect_with_local_defaults() {
         Ok(d) => d,
         Err(_) => {
-            let mut cache = IS_INSTALLED_CACHE.lock().unwrap();
-            cache.value = Some((false, now));
+            if let Ok(mut cache) = IS_INSTALLED_CACHE.lock() {
+                cache.value = Some((false, now));
+            }
             return false;
         }
     };
@@ -203,7 +218,8 @@ pub async fn is_installed() -> bool {
         }),
         Err(_) => false,
     };
-    let mut cache = IS_INSTALLED_CACHE.lock().unwrap();
-    cache.value = Some((result, now));
+    if let Ok(mut cache) = IS_INSTALLED_CACHE.lock() {
+        cache.value = Some((result, now));
+    }
     result
 }
