@@ -380,7 +380,7 @@ impl Manager {
             }
             Message::StateLabel { label } => {
                 bulb.name.update(label.0);
-                bulb.label = bulb.name.data.as_ref().unwrap().to_string();
+                bulb.label = bulb.name.data.as_ref().map(|s| s.to_string()).unwrap_or_default();
             }
 
             Message::StateLocation {
@@ -429,7 +429,7 @@ impl Manager {
             Message::StatePower { level } => {
                 bulb.power_level.update(level);
 
-                if bulb.power_level.data.as_ref().unwrap() == &PowerLevel::Enabled {
+                if bulb.power_level.data.as_ref() == Some(&PowerLevel::Enabled) {
                     bulb.power = "on".to_string();
                 } else {
                     bulb.power = "off".to_string();
@@ -588,10 +588,10 @@ impl Manager {
             source: self.source,
             ..Default::default()
         };
-        let rawmsg = RawMessage::build(&opts, Message::GetService).unwrap();
-        let bytes = rawmsg.pack().unwrap();
+        let rawmsg = RawMessage::build(&opts, Message::GetService)?;
+        let bytes = rawmsg.pack()?;
 
-        for addr in get_if_addrs().unwrap() {
+        for addr in get_if_addrs()? {
             if let IfAddr::V4(Ifv4Addr {
                 broadcast: Some(bcast),
                 ..
@@ -667,7 +667,13 @@ pub fn start(config: Config) -> StopHandle {
             // Background thread
             thread::spawn(move || {
                 while !stop_flag_bg2.load(Ordering::SeqCst) {
-                    let mut lock = th_arc_mgr.lock().unwrap();
+                    let mut lock = match th_arc_mgr.lock() {
+                        Ok(l) => l,
+                        Err(e) => {
+                            log::error!("Failed to acquire lock: {}", e);
+                            break;
+                        }
+                    };
                     let mgr = &mut *lock;
                     mgr.refresh();
                     // std::mem::drop(mgr);
@@ -696,7 +702,10 @@ pub fn start(config: Config) -> StopHandle {
                         }
                         let mut response = Response::text("hello world");
 
-                        let mut lock = th2_arc_mgr.lock().unwrap();
+                        let mut lock = match th2_arc_mgr.lock() {
+                            Ok(l) => l,
+                            Err(_) => return Response::empty_500()
+                        };
                         let mgr = &mut *lock;
 
                         mgr.refresh();
@@ -713,7 +722,10 @@ pub fn start(config: Config) -> StopHandle {
 
                         let mut bulbs_vec: Vec<&BulbInfo> = Vec::new();
 
-                        let bulbs = mgr.bulbs.lock().unwrap();
+                        let bulbs = match mgr.bulbs.lock() {
+                            Ok(b) => b,
+                            Err(_) => return Response::empty_500()
+                        };
 
                         for bulb in bulbs.values() {
                             log::info!("{:?}", *bulb);
@@ -726,9 +738,8 @@ pub fn start(config: Config) -> StopHandle {
                             bulbs_vec.retain(|b| {
                                 b.lifx_group
                                     .as_ref()
-                                    .unwrap()
-                                    .id
-                                    .contains(&selector.replace("group_id:", ""))
+                                    .map(|g| g.id.contains(&selector.replace("group_id:", "")))
+                                    .unwrap_or(false)
                             });
                         }
 
@@ -736,9 +747,8 @@ pub fn start(config: Config) -> StopHandle {
                             bulbs_vec.retain(|b| {
                                 b.lifx_location
                                     .as_ref()
-                                    .unwrap()
-                                    .id
-                                    .contains(&selector.replace("location_id:", ""))
+                                    .map(|l| l.id.contains(&selector.replace("location_id:", "")))
+                                    .unwrap_or(false)
                             });
                         }
 
@@ -768,8 +778,7 @@ pub fn start(config: Config) -> StopHandle {
                             }));
 
                             // Power
-                            if input.power.is_some() {
-                                let power = input.power.unwrap();
+                            if let Some(power) = input.power {
                                 if power == *"on" {
                                     for bulb in &bulbs_vec {
                                         let _ = bulb.set_power(&mgr.sock, PowerLevel::Enabled);
@@ -783,8 +792,7 @@ pub fn start(config: Config) -> StopHandle {
                             }
 
                             // Color
-                            if input.color.is_some() {
-                                let cc = input.color.unwrap();
+                            if let Some(cc) = input.color {
                                 for bulb in &bulbs_vec {
                                     let mut kelvin = 6500;
                                     let mut brightness = 65535;
@@ -796,8 +804,7 @@ pub fn start(config: Config) -> StopHandle {
                                         duration = input.duration.unwrap() as u32;
                                     }
 
-                                    if bulb.lifx_color.is_some() {
-                                        let lifxc = bulb.lifx_color.as_ref().unwrap();
+                                    if let Some(lifxc) = bulb.lifx_color.as_ref() {
                                         kelvin = lifxc.kelvin;
                                         brightness = lifxc.brightness;
                                         saturation = lifxc.saturation;
@@ -897,8 +904,10 @@ pub fn start(config: Config) -> StopHandle {
                                     if cc.contains("hue:") {
                                         let hue_split = cc.split("hue:");
                                         let hue_vec: Vec<&str> = hue_split.collect();
-                                        let new_hue =
-                                            hue_vec[1].to_string().parse::<u16>().unwrap();
+                                        let new_hue = match hue_vec.get(1).and_then(|s| s.parse::<u16>().ok()) {
+                                            Some(h) => h,
+                                            None => continue
+                                        };
                                         let hbsk_set = HSBK {
                                             hue: new_hue,
                                             saturation,
@@ -911,8 +920,10 @@ pub fn start(config: Config) -> StopHandle {
                                     if cc.contains("saturation:") {
                                         let saturation_split = cc.split("saturation:");
                                         let saturation_vec: Vec<&str> = saturation_split.collect();
-                                        let new_saturation_float =
-                                            saturation_vec[1].to_string().parse::<f64>().unwrap();
+                                        let new_saturation_float = match saturation_vec.get(1).and_then(|s| s.parse::<f64>().ok()) {
+                                            Some(s) => s,
+                                            None => continue
+                                        };
                                         let new_saturation: u16 =
                                             (f64::from(100) * new_saturation_float) as u16;
                                         let hbsk_set = HSBK {
@@ -927,8 +938,10 @@ pub fn start(config: Config) -> StopHandle {
                                     if cc.contains("brightness:") {
                                         let brightness_split = cc.split("brightness:");
                                         let brightness_vec: Vec<&str> = brightness_split.collect();
-                                        let new_brightness_float =
-                                            brightness_vec[1].to_string().parse::<f64>().unwrap();
+                                        let new_brightness_float = match brightness_vec.get(1).and_then(|s| s.parse::<f64>().ok()) {
+                                            Some(b) => b,
+                                            None => continue
+                                        };
                                         let new_brightness: u16 =
                                             (f64::from(65535) * new_brightness_float) as u16;
                                         let hbsk_set = HSBK {
@@ -943,8 +956,10 @@ pub fn start(config: Config) -> StopHandle {
                                     if cc.contains("kelvin:") {
                                         let kelvin_split = cc.split("kelvin:");
                                         let kelvin_vec: Vec<&str> = kelvin_split.collect();
-                                        let new_kelvin =
-                                            kelvin_vec[1].to_string().parse::<u16>().unwrap();
+                                        let new_kelvin = match kelvin_vec.get(1).and_then(|s| s.parse::<u16>().ok()) {
+                                            Some(k) => k,
+                                            None => continue
+                                        };
                                         let hbsk_set = HSBK {
                                             hue,
                                             saturation: 0,
@@ -962,16 +977,22 @@ pub fn start(config: Config) -> StopHandle {
                                         let rgb_part_split = rgb_parts.split(",");
                                         let rgb_parts_vec: Vec<&str> = rgb_part_split.collect();
 
-                                        let red_int =
-                                            rgb_parts_vec[0].to_string().parse::<i64>().unwrap();
+                                        let red_int = match rgb_parts_vec.get(0).and_then(|s| s.parse::<i64>().ok()) {
+                                            Some(r) => r,
+                                            None => continue
+                                        };
                                         let red_float: f32 = (red_int) as f32;
 
-                                        let green_int =
-                                            rgb_parts_vec[1].to_string().parse::<i64>().unwrap();
+                                        let green_int = match rgb_parts_vec.get(1).and_then(|s| s.parse::<i64>().ok()) {
+                                            Some(g) => g,
+                                            None => continue
+                                        };
                                         let green_float: f32 = (green_int) as f32;
 
-                                        let blue_int =
-                                            rgb_parts_vec[2].to_string().parse::<i64>().unwrap();
+                                        let blue_int = match rgb_parts_vec.get(2).and_then(|s| s.parse::<i64>().ok()) {
+                                            Some(b) => b,
+                                            None => continue
+                                        };
                                         let blue_float: f32 = (blue_int) as f32;
 
                                         let rgb =
@@ -1000,23 +1021,30 @@ pub fn start(config: Config) -> StopHandle {
                                         let hex_vec: Vec<&str> = hex_split.collect();
                                         let hex = hex_vec[1].to_string();
 
-                                        let rgb2 =
-                                            TransformRgb::from_hex_str(format!("#{hex}").as_str())
-                                                .unwrap();
+                                        let rgb2 = match TransformRgb::from_hex_str(format!("#{hex}").as_str()) {
+                                            Ok(r) => r,
+                                            Err(_) => continue
+                                        };
                                         // Rgb { r: 255.0, g: 204.0, b: 0.0 }
 
                                         log::info!("{:?}", rgb2);
 
-                                        let red_int =
-                                            rgb2.get_red().to_string().parse::<i64>().unwrap();
+                                        let red_int = match rgb2.get_red().to_string().parse::<i64>() {
+                                            Ok(r) => r,
+                                            Err(_) => continue
+                                        };
                                         let red_float: f32 = (red_int) as f32;
 
-                                        let green_int =
-                                            rgb2.get_green().to_string().parse::<i64>().unwrap();
+                                        let green_int = match rgb2.get_green().to_string().parse::<i64>() {
+                                            Ok(g) => g,
+                                            Err(_) => continue
+                                        };
                                         let green_float: f32 = (green_int) as f32;
 
-                                        let blue_int =
-                                            rgb2.get_blue().to_string().parse::<i64>().unwrap();
+                                        let blue_int = match rgb2.get_blue().to_string().parse::<i64>() {
+                                            Ok(b) => b,
+                                            Err(_) => continue
+                                        };
                                         let blue_float: f32 = (blue_int) as f32;
 
                                         log::info!("red_float: {:?}", red_float);
@@ -1063,15 +1091,16 @@ pub fn start(config: Config) -> StopHandle {
                                         duration = input.duration.unwrap() as u32;
                                     }
 
-                                    if bulb.lifx_color.is_some() {
-                                        let lifxc = bulb.lifx_color.as_ref().unwrap();
+                                    if let Some(lifxc) = bulb.lifx_color.as_ref() {
                                         kelvin = lifxc.kelvin;
                                         saturation = lifxc.saturation;
                                         hue = lifxc.hue;
                                     }
 
-                                    let new_brightness_float =
-                                        brightness.to_string().parse::<f64>().unwrap();
+                                    let new_brightness_float = match brightness.to_string().parse::<f64>() {
+                                        Ok(b) => b,
+                                        Err(_) => continue
+                                    };
                                     let new_brightness: u16 =
                                         (f64::from(65535) * new_brightness_float) as u16;
                                     let hbsk_set = HSBK {
@@ -1085,9 +1114,9 @@ pub fn start(config: Config) -> StopHandle {
                             }
 
                             // Infrared
-                            if input.infrared.is_some() {
+                            if let Some(infrared) = input.infrared {
                                 let new_brightness: u16 =
-                                    (f64::from(65535) * input.infrared.unwrap()) as u16;
+                                    (f64::from(65535) * infrared) as u16;
 
                                 for bulb in &bulbs_vec {
                                     let _ = bulb.set_infrared(&mgr.sock, new_brightness);
@@ -1124,7 +1153,10 @@ pub fn start(config: Config) -> StopHandle {
                         response
                     },
                 )
-                .expect("Failed to bind LIFX API server");
+                .unwrap_or_else(|e| {
+                    log::error!("Failed to bind LIFX API server: {}", e);
+                    panic!("Failed to bind LIFX API server: {}", e);
+                });
                 while !stop_flag_http2_clone.load(Ordering::SeqCst) {
                     server.poll();
                     thread::sleep(Duration::from_millis(10));
