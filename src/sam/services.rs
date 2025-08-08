@@ -61,6 +61,7 @@ pub mod sprec;
 pub mod storage;
 pub mod stt;
 pub mod tts;
+pub mod vulnerability_scanner;
 // pub mod whisper;
 pub mod crawler;
 pub mod mdns;
