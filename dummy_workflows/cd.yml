@@ -1,0 +1,326 @@
+name: CD Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+          - development
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Build and push production images
+  build-images:
+    name: Build Production Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+
+  # Deploy to Kubernetes
+  deploy-k8s:
+    name: Deploy to Kubernetes
+    needs: build-images
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+      
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+      
+      - name: Deploy with Helm
+        id: deploy
+        run: |
+          helm upgrade --install sam ./helm/sam \
+            --namespace sam-${{ github.event.inputs.environment || 'staging' }} \
+            --create-namespace \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ github.ref_name }} \
+            --set environment=${{ github.event.inputs.environment || 'staging' }} \
+            --set ingress.enabled=true \
+            --set ingress.host=sam-${{ github.event.inputs.environment || 'staging' }}.example.com \
+            --wait \
+            --timeout 10m
+          
+          echo "url=https://sam-${{ github.event.inputs.environment || 'staging' }}.example.com" >> $GITHUB_OUTPUT
+      
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/sam \
+            -n sam-${{ github.event.inputs.environment || 'staging' }} \
+            --timeout=5m
+
+  # Deploy to AWS ECS
+  deploy-ecs:
+    name: Deploy to AWS ECS
+    needs: build-images
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://sam.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition sam-production \
+            --query taskDefinition > task-definition.json
+      
+      - name: Update task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: sam
+          image: ${{ needs.build-images.outputs.image-tag }}
+      
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: sam-service
+          cluster: production-cluster
+          wait-for-service-stability: true
+
+  # Database migrations
+  run-migrations:
+    name: Run Database Migrations
+    needs: [build-images]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup migrate tool
+        run: |
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xz
+          sudo mv migrate /usr/local/bin/
+      
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          migrate -path ./migrations \
+            -database "$DATABASE_URL" \
+            up
+
+  # Smoke tests
+  smoke-tests:
+    name: Smoke Tests
+    needs: [deploy-k8s, run-migrations]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          npm install -g newman
+      
+      - name: Run smoke tests
+        run: |
+          newman run tests/postman/smoke-tests.json \
+            --environment tests/postman/environments/${{ github.event.inputs.environment || 'staging' }}.json \
+            --reporters cli,json \
+            --reporter-json-export test-results.json
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: test-results.json
+
+  # Performance tests
+  performance-tests:
+    name: Performance Tests
+    needs: [deploy-k8s, smoke-tests]
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'staging'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup k6
+        run: |
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+      
+      - name: Run performance tests
+        run: |
+          k6 run tests/k6/performance.js \
+            --out json=test-results.json \
+            --env ENVIRONMENT=${{ github.event.inputs.environment || 'staging' }}
+      
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-test-results
+          path: test-results.json
+
+  # Rollback on failure
+  rollback:
+    name: Rollback Deployment
+    needs: [deploy-k8s, smoke-tests]
+    runs-on: ubuntu-latest
+    if: failure()
+    
+    steps:
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+      
+      - name: Rollback deployment
+        run: |
+          helm rollback sam \
+            --namespace sam-${{ github.event.inputs.environment || 'staging' }} \
+            --wait \
+            --timeout 5m
+      
+      - name: Notify team
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: "Deployment rollback triggered",
+              attachments: [{
+                color: 'danger',
+                text: `Deployment to ${{ github.event.inputs.environment || 'staging' }} failed and was rolled back`
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  # Notify on success
+  notify-success:
+    name: Notify Success
+    needs: [deploy-k8s, smoke-tests]
+    runs-on: ubuntu-latest
+    if: success()
+    
+    steps:
+      - name: Notify team
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: "Deployment successful",
+              attachments: [{
+                color: 'good',
+                text: `Successfully deployed version ${{ github.ref_name }} to ${{ github.event.inputs.environment || 'staging' }}`
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      
+      - name: Create deployment record
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ github.event.inputs.environment || 'staging' }}',
+              description: 'Deployed version ${{ github.ref_name }}',
+              auto_merge: false,
+              required_contexts: [],
+              production_environment: ${{ github.event.inputs.environment == 'production' }}
+            });
