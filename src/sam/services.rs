@@ -39,6 +39,7 @@ impl From<anyhow::Error> for Error {
     }
 }
 
+// Core Services
 pub mod darknet;
 pub mod docker;
 pub mod dropbox;
@@ -69,3 +70,16 @@ pub mod mdns;
 pub mod p2p;
 pub mod sms;
 pub mod who;
+
+// Additional Services (Enhanced Features)
+pub mod backup;
+pub mod clamav;
+pub mod copilot;
+pub mod file_storage;
+pub mod git;
+pub mod github;
+pub mod openai;
+pub mod ssh;
+
+// Service Orchestration
+pub mod orchestrator;

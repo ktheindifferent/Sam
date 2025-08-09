@@ -5,6 +5,35 @@
 - [x] Add input validation across codebase
 - [x] Implement session management with Redis
 - [x] Add rate limiting and DOS protection
+- [x] Create service orchestration layer
+- [x] Fix service module exports
+- [x] Implement PostgreSQL connection pooling
+- [x] Add health monitoring system
+
+## 🆕 New Critical Tasks Discovered
+- [ ] **Complete File Encryption Implementation**
+  - [ ] Implement AES-256 encryption in file_storage service
+  - [ ] Add key management system
+  - [ ] Create secure key derivation
+  - [ ] Add encryption tests
+
+- [ ] **Implement Missing WebSocket Handlers**
+  - [ ] Complete WebSocket server implementation
+  - [ ] Add message routing
+  - [ ] Implement broadcast functionality
+  - [ ] Add connection management
+
+- [ ] **Add Remaining Service Health Checks**
+  - [ ] Implement health checks for all services
+  - [ ] Add custom metrics per service
+  - [ ] Create health dashboard API
+  - [ ] Add alerting thresholds
+
+- [ ] **Complete Error Handling Refactor**
+  - [ ] Replace remaining .unwrap() calls
+  - [ ] Add proper error context
+  - [ ] Implement error recovery strategies
+  - [ ] Add error logging
 
 ## 🟡 High Priority - In Progress
 - [ ] **Stabilize Windows build** - Cross-platform compatibility
