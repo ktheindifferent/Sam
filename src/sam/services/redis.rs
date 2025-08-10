@@ -1,11 +1,13 @@
 use bollard::container::ListContainersOptions;
 use bollard::Docker;
-use log::{error, info};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
+use anyhow::{Result, Context};
+use deadpool_redis::{Config, Runtime, Pool, redis::cmd};
 
 /// Install and start Redis using Docker if not already running.
 /// This is intended to be called from setup/install.
@@ -222,4 +224,130 @@ pub async fn is_installed() -> bool {
         cache.value = Some((result, now));
     }
     result
+}
+
+// Connection pool management
+static mut POOL: Option<Pool> = None;
+
+pub async fn connect() -> Result<Pool> {
+    // Check if pool already exists
+    unsafe {
+        if let Some(ref pool) = POOL {
+            return Ok(pool.clone());
+        }
+    }
+    
+    // Create new pool
+    let pool = create_pool().await?;
+    
+    // Store for future use
+    unsafe {
+        POOL = Some(pool.clone());
+    }
+    
+    Ok(pool)
+}
+
+async fn create_pool() -> Result<Pool> {
+    let redis_url = std::env::var("REDIS_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    
+    let cfg = Config::from_url(redis_url);
+    let pool = cfg.create_pool(Some(Runtime::Tokio1))
+        .context("Failed to create Redis connection pool")?;
+    
+    // Test the connection
+    let mut conn = pool.get().await
+        .context("Failed to get connection from pool")?;
+    
+    let _: String = cmd("PING")
+        .query_async(&mut conn)
+        .await
+        .context("Failed to ping Redis")?;
+    
+    info!("Redis connection pool created successfully");
+    Ok(pool)
+}
+
+pub async fn health_check() -> Result<()> {
+    let pool = connect().await?;
+    let mut conn = pool.get().await
+        .context("Failed to get connection for health check")?;
+    
+    let pong: String = cmd("PING")
+        .query_async(&mut conn)
+        .await
+        .context("Redis health check failed")?;
+    
+    if pong == "PONG" {
+        info!("Redis health check passed");
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Redis health check failed: unexpected response"))
+    }
+}
+
+pub async fn get_info() -> Result<String> {
+    let pool = connect().await?;
+    let mut conn = pool.get().await?;
+    
+    let info: String = cmd("INFO")
+        .query_async(&mut conn)
+        .await
+        .context("Failed to get Redis info")?;
+    
+    Ok(info)
+}
+
+pub async fn flush_db() -> Result<()> {
+    let pool = connect().await?;
+    let mut conn = pool.get().await?;
+    
+    cmd("FLUSHDB")
+        .query_async(&mut conn)
+        .await
+        .context("Failed to flush Redis database")?;
+    
+    warn!("Redis database flushed");
+    Ok(())
+}
+
+pub async fn get_pool_status() -> Result<String> {
+    let pool = connect().await?;
+    let status = pool.status();
+    
+    Ok(format!(
+        "Pool Status - Size: {}, Available: {}, Waiting: {}",
+        status.size, status.available, status.waiting
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_redis_connection() {
+        // This test requires a running Redis instance
+        match connect().await {
+            Ok(pool) => {
+                assert!(pool.status().size > 0);
+            }
+            Err(e) => {
+                eprintln!("Skipping test - Redis not available: {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_health_check() {
+        match health_check().await {
+            Ok(_) => {
+                // Health check passed
+            }
+            Err(e) => {
+                eprintln!("Skipping test - Redis not available: {}", e);
+            }
+        }
+    }
 }
