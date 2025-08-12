@@ -8,6 +8,7 @@ use std::time::Duration;
 use std::time::Instant;
 use anyhow::{Result, Context};
 use deadpool_redis::{Config, Runtime, Pool, redis::cmd};
+use super::cache::{HybridCache, CacheConfig};
 
 /// Install and start Redis using Docker if not already running.
 /// This is intended to be called from setup/install.
@@ -320,6 +321,19 @@ pub async fn get_pool_status() -> Result<String> {
         "Pool Status - Size: {}, Available: {}, Waiting: {}",
         status.size, status.available, status.waiting
     ))
+}
+
+/// Create a new HybridCache instance with the Redis pool
+pub async fn create_cache() -> Result<HybridCache> {
+    let pool = connect().await?;
+    let config = CacheConfig::default();
+    HybridCache::new(pool, config).await
+}
+
+/// Create a new HybridCache instance with custom configuration
+pub async fn create_cache_with_config(config: CacheConfig) -> Result<HybridCache> {
+    let pool = connect().await?;
+    HybridCache::new(pool, config).await
 }
 
 #[cfg(test)]
