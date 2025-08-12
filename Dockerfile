@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libasound2-dev \
     libpq-dev \
+    libsqlite3-dev \
     cmake \
     clang \
     llvm \
@@ -47,6 +48,8 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     libasound2 \
     libpq5 \
+    libsqlite3-0 \
+    sqlite3 \
     ffmpeg \
     redis-server \
     postgresql-client \

@@ -32,6 +32,7 @@ pub mod clamav;
 pub mod copilot;
 pub mod crawler;
 pub mod darknet;
+pub mod database;
 pub mod docker;
 pub mod dropbox;
 pub mod error_handling;
