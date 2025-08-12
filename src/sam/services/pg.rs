@@ -219,123 +219,43 @@ pub async fn health_check() -> Result<()> {
 }
 
 pub async fn initialize_schema() -> Result<()> {
+    info!("Initializing database schema using migration system");
+    
+    // Get connection pool
     let pool = connect().await?;
-    let client = pool.get().await?;
     
-    // Create tables if they don't exist
-    let queries = vec![
-        // Crawler tables
-        r#"
-        CREATE TABLE IF NOT EXISTS crawl_jobs (
-            id SERIAL PRIMARY KEY,
-            url TEXT NOT NULL,
-            max_depth INTEGER DEFAULT 2,
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS crawl_pages (
-            id SERIAL PRIMARY KEY,
-            job_id INTEGER REFERENCES crawl_jobs(id) ON DELETE CASCADE,
-            url TEXT NOT NULL,
-            title TEXT,
-            content TEXT,
-            status_code INTEGER,
-            error TEXT,
-            crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(job_id, url)
-        )
-        "#,
-        
-        // File storage tables
-        r#"
-        CREATE TABLE IF NOT EXISTS files (
-            id SERIAL PRIMARY KEY,
-            path TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL,
-            size BIGINT NOT NULL,
-            mime_type TEXT,
-            checksum TEXT,
-            metadata JSONB,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS file_versions (
-            id SERIAL PRIMARY KEY,
-            file_id INTEGER REFERENCES files(id) ON DELETE CASCADE,
-            version_number INTEGER NOT NULL,
-            size BIGINT NOT NULL,
-            checksum TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        "#,
-        
-        // Backup tables
-        r#"
-        CREATE TABLE IF NOT EXISTS backups (
-            id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            status TEXT DEFAULT 'pending',
-            size BIGINT,
-            path TEXT,
-            error TEXT,
-            started_at TIMESTAMP,
-            completed_at TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        "#,
-        
-        // Session tables
-        r#"
-        CREATE TABLE IF NOT EXISTS user_sessions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT,
-            csrf_token TEXT NOT NULL,
-            data JSONB,
-            expires_at TIMESTAMP NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        "#,
-        
-        // Service health tables
-        r#"
-        CREATE TABLE IF NOT EXISTS service_health (
-            id SERIAL PRIMARY KEY,
-            service_name TEXT NOT NULL,
-            status TEXT NOT NULL,
-            error_count INTEGER DEFAULT 0,
-            restart_count INTEGER DEFAULT 0,
-            memory_usage BIGINT,
-            cpu_usage REAL,
-            custom_metrics JSONB,
-            checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        "#,
-        
-        // Create indexes
-        "CREATE INDEX IF NOT EXISTS idx_crawl_pages_job_id ON crawl_pages(job_id)",
-        "CREATE INDEX IF NOT EXISTS idx_crawl_pages_url ON crawl_pages(url)",
-        "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)",
-        "CREATE INDEX IF NOT EXISTS idx_files_checksum ON files(checksum)",
-        "CREATE INDEX IF NOT EXISTS idx_backups_status ON backups(status)",
-        "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at)",
-        "CREATE INDEX IF NOT EXISTS idx_service_health_name ON service_health(service_name)",
-    ];
+    // Load all migrations
+    let migrations = crate::sam::db::migrations::load_migrations();
     
-    for query in queries {
-        client.execute(query, &[])
-            .await
-            .context(format!("Failed to execute schema query: {}", &query[..50]))?;
+    // Create migration runner
+    let runner = crate::sam::db::migrations::MigrationRunner::new(pool)
+        .with_migrations(migrations)
+        .dry_run(false)
+        .auto_backup(false); // Don't auto-backup during initial setup
+    
+    // Run migrations
+    match runner.run().await {
+        Ok(_) => {
+            info!("Database schema initialized successfully using migrations");
+            
+            // Log migration status
+            if let Ok(status) = runner.status().await {
+                info!("Applied {} migration(s)", status.applied.len());
+                if !status.pending.is_empty() {
+                    warn!("Warning: {} migration(s) are still pending", status.pending.len());
+                }
+                if !status.conflicts.is_empty() {
+                    error!("Warning: {} migration(s) have checksum conflicts", status.conflicts.len());
+                }
+            }
+            
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to initialize schema using migrations: {}", e);
+            Err(e).context("Migration system initialization failed")
+        }
     }
-    
-    info!("PostgreSQL schema initialized successfully");
-    Ok(())
 }
 
 pub async fn execute_query(query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<Vec<Row>> {

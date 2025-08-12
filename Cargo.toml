@@ -101,6 +101,7 @@ mdns = "3.0.0"
 libmdns = "0.9.1"
 mdns-sd = "0.13.8"
 flate2 = "1.0"
+sha2 = "0.10"
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
