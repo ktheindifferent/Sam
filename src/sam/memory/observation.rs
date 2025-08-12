@@ -409,25 +409,28 @@ impl Observation {
         let mut observation_humans: Vec<Human> = Vec::new();
         let sql_observation_humans: Option<String> = row.get("observation_humans");
         if let Some(object) = sql_observation_humans {
-            let split = object.split(",");
-            let vec = split.collect::<Vec<&str>>();
-            for oidx in vec {
-                // Search for OID matches
+            // Batch load all humans at once instead of N+1 queries
+            let human_oids: Vec<String> = object
+                .split(",")
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+            
+            if !human_oids.is_empty() {
+                // Build a single query for all human OIDs
                 let mut pg_query = PostgresQueries::default();
-                pg_query
-                    .queries
-                    .push(crate::sam::memory::PGCol::String(oidx.to_string()));
-                pg_query.query_columns.push("oid ilike".to_string());
-
-                let observation_humansx = Human::select(None, None, None, Some(pg_query))?;
-
-                for human in observation_humansx {
-                    observation_humans.push(human);
+                for oid in &human_oids {
+                    if !pg_query.queries.is_empty() {
+                        pg_query.query_columns.push("OR oid ilike".to_string());
+                    } else {
+                        pg_query.query_columns.push("oid ilike".to_string());
+                    }
+                    pg_query.queries.push(crate::sam::memory::PGCol::String(oid.clone()));
                 }
-
-                // if rows.len() > 0 {
-                //     observation_humans.push(rows[0].clone());
-                // }
+                
+                // Execute single query to get all humans
+                let all_humans = Human::select(None, None, None, Some(pg_query))?;
+                observation_humans = all_humans;
             }
         }
 
@@ -549,5 +552,66 @@ impl Observation {
     /// Asynchronously deletes an Observation from the database by OID.
     pub async fn destroy_async(oid: String) -> Result<bool> {
         crate::sam::memory::Config::destroy_row_async(oid, "observations".to_string()).await
+    }
+    
+    /// Batch loads observations with their related humans in a single optimized query
+    pub async fn select_with_humans_batch(
+        limit: Option<usize>,
+        offset: Option<usize>,
+        order: Option<String>,
+        query: Option<PostgresQueries>,
+    ) -> Result<Vec<Self>> {
+        // First get the observations
+        let observations = Self::select_async(limit, offset, order, query).await?;
+        
+        if observations.is_empty() {
+            return Ok(observations);
+        }
+        
+        // Collect all unique human OIDs from all observations
+        let mut all_human_oids = std::collections::HashSet::new();
+        for obs in &observations {
+            let sql_observation_humans = obs.observation_humans
+                .iter()
+                .map(|h| h.oid.clone())
+                .collect::<Vec<String>>();
+            all_human_oids.extend(sql_observation_humans);
+        }
+        
+        // Batch load all humans in a single query
+        let mut humans_map = std::collections::HashMap::new();
+        if !all_human_oids.is_empty() {
+            let mut pg_query = PostgresQueries::default();
+            let mut first = true;
+            for oid in &all_human_oids {
+                if !first {
+                    pg_query.query_columns.push("OR oid =".to_string());
+                } else {
+                    pg_query.query_columns.push("oid =".to_string());
+                    first = false;
+                }
+                pg_query.queries.push(crate::sam::memory::PGCol::String(oid.clone()));
+            }
+            
+            let all_humans = Human::select_async(None, None, None, Some(pg_query)).await?;
+            for human in all_humans {
+                humans_map.insert(human.oid.clone(), human);
+            }
+        }
+        
+        // Map humans back to observations
+        let mut result = Vec::new();
+        for mut obs in observations {
+            let mut updated_humans = Vec::new();
+            for human in &obs.observation_humans {
+                if let Some(full_human) = humans_map.get(&human.oid) {
+                    updated_humans.push(full_human.clone());
+                }
+            }
+            obs.observation_humans = updated_humans;
+            result.push(obs);
+        }
+        
+        Ok(result)
     }
 }
