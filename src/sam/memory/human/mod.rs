@@ -70,11 +70,11 @@ impl Human {
             authorization_level: 0,
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .expect("Time went backwards")
                 .as_secs() as i64,
             updated_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .expect("Time went backwards")
                 .as_secs() as i64,
         }
     }
@@ -135,7 +135,7 @@ impl Human {
             .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
         // Search for OID matches
-        let rows = Self::select(None, None, None, Some(pg_query.clone())).unwrap();
+        let rows = Self::select(None, None, None, Some(pg_query.clone()))?;
         if rows.is_empty() {
             client.execute("INSERT INTO humans (oid, name, heard_count, seen_count, authorization_level, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
                 &[  &self.oid.clone(),
@@ -146,23 +146,23 @@ impl Human {
                     &self.created_at,
                     &self.updated_at
                 ]
-            ).unwrap();
+            )?;
             if self.phone_number.is_some() {
                 client.execute(
                     "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                    &[&self.phone_number.clone().unwrap(), &self.oid],
+                    &[&self.phone_number.as_ref().expect("phone_number should be Some"), &self.oid],
                 )?;
             }
             if self.email.is_some() {
                 client.execute(
                     "UPDATE humans SET email = $1 WHERE oid = $2;",
-                    &[&self.email.clone().unwrap(), &self.oid],
+                    &[&self.email.as_ref().expect("email should be Some"), &self.oid],
                 )?;
             }
             if self.password.is_some() {
                 client.execute(
                     "UPDATE humans SET password = $1 WHERE oid = $2;",
-                    &[&self.password.clone().unwrap(), &self.oid],
+                    &[&self.password.as_ref().expect("password should be Some"), &self.oid],
                 )?;
             }
             Ok(self)
@@ -183,19 +183,19 @@ impl Human {
                 if self.phone_number.is_some() {
                     client.execute(
                         "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                        &[&self.phone_number.clone().unwrap(), &ads.oid],
+                        &[&self.phone_number.as_ref().expect("phone_number should be Some"), &ads.oid],
                     )?;
                 }
                 if self.email.is_some() {
                     client.execute(
                         "UPDATE humans SET email = $1 WHERE oid = $2;",
-                        &[&self.email.clone().unwrap(), &ads.oid],
+                        &[&self.email.as_ref().expect("email should be Some"), &ads.oid],
                     )?;
                 }
                 if self.password.is_some() {
                     client.execute(
                         "UPDATE humans SET password = $1 WHERE oid = $2;",
-                        &[&self.password.clone().unwrap(), &self.oid],
+                        &[&self.password.as_ref().expect("password should be Some"), &self.oid],
                     )?;
                 }
             }
@@ -221,7 +221,7 @@ impl Human {
             None,
         )?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)?;
             parsed_rows.push(object);
         }
         Ok(parsed_rows)
@@ -285,7 +285,7 @@ impl Human {
                 client
                     .execute(
                         "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                        &[&self.phone_number.clone().unwrap(), &self.oid],
+                        &[&self.phone_number.as_ref().expect("phone_number should be Some"), &self.oid],
                     )
                     .await?;
             }
@@ -293,7 +293,7 @@ impl Human {
                 client
                     .execute(
                         "UPDATE humans SET email = $1 WHERE oid = $2;",
-                        &[&self.email.clone().unwrap(), &self.oid],
+                        &[&self.email.as_ref().expect("email should be Some"), &self.oid],
                     )
                     .await?;
             }
@@ -301,7 +301,7 @@ impl Human {
                 client
                     .execute(
                         "UPDATE humans SET password = $1 WHERE oid = $2;",
-                        &[&self.password.clone().unwrap(), &self.oid],
+                        &[&self.password.as_ref().expect("password should be Some"), &self.oid],
                     )
                     .await?;
             }
@@ -322,7 +322,7 @@ impl Human {
                     client
                         .execute(
                             "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                            &[&self.phone_number.clone().unwrap(), &ads.oid],
+                            &[&self.phone_number.as_ref().expect("phone_number should be Some"), &ads.oid],
                         )
                         .await?;
                 }
@@ -330,7 +330,7 @@ impl Human {
                     client
                         .execute(
                             "UPDATE humans SET email = $1 WHERE oid = $2;",
-                            &[&self.email.clone().unwrap(), &ads.oid],
+                            &[&self.email.as_ref().expect("email should be Some"), &ads.oid],
                         )
                         .await?;
                 }
@@ -338,7 +338,7 @@ impl Human {
                     client
                         .execute(
                             "UPDATE humans SET password = $1 WHERE oid = $2;",
-                            &[&self.password.clone().unwrap(), &self.oid],
+                            &[&self.password.as_ref().expect("password should be Some"), &self.oid],
                         )
                         .await?;
                 }
@@ -368,7 +368,7 @@ impl Human {
         )
         .await?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)?;
             parsed_rows.push(object);
         }
         Ok(parsed_rows)

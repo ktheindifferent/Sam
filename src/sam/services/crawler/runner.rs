@@ -120,7 +120,7 @@ static REDIS_URL: &str = "redis://127.0.0.1/";
 static REDIS_POOL: once_cell::sync::Lazy<Pool> = once_cell::sync::Lazy::new(|| {
     let cfg = DeadpoolConfig::from_url(REDIS_URL);
 
-    cfg.create_pool(Some(Runtime::Tokio1)).unwrap()
+    cfg.create_pool(Some(Runtime::Tokio1)).expect("Failed to create Redis connection pool")
 });
 
 /// Loads the DNS cache from Redis or a file, depending on configuration and availability.
@@ -455,7 +455,7 @@ async fn crawl_url_inner(
                 log::debug!(
                     "HTTP request error (attempt {}): {} for {}",
                     attempt + 1,
-                    last_err.as_ref().unwrap(),
+                    last_err.as_ref().expect("last_err should be Some"),
                     url
                 );
             }
@@ -633,7 +633,7 @@ async fn crawl_url_inner(
 
             let err_str = e.to_string().to_ascii_lowercase();
             if err_str.contains("timed out") || err_str.contains("timeout") {
-                let mut count = TIMEOUT_COUNT.lock().unwrap();
+                let mut count = TIMEOUT_COUNT.lock().expect("Failed to acquire timeout count lock");
                 *count += 1;
                 if (*count % 10) == 0 {
                     // Set global sleep for all threads for a random duration between 10 and 120 seconds
@@ -641,7 +641,7 @@ async fn crawl_url_inner(
                     let sleep_secs = rng.gen_range(10..=120);
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .expect("Time went backwards")
                         .as_secs();
                     let until = now + sleep_secs;
                     SLEEP_UNTIL.store(until, Ordering::SeqCst);
@@ -884,7 +884,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     let mut i = 0;
                     while i < q.len() {
                         if q[i].1 == min_depth {
-                            let (url, depth) = q.remove(i).unwrap();
+                            let (url, depth) = q.remove(i).expect("Queue index should be valid");
                             batch.push((url, depth));
                         } else {
                             i += 1;
@@ -1364,7 +1364,7 @@ fn is_search_url(url: &str) -> bool {
     // Use lazy static regex for better performance
     static SEARCH_PATTERNS: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(
         || {
-            regex::Regex::new(r"(?i)(/search[/?]|/query[/?]|/find[/?]|/lookup[/?]|/results[/?]|/explore[/?]|/filter[/?]|/discover[/?]|/browse[/?]|/list[/?]|/websearch\?|/search_history\?|\?q=|&q=|search=|query=|lookup=|results=|explore=|filter=|discover=|browse=|\bu=|url=|\bid=|redirect|backurl=|text=|searchterm|search_term|return_to|https?%3A%2F%2F)").unwrap()
+            regex::Regex::new(r"(?i)(/search[/?]|/query[/?]|/find[/?]|/lookup[/?]|/results[/?]|/explore[/?]|/filter[/?]|/discover[/?]|/browse[/?]|/list[/?]|/websearch\?|/search_history\?|\?q=|&q=|search=|query=|lookup=|results=|explore=|filter=|discover=|browse=|\bu=|url=|\bid=|redirect|backurl=|text=|searchterm|search_term|return_to|https?%3A%2F%2F)").expect("Failed to compile search pattern regex")
         },
     );
 
@@ -1518,14 +1518,14 @@ fn filter_tokens(tokens: &mut Vec<String>, url: &str) {
 /// Creates regex patterns for various date formats
 fn create_date_regex_patterns() -> Vec<regex::Regex> {
     vec![
-        regex::Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$").unwrap(),
-        regex::Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$").unwrap(),
-        regex::Regex::new(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$").unwrap(),
-        regex::Regex::new(r"^\d{8}$").unwrap(),
-        regex::Regex::new(r"^\d{4}\.\d{1,2}\.\d{1,2}$").unwrap(),
-        regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$").unwrap(),
+        regex::Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$").expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$").expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$").expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{8}$").expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{4}\.\d{1,2}\.\d{1,2}$").expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$").expect("Failed to compile date regex pattern"),
         regex::Regex::new(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|([+-]\d{2}:\d{2}))?)?$")
-            .unwrap(),
+            .expect("Failed to compile ISO date regex pattern"),
     ]
 }
 
@@ -1554,7 +1554,7 @@ fn remove_domain_tokens(tokens: &mut Vec<String>, url: &str) {
 async fn apply_global_rate_limit() {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("Time went backwards")
         .as_secs();
     let sleep_until = SLEEP_UNTIL.load(Ordering::SeqCst);
 
@@ -1585,7 +1585,7 @@ async fn apply_domain_rate_limit(url: &str) {
             let mut last_access_map = DOMAIN_LAST_ACCESS.lock().await;
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .expect("Time went backwards")
                 .as_millis() as u64;
 
             if let Some(&last_access) = last_access_map.get(&domain_str) {

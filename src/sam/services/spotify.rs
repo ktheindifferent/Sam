@@ -34,7 +34,13 @@ static PLAYBACK_THREAD: Lazy<Mutex<Option<thread::JoinHandle<()>>>> =
 
 /// Start the Spotify service (background music thread)
 pub async fn start() {
-    let mut state = SPOTIFY_STATE.lock().unwrap();
+    let mut state = match SPOTIFY_STATE.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            log::error!("Failed to acquire Spotify state lock: {}", e);
+            return;
+        }
+    };
     if state.status == SpotifyStatus::Playing {
         info!("Spotify service already running");
         return;
@@ -42,12 +48,24 @@ pub async fn start() {
     state.status = SpotifyStatus::Playing;
     info!("Starting Spotify playback thread");
     let state_arc = SPOTIFY_STATE.clone();
-    let mut thread_guard = PLAYBACK_THREAD.lock().unwrap();
+    let mut thread_guard = match PLAYBACK_THREAD.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            log::error!("Failed to acquire playback thread lock: {}", e);
+            return;
+        }
+    };
     if thread_guard.is_none() {
         *thread_guard = Some(thread::spawn(move || {
             loop {
                 {
-                    let s = state_arc.lock().unwrap();
+                    let s = match state_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            log::error!("Failed to acquire state lock in playback thread: {}", e);
+                            break;
+                        }
+                    };
                     match s.status {
                         SpotifyStatus::Playing => {
                             // Simulate playing music
@@ -70,10 +88,23 @@ pub async fn start() {
 
 /// Stop the Spotify service (stop music and thread)
 pub async fn stop() {
-    let mut state = SPOTIFY_STATE.lock().unwrap();
-    state.status = SpotifyStatus::Stopped;
-    info!("Stopping Spotify playback");
-    let mut thread_guard = PLAYBACK_THREAD.lock().unwrap();
+    match SPOTIFY_STATE.lock() {
+        Ok(mut state) => {
+            state.status = SpotifyStatus::Stopped;
+            info!("Stopping Spotify playback");
+        }
+        Err(e) => {
+            log::error!("Failed to acquire Spotify state lock: {}", e);
+            return;
+        }
+    }
+    let mut thread_guard = match PLAYBACK_THREAD.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            log::error!("Failed to acquire playback thread lock: {}", e);
+            return;
+        }
+    };
     if let Some(handle) = thread_guard.take() {
         let _ = handle.join();
     }
@@ -81,41 +112,66 @@ pub async fn stop() {
 
 /// Pause playback
 pub async fn pause() {
-    let mut state = SPOTIFY_STATE.lock().unwrap();
-    if state.status == SpotifyStatus::Playing {
-        state.status = SpotifyStatus::Paused;
-        info!("Spotify paused");
+    match SPOTIFY_STATE.lock() {
+        Ok(mut state) => {
+            if state.status == SpotifyStatus::Playing {
+                state.status = SpotifyStatus::Paused;
+                info!("Spotify paused");
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to acquire Spotify state lock: {}", e);
+        }
     }
 }
 
 /// Resume playback
 pub async fn play() {
-    let mut state = SPOTIFY_STATE.lock().unwrap();
-    if state.status == SpotifyStatus::Paused {
-        state.status = SpotifyStatus::Playing;
-        info!("Spotify resumed");
+    match SPOTIFY_STATE.lock() {
+        Ok(mut state) => {
+            if state.status == SpotifyStatus::Paused {
+                state.status = SpotifyStatus::Playing;
+                info!("Spotify resumed");
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to acquire Spotify state lock: {}", e);
+        }
     }
 }
 
 /// Toggle shuffle
 pub async fn shuffle() {
-    let mut state = SPOTIFY_STATE.lock().unwrap();
-    state.shuffle = !state.shuffle;
-    info!("Spotify shuffle set to {}", state.shuffle);
+    match SPOTIFY_STATE.lock() {
+        Ok(mut state) => {
+            state.shuffle = !state.shuffle;
+            info!("Spotify shuffle set to {}", state.shuffle);
+        }
+        Err(e) => {
+            log::error!("Failed to acquire Spotify state lock: {}", e);
+        }
+    }
 }
 
 /// Get current status
 pub fn status() -> String {
-    let state = SPOTIFY_STATE.lock().unwrap();
-    format!(
-        "{}{}",
-        match state.status {
-            SpotifyStatus::Playing => "playing",
-            SpotifyStatus::Paused => "paused",
-            SpotifyStatus::Stopped => "stopped",
-        },
-        if state.shuffle { " (shuffle)" } else { "" }
-    )
+    match SPOTIFY_STATE.lock() {
+        Ok(state) => {
+            format!(
+                "{}{}",
+                match state.status {
+                    SpotifyStatus::Playing => "playing",
+                    SpotifyStatus::Paused => "paused",
+                    SpotifyStatus::Stopped => "stopped",
+                },
+                if state.shuffle { " (shuffle)" } else { "" }
+            )
+        }
+        Err(e) => {
+            log::error!("Failed to acquire Spotify state lock: {}", e);
+            "error".to_string()
+        }
+    }
 }
 
 pub struct SpotifyApi {

@@ -168,7 +168,7 @@ impl CircuitBreaker {
         let state = self.state.read().await.clone();
         match state {
             CircuitState::Open { opened_at } => {
-                if Utc::now().signed_duration_since(opened_at).to_std().unwrap() >= self.timeout {
+                if Utc::now().signed_duration_since(opened_at).to_std().expect("Duration should be valid") >= self.timeout {
                     // Transition to half-open
                     *self.state.write().await = CircuitState::HalfOpen;
                     *self.success_count.write().await = 0;
@@ -270,7 +270,7 @@ impl RateLimiter {
         let mut requests = self.requests.write().await;
         
         // Remove old requests outside the window
-        let cutoff = now - chrono::Duration::from_std(self.window).unwrap();
+        let cutoff = now - chrono::Duration::from_std(self.window).expect("Window duration should be valid");
         requests.retain(|&req| req > cutoff);
         
         if requests.len() >= self.max_requests as usize {
@@ -396,7 +396,7 @@ mod tests {
         ).await;
         
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "Success");
+        assert_eq!(result.expect("Operation should succeed after retry"), "Success");
     }
     
     #[tokio::test]

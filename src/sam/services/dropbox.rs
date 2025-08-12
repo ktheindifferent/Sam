@@ -53,7 +53,7 @@ pub fn finish_auth(pkce: String, auth_code: String) -> dropbox_sdk::oauth2::Auth
     auth
 }
 
-pub fn update_key(key: String, refresh: Option<String>) {
+pub fn update_key(key: String, refresh: Option<String>) -> Result<(), crate::sam::services::Error> {
     let mut service = crate::sam::memory::config::Service::new();
     service.identifier = "dropbox".to_string();
     match refresh {
@@ -61,18 +61,28 @@ pub fn update_key(key: String, refresh: Option<String>) {
             if refr.len() > 2 {
                 service.key = refr;
             } else {
-                let existing = get_db_obj().unwrap();
+                let existing = get_db_obj().map_err(|e| {
+                    log::error!("Failed to get dropbox database object: {}", e);
+                    crate::sam::services::Error::Other(format!("Failed to get dropbox database object: {}", e))
+                })?;
                 service.key = existing.key;
             }
         }
         None => {
-            let existing = get_db_obj().unwrap();
+            let existing = get_db_obj().map_err(|e| {
+                log::error!("Failed to get dropbox database object: {}", e);
+                crate::sam::services::Error::Other(format!("Failed to get dropbox database object: {}", e))
+            })?;
             service.key = existing.key;
         }
     }
     service.secret = key;
     service.endpoint = String::new();
-    service.save().unwrap();
+    service.save().map_err(|e| {
+        log::error!("Failed to save dropbox service configuration: {}", e);
+        crate::sam::services::Error::Other(format!("Failed to save dropbox service configuration: {}", e))
+    })?;
+    Ok(())
 }
 
 //  dropbox_sdk::files::delete_v2(&client, &dropbox_sdk::files::DeleteArg::new(path.clone()));
@@ -97,8 +107,14 @@ pub fn handle(
     }
 
     if request.url() == "/api/services/dropbox/download" {
-        let path_param = request.get_param("path").unwrap();
-        let data = download_file(&path_param).unwrap();
+        let path_param = request.get_param("path").ok_or_else(|| {
+            log::error!("Missing required 'path' parameter for dropbox download");
+            crate::sam::http::Error::BadRequest
+        })?;
+        let data = download_file(&path_param).map_err(|e| {
+            log::error!("Failed to download file from dropbox: {}", e);
+            crate::sam::http::Error::InternalServerError
+        })?;
 
         let response = Response::from_data("", data);
 
@@ -119,8 +135,18 @@ pub fn handle(
         let mut auth = finish_auth(input.pkce, input.auth_code);
 
         let noc = NoauthDefaultClient::default();
-        let new = auth.obtain_access_token(noc).unwrap();
-        update_key(auth.save().unwrap(), Some(new.refresh_token));
+        let new = auth.obtain_access_token(noc).map_err(|e| {
+            log::error!("Failed to obtain access token from dropbox: {}", e);
+            crate::sam::http::Error::InternalServerError
+        })?;
+        let saved_key = auth.save().map_err(|e| {
+            log::error!("Failed to save dropbox auth: {}", e);
+            crate::sam::http::Error::InternalServerError
+        })?;
+        update_key(saved_key, Some(new.refresh_token)).map_err(|e| {
+            log::error!("Failed to update dropbox key: {}", e);
+            crate::sam::http::Error::InternalServerError
+        })?;
 
         let response = Response::redirect_302("/services.html");
         return Ok(response);
@@ -136,7 +162,9 @@ pub fn destroy_empty_directories() {
             let empties = crate::sam::services::dropbox::empty_directories();
             for e in empties {
                 if is_path_empty(&e.clone()) {
-                    delete(&e.clone());
+                    if let Err(err) = delete(&e.clone()) {
+                        log::error!("Failed to delete empty directory '{}': {}", e, err);
+                    }
                 }
             }
         });
@@ -154,26 +182,42 @@ pub fn destroy_empty_directories() {
     }
 }
 
-pub fn create_sam_folder() {
-    create_folder("/Sam");
+pub fn create_sam_folder() -> Result<(), crate::sam::services::Error> {
+    create_folder("/Sam")
 }
 
-pub fn create_folder(path: &str) {
-    let obj = get_db_obj().unwrap();
+pub fn create_folder(path: &str) -> Result<(), crate::sam::services::Error> {
+    let obj = get_db_obj().map_err(|e| {
+        log::error!("Failed to get dropbox database object: {}", e);
+        crate::sam::services::Error::Other(format!("Failed to get dropbox database object: {}", e))
+    })?;
     let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret)
-        .unwrap();
+        .map_err(|e| {
+            log::error!("Failed to load dropbox authorization: {}", e);
+            crate::sam::services::Error::Other(format!("Failed to load dropbox authorization: {}", e))
+        })?;
     let client = UserAuthDefaultClient::new(auth.clone());
-    let _ = dropbox_sdk::files::create_folder_v2(
+    dropbox_sdk::files::create_folder_v2(
         &client,
         &dropbox_sdk::files::CreateFolderArg::new(path.to_string()),
-    );
+    ).map_err(|e| {
+        log::error!("Failed to create dropbox folder '{}': {}", path, e);
+        crate::sam::services::Error::Other(format!("Failed to create dropbox folder '{}': {}", path, e))
+    })?;
+    Ok(())
 }
 
 // TODO: Cache Files
 pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
-    let obj = get_db_obj().unwrap();
+    let obj = get_db_obj().map_err(|e| {
+        log::error!("Failed to get dropbox database object: {}", e);
+        format!("Failed to get dropbox database object: {}", e)
+    })?;
     let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret)
-        .unwrap();
+        .map_err(|e| {
+            log::error!("Failed to load dropbox authorization: {}", e);
+            format!("Failed to load dropbox authorization: {}", e)
+        })?;
     let client = UserAuthDefaultClient::new(auth.clone());
     let dropbox_file = dropbox_sdk::files::download(
         &client,
@@ -182,25 +226,51 @@ pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
         None,
     );
 
-    let mut body = dropbox_file.unwrap().unwrap().body.unwrap();
+    let file_result = dropbox_file.map_err(|e| {
+        log::error!("Failed to download file from dropbox: {}", e);
+        format!("Failed to download file from dropbox: {}", e)
+    })?;
+    
+    let file_data = file_result.map_err(|e| {
+        log::error!("Dropbox API error: {}", e);
+        format!("Dropbox API error: {}", e)
+    })?;
+    
+    let mut body = file_data.body.ok_or_else(|| {
+        log::error!("No body in dropbox download response");
+        "No body in dropbox download response".to_string()
+    })?;
 
     let mut data = Vec::new();
-    body.read_to_end(&mut data).expect("Unable to read data");
+    body.read_to_end(&mut data).map_err(|e| {
+        log::error!("Unable to read dropbox download data: {}", e);
+        format!("Unable to read dropbox download data: {}", e)
+    })?;
 
     Ok(data)
 
     // log::info!("dropbox_file: {:?}", );
 }
 
-pub fn delete(path: &str) {
-    let obj = get_db_obj().unwrap();
+pub fn delete(path: &str) -> Result<(), crate::sam::services::Error> {
+    let obj = get_db_obj().map_err(|e| {
+        log::error!("Failed to get dropbox database object: {}", e);
+        crate::sam::services::Error::Other(format!("Failed to get dropbox database object: {}", e))
+    })?;
     let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret)
-        .unwrap();
+        .map_err(|e| {
+            log::error!("Failed to load dropbox authorization: {}", e);
+            crate::sam::services::Error::Other(format!("Failed to load dropbox authorization: {}", e))
+        })?;
     let client = UserAuthDefaultClient::new(auth.clone());
-    let _ = dropbox_sdk::files::delete_v2(
+    dropbox_sdk::files::delete_v2(
         &client,
         &dropbox_sdk::files::DeleteArg::new(path.to_string()),
-    );
+    ).map_err(|e| {
+        log::error!("Failed to delete dropbox path '{}': {}", path, e);
+        crate::sam::services::Error::Other(format!("Failed to delete dropbox path '{}': {}", path, e))
+    })?;
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -210,7 +280,13 @@ pub struct DropboxObject {
 }
 
 pub fn get_paths(path: &str) -> Vec<DropboxObject> {
-    let obj = get_db_obj().unwrap();
+    let obj = match get_db_obj() {
+        Ok(obj) => obj,
+        Err(e) => {
+            log::error!("Failed to get dropbox database object: {}", e);
+            return Vec::new();
+        }
+    };
     let auth = dropbox_sdk::oauth2::Authorization::from_refresh_token(
         "ogyeqdms81svfke".to_string(),
         obj.key,
@@ -265,9 +341,20 @@ pub fn get_paths(path: &str) -> Vec<DropboxObject> {
 }
 
 pub fn empty_directories() -> Vec<String> {
-    let obj = get_db_obj().unwrap();
-    let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret)
-        .unwrap();
+    let obj = match get_db_obj() {
+        Ok(obj) => obj,
+        Err(e) => {
+            log::error!("Failed to get dropbox database object: {}", e);
+            return Vec::new();
+        }
+    };
+    let auth = match dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret) {
+        Ok(auth) => auth,
+        Err(e) => {
+            log::error!("Failed to load dropbox authorization: {}", e);
+            return Vec::new();
+        }
+    };
     let client = UserAuthDefaultClient::new(auth.clone());
 
     let mut empty_directories: Vec<String> = Vec::new();
@@ -312,11 +399,22 @@ pub fn empty_directories() -> Vec<String> {
 }
 
 pub fn is_path_empty(path: &str) -> bool {
-    log::info!("deleting dropbox path: {}", path);
+    log::info!("checking if dropbox path is empty: {}", path);
 
-    let obj = get_db_obj().unwrap();
-    let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret)
-        .unwrap();
+    let obj = match get_db_obj() {
+        Ok(obj) => obj,
+        Err(e) => {
+            log::error!("Failed to get dropbox database object: {}", e);
+            return false; // Conservative approach - assume not empty if we can't check
+        }
+    };
+    let auth = match dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret) {
+        Ok(auth) => auth,
+        Err(e) => {
+            log::error!("Failed to load dropbox authorization: {}", e);
+            return false; // Conservative approach - assume not empty if we can't check
+        }
+    };
     let client = UserAuthDefaultClient::new(auth.clone());
 
     let mut empty = true;
