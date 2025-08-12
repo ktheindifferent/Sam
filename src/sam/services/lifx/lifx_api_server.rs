@@ -1,7 +1,8 @@
-// TODO - Impliment authentication header (DONE)
-// TODO - Wrap as a rust library with configurable ports + authentication (DONE)
-// TODO - Impliment LIFX Effects, Scenes, Clean, Cycle
-// TODO - Impliment an extended API for changing device labels, wifi-config, etc.
+// Legacy LIFX API server implementation
+// This module is being refactored into smaller, more maintainable components.
+// New code should use the modular components in the parent module.
+
+#![allow(deprecated)]
 
 use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
 use lifx_rs::lan::{
@@ -647,6 +648,7 @@ impl StopHandle {
     }
 }
 
+#[deprecated(since = "2.0.0", note = "Use the modular API server in lifx::api_server::start instead")]
 pub fn start(config: Config) -> StopHandle {
     // sudo::with_env(&["SECRET_KEY"]).unwrap();
     // sudo::escalate_if_needed().unwrap();
