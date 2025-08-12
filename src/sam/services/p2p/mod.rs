@@ -10,6 +10,8 @@
 pub mod enhanced;
 pub mod file_sharing;
 pub mod sync;
+pub mod secure;
+pub mod network_segmentation;
 
 use crate::sam::services::crawler::page::CrawledPage;
 use log::{error, info};
