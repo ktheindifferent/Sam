@@ -9,22 +9,36 @@
 
 use rouille::Request;
 use rouille::Response;
+use super::validation::{validate_id_param, validate_query_params, sanitize_output_json, error_response};
 
 pub fn handle(
     _current_session: crate::sam::memory::cache::WebSessions,
     request: &Request,
 ) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/humans" {
+        // Validate query parameters
+        let params = validate_query_params(request)
+            .map_err(|_| crate::sam::http::Error::new("Invalid query parameters"))?;
+        
         let objects =
             crate::sam::memory::Human::select(None, None, Some("email ASC".to_string()), None)?;
-        return Ok(Response::json(&objects));
+        
+        // Sanitize output before sending
+        let json_output = serde_json::to_value(&objects)
+            .map_err(|_| crate::sam::http::Error::new("Serialization error"))?;
+        let sanitized = sanitize_output_json(&json_output);
+        
+        return Ok(Response::json(&sanitized));
     }
 
     if request.url().contains("/api/humans") && request.url().contains("/observations") {
         let url = request.url().clone();
         let split = url.split("/");
         let vec = split.collect::<Vec<&str>>();
-        let oid = vec[3];
+        
+        // Validate OID parameter
+        let oid = validate_id_param(vec[3])
+            .map_err(|_| crate::sam::http::Error::new("Invalid OID parameter"))?;
 
         if request.method() == "GET" {
             let mut pg_query = crate::sam::memory::PostgresQueries::default();
@@ -47,7 +61,10 @@ pub fn handle(
         let url = request.url().clone();
         let split = url.split("/");
         let vec = split.collect::<Vec<&str>>();
-        let oid = vec[3];
+        
+        // Validate OID parameter
+        let oid = validate_id_param(vec[3])
+            .map_err(|_| crate::sam::http::Error::new("Invalid OID parameter"))?;
 
         if request.method() == "GET" {
             let mut pg_query = crate::sam::memory::PostgresQueries::default();

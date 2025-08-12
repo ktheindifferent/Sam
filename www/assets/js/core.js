@@ -35,7 +35,8 @@ $(document).ready(function() {
     $.get("/api/current_human", function( data ) {
         current_human = data;
         $('.inject-human-name').each(function(i, obj) {
-            $(obj).html(current_human.name);
+            // Use text() instead of html() to prevent XSS
+            $(obj).text(current_human.name || 'User');
         });
     }).fail(function() {
         console.warn("Could not load current human data");
@@ -274,9 +275,9 @@ function uploadFile() {
         title: "", 
         html: `
             <form id="new_file_form" class="user" action="/api/services/storage/files" method="post" enctype="multipart/form-data">
-
-                <input type="file" id="file_data" name="file_data" style="display: block !important;">
-        
+                <input type="hidden" name="csrf_token" value="${window.csrfToken || ''}">
+                <input type="file" id="file_data" name="file_data" style="display: block !important;" 
+                       accept="image/*,application/pdf,.doc,.docx,.txt">
             </form>
         `,  
         showConfirmButton: false
@@ -285,11 +286,21 @@ function uploadFile() {
       $(document).ready(function() {
         
         $( "#file_data" ).change(function() {
-
+            const file = this.files[0];
+            if (file && window.SecurityUtils) {
+                const validation = window.SecurityUtils.validateFileUpload(file, {
+                    maxSize: 50 * 1024 * 1024, // 50MB
+                    allowedTypes: ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'text/plain'],
+                    allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'txt', 'doc', 'docx']
+                });
+                
+                if (!validation.valid) {
+                    Swal.fire('Error', validation.error, 'error');
+                    return;
+                }
+            }
            
             $("#new_file_form").submit();
-
-
           });
     });
 }

@@ -336,17 +336,77 @@ pub mod headers {
         remote_addr
     }
     
-    /// Add security headers to response
+    /// Add security headers to response with nonce support
+    pub fn add_security_headers_with_nonce(nonce: Option<String>) -> Vec<(String, String)> {
+        let csp = if let Some(nonce_value) = nonce {
+            format!(
+                "default-src 'self'; \
+                script-src 'self' 'nonce-{}' 'strict-dynamic'; \
+                style-src 'self' 'nonce-{}'; \
+                img-src 'self' data: https:; \
+                font-src 'self' data:; \
+                connect-src 'self'; \
+                frame-src 'none'; \
+                object-src 'none'; \
+                base-uri 'self'; \
+                form-action 'self'; \
+                frame-ancestors 'none'; \
+                upgrade-insecure-requests;",
+                nonce_value, nonce_value
+            )
+        } else {
+            // Fallback CSP without nonces (more restrictive)
+            String::from(
+                "default-src 'self'; \
+                script-src 'self'; \
+                style-src 'self'; \
+                img-src 'self' data: https:; \
+                font-src 'self' data:; \
+                connect-src 'self'; \
+                frame-src 'none'; \
+                object-src 'none'; \
+                base-uri 'self'; \
+                form-action 'self'; \
+                frame-ancestors 'none'; \
+                upgrade-insecure-requests;"
+            )
+        };
+        
+        vec![
+            ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+            ("X-Frame-Options".to_string(), "DENY".to_string()),
+            ("X-XSS-Protection".to_string(), "1; mode=block".to_string()),
+            ("Referrer-Policy".to_string(), "strict-origin-when-cross-origin".to_string()),
+            ("Content-Security-Policy".to_string(), csp),
+            ("Strict-Transport-Security".to_string(), "max-age=31536000; includeSubDomains; preload".to_string()),
+            ("Permissions-Policy".to_string(), "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()".to_string()),
+            ("Cross-Origin-Opener-Policy".to_string(), "same-origin".to_string()),
+            ("Cross-Origin-Resource-Policy".to_string(), "same-origin".to_string()),
+            ("Cross-Origin-Embedder-Policy".to_string(), "require-corp".to_string()),
+        ]
+    }
+    
+    /// Add security headers to response (backward compatibility)
     pub fn add_security_headers() -> Vec<(&'static str, &'static str)> {
         vec![
             ("X-Content-Type-Options", "nosniff"),
             ("X-Frame-Options", "DENY"),
             ("X-XSS-Protection", "1; mode=block"),
             ("Referrer-Policy", "strict-origin-when-cross-origin"),
-            ("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"),
-            ("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
-            ("Permissions-Policy", "geolocation=(), microphone=(), camera=()"),
+            ("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;"),
+            ("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload"),
+            ("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"),
         ]
+    }
+    
+    /// Generate a secure nonce for CSP
+    pub fn generate_csp_nonce() -> String {
+        use base64::{Engine as _, engine::general_purpose};
+        use rand::Rng;
+        
+        let mut rng = rand::thread_rng();
+        let random_bytes: [u8; 16] = rng.gen();
+        general_purpose::STANDARD.encode(random_bytes)
     }
 }
 
