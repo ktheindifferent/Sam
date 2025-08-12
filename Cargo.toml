@@ -125,3 +125,7 @@ uuid = { version = "1.5", features = ["v4"] }
 nix = "0.27"
 assert_matches = "1.5"
 serial_test = "3.0"
+
+[[bench]]
+name = "service_benchmarks"
+harness = false

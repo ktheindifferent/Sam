@@ -1,0 +1,69 @@
+[default]
+# Tarpaulin configuration for code coverage
+
+# Coverage configuration
+coveralls = false
+ignore-tests = false
+ignore-panics = true
+verbose = true
+line-coverage = true
+branch-coverage = true
+timeout = "300s"
+debug = false
+count = true
+run-types = ["Tests", "Doctests"]
+follow-exec = true
+
+# Output formats
+out = ["Html", "Lcov", "Json"]
+output-dir = "target/coverage"
+
+# Excluded paths and patterns
+exclude = [
+    "*/tests/*",
+    "*/benches/*",
+    "*/examples/*",
+    "*/build.rs",
+    "*/main.rs",
+    "*/installer/*",
+]
+
+# Excluded files
+exclude-files = [
+    "*/mod.rs",
+    "*_test.rs",
+]
+
+# Packages to test
+packages = ["sam"]
+
+# Test configuration
+all-features = true
+workspace = false
+locked = false
+force-clean = true
+
+# Reporting thresholds
+fail-under = 0  # Will be increased gradually
+
+[high_coverage]
+# High coverage profile for critical services
+inherit = "default"
+fail-under = 80
+packages = ["sam"]
+exclude = [
+    "*/tests/*",
+    "*/benches/*",
+]
+
+[critical_services]
+# Specific coverage for critical service modules
+inherit = "default"
+include = [
+    "src/sam/services/lifx.rs",
+    "src/sam/services/spotify.rs",
+    "src/sam/services/sound.rs",
+    "src/sam/services/media/*.rs",
+    "src/sam/services/backup*.rs",
+]
+fail-under = 80
