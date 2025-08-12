@@ -9,6 +9,7 @@
 
 pub mod cli;
 pub mod http;
+pub mod jobs;
 pub mod memory;
 pub mod resource_management;
 pub mod security;
