@@ -27,6 +27,7 @@ pub mod validation;
 // Service-specific modules
 pub mod backup;
 pub mod backup_enhanced;
+pub mod cache;
 pub mod clamav;
 pub mod copilot;
 pub mod crawler;

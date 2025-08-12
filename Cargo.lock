@@ -6597,6 +6597,7 @@ dependencies = [
  "libmdns",
  "lifx-rs",
  "log",
+ "lru",
  "matc",
  "mdns",
  "mdns-sd",
