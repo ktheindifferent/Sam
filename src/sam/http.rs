@@ -67,6 +67,7 @@ impl From<anyhow::Error> for Error {
 }
 
 pub mod api;
+pub mod csrf;
 
 // TODO - Authenticate connections using a one time key and expiring Sessions
 // WW
@@ -146,7 +147,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                                         )
                                         .with_additional_header(
                                             "Access-Control-Allow-Origin",
-                                            "*",
+                                            request.header("Origin").unwrap_or("http://localhost:8080"),
                                         ));
                                 }
                             }
@@ -155,7 +156,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                         // No Range header, serve the whole file
                         return Ok(Response::from_file("video/mp4", file)
                             .with_additional_header("Accept-Ranges", "bytes")
-                            .with_additional_header("Access-Control-Allow-Origin", "*"));
+                            .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080")));
                     }
                 }
             }
@@ -167,7 +168,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
             let xresponse = rouille::match_assets(request, "./www/");
             if xresponse.is_success() {
                 return Ok(xresponse
-                    .with_additional_header("Access-Control-Allow-Origin", "*")
+                    .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
                     .with_no_cache());
             }
         }
@@ -177,7 +178,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
             let xresponse = rouille::match_assets(&request, "/opt/sam/www/");
             if xresponse.is_success() {
                 return Ok(xresponse
-                    .with_additional_header("Access-Control-Allow-Origin", "*")
+                    .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
                     .with_no_cache());
             }
         }
@@ -186,10 +187,13 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
     // TODO: Limit by tiimestamp field
     let sessions = crate::sam::memory::cache::WebSessions::select(None, None, None, None)?;
 
+    // Use proper session timeout (24 hours)
+    const SESSION_DURATION: i64 = 86400; // 24 hours in seconds
+    
     Ok(session::session(
         request,
         "SID",
-        99999999999999999,
+        SESSION_DURATION,
         |session| {
             // Setup/Restore Current Session
             let mut current_session =
@@ -237,11 +241,24 @@ pub fn handle_with_session(
             spotify_api_key: Option<String>
         })?;
 
-        // Save Human
+        // Validate password confirmation
+        if input.password != input.password_confirm {
+            let response = Response::json(&serde_json::json!({
+                "error": "Passwords do not match"
+            }))
+            .with_status_code(400);
+            return Ok(response);
+        }
+
+        // Hash password before saving
+        let hashed_password = crate::sam::security::Auth::hash_password(&input.password)
+            .map_err(|e| Error::Other(format!("Failed to hash password: {}", e)))?;
+
+        // Save Human with hashed password
         let mut human = crate::sam::memory::Human::new();
         human.name = input.name;
         human.email = Some(input.email);
-        human.password = Some(input.password);
+        human.password = Some(hashed_password);
         human.save()?;
 
         // Save Location
@@ -258,42 +275,76 @@ pub fn handle_with_session(
         // TODO - Authenticate
     }
 
-    // TODO: Fix SQL Injection vulnerability with wrapped params
+    // Secure authentication with password hashing and rate limiting
     if request.url() == "/auth" {
         let input = post_input!(request, {
             email: String,
             password: String,
         })?;
 
+        // Get IP address for rate limiting
+        let ip_address = request.headers()
+            .find(|h| h.0.contains("X-Forwarded-For"))
+            .map(|h| h.1.to_string())
+            .unwrap_or_else(|| request.remote_addr().to_string());
+
+        // Check rate limit
+        let rate_limit_key = format!("auth:{}:{}", ip_address, input.email.to_lowercase());
+        if !crate::sam::security::Auth::check_auth_rate_limit(&rate_limit_key) {
+            let wait_time = crate::sam::security::Auth::get_wait_time(&rate_limit_key)
+                .unwrap_or(60);
+            let response = Response::json(&serde_json::json!({
+                "error": "Too many authentication attempts. Please try again later.",
+                "wait_seconds": wait_time
+            }))
+            .with_status_code(429);
+            return Ok(response);
+        }
+
         let mut editable_session = current_session.clone();
 
-        // Search for OID matches
+        // Search for user by email using parameterized query
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query
             .queries
-            .push(crate::sam::memory::PGCol::String(input.email.clone()));
-        pg_query.query_columns.push("email ilike".to_string());
-        pg_query
-            .queries
-            .push(crate::sam::memory::PGCol::String(input.password.clone()));
-        pg_query.query_columns.push(" AND password =".to_string());
+            .push(crate::sam::memory::PGCol::String(input.email.to_lowercase()));
+        pg_query.query_columns.push("LOWER(email) =".to_string());
 
         let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
 
+        let mut auth_success = false;
         if !humans.is_empty() {
-            editable_session.authenticated = true;
-            editable_session.human_oid = humans[0].oid.clone();
-            for header in request.headers() {
-                if header.0.contains("X-Forwarded-For") {
-                    editable_session.ip_address = header.1.to_string();
+            // Verify password hash
+            if let Some(stored_hash) = &humans[0].password {
+                match crate::sam::security::Auth::verify_password(&input.password, stored_hash) {
+                    Ok(true) => {
+                        auth_success = true;
+                        editable_session.authenticated = true;
+                        editable_session.human_oid = humans[0].oid.clone();
+                        editable_session.ip_address = ip_address.clone();
+                        
+                        // Clear rate limit on successful authentication
+                        crate::sam::security::Auth::clear_auth_rate_limit(&rate_limit_key);
+                    }
+                    Ok(false) => {
+                        // Invalid password
+                    }
+                    Err(_) => {
+                        // Hash verification error - treat as failed auth
+                    }
                 }
             }
         }
 
         editable_session.save()?;
 
-        let response = Response::redirect_302("/index.html");
-        return Ok(response);
+        if auth_success {
+            let response = Response::redirect_302("/index.html");
+            return Ok(response);
+        } else {
+            let response = Response::redirect_302("/login.html?error=invalid_credentials");
+            return Ok(response);
+        }
     }
 
     // =================================================================
@@ -349,7 +400,7 @@ pub fn handle_with_session(
         let xresponse = rouille::match_assets(request, "/opt/sam/");
         if xresponse.is_success() {
             return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", "*")
+                .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
                 .with_no_cache());
         }
     }
@@ -361,7 +412,7 @@ pub fn handle_with_session(
         let xresponse = rouille::match_assets(request, "/opt/sam/");
         if xresponse.is_success() {
             return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", "*")
+                .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
                 .with_no_cache());
         }
     }
@@ -371,7 +422,7 @@ pub fn handle_with_session(
         let xresponse = rouille::match_assets(request, "./www/");
         if xresponse.is_success() {
             return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", "*")
+                .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
                 .with_no_cache());
         }
     }
@@ -381,7 +432,7 @@ pub fn handle_with_session(
         let xresponse = rouille::match_assets(&request, "/opt/sam/www/");
         if xresponse.is_success() {
             return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", "*")
+                .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
                 .with_no_cache());
         }
     }
