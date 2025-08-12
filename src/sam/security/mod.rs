@@ -1,6 +1,7 @@
 pub mod input_validation;
 pub mod session;
 pub mod http_middleware;
+pub mod auth;
 pub mod validation_middleware;
 
 pub use input_validation::{
@@ -27,4 +28,9 @@ pub use http_middleware::{
     RateLimitConfig,
     DosProtectionConfig,
     headers,
+};
+
+pub use auth::{
+    Auth,
+    CorsConfig,
 };
