@@ -61,11 +61,11 @@ impl Location {
             lifx_api_key: None,
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .expect("Time went backwards")
                 .as_secs() as i64,
             updated_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .expect("Time went backwards")
                 .as_secs() as i64,
         }
     }
@@ -139,18 +139,18 @@ impl Location {
                 &self.zip_code,
                 &self.created_at,
                 &self.updated_at]
-            ).unwrap();
+            )?;
             if self.lifx_api_key.is_some() {
                 client.execute(
                     "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                    &[&self.lifx_api_key.clone().unwrap(), &self.oid],
+                    &[&self.lifx_api_key.as_ref().expect("lifx_api_key should be Some"), &self.oid],
                 )?;
             }
             let statement = client.prepare("SELECT * FROM locations WHERE oid = $1")?;
             let _rows_two = client.query(&statement, &[&self.oid])?;
             Ok(self)
         } else {
-            let ads = Self::from_row(&rows[0]).unwrap();
+            let ads = Self::from_row(&rows[0])?;
             // Only save if newer than stored information
             if self.updated_at > ads.updated_at {
                 client.execute("UPDATE locations SET name = $1, address = $2, city = $3, state = $4, zip_code = $5, updated_at = $6 WHERE oid = $7;", 
@@ -166,7 +166,7 @@ impl Location {
                 if self.lifx_api_key.is_some() {
                     client.execute(
                         "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                        &[&self.lifx_api_key.clone().unwrap(), &ads.oid],
+                        &[&self.lifx_api_key.as_ref().expect("lifx_api_key should be Some"), &ads.oid],
                     )?;
                 }
             }
@@ -194,7 +194,7 @@ impl Location {
             None,
         )?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)?;
             parsed_rows.push(object);
         }
         Ok(parsed_rows)
@@ -252,13 +252,13 @@ impl Location {
                 client
                     .execute(
                         "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                        &[&self.lifx_api_key.clone().unwrap(), &self.oid],
+                        &[&self.lifx_api_key.as_ref().expect("lifx_api_key should be Some"), &self.oid],
                     )
                     .await?;
             }
             Ok(self)
         } else {
-            let ads = Self::from_row(&rows[0]).unwrap();
+            let ads = Self::from_row(&rows[0])?;
             if self.updated_at > ads.updated_at {
                 client.execute("UPDATE locations SET name = $1, address = $2, city = $3, state = $4, zip_code = $5, updated_at = $6 WHERE oid = $7;",
                 &[
@@ -274,7 +274,7 @@ impl Location {
                     client
                         .execute(
                             "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                            &[&self.lifx_api_key.clone().unwrap(), &ads.oid],
+                            &[&self.lifx_api_key.as_ref().expect("lifx_api_key should be Some"), &ads.oid],
                         )
                         .await?;
                 }
@@ -304,7 +304,7 @@ impl Location {
         )
         .await?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)?;
             parsed_rows.push(object);
         }
         Ok(parsed_rows)

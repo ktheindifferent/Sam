@@ -261,7 +261,7 @@ mod security_tests {
         
         let retrieved = manager.get_session(&session.id).await;
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().user_id, "user123");
+        assert_eq!(retrieved.expect("Session should be retrievable").user_id, "user123");
         
         manager.invalidate_session(&session.id).await
             .expect("Failed to invalidate session");

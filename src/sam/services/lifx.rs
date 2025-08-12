@@ -31,7 +31,13 @@ static LIFX_SERVER_RUNNING: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| Arc::new(Mutex
 
 /// Start the LIFX service (server and sync)
 pub fn start_service() {
-    let mut running = LIFX_SERVER_RUNNING.lock().unwrap();
+    let mut running = match LIFX_SERVER_RUNNING.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            log::error!("Failed to acquire LIFX_SERVER_RUNNING lock: {}", e);
+            return;
+        }
+    };
     if *running {
         log::info!("LIFX service already running");
         return;
@@ -55,19 +61,42 @@ pub fn start_service() {
             }
         }
         // Keep thread alive until stopped
-        while *LIFX_SERVER_RUNNING.lock().unwrap() {
+        loop {
+            match LIFX_SERVER_RUNNING.lock() {
+                Ok(guard) => {
+                    if !*guard {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to acquire LIFX_SERVER_RUNNING lock: {}", e);
+                    break;
+                }
+            }
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
         log::info!("LIFX service thread exiting");
     });
-    let mut handle_slot = LIFX_SERVER_HANDLE.lock().unwrap();
-    *handle_slot = Some(handle);
-    log::info!("LIFX service started");
+    match LIFX_SERVER_HANDLE.lock() {
+        Ok(mut handle_slot) => {
+            *handle_slot = Some(handle);
+            log::info!("LIFX service started");
+        }
+        Err(e) => {
+            log::error!("Failed to acquire LIFX_SERVER_HANDLE lock: {}", e);
+        }
+    }
 }
 
 /// Stop the LIFX service
 pub fn stop_service() {
-    let mut running = LIFX_SERVER_RUNNING.lock().unwrap();
+    let mut running = match LIFX_SERVER_RUNNING.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            log::error!("Failed to acquire LIFX_SERVER_RUNNING lock: {}", e);
+            return;
+        }
+    };
     if !*running {
         log::info!("LIFX service is not running");
         return;
@@ -76,26 +105,45 @@ pub fn stop_service() {
     drop(running); // Release lock before joining thread to avoid deadlock
 
     // Stop the HTTP server via StopHandle
-    let mut stop_handle_slot = LIFX_SERVER_STOP_HANDLE.lock().unwrap();
-    if let Some(stop_handle) = stop_handle_slot.take() {
-        stop_handle.stop(); // now consumes the handle and joins the thread
+    match LIFX_SERVER_STOP_HANDLE.lock() {
+        Ok(mut stop_handle_slot) => {
+            if let Some(stop_handle) = stop_handle_slot.take() {
+                stop_handle.stop(); // now consumes the handle and joins the thread
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to acquire LIFX_SERVER_STOP_HANDLE lock: {}", e);
+        }
     }
 
     // Join the background thread
-    let mut handle_slot = LIFX_SERVER_HANDLE.lock().unwrap();
-    if let Some(handle) = handle_slot.take() {
-        let _ = handle.join();
-        log::info!("LIFX service stopped");
+    match LIFX_SERVER_HANDLE.lock() {
+        Ok(mut handle_slot) => {
+            if let Some(handle) = handle_slot.take() {
+                let _ = handle.join();
+                log::info!("LIFX service stopped");
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to acquire LIFX_SERVER_HANDLE lock: {}", e);
+        }
     }
 }
 
 /// Get the status of the LIFX service
 pub fn status_service() -> &'static str {
-    let running = LIFX_SERVER_RUNNING.lock().unwrap();
-    if *running {
-        "running"
-    } else {
-        "stopped"
+    match LIFX_SERVER_RUNNING.lock() {
+        Ok(running) => {
+            if *running {
+                "running"
+            } else {
+                "stopped"
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to acquire LIFX_SERVER_RUNNING lock: {}", e);
+            "unknown"
+        }
     }
 }
 
@@ -119,21 +167,44 @@ pub fn init_server(key: String) {
 
             // Store the StopHandle in the global static for later control (e.g., stop)
             {
-                let mut slot = stop_handle_slot.lock().unwrap();
-                *slot = Some(server_stop_handle);
+                match stop_handle_slot.lock() {
+                    Ok(mut slot) => {
+                        *slot = Some(server_stop_handle);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to acquire stop_handle_slot lock: {}", e);
+                    }
+                }
             }
 
             // Keep thread alive until service is stopped
-            while *LIFX_SERVER_RUNNING.lock().unwrap() {
+            loop {
+                match LIFX_SERVER_RUNNING.lock() {
+                    Ok(guard) => {
+                        if !*guard {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to acquire LIFX_SERVER_RUNNING lock: {}", e);
+                        break;
+                    }
+                }
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
         });
 
     match lifx_thread {
         Ok(handle) => {
-            let mut handle_slot = LIFX_SERVER_HANDLE.lock().unwrap();
-            *handle_slot = Some(handle);
-            log::info!("lifx api server started successfully");
+            match LIFX_SERVER_HANDLE.lock() {
+                Ok(mut handle_slot) => {
+                    *handle_slot = Some(handle);
+                    log::info!("lifx api server started successfully");
+                }
+                Err(e) => {
+                    log::error!("Failed to acquire LIFX_SERVER_HANDLE lock: {}", e);
+                }
+            }
         }
         Err(e) => {
             log::error!("failed to initialize lifx api server: {}", e);
@@ -158,8 +229,13 @@ pub fn handle(
     if request.url() == "/api/services/lifx/list_all" {
         match get_lifx_service_db_obj() {
             Ok(service) => {
-                let objects = crate::sam::services::lifx::get_all(service.secret.clone()).unwrap();
-                return Ok(Response::json(&objects));
+                match crate::sam::services::lifx::get_all(service.secret.clone()) {
+                    Ok(objects) => return Ok(Response::json(&objects)),
+                    Err(e) => {
+                        log::error!("Failed to get all LIFX objects: {}", e);
+                        return Ok(Response::empty_404());
+                    }
+                }
             }
             Err(e) => {
                 log::error!("{}", e);
@@ -172,9 +248,13 @@ pub fn handle(
     if request.url() == "/api/services/lifx/public/list" {
         match get_lifx_service_db_obj() {
             Ok(service) => {
-                let objects =
-                    crate::sam::services::lifx::get(service.secret.clone(), true).unwrap();
-                return Ok(Response::json(&objects));
+                match crate::sam::services::lifx::get(service.secret.clone(), true) {
+                    Ok(objects) => return Ok(Response::json(&objects)),
+                    Err(e) => {
+                        log::error!("Failed to get public LIFX objects: {}", e);
+                        return Ok(Response::empty_404());
+                    }
+                }
             }
             Err(e) => {
                 log::error!("{}", e);
@@ -383,7 +463,13 @@ pub fn sync(key: String) {
 
     let _storable_thing_vec: Vec<crate::sam::memory::Thing> = Vec::new();
 
-    let lights = lifx::Light::list_all(lifx_config.clone()).unwrap();
+    let lights = match lifx::Light::list_all(lifx_config.clone()) {
+        Ok(lights) => lights,
+        Err(e) => {
+            log::error!("Failed to list all LIFX lights: {}", e);
+            return;
+        }
+    };
     for light in lights {
         let mut thing = crate::sam::memory::Thing::new();
 
@@ -395,7 +481,9 @@ pub fn sync(key: String) {
 
         let mut loc = crate::sam::memory::Location::new();
         loc.name = location.name.clone();
-        loc.save().unwrap();
+        if let Err(e) = loc.save() {
+            log::error!("Failed to save location: {}", e);
+        }
 
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query
@@ -403,15 +491,22 @@ pub fn sync(key: String) {
             .push(crate::sam::memory::PGCol::String(location.name.clone()));
         pg_query.query_columns.push("name ilike".to_string());
 
-        let matching_locations =
-            crate::sam::memory::Location::select(None, None, None, Some(pg_query)).unwrap();
+        let matching_locations = match crate::sam::memory::Location::select(None, None, None, Some(pg_query)) {
+            Ok(locations) => locations,
+            Err(e) => {
+                log::error!("Failed to select locations: {}", e);
+                vec![]
+            }
+        };
 
         if !matching_locations.is_empty() {
             for matching_location in matching_locations {
                 let mut room = crate::sam::memory::Room::new();
                 room.name = group.name.clone();
                 room.location_oid = matching_location.oid.clone();
-                room.save().unwrap();
+                if let Err(e) = room.save() {
+                    log::error!("Failed to save room: {}", e);
+                }
             }
         }
 
@@ -421,8 +516,13 @@ pub fn sync(key: String) {
             .queries
             .push(crate::sam::memory::PGCol::String(location.name.clone()));
         pg_query.query_columns.push("name ilike".to_string());
-        let locations =
-            crate::sam::memory::Location::select(None, None, None, Some(pg_query)).unwrap();
+        let locations = match crate::sam::memory::Location::select(None, None, None, Some(pg_query)) {
+            Ok(locs) => locs,
+            Err(e) => {
+                log::error!("Failed to select locations: {}", e);
+                vec![]
+            }
+        };
         if !locations.is_empty() {
             let location_oid = locations[0].oid.clone();
             // Get room oid
@@ -435,7 +535,13 @@ pub fn sync(key: String) {
                 .queries
                 .push(crate::sam::memory::PGCol::String(group.name.clone()));
             pg_query.query_columns.push(" AND name ilike".to_string());
-            let rooms = crate::sam::memory::Room::select(None, None, None, Some(pg_query)).unwrap();
+            let rooms = match crate::sam::memory::Room::select(None, None, None, Some(pg_query)) {
+                Ok(rooms) => rooms,
+                Err(e) => {
+                    log::error!("Failed to select rooms: {}", e);
+                    vec![]
+                }
+            };
             if !rooms.is_empty() {
                 thing.room_oid = rooms[0].oid.clone();
             }
@@ -479,7 +585,13 @@ pub fn sync(key: String) {
             }
         }
 
-        let existing_things = crate::sam::memory::Thing::select(None, None, None, None).unwrap();
+        let existing_things = match crate::sam::memory::Thing::select(None, None, None, None) {
+            Ok(things) => things,
+            Err(e) => {
+                log::error!("Failed to select existing things: {}", e);
+                vec![]
+            }
+        };
 
         let mut already_exists = false;
         for existing_thing in existing_things {
@@ -497,7 +609,9 @@ pub fn sync(key: String) {
         }
 
         if !already_exists {
-            thing.save().unwrap();
+            if let Err(e) = thing.save() {
+                log::error!("Failed to save thing: {}", e);
+            }
         }
     }
 
@@ -516,7 +630,13 @@ pub fn sync_local(key: String) {
 
     let _storable_thing_vec: Vec<crate::sam::memory::Thing> = Vec::new();
 
-    let lights = lifx::Light::list_all(lifx_config.clone()).unwrap();
+    let lights = match lifx::Light::list_all(lifx_config.clone()) {
+        Ok(lights) => lights,
+        Err(e) => {
+            log::error!("Failed to list all LIFX lights: {}", e);
+            return;
+        }
+    };
     for light in lights {
         let mut local_identifiers: Vec<String> = Vec::new();
         local_identifiers.push(light.id.clone());
@@ -528,7 +648,13 @@ pub fn sync_local(key: String) {
         thing.thing_type = "lifx".to_string();
         thing.local_identifiers = local_identifiers.clone();
 
-        let existing_things = crate::sam::memory::Thing::select(None, None, None, None).unwrap();
+        let existing_things = match crate::sam::memory::Thing::select(None, None, None, None) {
+            Ok(things) => things,
+            Err(e) => {
+                log::error!("Failed to select existing things: {}", e);
+                vec![]
+            }
+        };
 
         let mut already_exists = false;
         for existing_thing in existing_things {
@@ -546,7 +672,9 @@ pub fn sync_local(key: String) {
         }
 
         if !already_exists {
-            thing.save().unwrap();
+            if let Err(e) = thing.save() {
+                log::error!("Failed to save thing: {}", e);
+            }
         }
     }
 }

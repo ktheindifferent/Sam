@@ -145,8 +145,12 @@ impl ServiceOrchestrator {
     pub fn register_service(&self, config: ServiceConfig) -> Result<()> {
         let name = config.name.clone();
         
-        self.configs.write().unwrap().insert(name.clone(), config);
-        self.services.write().unwrap().insert(name.clone(), ServiceHealth::default());
+        self.configs.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire configs write lock: {}", e))?
+            .insert(name.clone(), config);
+        self.services.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?
+            .insert(name.clone(), ServiceHealth::default());
         
         info!("Registered service: {:?}", name);
         Ok(())
@@ -225,7 +229,8 @@ impl ServiceOrchestrator {
         
         // Update status
         {
-            let mut services = self.services.write().unwrap();
+            let mut services = self.services.write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
             if let Some(health) = services.get_mut(name) {
                 health.status = ServiceStatus::Starting;
             }
@@ -256,7 +261,8 @@ impl ServiceOrchestrator {
         
         // Update status based on result
         {
-            let mut services = self.services.write().unwrap();
+            let mut services = self.services.write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
             if let Some(health) = services.get_mut(name) {
                 match result {
                     Ok(_) => {
@@ -281,7 +287,8 @@ impl ServiceOrchestrator {
         
         // Update status
         {
-            let mut services = self.services.write().unwrap();
+            let mut services = self.services.write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
             if let Some(health) = services.get_mut(name) {
                 health.status = ServiceStatus::Stopping;
             }
@@ -300,7 +307,8 @@ impl ServiceOrchestrator {
         
         // Update status
         {
-            let mut services = self.services.write().unwrap();
+            let mut services = self.services.write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
             if let Some(health) = services.get_mut(name) {
                 health.status = ServiceStatus::Stopped;
             }
@@ -464,7 +472,8 @@ impl ServiceOrchestrator {
 
     // Helper methods
     fn get_startup_order(&self) -> Result<Vec<ServiceName>> {
-        let configs = self.configs.read().unwrap();
+        let configs = self.configs.read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire configs read lock: {}", e))?;
         let mut order = Vec::new();
         let mut visited = HashSet::new();
         let mut visiting = HashSet::new();
@@ -518,7 +527,13 @@ impl ServiceOrchestrator {
         configs: &Arc<RwLock<HashMap<ServiceName, ServiceConfig>>>,
     ) {
         let service_names: Vec<ServiceName> = {
-            services.read().unwrap().keys().cloned().collect()
+            match services.read() {
+                Ok(guard) => guard.keys().cloned().collect(),
+                Err(e) => {
+                    error!("Failed to acquire services read lock: {}", e);
+                    vec![]
+                }
+            }
         };
         
         for name in service_names {
@@ -546,7 +561,8 @@ impl ServiceOrchestrator {
             _ => true, // Default to healthy for unimplemented checks
         };
         
-        let mut services = services.write().unwrap();
+        let mut services = services.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
         if let Some(health) = services.get_mut(name) {
             health.last_check = Instant::now();
             
@@ -556,7 +572,8 @@ impl ServiceOrchestrator {
                 
                 // Check if we should restart
                 let should_restart = {
-                    let configs = configs.read().unwrap();
+                    let configs = configs.read()
+                        .map_err(|e| anyhow::anyhow!("Failed to acquire configs read lock: {}", e))?;
                     configs.get(name)
                         .map(|c| c.auto_restart && health.restart_count < c.max_restarts)
                         .unwrap_or(false)
@@ -574,18 +591,36 @@ impl ServiceOrchestrator {
     }
 
     pub fn get_status(&self) -> HashMap<ServiceName, ServiceStatus> {
-        self.services.read().unwrap()
-            .iter()
-            .map(|(name, health)| (name.clone(), health.status.clone()))
-            .collect()
+        match self.services.read() {
+            Ok(guard) => guard
+                .iter()
+                .map(|(name, health)| (name.clone(), health.status.clone()))
+                .collect(),
+            Err(e) => {
+                error!("Failed to acquire services read lock: {}", e);
+                HashMap::new()
+            }
+        }
     }
 
     pub fn get_health(&self, name: &ServiceName) -> Option<ServiceHealth> {
-        self.services.read().unwrap().get(name).cloned()
+        match self.services.read() {
+            Ok(guard) => guard.get(name).cloned(),
+            Err(e) => {
+                error!("Failed to acquire services read lock: {}", e);
+                None
+            }
+        }
     }
 
     pub fn get_all_health(&self) -> HashMap<ServiceName, ServiceHealth> {
-        self.services.read().unwrap().clone()
+        match self.services.read() {
+            Ok(guard) => guard.clone(),
+            Err(e) => {
+                error!("Failed to acquire services read lock: {}", e);
+                HashMap::new()
+            }
+        }
     }
 }
 
@@ -703,28 +738,31 @@ mod tests {
             enabled: true,
             dependencies: vec![],
             ..Default::default()
-        }).unwrap();
+        }).expect("Failed to register service");
         
         orchestrator.register_service(ServiceConfig {
             name: ServiceName::FileStorage,
             enabled: true,
             dependencies: vec![ServiceName::PostgreSQL],
             ..Default::default()
-        }).unwrap();
+        }).expect("Failed to register service");
         
         orchestrator.register_service(ServiceConfig {
             name: ServiceName::Backup,
             enabled: true,
             dependencies: vec![ServiceName::FileStorage],
             ..Default::default()
-        }).unwrap();
+        }).expect("Failed to register service");
         
-        let order = orchestrator.get_startup_order().unwrap();
+        let order = orchestrator.get_startup_order().expect("Failed to get startup order");
         
         // PostgreSQL should start before FileStorage
-        let pg_index = order.iter().position(|s| *s == ServiceName::PostgreSQL).unwrap();
-        let fs_index = order.iter().position(|s| *s == ServiceName::FileStorage).unwrap();
-        let backup_index = order.iter().position(|s| *s == ServiceName::Backup).unwrap();
+        let pg_index = order.iter().position(|s| *s == ServiceName::PostgreSQL)
+            .expect("PostgreSQL not found in startup order");
+        let fs_index = order.iter().position(|s| *s == ServiceName::FileStorage)
+            .expect("FileStorage not found in startup order");
+        let backup_index = order.iter().position(|s| *s == ServiceName::Backup)
+            .expect("Backup not found in startup order");
         
         assert!(pg_index < fs_index);
         assert!(fs_index < backup_index);
@@ -740,14 +778,14 @@ mod tests {
             enabled: true,
             dependencies: vec![ServiceName::PostgreSQL],
             ..Default::default()
-        }).unwrap();
+        }).expect("Failed to register service");
         
         orchestrator.register_service(ServiceConfig {
             name: ServiceName::PostgreSQL,
             enabled: true,
             dependencies: vec![ServiceName::Redis],
             ..Default::default()
-        }).unwrap();
+        }).expect("Failed to register service");
         
         assert!(orchestrator.get_startup_order().is_err());
     }

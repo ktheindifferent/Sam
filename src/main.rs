@@ -131,7 +131,7 @@ fn setup_environment_variables() {
             "PG_ADDRESS",
             "SAM_USER",
         ])
-        .unwrap();
+        .expect("Failed to set up sudo environment variables");
     }
 }
 
@@ -139,8 +139,8 @@ fn setup_environment_variables() {
 async fn setup_postgres(user: &str) {
     if crate::sam::memory::Config::check_postgres_installed() {
         println!("Postgres is already installed.");
-        libsam::services::pg::start_postgres(user).unwrap();
-        crate::sam::memory::Config::create_user_and_database(user).unwrap();
+        libsam::services::pg::start_postgres(user).expect("Failed to start PostgreSQL service");
+        crate::sam::memory::Config::create_user_and_database(user).expect("Failed to create PostgreSQL user and database");
     } else {
         install_and_configure_postgres(user).await;
     }
@@ -152,7 +152,7 @@ async fn install_and_configure_postgres(user: &str) {
     libsam::services::pg::install().await;
 
     println!("Starting Postgres...");
-    libsam::services::pg::start_postgres(user).unwrap();
+    libsam::services::pg::start_postgres(user).expect("Failed to start PostgreSQL service during initial setup");
 
     if libsam::services::pg::is_postgres_running().await {
         println!("Postgres is running.");
@@ -161,7 +161,7 @@ async fn install_and_configure_postgres(user: &str) {
     }
 
     add_postgres_to_path_if_macos();
-    crate::sam::memory::Config::create_user_and_database(user).unwrap();
+    crate::sam::memory::Config::create_user_and_database(user).expect("Failed to create PostgreSQL user and database during setup");
     println!("Postgres installation complete.");
 }
 

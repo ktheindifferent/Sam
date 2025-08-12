@@ -188,7 +188,13 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
     let mut observation = crate::sam::memory::Observation::new();
     observation.observation_type = crate::sam::memory::ObservationType::HEARD;
     observation.observation_notes.push(prediction.stt.clone());
-    observation.observation_file = Some(std::fs::read(file_path).unwrap());
+    observation.observation_file = match std::fs::read(file_path) {
+        Ok(data) => Some(data),
+        Err(e) => {
+            log::error!("Failed to read observation file {}: {}", file_path, e);
+            None
+        }
+    };
 
     if !prediction.stt.is_empty() {
         observation
@@ -200,7 +206,9 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
         let mut human = crate::sam::memory::Human::new();
         human.name = prediction.human.clone();
         human.heard_count = 1;
-        human.save().unwrap();
+        if let Err(e) = human.save() {
+            log::error!("Failed to save human: {}", e);
+        }
         observation.observation_humans.push(human);
     } else {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
@@ -208,35 +216,72 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
             .queries
             .push(crate::sam::memory::PGCol::String(prediction.human.clone()));
         pg_query.query_columns.push("oid ilike".to_string());
-        let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query)).unwrap();
+        let humans = match crate::sam::memory::Human::select(None, None, None, Some(pg_query)) {
+            Ok(h) => h,
+            Err(e) => {
+                log::error!("Failed to select humans: {}", e);
+                vec![]
+            }
+        };
         if !humans.is_empty() {
             observation.observation_humans.push(humans[0].clone());
         } else {
             let mut human = crate::sam::memory::Human::new();
             human.name = "Unknown".to_string();
             human.heard_count = 1;
-            human.save().unwrap();
+            if let Err(e) = human.save() {
+                log::error!("Failed to save human: {}", e);
+            }
             observation.observation_humans.push(human);
         }
     }
 
-    observation.save().unwrap();
+    if let Err(e) = observation.save() {
+        log::error!("Failed to save observation: {}", e);
+    }
 }
 
 /// Stage One: Removes noise and trims silence.
 pub fn s1_init() {
     thread::spawn(move || loop {
-        let thing_paths = std::fs::read_dir("/opt/sam/tmp/sound").unwrap();
+        let thing_paths = match std::fs::read_dir("/opt/sam/tmp/sound") {
+            Ok(paths) => paths,
+            Err(e) => {
+                log::error!("Failed to read /opt/sam/tmp/sound: {}", e);
+                continue;
+            }
+        };
         for thing_path in thing_paths {
-            let tpath = thing_path.unwrap().path().display().to_string();
-            let paths = std::fs::read_dir(format!("{tpath}/s1")).unwrap();
+            let tpath = match thing_path {
+                Ok(entry) => entry.path().display().to_string(),
+                Err(e) => {
+                    log::error!("Failed to read thing_path: {}", e);
+                    continue;
+                }
+            };
+            let paths = match std::fs::read_dir(format!("{tpath}/s1")) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("Failed to read {}/s1: {}", tpath, e);
+                    continue;
+                }
+            };
 
             for path in paths {
-                let spath = path.unwrap().path().display().to_string();
-                let timestamp = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as i64;
+                let spath = match path {
+                    Ok(entry) => entry.path().display().to_string(),
+                    Err(e) => {
+                        log::error!("Failed to read path: {}", e);
+                        continue;
+                    }
+                };
+                let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                    Ok(duration) => duration.as_secs() as i64,
+                    Err(e) => {
+                        log::error!("Failed to get system time: {}", e);
+                        continue;
+                    }
+                };
 
                 if let Ok(reader) = WavReader::open(&spath) {
                     let header = reader.spec();
@@ -332,7 +377,7 @@ pub fn s2_init() {
                 let mut groups: Vec<Vec<i64>> = Vec::new();
                 let mut current_group: Vec<i64> = Vec::new();
                 for &ts in &timestamps {
-                    if current_group.is_empty() || ts == current_group.last().unwrap() + 1 {
+                    if current_group.is_empty() || ts == current_group.last().map(|x| x + 1).unwrap_or(ts) {
                         current_group.push(ts);
                     } else {
                         if current_group.len() > 1 {
@@ -346,10 +391,13 @@ pub fn s2_init() {
                 }
 
                 // Only stitch if we have a group of consecutive files and they're not too recent
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as i64;
+                let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                    Ok(duration) => duration.as_secs() as i64,
+                    Err(e) => {
+                        log::error!("Failed to get system time: {}", e);
+                        continue;
+                    }
+                };
                 for group in groups {
                     // Skip if any timestamp is too recent (avoid files still being written)
                     if group.iter().any(|&ts| ts >= now - 1) {
@@ -412,9 +460,13 @@ pub fn s2_init() {
                                             break;
                                         }
                                     };
-                                    writer = Some(
-                                        WavWriter::new(BufWriter::new(out_file), spec).unwrap(),
-                                    );
+                                    writer = match WavWriter::new(BufWriter::new(out_file), spec) {
+                                        Ok(w) => Some(w),
+                                        Err(e) => {
+                                            log::error!("Failed to create WavWriter: {}", e);
+                                            break;
+                                        }
+                                    };
                                 }
 
                                 if let Some(w) = writer.as_mut() {
@@ -579,10 +631,19 @@ impl Sink {
                 .output_dir
                 .join(format!("{}{}.wav", self.prefix, self.clip_number));
             self.clip_number += 1;
-            self.writer = Some(WavWriter::create(filename, self.spec).unwrap());
+            self.writer = match WavWriter::create(filename, self.spec) {
+                Ok(w) => Some(w),
+                Err(e) => {
+                    log::error!("Failed to create WavWriter: {}", e);
+                    // Return a placeholder that won't be used
+                    return self.writer.as_mut().unwrap_or_else(|| {
+                        panic!("Failed to create WavWriter: {}", e)
+                    });
+                }
+            };
         }
 
-        self.writer.as_mut().unwrap()
+        self.writer.as_mut().expect("Writer should be initialized")
     }
 }
 
@@ -596,7 +657,9 @@ where
 
         // write all the channels as interlaced audio
         for channel in frame.channels() {
-            writer.write_sample(channel).unwrap();
+            if let Err(e) = writer.write_sample(channel) {
+                log::error!("Failed to write sample: {}", e);
+            }
         }
     }
 
@@ -604,7 +667,9 @@ where
         // if we were previously recording a transmission, remove the writer
         // and let it flush to disk
         if let Some(writer) = self.writer.take() {
-            writer.finalize().unwrap();
+            if let Err(e) = writer.finalize() {
+                log::error!("Failed to finalize writer: {}", e);
+            }
         }
     }
 }

@@ -545,7 +545,7 @@ mod tests {
     #[test]
     fn test_message_serialization() {
         let msg = WsMessage::Ping { timestamp: 1234567890 };
-        let json = serde_json::to_string(&msg).unwrap();
+        let json = serde_json::to_string(&msg).expect("Should serialize test message");
         assert!(json.contains("ping"));
         assert!(json.contains("1234567890"));
     }
@@ -559,7 +559,7 @@ mod tests {
             last_check: Utc::now(),
         };
         
-        let json = serde_json::to_string(&status).unwrap();
+        let json = serde_json::to_string(&status).expect("Should serialize test status");
         assert!(json.contains("healthy"));
         assert!(json.contains("Service is running"));
         assert!(json.contains("75"));
@@ -578,7 +578,7 @@ mod tests {
             severity: AlertSeverity::Warning,
         };
         
-        let json = serde_json::to_string(&alert).unwrap();
+        let json = serde_json::to_string(&alert).expect("Should serialize test alert");
         assert!(json.contains("alert"));
         assert!(json.contains("warning"));
     }

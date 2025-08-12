@@ -36,7 +36,7 @@ async fn test_retry_with_exponential_backoff() {
     ).await;
     
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "Success");
+    assert_eq!(result.expect("Should have succeeded after retries"), "Success");
     assert_eq!(attempt_count.load(Ordering::SeqCst), 3);
 }
 
@@ -135,7 +135,7 @@ async fn test_fallback_handler() {
     ).await;
     
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "Fallback value");
+    assert_eq!(result.expect("Should have returned fallback value"), "Fallback value");
 }
 
 #[tokio::test]

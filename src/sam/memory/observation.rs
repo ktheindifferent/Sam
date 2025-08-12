@@ -64,7 +64,7 @@ impl Observation {
         let deep_vision: Vec<DeepVisionResult> = Vec::new();
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("Time went backwards")
             .as_secs() as i64;
         Observation {
             id: 0,
@@ -124,7 +124,7 @@ impl Observation {
             .queries
             .push(crate::sam::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid =".to_string());
-        let rows = Self::select(None, None, None, Some(pg_query)).unwrap();
+        let rows = Self::select(None, None, None, Some(pg_query))?;
 
         if rows.is_empty() {
             let mut obb_obv_str = String::new();
@@ -157,12 +157,12 @@ impl Observation {
                 &obb_humans_str, 
                 &self.observation_notes.join(","),
                 &self.observation_file]
-            ).unwrap();
+            )?;
 
             if self.deep_vision_json.is_some() {
                 client.execute(
                     "UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
-                    &[&self.deep_vision_json.clone().unwrap(), &self.oid],
+                    &[&self.deep_vision_json.as_ref().expect("deep_vision_json should be Some"), &self.oid],
                 )?;
             }
 
@@ -171,7 +171,7 @@ impl Observation {
                 .queries
                 .push(crate::sam::memory::PGCol::String(self.oid.clone()));
             pg_query.query_columns.push("oid =".to_string());
-            let rows_two = Self::select(None, None, None, Some(pg_query)).unwrap();
+            let rows_two = Self::select(None, None, None, Some(pg_query))?;
 
             Ok(rows_two[0].clone())
         } else {
@@ -198,7 +198,7 @@ impl Observation {
             if self.deep_vision_json.is_some() {
                 client.execute(
                     "UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
-                    &[&self.deep_vision_json.clone().unwrap(), &self.oid],
+                    &[&self.deep_vision_json.as_ref().expect("deep_vision_json should be Some"), &self.oid],
                 )?;
             }
 
@@ -250,7 +250,7 @@ impl Observation {
                 client
                     .execute(
                         "UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
-                        &[&self.deep_vision_json.clone().unwrap(), &self.oid],
+                        &[&self.deep_vision_json.as_ref().expect("deep_vision_json should be Some"), &self.oid],
                     )
                     .await?;
             }
@@ -269,7 +269,7 @@ impl Observation {
                 client
                     .execute(
                         "UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
-                        &[&self.deep_vision_json.clone().unwrap(), &self.oid],
+                        &[&self.deep_vision_json.as_ref().expect("deep_vision_json should be Some"), &self.oid],
                     )
                     .await?;
             }
@@ -300,7 +300,7 @@ impl Observation {
         )?;
 
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)?;
             parsed_rows.push(object);
         }
 
@@ -328,7 +328,7 @@ impl Observation {
         )
         .await?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)?;
             parsed_rows.push(object);
         }
         Ok(parsed_rows)
@@ -345,7 +345,7 @@ impl Observation {
         let jsons = Config::pg_select(Self::sql_table_name(), Some("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json".to_string()), limit, offset, order, query, None)?;
 
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)?;
             parsed_rows.push(object);
         }
 
@@ -364,7 +364,7 @@ impl Observation {
         let client = config.connect_pool().await?;
         let jsons = Config::pg_select_async(Self::sql_table_name(), Some("id, oid, timestamp, observation_type, observation_objects, observation_humans, observation_notes, deep_vision_json".to_string()), limit, offset, order, query, client).await?;
         for j in jsons {
-            let object: Self = serde_json::from_str(&j).unwrap();
+            let object: Self = serde_json::from_str(&j)?;
             parsed_rows.push(object);
         }
         Ok(parsed_rows)
@@ -377,13 +377,13 @@ impl Observation {
         let deep_vision_json = row.get("deep_vision_json");
 
         if let Some(deep_vision_json_val) = deep_vision_json {
-            deep_vision = serde_json::from_str(deep_vision_json_val).unwrap();
+            deep_vision = serde_json::from_str(deep_vision_json_val)?;
         }
 
         let mut observation_type = ObservationType::UNKNOWN;
         let sql_observation_type: Option<String> = row.get("observation_type");
         if let Some(object) = sql_observation_type {
-            let obj = ObservationType::from_str(&object).unwrap();
+            let obj = ObservationType::from_str(&object)?;
             observation_type = obj.clone();
         }
 
@@ -419,7 +419,7 @@ impl Observation {
                     .push(crate::sam::memory::PGCol::String(oidx.to_string()));
                 pg_query.query_columns.push("oid ilike".to_string());
 
-                let observation_humansx = Human::select(None, None, None, Some(pg_query)).unwrap();
+                let observation_humansx = Human::select(None, None, None, Some(pg_query))?;
 
                 for human in observation_humansx {
                     observation_humans.push(human);
@@ -468,13 +468,13 @@ impl Observation {
         let deep_vision_json = row.get("deep_vision_json");
 
         if let Some(deep_vision_json_val) = deep_vision_json {
-            deep_vision = serde_json::from_str(deep_vision_json_val).unwrap();
+            deep_vision = serde_json::from_str(deep_vision_json_val)?;
         }
 
         let mut observation_type = ObservationType::UNKNOWN;
         let sql_observation_type: Option<String> = row.get("observation_type");
         if let Some(object) = sql_observation_type {
-            let obj = ObservationType::from_str(&object).unwrap();
+            let obj = ObservationType::from_str(&object)?;
             observation_type = obj.clone();
         }
 

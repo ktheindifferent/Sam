@@ -96,11 +96,11 @@ fn parse_sitemap(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn std::error:
     let doc = Html::parse_document(content);
     
     // Create selectors for sitemap elements
-    let url_selector = Selector::parse("url").unwrap();
-    let loc_selector = Selector::parse("loc").unwrap();
-    let lastmod_selector = Selector::parse("lastmod").unwrap();
-    let changefreq_selector = Selector::parse("changefreq").unwrap();
-    let priority_selector = Selector::parse("priority").unwrap();
+    let url_selector = Selector::parse("url").expect("Failed to parse 'url' selector");
+    let loc_selector = Selector::parse("loc").expect("Failed to parse 'loc' selector");
+    let lastmod_selector = Selector::parse("lastmod").expect("Failed to parse 'lastmod' selector");
+    let changefreq_selector = Selector::parse("changefreq").expect("Failed to parse 'changefreq' selector");
+    let priority_selector = Selector::parse("priority").expect("Failed to parse 'priority' selector");
     
     for url_element in doc.select(&url_selector).take(MAX_URLS_PER_SITEMAP) {
         let loc = url_element
@@ -149,7 +149,7 @@ fn parse_sitemap(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn std::error:
 /// Parse sitemap using regex as fallback
 fn parse_sitemap_regex(content: &str) -> Vec<SitemapEntry> {
     let mut entries = Vec::new();
-    let url_regex = regex::Regex::new(r"<loc>\s*([^<]+)\s*</loc>").unwrap();
+    let url_regex = regex::Regex::new(r"<loc>\s*([^<]+)\s*</loc>").expect("Failed to compile sitemap URL regex");
     
     for cap in url_regex.captures_iter(content).take(MAX_URLS_PER_SITEMAP) {
         if let Some(url) = cap.get(1) {
@@ -175,8 +175,8 @@ async fn parse_sitemap_index(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn
     
     // Parse sitemap index
     let doc = Html::parse_document(content);
-    let sitemap_selector = Selector::parse("sitemap").unwrap();
-    let loc_selector = Selector::parse("loc").unwrap();
+    let sitemap_selector = Selector::parse("sitemap").expect("Failed to parse 'sitemap' selector");
+    let loc_selector = Selector::parse("loc").expect("Failed to parse 'loc' selector");
     
     for sitemap_element in doc.select(&sitemap_selector) {
         if let Some(loc) = sitemap_element
@@ -192,7 +192,7 @@ async fn parse_sitemap_index(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn
     
     // Fallback to regex if XML parsing fails
     if sitemap_urls.is_empty() {
-        let sitemap_regex = regex::Regex::new(r"<sitemap>.*?<loc>\s*([^<]+)\s*</loc>.*?</sitemap>").unwrap();
+        let sitemap_regex = regex::Regex::new(r"<sitemap>.*?<loc>\s*([^<]+)\s*</loc>.*?</sitemap>").expect("Failed to compile sitemap index regex");
         for cap in sitemap_regex.captures_iter(content) {
             if let Some(url) = cap.get(1) {
                 sitemap_urls.push(url.as_str().trim().to_string());
@@ -329,7 +329,7 @@ mod tests {
     </url>
 </urlset>"#;
 
-        let entries = parse_sitemap(xml).unwrap();
+        let entries = parse_sitemap(xml).expect("Failed to parse test sitemap XML");
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].url, "https://example.com/page1");
         assert_eq!(entries[0].priority, Some(0.8));
