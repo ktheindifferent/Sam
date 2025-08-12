@@ -71,6 +71,18 @@ chrono = "0.4"
 num-traits = "0.2"
 # Enable if you are still using env_logger
 env_logger = "0.10.0"
+# Monitoring and Observability Dependencies
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt", "registry", "std"] }
+tracing-appender = "0.2"
+tracing-opentelemetry = "0.21"
+prometheus = { version = "0.13", features = ["process"] }
+opentelemetry = { version = "0.21", features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.14", features = ["tonic", "metrics", "trace"] }
+opentelemetry_sdk = { version = "0.21", features = ["rt-tokio", "metrics", "trace"] }
+opentelemetry-prometheus = "0.14"
+async-trait = "0.1"
+syslog = "6.0"
 base64 = "0.22.1"
 git2 = "0.18"
 lazy_static = "1.5.0"
