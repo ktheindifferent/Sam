@@ -8,6 +8,7 @@
 // Licensed under GPLv3....see LICENSE file.
 
 pub mod cli;
+pub mod db;
 pub mod http;
 pub mod memory;
 pub mod resource_management;

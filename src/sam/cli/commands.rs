@@ -7,6 +7,7 @@ pub mod lifx;
 pub mod llama;
 pub mod matter;
 pub mod mdns;
+pub mod migrate;
 pub mod misc;
 pub mod p2p;
 pub mod pg;
@@ -116,6 +117,10 @@ async fn handle_service_commands(cmd: &str, ctx: &mut CommandContext<'_>) {
         redis::handle_redis(cmd, ctx.output_lines).await;
     } else if is_pg_command(cmd) {
         pg::handle_pg(cmd, ctx.output_lines).await;
+    } else if is_migrate_command(cmd) {
+        let args = cmd.trim_start_matches("migrate").trim().split_whitespace()
+            .map(String::from).collect();
+        migrate::handle_migrate(args, ctx.output_lines).await;
     } else if is_docker_command(cmd) {
         docker::handle_docker(cmd, ctx.output_lines).await;
     } else if is_spotify_command(cmd) {
@@ -190,6 +195,10 @@ fn is_redis_command(cmd: &str) -> bool {
 
 fn is_pg_command(cmd: &str) -> bool {
     matches!(cmd, "pg install" | "pg start" | "pg stop" | "pg status")
+}
+
+fn is_migrate_command(cmd: &str) -> bool {
+    cmd.starts_with("migrate")
 }
 
 fn is_docker_command(cmd: &str) -> bool {
