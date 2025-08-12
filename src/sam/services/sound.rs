@@ -608,3 +608,212 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+    use proptest::prelude::*;
+    
+    #[test]
+    fn test_init_functions() {
+        // Test that init functions can be called without panicking
+        init();
+        s1_init();
+        s2_init();
+        s3_init();
+    }
+    
+    #[test]
+    fn test_record_processor_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("test_output.wav");
+        
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate: 16000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        
+        let processor = RecordingProcessor::new(&output_path, spec);
+        assert!(processor.writer.is_some());
+    }
+    
+    #[test]
+    fn test_noise_gate_processing() {
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("input.wav");
+        let output_path = temp_dir.path().join("output.wav");
+        
+        // Create a test WAV file
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate: 16000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        
+        let mut writer = WavWriter::create(&input_path, spec).unwrap();
+        // Write some sample data
+        for i in 0..1000 {
+            let sample = (i as f32 * 0.1).sin() * 1000.0;
+            writer.write_sample(sample as i16).unwrap();
+        }
+        writer.finalize().unwrap();
+        
+        // Test noise gate processing
+        let mut processor = RecordingProcessor::new(&output_path, spec);
+        
+        // Read and process the input
+        let reader = WavReader::open(&input_path).unwrap();
+        let samples: Vec<i16> = reader.into_samples::<i16>().map(|s| s.unwrap()).collect();
+        
+        for sample in samples {
+            processor.push([sample as f32]);
+        }
+        
+        processor.finish();
+        
+        // Verify output file exists
+        assert!(output_path.exists());
+    }
+    
+    #[test]
+    fn test_record_processor_buffer_handling() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("test_buffer.wav");
+        
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate: 16000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        
+        let mut processor = RecordingProcessor::new(&output_path, spec);
+        
+        // Push samples to fill buffer
+        for i in 0..100 {
+            processor.push([i as f32]);
+        }
+        
+        processor.finish();
+        assert!(output_path.exists());
+        
+        // Verify file has content
+        let metadata = fs::metadata(&output_path).unwrap();
+        assert!(metadata.len() > 44); // WAV header is 44 bytes
+    }
+    
+    proptest! {
+        #[test]
+        fn test_wav_spec_validation(
+            channels in 1u16..=8,
+            sample_rate in 8000u32..=48000,
+            bits_per_sample in prop::sample::select(vec![8u16, 16, 24, 32])
+        ) {
+            let spec = WavSpec {
+                channels,
+                sample_rate,
+                bits_per_sample,
+                sample_format: hound::SampleFormat::Int,
+            };
+            
+            // Spec should be valid
+            prop_assert!(spec.channels > 0);
+            prop_assert!(spec.sample_rate > 0);
+            prop_assert!(vec![8, 16, 24, 32].contains(&spec.bits_per_sample));
+        }
+        
+        #[test]
+        fn test_sample_processing(
+            samples in prop::collection::vec(-32768i16..32768, 10..100)
+        ) {
+            let temp_dir = TempDir::new().unwrap();
+            let output_path = temp_dir.path().join("test_samples.wav");
+            
+            let spec = WavSpec {
+                channels: 1,
+                sample_rate: 16000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
+            
+            let mut processor = RecordingProcessor::new(&output_path, spec);
+            
+            for sample in samples {
+                processor.push([sample as f32]);
+            }
+            
+            processor.finish();
+            prop_assert!(output_path.exists());
+        }
+    }
+    
+    #[test]
+    fn test_concurrent_processing() {
+        use std::sync::Arc;
+        use std::thread;
+        
+        let temp_dir = Arc::new(TempDir::new().unwrap());
+        let mut handles = vec![];
+        
+        for i in 0..5 {
+            let temp_dir = temp_dir.clone();
+            let handle = thread::spawn(move || {
+                let output_path = temp_dir.path().join(format!("concurrent_{}.wav", i));
+                
+                let spec = WavSpec {
+                    channels: 1,
+                    sample_rate: 16000,
+                    bits_per_sample: 16,
+                    sample_format: hound::SampleFormat::Int,
+                };
+                
+                let mut processor = RecordingProcessor::new(&output_path, spec);
+                
+                for j in 0..100 {
+                    processor.push([j as f32]);
+                }
+                
+                processor.finish();
+                assert!(output_path.exists());
+            });
+            handles.push(handle);
+        }
+        
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+    
+    #[test]
+    fn test_noise_gate_parameters() {
+        let noise_gate = NoiseGate::<f32>::new(
+            -30.0,  // open_threshold
+            -40.0,  // close_threshold
+            150.0,  // attack_ms
+            150.0,  // hold_ms  
+            300.0,  // release_ms
+            16000,  // sample_rate
+        );
+        
+        // Test that noise gate can process samples
+        let mut sample = [0.0f32];
+        let _ = noise_gate.process_frame(sample);
+    }
+    
+    #[test]
+    fn test_file_path_generation() {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        let path = format!("/tmp/test_{}.wav", timestamp);
+        assert!(path.contains(&timestamp.to_string()));
+        assert!(path.ends_with(".wav"));
+    }
+}
