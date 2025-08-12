@@ -1,7 +1,7 @@
 # Security Improvements Implementation
 
 ## Overview
-This document outlines the critical security improvements implemented to address authentication vulnerabilities and add CSRF protection to the application.
+This document outlines the comprehensive security improvements implemented to address authentication vulnerabilities, add CSRF protection, and implement input validation and sanitization to the application.
 
 ## Critical Issues Fixed
 
@@ -66,12 +66,33 @@ pg_query.query_columns.push(" AND password =".to_string());
 - Rate limits are cleared on successful authentication
 - IP-based and email-based tracking
 
-## Files Modified
+### 7. Critical XSS Vulnerabilities (FIXED)
+- **Fixed**: Direct HTML injection in `www/assets/js/core.js:37-38`
+- **Solution**: Replaced `.html()` with `.text()` for safe DOM manipulation
+- **Added**: Client-side sanitization library in `/www/assets/js/sanitization.js`
+
+### 8. Content Security Policy (ENHANCED)
+- **Fixed**: Removed `'unsafe-inline'` from CSP headers
+- **Added**: Nonce-based script execution support
+- **Location**: `/src/sam/security/http_middleware.rs`
+
+### 9. Input Validation Framework (IMPLEMENTED)
+- **Created**: Comprehensive validation middleware at `/src/sam/security/validation_middleware.rs`
+- **Features**:
+  - Email, username, password validation
+  - File upload validation with type and size checks
+  - SQL injection prevention
+  - Path traversal protection
+  - XSS output encoding
+
+## Files Modified/Created
 
 ### Core Security Module
 - `src/sam/security/auth.rs` - New authentication utilities with password hashing and rate limiting
 - `src/sam/security/mod.rs` - Updated to export new auth module
 - `src/sam/http/csrf.rs` - New CSRF protection middleware
+- `src/sam/security/validation_middleware.rs` - New validation framework
+- `src/sam/security/http_middleware.rs` - Enhanced CSP headers
 
 ### Authentication Endpoints
 - `src/sam/http.rs` - Fixed authentication logic with:
@@ -81,12 +102,45 @@ pg_query.query_columns.push(" AND password =".to_string());
   - Proper session timeouts
   - CORS whitelist validation
 
+### Frontend Security
+- `/www/assets/js/sanitization.js` - New sanitization utilities
+- `/www/assets/js/core.js` - Fixed XSS vulnerabilities
+- `/www/index-secure.html` - Secure dashboard template with CSP nonces
+- `/www/package.json` - Added DOMPurify dependency
+
+### API Security
+- `/src/sam/http/api/validation.rs` - API validation utilities
+- `/src/sam/http/api/humans.rs` - Updated with validation
+
 ### Dependencies
-- `Cargo.toml` - Added `argon2 = "0.5"` for password hashing
+- `Cargo.toml` - Added:
+  - `argon2 = "0.5"` for password hashing
+  - `ammonia = "3.3"` for HTML sanitization
 
 ### Migration and Testing
 - `src/bin/migrate_passwords.rs` - Migration script for existing passwords
 - `tests/security_test.rs` - Comprehensive security tests
+
+## Security Features Implemented
+
+### Input Validation
+- **Email validation**: RFC-compliant email format checking
+- **Username validation**: Alphanumeric with limited special characters
+- **Password strength**: Requires uppercase, lowercase, number, and special character
+- **File upload**: Type, size, and content validation
+- **Path parameters**: Prevention of directory traversal attacks
+
+### Output Encoding
+- **HTML encoding**: Prevents XSS in HTML contexts
+- **JavaScript encoding**: Safe for JS contexts
+- **URL encoding**: Proper URL parameter encoding
+- **CSS encoding**: Safe CSS value encoding
+
+### Rate Limiting & DOS Protection
+- **Request rate limiting**: Token bucket algorithm
+- **Connection limits**: Per-IP connection restrictions
+- **Body size validation**: Maximum request size enforcement
+- **Timeout management**: Request timeout controls
 
 ## Usage Examples
 
@@ -123,6 +177,24 @@ if let Some(allowed_origin) = cors_config.get_cors_header(request.header("Origin
 }
 ```
 
+### Query Parameter Validation
+```rust
+let params = validate_query_params(request)?;
+// Validates: page (1-10000), limit (1-100), sort fields, filter length
+```
+
+### File Upload Validation
+```rust
+let file_input = validate_file_upload(request)?;
+// Validates: filename, content type, size (<50MB), malicious patterns
+```
+
+### ID Parameter Validation
+```rust
+let safe_id = validate_id_param(user_provided_id)?;
+// Validates: UUID format, numeric IDs, alphanumeric OIDs
+```
+
 ## Migration Instructions
 
 1. **Back up your database** before running migrations
@@ -132,9 +204,40 @@ if let Some(allowed_origin) = cors_config.get_cors_header(request.header("Origin
    cargo run --bin migrate_passwords
    ```
 
-3. **Update environment configuration** if needed for allowed CORS origins
+3. **Install frontend dependencies**:
+   ```bash
+   cd www && npm install
+   ```
 
-4. **Test authentication** with existing users to ensure passwords work
+4. **Update environment configuration** if needed for allowed CORS origins
+
+5. **Test authentication** with existing users to ensure passwords work
+
+## Testing
+
+Run the security tests to verify implementations:
+```bash
+cargo test security_tests
+```
+
+### Testing Recommendations
+
+1. **XSS Testing**:
+   - Test with payloads like `<script>alert('xss')</script>`
+   - Verify all user inputs are properly encoded
+
+2. **SQL Injection Testing**:
+   - Test with payloads like `'; DROP TABLE users; --`
+   - Verify parameterized queries are used
+
+3. **Path Traversal Testing**:
+   - Test with paths like `../../../etc/passwd`
+   - Verify file access is restricted
+
+4. **File Upload Testing**:
+   - Test with malicious file types
+   - Test with oversized files
+   - Test with files containing script tags
 
 ## Security Best Practices Going Forward
 
@@ -146,13 +249,32 @@ if let Some(allowed_origin) = cors_config.get_cors_header(request.header("Origin
 6. **Implement rate limiting** - Prevent brute force attacks
 7. **Regular security audits** - Review code for vulnerabilities
 8. **Keep dependencies updated** - Monitor for security patches
+9. **Validate all user input** - Never trust user-provided data
+10. **Encode all output** - Prevent XSS attacks
 
-## Testing
+## Deployment Notes
 
-Run the security tests to verify implementations:
-```bash
-cargo test security_tests
-```
+1. **Frontend**: 
+   - Run `npm install` in `/www` directory to install DOMPurify
+   - Include `sanitization.js` before other scripts
+
+2. **Backend**:
+   - Build with `cargo build --release`
+   - Ensure all security dependencies are installed
+
+3. **CSP Headers**:
+   - Generate nonces server-side for each request
+   - Update templates to include nonce values
+
+## Monitoring
+
+Monitor for:
+- Failed validation attempts (potential attacks)
+- Rate limit violations
+- Unusual file upload patterns
+- CSP violation reports
+- Failed authentication attempts
+- Security event logs
 
 ## Additional Recommendations
 
@@ -162,3 +284,6 @@ cargo test security_tests
 4. **Log security events** for monitoring and auditing
 5. **Regular penetration testing** of the application
 6. **Security headers** like X-Frame-Options, X-Content-Type-Options, etc.
+7. **Implement request signing** for API calls
+8. **Add field-level encryption** for sensitive data
+9. **Implement Web Application Firewall (WAF)** rules
