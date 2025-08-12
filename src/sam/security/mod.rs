@@ -1,6 +1,7 @@
 pub mod input_validation;
 pub mod session;
 pub mod http_middleware;
+pub mod validation_middleware;
 
 pub use input_validation::{
     validate_url,

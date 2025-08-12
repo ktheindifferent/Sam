@@ -7,6 +7,7 @@ pub mod rooms;
 pub mod services;
 pub mod settings;
 pub mod things;
+pub mod validation;
 
 use rouille::Request;
 use rouille::Response;
