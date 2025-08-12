@@ -1,5 +1,6 @@
 pub mod humans;
 pub mod io;
+pub mod jobs;
 pub mod locations;
 pub mod observations;
 pub mod pets;
