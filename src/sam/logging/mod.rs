@@ -6,15 +6,19 @@ use chrono::{DateTime, Utc};
 use log::{Level, Metadata, Record};
 use prometheus::{
     register_counter_vec, register_gauge_vec, register_histogram_vec,
-    CounterVec, GaugeVec, HistogramVec, TextEncoder, Encoder
+    CounterVec, GaugeVec, HistogramVec, TextEncoder, Encoder,
+    register_int_counter_vec, IntCounterVec,
 };
 use opentelemetry::{
     global,
     sdk::{trace, Resource},
-    trace::{Tracer, TracerProvider},
+    trace::{Tracer as OtelTracer, TracerProvider, SpanBuilder, Status},
     KeyValue,
 };
 use opentelemetry_otlp::WithExportConfig;
+use tracing::{error, warn, info, debug, trace, span, Span};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
+use std::time::Instant;
 
 /// Logging configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -65,7 +69,7 @@ impl Default for LogConfig {
     }
 }
 
-/// Structured log entry
+/// Structured log entry with correlation IDs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub timestamp: DateTime<Utc>,
@@ -77,44 +81,98 @@ pub struct LogEntry {
     pub fields: HashMap<String, serde_json::Value>,
     pub trace_id: Option<String>,
     pub span_id: Option<String>,
+    pub correlation_id: Option<String>,
+    pub request_id: Option<String>,
+    pub user_id: Option<String>,
+    pub service: String,
+    pub environment: String,
+    pub version: String,
 }
 
-/// Metrics collector
+/// Enhanced Metrics collector with business metrics
 pub struct MetricsCollector {
-    request_counter: CounterVec,
+    // HTTP Metrics
+    request_counter: IntCounterVec,
     response_time_histogram: HistogramVec,
+    request_size_histogram: HistogramVec,
+    response_size_histogram: HistogramVec,
+    
+    // Connection Metrics
     active_connections_gauge: GaugeVec,
-    error_counter: CounterVec,
+    connection_errors_counter: IntCounterVec,
+    
+    // Error Metrics
+    error_counter: IntCounterVec,
+    error_rate_gauge: GaugeVec,
+    
+    // System Metrics
     cpu_usage_gauge: GaugeVec,
     memory_usage_gauge: GaugeVec,
     disk_usage_gauge: GaugeVec,
+    thread_count_gauge: GaugeVec,
+    
+    // Business Metrics
+    active_users_gauge: GaugeVec,
+    operations_per_second_gauge: GaugeVec,
+    
+    // Service-specific Metrics
+    lifx_operations_counter: IntCounterVec,
+    spotify_operations_counter: IntCounterVec,
+    media_operations_counter: IntCounterVec,
+    p2p_messages_counter: IntCounterVec,
 }
 
 impl MetricsCollector {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let request_counter = register_counter_vec!(
+        let request_counter = register_int_counter_vec!(
             "sam_http_requests_total",
             "Total number of HTTP requests",
-            &["method", "endpoint", "status"]
+            &["method", "endpoint", "status", "service"]
         )?;
         
         let response_time_histogram = register_histogram_vec!(
             "sam_http_response_time_seconds",
             "HTTP response time in seconds",
-            &["method", "endpoint"],
+            &["method", "endpoint", "service"],
             vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+        )?;
+        
+        let request_size_histogram = register_histogram_vec!(
+            "sam_http_request_size_bytes",
+            "HTTP request size in bytes",
+            &["method", "endpoint"],
+            vec![100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0]
+        )?;
+        
+        let response_size_histogram = register_histogram_vec!(
+            "sam_http_response_size_bytes",
+            "HTTP response size in bytes",
+            &["method", "endpoint"],
+            vec![100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0]
         )?;
         
         let active_connections_gauge = register_gauge_vec!(
             "sam_active_connections",
             "Number of active connections",
-            &["type"]
+            &["type", "service"]
         )?;
         
-        let error_counter = register_counter_vec!(
+        let connection_errors_counter = register_int_counter_vec!(
+            "sam_connection_errors_total",
+            "Total number of connection errors",
+            &["type", "reason"]
+        )?;
+        
+        let error_counter = register_int_counter_vec!(
             "sam_errors_total",
             "Total number of errors",
-            &["service", "error_type"]
+            &["service", "error_type", "severity"]
+        )?;
+        
+        let error_rate_gauge = register_gauge_vec!(
+            "sam_error_rate_per_minute",
+            "Error rate per minute",
+            &["service"]
         )?;
         
         let cpu_usage_gauge = register_gauge_vec!(
@@ -135,40 +193,149 @@ impl MetricsCollector {
             &["mount"]
         )?;
         
+        let thread_count_gauge = register_gauge_vec!(
+            "sam_thread_count",
+            "Number of threads",
+            &["state"]
+        )?;
+        
+        // Business metrics
+        let active_users_gauge = register_gauge_vec!(
+            "sam_active_users",
+            "Number of active users",
+            &["type"]
+        )?;
+        
+        let operations_per_second_gauge = register_gauge_vec!(
+            "sam_operations_per_second",
+            "Operations per second",
+            &["operation_type"]
+        )?;
+        
+        // Service-specific metrics
+        let lifx_operations_counter = register_int_counter_vec!(
+            "sam_lifx_operations_total",
+            "Total LIFX operations",
+            &["operation", "status"]
+        )?;
+        
+        let spotify_operations_counter = register_int_counter_vec!(
+            "sam_spotify_operations_total",
+            "Total Spotify operations",
+            &["operation", "status"]
+        )?;
+        
+        let media_operations_counter = register_int_counter_vec!(
+            "sam_media_operations_total",
+            "Total media operations",
+            &["operation", "media_type", "status"]
+        )?;
+        
+        let p2p_messages_counter = register_int_counter_vec!(
+            "sam_p2p_messages_total",
+            "Total P2P messages",
+            &["direction", "message_type"]
+        )?;
+        
         Ok(MetricsCollector {
             request_counter,
             response_time_histogram,
+            request_size_histogram,
+            response_size_histogram,
             active_connections_gauge,
+            connection_errors_counter,
             error_counter,
+            error_rate_gauge,
             cpu_usage_gauge,
             memory_usage_gauge,
             disk_usage_gauge,
+            thread_count_gauge,
+            active_users_gauge,
+            operations_per_second_gauge,
+            lifx_operations_counter,
+            spotify_operations_counter,
+            media_operations_counter,
+            p2p_messages_counter,
         })
     }
     
-    /// Record an HTTP request
-    pub fn record_request(&self, method: &str, endpoint: &str, status: u16, duration: f64) {
+    /// Record an HTTP request with enhanced metrics
+    pub fn record_request(&self, method: &str, endpoint: &str, status: u16, duration: f64, service: &str, request_size: f64, response_size: f64) {
         self.request_counter
-            .with_label_values(&[method, endpoint, &status.to_string()])
+            .with_label_values(&[method, endpoint, &status.to_string(), service])
             .inc();
         
         self.response_time_histogram
-            .with_label_values(&[method, endpoint])
+            .with_label_values(&[method, endpoint, service])
             .observe(duration);
+        
+        self.request_size_histogram
+            .with_label_values(&[method, endpoint])
+            .observe(request_size);
+        
+        self.response_size_histogram
+            .with_label_values(&[method, endpoint])
+            .observe(response_size);
     }
     
-    /// Record an error
-    pub fn record_error(&self, service: &str, error_type: &str) {
+    /// Record an error with severity
+    pub fn record_error(&self, service: &str, error_type: &str, severity: &str) {
         self.error_counter
-            .with_label_values(&[service, error_type])
+            .with_label_values(&[service, error_type, severity])
             .inc();
     }
     
-    /// Update active connections
-    pub fn set_active_connections(&self, conn_type: &str, count: f64) {
+    /// Record LIFX operation
+    pub fn record_lifx_operation(&self, operation: &str, status: &str) {
+        self.lifx_operations_counter
+            .with_label_values(&[operation, status])
+            .inc();
+    }
+    
+    /// Record Spotify operation
+    pub fn record_spotify_operation(&self, operation: &str, status: &str) {
+        self.spotify_operations_counter
+            .with_label_values(&[operation, status])
+            .inc();
+    }
+    
+    /// Record media operation
+    pub fn record_media_operation(&self, operation: &str, media_type: &str, status: &str) {
+        self.media_operations_counter
+            .with_label_values(&[operation, media_type, status])
+            .inc();
+    }
+    
+    /// Record P2P message
+    pub fn record_p2p_message(&self, direction: &str, message_type: &str) {
+        self.p2p_messages_counter
+            .with_label_values(&[direction, message_type])
+            .inc();
+    }
+    
+    /// Update business metrics
+    pub fn update_business_metrics(&self, active_users: f64, ops_per_second: f64) {
+        self.active_users_gauge
+            .with_label_values(&["concurrent"])
+            .set(active_users);
+        
+        self.operations_per_second_gauge
+            .with_label_values(&["total"])
+            .set(ops_per_second);
+    }
+    
+    /// Update active connections with service context
+    pub fn set_active_connections(&self, conn_type: &str, service: &str, count: f64) {
         self.active_connections_gauge
-            .with_label_values(&[conn_type])
+            .with_label_values(&[conn_type, service])
             .set(count);
+    }
+    
+    /// Record connection error
+    pub fn record_connection_error(&self, conn_type: &str, reason: &str) {
+        self.connection_errors_counter
+            .with_label_values(&[conn_type, reason])
+            .inc();
     }
     
     /// Update system metrics
@@ -213,35 +380,105 @@ impl MetricsCollector {
     }
 }
 
-/// Logging and monitoring manager
+/// Enhanced Logging and monitoring manager with correlation tracking
 pub struct LoggingManager {
     config: LogConfig,
     metrics: Arc<MetricsCollector>,
     log_buffer: Arc<RwLock<Vec<LogEntry>>>,
-    tracer: Option<Box<dyn Tracer>>,
+    tracer: Option<Box<dyn OtelTracer>>,
+    error_tracker: Arc<ErrorTracker>,
+    correlation_store: Arc<RwLock<HashMap<String, CorrelationContext>>>,
+}
+
+/// Correlation context for request tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationContext {
+    pub correlation_id: String,
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub session_id: Option<String>,
+    pub parent_span_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub metadata: HashMap<String, String>,
+}
+
+/// Error tracking and categorization
+pub struct ErrorTracker {
+    errors: Arc<RwLock<Vec<TrackedError>>>,
+    error_patterns: Arc<RwLock<HashMap<String, ErrorPattern>>>,
+    alerts_triggered: Arc<RwLock<HashMap<String, DateTime<Utc>>>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackedError {
+    pub id: String,
+    pub timestamp: DateTime<Utc>,
+    pub error_type: String,
+    pub category: ErrorCategory,
+    pub message: String,
+    pub stack_trace: Option<String>,
+    pub service: String,
+    pub correlation_id: Option<String>,
+    pub user_id: Option<String>,
+    pub metadata: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ErrorCategory {
+    Network,
+    Database,
+    Authentication,
+    Authorization,
+    Validation,
+    BusinessLogic,
+    System,
+    External,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorPattern {
+    pub pattern: String,
+    pub count: u64,
+    pub first_seen: DateTime<Utc>,
+    pub last_seen: DateTime<Utc>,
+    pub severity: ErrorSeverity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ErrorSeverity {
+    Low,
+    Medium,
+    High,
+    Critical,
 }
 
 impl LoggingManager {
-    /// Initialize the logging system
+    /// Initialize the enhanced logging system with tracing
     pub async fn init(config: LogConfig) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        // Initialize logger
-        Self::init_logger(&config)?;
+        // Initialize structured logging with tracing
+        Self::init_structured_logging(&config)?;
         
         // Initialize metrics
         let metrics = Arc::new(MetricsCollector::new()?);
         
-        // Initialize tracing if enabled
+        // Initialize OpenTelemetry tracing
         let tracer = if config.enable_tracing {
-            Some(Self::init_tracing(&config)?)
+            Some(Self::init_otel_tracing(&config)?)
         } else {
             None
         };
         
+        // Initialize error tracker
+        let error_tracker = Arc::new(ErrorTracker::new());
+        
         let manager = Arc::new(LoggingManager {
             config,
             metrics,
-            log_buffer: Arc::new(RwLock::new(Vec::with_capacity(1000))),
+            log_buffer: Arc::new(RwLock::new(Vec::with_capacity(10000))),
             tracer,
+            error_tracker,
+            correlation_store: Arc::new(RwLock::new(HashMap::new())),
         });
         
         // Start background tasks
@@ -250,57 +487,55 @@ impl LoggingManager {
         Ok(manager)
     }
     
-    /// Initialize the logger
-    fn init_logger(config: &LogConfig) -> Result<(), Box<dyn std::error::Error>> {
-        let log_level = match config.level.to_lowercase().as_str() {
-            "trace" => log::LevelFilter::Trace,
-            "debug" => log::LevelFilter::Debug,
-            "info" => log::LevelFilter::Info,
-            "warn" => log::LevelFilter::Warn,
-            "error" => log::LevelFilter::Error,
-            _ => log::LevelFilter::Info,
+    /// Initialize structured logging with tracing
+    fn init_structured_logging(config: &LogConfig) -> Result<(), Box<dyn std::error::Error>> {
+        let env_filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new(&config.level));
+        
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .with_target(true)
+            .with_thread_ids(true)
+            .with_thread_names(true)
+            .with_file(true)
+            .with_line_number(true);
+        
+        let subscriber = match config.format {
+            LogFormat::Json => {
+                let json_layer = tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_current_span(true)
+                    .with_span_list(true);
+                
+                Registry::default()
+                    .with(env_filter)
+                    .with(json_layer)
+            },
+            LogFormat::Text | LogFormat::Compact => {
+                Registry::default()
+                    .with(env_filter)
+                    .with(fmt_layer)
+            }
         };
         
+        // Setup file output if configured
         match config.output {
-            LogOutput::Stdout => {
-                env_logger::Builder::new()
-                    .filter_level(log_level)
-                    .init();
-            }
-            LogOutput::File => {
+            LogOutput::File | LogOutput::Both => {
                 if let Some(path) = &config.log_file_path {
-                    // Setup file logging with rotation
-                    Self::setup_file_logging(path, config.max_log_size_mb, config.max_log_files)?;
-                }
-            }
-            LogOutput::Both => {
-                // Setup both stdout and file logging
-                env_logger::Builder::new()
-                    .filter_level(log_level)
-                    .init();
-                
-                if let Some(path) = &config.log_file_path {
-                    Self::setup_file_logging(path, config.max_log_size_mb, config.max_log_files)?;
-                }
-            }
-            LogOutput::Syslog => {
-                // Setup syslog logging
-                #[cfg(unix)]
-                {
-                    use syslog::{Facility, Formatter3164};
+                    let file_appender = tracing_appender::rolling::daily(
+                        std::path::Path::new(path).parent().unwrap_or(std::path::Path::new("/var/log")),
+                        "sam.log"
+                    );
+                    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+                    let file_layer = tracing_subscriber::fmt::layer()
+                        .json()
+                        .with_writer(non_blocking);
                     
-                    let formatter = Formatter3164 {
-                        facility: Facility::LOG_USER,
-                        hostname: None,
-                        process: "sam".into(),
-                        pid: std::process::id(),
-                    };
-                    
-                    let logger = syslog::unix(formatter)?;
-                    log::set_boxed_logger(Box::new(logger))?;
-                    log::set_max_level(log_level);
+                    subscriber.with(file_layer).init();
+                } else {
+                    subscriber.init();
                 }
-            }
+            },
+            _ => subscriber.init(),
         }
         
         Ok(())
@@ -326,8 +561,8 @@ impl LoggingManager {
         Ok(())
     }
     
-    /// Initialize OpenTelemetry tracing
-    fn init_tracing(config: &LogConfig) -> Result<Box<dyn Tracer>, Box<dyn std::error::Error>> {
+    /// Initialize OpenTelemetry distributed tracing
+    fn init_otel_tracing(config: &LogConfig) -> Result<Box<dyn OtelTracer>, Box<dyn std::error::Error>> {
         let otlp_endpoint = config.otlp_endpoint.clone()
             .unwrap_or_else(|| "http://localhost:4317".to_string());
         
@@ -343,9 +578,16 @@ impl LoggingManager {
                     .with_resource(Resource::new(vec![
                         KeyValue::new("service.name", "sam"),
                         KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+                        KeyValue::new("service.environment", "production"),
+                        KeyValue::new("telemetry.sdk.name", "opentelemetry"),
+                        KeyValue::new("telemetry.sdk.language", "rust"),
                     ]))
+                    .with_sampler(opentelemetry::sdk::trace::Sampler::AlwaysOn)
             )
             .install_batch(opentelemetry::runtime::Tokio)?;
+        
+        // Set global tracer provider
+        global::set_tracer_provider(tracer.provider().unwrap().clone());
         
         Ok(Box::new(tracer))
     }
@@ -382,37 +624,82 @@ impl LoggingManager {
         });
     }
     
-    /// Log a structured message
-    pub async fn log(&self, entry: LogEntry) {
+    /// Log a structured message with correlation ID
+    pub async fn log_with_context(&self, mut entry: LogEntry, correlation_id: Option<String>) {
+        // Add correlation context
+        if let Some(corr_id) = correlation_id {
+            entry.correlation_id = Some(corr_id.clone());
+            
+            if let Some(context) = self.get_correlation_context(&corr_id).await {
+                entry.request_id = Some(context.request_id);
+                entry.user_id = context.user_id;
+            }
+        }
+        
+        // Add service metadata
+        entry.service = "sam".to_string();
+        entry.environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string());
+        entry.version = env!("CARGO_PKG_VERSION").to_string();
+        
+        // Track errors
+        if entry.level == "ERROR" || entry.level == "CRITICAL" {
+            self.error_tracker.track_error(&entry).await;
+        }
+        
         // Add to buffer
         let mut buffer = self.log_buffer.write().await;
+        if buffer.len() >= 10000 {
+            buffer.drain(0..1000); // Remove oldest entries if buffer is full
+        }
         buffer.push(entry.clone());
         
-        // Format and output based on configuration
-        match self.config.format {
-            LogFormat::Json => {
-                println!("{}", serde_json::to_string(&entry).unwrap());
-            }
-            LogFormat::Text => {
-                println!(
-                    "[{}] {} {} - {}",
-                    entry.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                    entry.level,
-                    entry.module,
-                    entry.message
-                );
-            }
-            LogFormat::Compact => {
-                println!("{} {} {}", entry.level, entry.module, entry.message);
-            }
+        // Use tracing for output
+        match entry.level.as_str() {
+            "TRACE" => trace!(target: &entry.module, correlation_id = ?entry.correlation_id, "{}", entry.message),
+            "DEBUG" => debug!(target: &entry.module, correlation_id = ?entry.correlation_id, "{}", entry.message),
+            "INFO" => info!(target: &entry.module, correlation_id = ?entry.correlation_id, "{}", entry.message),
+            "WARN" => warn!(target: &entry.module, correlation_id = ?entry.correlation_id, "{}", entry.message),
+            "ERROR" => error!(target: &entry.module, correlation_id = ?entry.correlation_id, "{}", entry.message),
+            _ => info!(target: &entry.module, correlation_id = ?entry.correlation_id, "{}", entry.message),
         }
     }
     
-    /// Create a new span for tracing
-    pub fn create_span(&self, name: &str) -> Option<opentelemetry::trace::Span> {
+    /// Create a new correlation context for request tracking
+    pub async fn create_correlation_context(&self, user_id: Option<String>) -> String {
+        use nanoid::nanoid;
+        let correlation_id = nanoid!();
+        let request_id = nanoid!();
+        
+        let context = CorrelationContext {
+            correlation_id: correlation_id.clone(),
+            request_id,
+            user_id,
+            session_id: None,
+            parent_span_id: None,
+            created_at: Utc::now(),
+            metadata: HashMap::new(),
+        };
+        
+        self.correlation_store.write().await.insert(correlation_id.clone(), context);
+        correlation_id
+    }
+    
+    /// Get correlation context
+    pub async fn get_correlation_context(&self, correlation_id: &str) -> Option<CorrelationContext> {
+        self.correlation_store.read().await.get(correlation_id).cloned()
+    }
+    
+    /// Create a new span for distributed tracing
+    pub fn create_span(&self, name: &str, correlation_id: Option<String>) -> Option<opentelemetry::trace::Span> {
         self.tracer.as_ref().map(|tracer| {
             use opentelemetry::trace::Tracer;
-            tracer.start(name)
+            let mut span = tracer.start(name);
+            
+            if let Some(corr_id) = correlation_id {
+                span.set_attribute(KeyValue::new("correlation_id", corr_id));
+            }
+            
+            span
         })
     }
     
@@ -543,6 +830,146 @@ impl log::Log for SamLogger {
     }
 
     fn flush(&self) {}
+}
+
+impl ErrorTracker {
+    pub fn new() -> Self {
+        ErrorTracker {
+            errors: Arc::new(RwLock::new(Vec::new())),
+            error_patterns: Arc::new(RwLock::new(HashMap::new())),
+            alerts_triggered: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+    
+    pub async fn track_error(&self, entry: &LogEntry) {
+        use nanoid::nanoid;
+        
+        let category = Self::categorize_error(&entry.message);
+        let error = TrackedError {
+            id: nanoid!(),
+            timestamp: entry.timestamp,
+            error_type: entry.fields.get("error_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            category,
+            message: entry.message.clone(),
+            stack_trace: entry.fields.get("stack_trace")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            service: entry.service.clone(),
+            correlation_id: entry.correlation_id.clone(),
+            user_id: entry.user_id.clone(),
+            metadata: HashMap::new(),
+        };
+        
+        // Store error
+        let mut errors = self.errors.write().await;
+        errors.push(error.clone());
+        
+        // Keep only last 10000 errors
+        if errors.len() > 10000 {
+            errors.drain(0..1000);
+        }
+        
+        // Update error patterns
+        self.update_error_patterns(&error).await;
+        
+        // Check if alert needs to be triggered
+        self.check_alert_conditions(&error).await;
+    }
+    
+    fn categorize_error(message: &str) -> ErrorCategory {
+        let message_lower = message.to_lowercase();
+        
+        if message_lower.contains("connection") || message_lower.contains("timeout") || message_lower.contains("network") {
+            ErrorCategory::Network
+        } else if message_lower.contains("database") || message_lower.contains("sql") || message_lower.contains("postgres") {
+            ErrorCategory::Database
+        } else if message_lower.contains("auth") || message_lower.contains("token") || message_lower.contains("credential") {
+            ErrorCategory::Authentication
+        } else if message_lower.contains("permission") || message_lower.contains("forbidden") || message_lower.contains("unauthorized") {
+            ErrorCategory::Authorization
+        } else if message_lower.contains("validation") || message_lower.contains("invalid") || message_lower.contains("required") {
+            ErrorCategory::Validation
+        } else if message_lower.contains("business") || message_lower.contains("workflow") || message_lower.contains("process") {
+            ErrorCategory::BusinessLogic
+        } else if message_lower.contains("system") || message_lower.contains("memory") || message_lower.contains("disk") {
+            ErrorCategory::System
+        } else if message_lower.contains("external") || message_lower.contains("api") || message_lower.contains("third-party") {
+            ErrorCategory::External
+        } else {
+            ErrorCategory::Unknown
+        }
+    }
+    
+    async fn update_error_patterns(&self, error: &TrackedError) {
+        let mut patterns = self.error_patterns.write().await;
+        let pattern_key = format!("{}:{:?}", error.error_type, error.category);
+        
+        patterns.entry(pattern_key)
+            .and_modify(|p| {
+                p.count += 1;
+                p.last_seen = error.timestamp;
+                
+                // Escalate severity based on frequency
+                if p.count > 100 {
+                    p.severity = ErrorSeverity::Critical;
+                } else if p.count > 50 {
+                    p.severity = ErrorSeverity::High;
+                } else if p.count > 10 {
+                    p.severity = ErrorSeverity::Medium;
+                }
+            })
+            .or_insert(ErrorPattern {
+                pattern: pattern_key,
+                count: 1,
+                first_seen: error.timestamp,
+                last_seen: error.timestamp,
+                severity: ErrorSeverity::Low,
+            });
+    }
+    
+    async fn check_alert_conditions(&self, error: &TrackedError) {
+        let patterns = self.error_patterns.read().await;
+        let pattern_key = format!("{}:{:?}", error.error_type, error.category);
+        
+        if let Some(pattern) = patterns.get(&pattern_key) {
+            // Alert on critical errors or high frequency
+            if matches!(pattern.severity, ErrorSeverity::Critical) || pattern.count > 50 {
+                let mut alerts = self.alerts_triggered.write().await;
+                let last_alert = alerts.get(&pattern_key);
+                
+                // Only alert once per hour for the same pattern
+                let should_alert = last_alert.map_or(true, |last| {
+                    error.timestamp.signed_duration_since(*last).num_seconds() > 3600
+                });
+                
+                if should_alert {
+                    alerts.insert(pattern_key.clone(), error.timestamp);
+                    error!("ALERT: Error pattern {} has occurred {} times. Severity: {:?}", 
+                           pattern_key, pattern.count, pattern.severity);
+                }
+            }
+        }
+    }
+    
+    pub async fn get_error_summary(&self) -> HashMap<String, u64> {
+        let patterns = self.error_patterns.read().await;
+        patterns.iter()
+            .map(|(k, v)| (k.clone(), v.count))
+            .collect()
+    }
+    
+    pub async fn get_recent_errors(&self, limit: usize) -> Vec<TrackedError> {
+        let errors = self.errors.read().await;
+        let start = if errors.len() > limit {
+            errors.len() - limit
+        } else {
+            0
+        };
+        errors[start..].to_vec()
+    }
 }
 
 /// Helper macros for structured logging
