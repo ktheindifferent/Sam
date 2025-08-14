@@ -103,6 +103,8 @@ libmdns = "0.9.1"
 mdns-sd = "0.13.8"
 flate2 = "1.0"
 sha2 = "0.10"
+rusqlite = { version = "0.32", features = ["bundled", "chrono", "serde_json", "backup"] }
+diesel = { version = "2.2", features = ["sqlite", "postgres", "chrono", "serde_json"] }
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
