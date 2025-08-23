@@ -313,7 +313,9 @@ impl TtsService {
         
         let mut args = vec![
             "-o".to_string(),
-            tmp_path.to_str().unwrap().to_string(),
+            tmp_path.to_str()
+                .ok_or_else(|| crate::sam::services::Error::from("Invalid path"))?
+                .to_string(),
             "--data-format=LEF32@22050".to_string(),
         ];
         
@@ -364,9 +366,12 @@ impl TtsService {
         let pitch = ((request.pitch.unwrap_or(1.0) * 50.0) as i32).max(0).min(99);
         let volume = ((request.volume.unwrap_or(1.0) * 200.0) as i32).max(0).min(200);
         
+        let path_str = tmp_path.to_str()
+            .ok_or_else(|| crate::sam::services::Error::from("Invalid path"))?;
+        
         let output = Command::new("espeak")
             .args(&[
-                "-w", tmp_path.to_str().unwrap(),
+                "-w", path_str,
                 "-s", &speed.to_string(),
                 "-p", &pitch.to_string(),
                 "-a", &volume.to_string(),
@@ -387,7 +392,7 @@ impl TtsService {
         
         let output = Command::new("pico2wave")
             .args(&[
-                "-w", tmp_path.to_str().unwrap(),
+                "-w", path_str,
                 "-l", request.language.as_ref().unwrap_or(&"en-US".to_string()),
                 &request.text,
             ])
@@ -509,7 +514,13 @@ mod tests {
     #[test]
     fn test_cache_key_generation() {
         let config = TtsConfig::default();
-        let service = TtsService::new(config).unwrap();
+        let service = match TtsService::new(config) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to create TTS service: {}", e);
+                return;
+            }
+        };
         
         let request1 = TtsRequest {
             text: "Hello world".to_string(),

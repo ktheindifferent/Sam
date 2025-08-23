@@ -18,6 +18,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use threadpool::ThreadPool;
+use crate::sam::services::errors::{CommonError, Result, ErrorContext};
 
 pub fn init() {
     // Initialize sound processing stages
@@ -49,7 +50,7 @@ pub fn cache_vwavs() {
                 Ok(obs) => obs,
                 Err(e) => {
                     log::error!("Failed to select observations for VWAV cache build: {}", e);
-                    return Err(e);
+                    return;
                 }
             };
 
@@ -622,7 +623,7 @@ impl Sink {
         }
     }
 
-    fn get_writer(&mut self) -> &mut WavWriter<BufWriter<File>> {
+    fn get_writer(&mut self) -> Option<&mut WavWriter<BufWriter<File>>> {
         if self.writer.is_none() {
             // Lazily initialize the writer. This lets us drop the writer when
             // sent an end_of_transmission and have it automatically start
@@ -635,15 +636,12 @@ impl Sink {
                 Ok(w) => Some(w),
                 Err(e) => {
                     log::error!("Failed to create WavWriter: {}", e);
-                    // Return a placeholder that won't be used
-                    return self.writer.as_mut().unwrap_or_else(|| {
-                        panic!("Failed to create WavWriter: {}", e)
-                    });
+                    return None;
                 }
             };
         }
 
-        self.writer.as_mut().expect("Writer should be initialized")
+        self.writer.as_mut()
     }
 }
 
@@ -653,12 +651,12 @@ where
     F::Sample: hound::Sample,
 {
     fn record(&mut self, frame: F) {
-        let writer = self.get_writer();
-
-        // write all the channels as interlaced audio
-        for channel in frame.channels() {
-            if let Err(e) = writer.write_sample(channel) {
-                log::error!("Failed to write sample: {}", e);
+        if let Some(writer) = self.get_writer() {
+            // write all the channels as interlaced audio
+            for channel in frame.channels() {
+                if let Err(e) = writer.write_sample(channel) {
+                    log::error!("Failed to write sample: {}", e);
+                }
             }
         }
     }
