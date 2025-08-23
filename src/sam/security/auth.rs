@@ -39,10 +39,19 @@ impl Auth {
     /// Check rate limit for authentication attempts
     /// Returns true if the attempt is allowed, false if rate limited
     pub fn check_auth_rate_limit(identifier: &str) -> bool {
-        let mut limiter = AUTH_RATE_LIMITER.write().unwrap();
+        let mut limiter = match AUTH_RATE_LIMITER.write() {
+            Ok(l) => l,
+            Err(e) => {
+                log::error!("Failed to acquire rate limiter lock: {}", e);
+                return false; // Fail closed on lock error
+            }
+        };
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_else(|e| {
+                log::error!("System time error: {}", e);
+                std::time::Duration::from_secs(0)
+            })
             .as_secs() as i64;
         
         let attempts = limiter.entry(identifier.to_string()).or_insert_with(Vec::new);
@@ -73,19 +82,37 @@ impl Auth {
 
     /// Get the number of failed attempts for an identifier
     pub fn get_failed_attempts(identifier: &str) -> usize {
-        let limiter = AUTH_RATE_LIMITER.read().unwrap();
+        let limiter = match AUTH_RATE_LIMITER.read() {
+            Ok(l) => l,
+            Err(e) => {
+                log::error!("Failed to acquire rate limiter lock: {}", e);
+                return 0;
+            }
+        };
         limiter.get(identifier).map(|v| v.len()).unwrap_or(0)
     }
 
     /// Clear rate limit for an identifier (on successful login)
     pub fn clear_auth_rate_limit(identifier: &str) {
-        let mut limiter = AUTH_RATE_LIMITER.write().unwrap();
+        let mut limiter = match AUTH_RATE_LIMITER.write() {
+            Ok(l) => l,
+            Err(e) => {
+                log::error!("Failed to acquire rate limiter lock: {}", e);
+                return;
+            }
+        };
         limiter.remove(identifier);
     }
 
     /// Get wait time in seconds before next attempt is allowed
     pub fn get_wait_time(identifier: &str) -> Option<i64> {
-        let limiter = AUTH_RATE_LIMITER.read().unwrap();
+        let limiter = match AUTH_RATE_LIMITER.read() {
+            Ok(l) => l,
+            Err(e) => {
+                log::error!("Failed to acquire rate limiter lock: {}", e);
+                return None;
+            }
+        };
         if let Some(attempts) = limiter.get(identifier) {
             if attempts.is_empty() {
                 return None;
@@ -93,7 +120,10 @@ impl Auth {
 
             let current_time = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_else(|e| {
+                    log::error!("System time error: {}", e);
+                    std::time::Duration::from_secs(0)
+                })
                 .as_secs() as i64;
 
             // Determine wait time based on number of attempts

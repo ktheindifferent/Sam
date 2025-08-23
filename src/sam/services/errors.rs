@@ -70,6 +70,30 @@ impl From<reqwest::Error> for CommonError {
     }
 }
 
+impl From<hound::Error> for CommonError {
+    fn from(err: hound::Error) -> Self {
+        CommonError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            err.to_string(),
+        ))
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for CommonError {
+    fn from(err: std::sync::PoisonError<T>) -> Self {
+        CommonError::External(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Lock poisoned: {}", err),
+        )))
+    }
+}
+
+impl From<std::time::SystemTimeError> for CommonError {
+    fn from(err: std::time::SystemTimeError) -> Self {
+        CommonError::External(Box::new(err))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, CommonError>;
 
 pub trait ErrorContext<T> {

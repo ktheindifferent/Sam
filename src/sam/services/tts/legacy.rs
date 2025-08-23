@@ -41,7 +41,11 @@ fn load_manifest() -> TtsManifest {
 
 fn save_manifest(manifest: &TtsManifest) {
     if let Ok(mut file) = File::create(MANIFEST_PATH) {
-        let _ = file.write_all(serde_json::to_string(manifest).unwrap().as_bytes());
+        if let Ok(json) = serde_json::to_string(manifest) {
+            let _ = file.write_all(json.as_bytes());
+        } else {
+            log::error!("Failed to serialize TTS manifest");
+        }
     }
 }
 
@@ -57,10 +61,13 @@ pub fn handle(
     request: &Request,
 ) -> Result<Response, crate::sam::http::Error> {
     if request.url() == "/api/services/tts" {
-        let input = request.get_param("text").unwrap();
+        let input = request.get_param("text")
+            .ok_or_else(|| crate::sam::http::Error::BadRequest("Missing 'text' parameter".to_string()))?;
+        let audio_data = crate::sam::services::tts::get(input)
+            .map_err(|e| crate::sam::http::Error::InternalServerError(format!("TTS failed: {}", e)))?;
         return Ok(Response::from_data(
             "audio/wav",
-            crate::sam::services::tts::get(input).unwrap(),
+            audio_data,
         ));
     }
     Ok(Response::empty_404())
@@ -214,7 +221,9 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
         Command::new("say")
             .args([
                 "-o",
-                tmp_path.to_str().unwrap(),
+                tmp_path.to_str().ok_or_else(|| {
+                    Box::<dyn std::error::Error>::from("Invalid path")
+                })?,
                 "--data-format=LEF32@22050",
                 text,
             ])
@@ -234,11 +243,14 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
             .collect();
         let tmp_path = Path::new(TTS_TMP_DIR).join(format!("{}.wav", rand_name));
         // Try espeak first
+        let path_str = tmp_path.to_str().ok_or_else(|| {
+            Box::<dyn std::error::Error>::from("Invalid path")
+        })?;
         let espeak_output = Command::new("espeak")
-            .args(&["-w", tmp_path.to_str().unwrap(), text])
+            .args(&["-w", path_str, text])
             .output();
-        if let Ok(status) = espeak_status {
-            if status.success() {
+        if let Ok(output) = espeak_output {
+            if output.status.success() {
                 let mut file = File::open(&tmp_path)?;
                 let mut buf = Vec::new();
                 file.read_to_end(&mut buf)?;
@@ -249,7 +261,7 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
         // Fallback to festival/text2wave
         let festival_status = Command::new("text2wave")
             .arg("-o")
-            .arg(tmp_path.to_str().unwrap())
+            .arg(path_str)
             .stdin(std::process::Stdio::piped())
             .spawn()
             .and_then(|mut child| {
