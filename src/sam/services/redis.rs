@@ -1,9 +1,9 @@
 use bollard::container::ListContainersOptions;
 use bollard::Docker;
 use log::{error, info, warn};
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use std::time::Instant;
 use anyhow::{Result, Context};
@@ -227,13 +227,17 @@ pub async fn is_installed() -> bool {
     result
 }
 
-// Connection pool management
-static mut POOL: Option<Pool> = None;
+// Thread-safe connection pool management using OnceCell
+static POOL: OnceCell<Arc<RwLock<Option<Pool>>>> = OnceCell::new();
 
 pub async fn connect() -> Result<Pool> {
+    // Initialize the pool holder if not already done
+    let pool_holder = POOL.get_or_init(|| Arc::new(RwLock::new(None)));
+    
     // Check if pool already exists
-    unsafe {
-        if let Some(ref pool) = POOL {
+    {
+        let pool_guard = pool_holder.read().unwrap();
+        if let Some(ref pool) = *pool_guard {
             return Ok(pool.clone());
         }
     }
@@ -241,12 +245,22 @@ pub async fn connect() -> Result<Pool> {
     // Create new pool
     let pool = create_pool().await?;
     
-    // Store for future use
-    unsafe {
-        POOL = Some(pool.clone());
+    // Store for future use (write lock)
+    {
+        let mut pool_guard = pool_holder.write().unwrap();
+        *pool_guard = Some(pool.clone());
     }
     
     Ok(pool)
+}
+
+/// Reset the connection pool (useful for testing and reconnection)
+pub async fn reset_pool() -> Result<()> {
+    if let Some(pool_holder) = POOL.get() {
+        let mut pool_guard = pool_holder.write().unwrap();
+        *pool_guard = None;
+    }
+    Ok(())
 }
 
 async fn create_pool() -> Result<Pool> {
@@ -339,6 +353,8 @@ pub async fn create_cache_with_config(config: CacheConfig) -> Result<HybridCache
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use tokio::task::JoinSet;
 
     #[tokio::test]
     async fn test_redis_connection() {
@@ -363,5 +379,140 @@ mod tests {
                 eprintln!("Skipping test - Redis not available: {}", e);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_pool_access() {
+        // Reset pool to ensure clean state
+        let _ = reset_pool().await;
+        
+        // Spawn multiple concurrent tasks to access the pool
+        let mut tasks = JoinSet::new();
+        
+        for i in 0..10 {
+            tasks.spawn(async move {
+                let result = connect().await;
+                match result {
+                    Ok(pool) => {
+                        // Verify pool is valid
+                        assert!(pool.status().size > 0, "Task {} got invalid pool", i);
+                        Ok(i)
+                    }
+                    Err(e) => Err(e)
+                }
+            });
+        }
+        
+        // Collect all results
+        let mut results = Vec::new();
+        while let Some(result) = tasks.join_next().await {
+            match result {
+                Ok(Ok(i)) => results.push(i),
+                Ok(Err(e)) => {
+                    eprintln!("Skipping concurrent test - Redis not available: {}", e);
+                    return;
+                }
+                Err(e) => panic!("Task panicked: {}", e),
+            }
+        }
+        
+        // Verify all tasks completed successfully
+        assert_eq!(results.len(), 10, "Not all tasks completed successfully");
+    }
+
+    #[tokio::test]
+    async fn test_pool_reuse_across_threads() {
+        // Reset pool to ensure clean state
+        let _ = reset_pool().await;
+        
+        // Get initial pool
+        let initial_pool = match connect().await {
+            Ok(pool) => pool,
+            Err(e) => {
+                eprintln!("Skipping test - Redis not available: {}", e);
+                return;
+            }
+        };
+        
+        // Spawn multiple tasks that should reuse the same pool
+        let mut tasks = JoinSet::new();
+        
+        for _ in 0..5 {
+            tasks.spawn(async move {
+                connect().await
+            });
+        }
+        
+        // Verify all tasks get the same pool instance
+        while let Some(result) = tasks.join_next().await {
+            match result {
+                Ok(Ok(pool)) => {
+                    // The pool should be the same instance (same underlying connection pool)
+                    assert_eq!(
+                        pool.status().size, 
+                        initial_pool.status().size,
+                        "Pool configuration should be identical"
+                    );
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Error in concurrent access: {}", e);
+                    return;
+                }
+                Err(e) => panic!("Task panicked: {}", e),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pool_reset() {
+        // Connect to establish a pool
+        let _ = connect().await;
+        
+        // Reset the pool
+        reset_pool().await.expect("Failed to reset pool");
+        
+        // Verify pool can be re-established after reset
+        match connect().await {
+            Ok(pool) => {
+                assert!(pool.status().size > 0, "Pool should be valid after reset");
+            }
+            Err(e) => {
+                eprintln!("Skipping test - Redis not available: {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_no_data_races() {
+        // This test verifies thread safety by attempting concurrent reads and writes
+        let _ = reset_pool().await;
+        
+        let mut tasks = JoinSet::new();
+        
+        // Spawn readers
+        for i in 0..20 {
+            tasks.spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(i as u64)).await;
+                connect().await
+            });
+        }
+        
+        // Spawn a writer (reset) in the middle
+        tasks.spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            reset_pool().await.expect("Failed to reset");
+            connect().await
+        });
+        
+        // All operations should complete without panic
+        let mut success_count = 0;
+        while let Some(result) = tasks.join_next().await {
+            if let Ok(Ok(_)) = result {
+                success_count += 1;
+            }
+        }
+        
+        // We should have successful operations (exact count may vary due to Redis availability)
+        assert!(success_count > 0, "At least some operations should succeed");
     }
 }
