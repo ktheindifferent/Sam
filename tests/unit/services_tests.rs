@@ -103,6 +103,10 @@ mod postgres_service_tests {
         }
 
         let test_table = "test_table_".to_string() + &nanoid::nanoid!(10);
+        // Validate table name format (test_table_ followed by alphanumeric)
+        assert!(test_table.starts_with("test_table_"));
+        assert!(test_table[11..].chars().all(|c| c.is_alphanumeric()));
+        
         let create_sql = format!(
             "CREATE TABLE IF NOT EXISTS {} (
                 id SERIAL PRIMARY KEY,

@@ -286,19 +286,33 @@ pub async fn cleanup_old_sessions() -> Result<u64> {
 }
 
 pub async fn cleanup_old_health_records(days: i32) -> Result<u64> {
+    // Validate input to prevent negative or excessively large values
+    if days < 0 || days > 3650 {  // Max 10 years
+        return Err(anyhow::anyhow!("Invalid days parameter: must be between 0 and 3650"));
+    }
+    
     let pool = connect().await?;
     
-    let query = match pool.engine() {
+    let (query, params) = match pool.engine() {
         DatabaseEngine::SQLite => {
-            format!("DELETE FROM service_health WHERE checked_at < datetime('now', '-{} days')", days)
+            // SQLite doesn't support parameterized date intervals directly,
+            // but we can use parameterized queries with julianday
+            (
+                "DELETE FROM service_health WHERE julianday('now') - julianday(checked_at) > ?1",
+                vec![Value::I32(days)]
+            )
         }
         DatabaseEngine::PostgreSQL => {
-            format!("DELETE FROM service_health WHERE checked_at < NOW() - INTERVAL '{} days'", days)
+            // PostgreSQL supports parameterized intervals
+            (
+                "DELETE FROM service_health WHERE checked_at < NOW() - ($1::integer || ' days')::interval",
+                vec![Value::I32(days)]
+            )
         }
         _ => return Err(anyhow::anyhow!("Cleanup not implemented for {:?}", pool.engine())),
     };
     
-    execute_statement(&query, vec![]).await
+    execute_statement(query, params).await
 }
 
 pub fn value_null() -> Value {

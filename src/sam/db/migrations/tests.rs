@@ -31,6 +31,11 @@ mod tests {
                 return Err(anyhow::anyhow!("Test migration failed intentionally"));
             }
             
+            // Validate version is numeric to prevent SQL injection in tests
+            if !self.version.chars().all(|c| c.is_ascii_digit()) {
+                return Err(anyhow::anyhow!("Invalid version format: must be numeric"));
+            }
+            
             tx.execute(
                 &format!("CREATE TABLE IF NOT EXISTS test_table_{} (id SERIAL PRIMARY KEY)", self.version),
                 &[]
@@ -40,6 +45,11 @@ mod tests {
         }
         
         async fn down(&self, tx: &Transaction<'_>) -> Result<()> {
+            // Validate version is numeric to prevent SQL injection in tests
+            if !self.version.chars().all(|c| c.is_ascii_digit()) {
+                return Err(anyhow::anyhow!("Invalid version format: must be numeric"));
+            }
+            
             tx.execute(
                 &format!("DROP TABLE IF EXISTS test_table_{}", self.version),
                 &[]
