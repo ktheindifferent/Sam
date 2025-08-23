@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use log::{info, error, debug, warn};
 
 mod security;
+use crate::sam::network_monitor::NetworkMonitor;
 use security::{WebSocketLimits, WebSocketSecurityConfig, WsSecurityError, MessagePriority, SessionInfo};
 
 /// WebSocket message types
@@ -29,6 +30,7 @@ pub enum WsMessage {
     Pong { timestamp: i64 },
     ServiceStatus { service: String, status: ServiceStatus },
     SystemStats { stats: SystemStats },
+    NetworkStats { stats: NetworkStatsDetail },
     Activity { activity: ActivityItem },
     Alert { message: String, severity: AlertSeverity },
     CommandResponse { id: String, success: bool, data: serde_json::Value },
@@ -57,6 +59,28 @@ pub struct SystemStats {
     pub disk_percent: f32,
     pub network_speed: f32,
     pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkStatsDetail {
+    pub interfaces: HashMap<String, InterfaceStats>,
+    pub total_download_mbps: f32,
+    pub total_upload_mbps: f32,
+    pub average_latency_ms: f32,
+    pub packet_loss_percent: f32,
+    pub connection_count: u32,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterfaceStats {
+    pub name: String,
+    pub download_mbps: f32,
+    pub upload_mbps: f32,
+    pub rx_packets: u64,
+    pub tx_packets: u64,
+    pub rx_errors: u64,
+    pub tx_errors: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -689,6 +713,11 @@ async fn process_command(
             Ok(serde_json::to_value(services)?)
         }
         
+        "get_network_stats" => {
+            let stats = collect_network_stats().await?;
+            Ok(serde_json::to_value(stats)?)
+        }
+        
         "restart_service" => {
             if let Some(service_name) = args.get("service").and_then(|s| s.as_str()) {
                 // Implement service restart logic
@@ -728,6 +757,16 @@ async fn collect_system_stats() -> Result<SystemStats, Box<dyn std::error::Error
         0.0
     };
     
+    // Get network speed from the network monitor
+    let network_monitor = NetworkMonitor::new();
+    let network_speed = match network_monitor.get_total_speed_mbps().await {
+        Ok(speed) => speed as f32,
+        Err(e) => {
+            debug!("Failed to get network speed: {}", e);
+            0.0
+        }
+    };
+    
     Ok(SystemStats {
         cpu,
         memory_used,
@@ -736,7 +775,48 @@ async fn collect_system_stats() -> Result<SystemStats, Box<dyn std::error::Error
         disk_used,
         disk_total,
         disk_percent,
-        network_speed: 0.0, // TODO: Implement network speed monitoring
+        network_speed,
+        timestamp: Utc::now(),
+    })
+}
+
+/// Collect detailed network statistics
+async fn collect_network_stats() -> Result<NetworkStatsDetail, Box<dyn std::error::Error>> {
+    use crate::sam::network_monitor::{NetworkMonitor, ConnectionStats};
+    
+    let monitor = NetworkMonitor::new();
+    let metrics = monitor.get_metrics().await?;
+    
+    // Convert network speeds to interface stats
+    let mut interfaces = HashMap::new();
+    for (name, speed) in metrics.speeds {
+        interfaces.insert(name.clone(), InterfaceStats {
+            name: name.clone(),
+            download_mbps: speed.download_speed_mbps as f32,
+            upload_mbps: speed.upload_speed_mbps as f32,
+            rx_packets: 0, // Would need to be tracked separately
+            tx_packets: 0,
+            rx_errors: 0,
+            tx_errors: 0,
+        });
+    }
+    
+    // Get connection statistics
+    let connection_stats = ConnectionStats::gather().await.unwrap_or(ConnectionStats {
+        tcp_established: 0,
+        tcp_listen: 0,
+        tcp_time_wait: 0,
+        udp_connections: 0,
+        total_connections: 0,
+    });
+    
+    Ok(NetworkStatsDetail {
+        interfaces,
+        total_download_mbps: metrics.total_download_mbps as f32,
+        total_upload_mbps: metrics.total_upload_mbps as f32,
+        average_latency_ms: metrics.average_latency_ms as f32,
+        packet_loss_percent: metrics.packet_loss_percent as f32,
+        connection_count: connection_stats.total_connections,
         timestamp: Utc::now(),
     })
 }
