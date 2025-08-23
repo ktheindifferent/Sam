@@ -285,8 +285,8 @@ async fn handle_connection(
     let client_id = Uuid::new_v4().to_string();
     let ip = addr.ip();
     
-    // Validate connection limits and create session
-    let session_info = match security_limits.validate_connection(ip, client_id.clone()).await {
+    // Validate connection limits and create session (no token provided initially)
+    let session_info = match security_limits.validate_connection(ip, client_id.clone(), None).await {
         Ok(session) => session,
         Err(e) => {
             error!("Connection validation failed for {}: {}", addr, e);
