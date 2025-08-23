@@ -263,7 +263,7 @@ impl CrawlJob {
         });
 
         // Remove from Postgres
-        let table = Self::sql_table_name();
+        let table = Self::sql_table_name(); // Safe: returns hardcoded "crawl_jobs"
         let query = format!("DELETE FROM {table} WHERE oid = $1");
 
         // let pg_client = crate::sam::memory::Config::client_async().await.unwrap();

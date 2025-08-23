@@ -400,6 +400,9 @@ impl Config {
             }
         });
 
+        // Validate database name to prevent SQL injection
+        Self::validate_sql_identifier(&self.postgres.db_name)?;
+        
         // Attempt to create the database
         let create_db_sql = format!("CREATE DATABASE {}", self.postgres.db_name);
         match client.batch_execute(&create_db_sql).await {
@@ -514,6 +517,9 @@ impl Config {
     /// }
     /// ```
     pub fn destroy_row(oid: String, table_name: String) -> Result<bool> {
+        // Validate table name to prevent SQL injection
+        Self::validate_sql_identifier(&table_name)?;
+        
         let mut client = Config::client()?;
 
         // Use parameterized queries to prevent SQL injection
@@ -542,6 +548,9 @@ impl Config {
     /// Returns an error if the connection fails or the SQL statement fails.
     ///
     pub async fn destroy_row_async(oid: String, table_name: String) -> Result<bool> {
+        // Validate table name to prevent SQL injection
+        Self::validate_sql_identifier(&table_name)?;
+        
         let config = crate::sam::memory::Config::new();
         let client = config.connect_pool().await?;
         // Use parameterized queries to prevent SQL injection
@@ -854,9 +863,37 @@ impl Config {
         query: Option<PostgresQueries>,
         client: deadpool_postgres::Client,
     ) -> Result<Vec<String>> {
+        // Validate table name to prevent SQL injection
+        Self::validate_sql_identifier(&table_name)?;
+
+        // Validate columns if provided
+        if let Some(ref cols) = columns {
+            Self::validate_column_list(cols)?;
+        }
+
+        // Validate order clause if provided
+        if let Some(ref order_val) = order {
+            Self::validate_order_clause(order_val)?;
+        }
+
+        // Validate limit and offset
+        if let Some(limit_val) = limit {
+            if limit_val > 10000 {
+                return Err(MemoryError::Other("Limit too large (max 10000)".to_string()).into());
+            }
+        }
+
+        if let Some(offset_val) = offset {
+            if offset_val > 1000000 {
+                return Err(
+                    MemoryError::Other("Offset too large (max 1000000)".to_string()).into(),
+                );
+            }
+        }
+
         let mut parsed_rows: Vec<String> = Vec::new();
 
-        // Build SELECT clause
+        // Build SELECT clause - now safe since we validated inputs
         let mut execquery = if let Some(cols) = &columns {
             format!("SELECT {cols} FROM {table_name}")
         } else {
@@ -867,16 +904,19 @@ impl Config {
         if let Some(pg_query) = query.clone() {
             let mut counter = 1;
             for col in pg_query.query_columns.iter() {
+                // Validate each query column to prevent injection
+                Self::validate_sql_identifier(col)?;
+                
                 if counter == 1 {
                     execquery = format!("{execquery} WHERE {col} ${counter}");
                 } else {
-                    execquery = format!("{execquery} {col} ${counter}");
+                    execquery = format!("{execquery} AND {col} ${counter}");
                 }
                 counter += 1;
             }
         }
 
-        // Add ORDER BY clause
+        // Add ORDER BY clause - now safe since we validated input
         execquery = match order {
             Some(order_val) => format!("{execquery} ORDER BY {order_val}"),
             None => format!("{execquery} ORDER BY id DESC"),

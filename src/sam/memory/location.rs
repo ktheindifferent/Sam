@@ -224,7 +224,7 @@ impl Location {
     /// Asynchronously returns the number of location records in the database.
     pub async fn count_async() -> Result<i64> {
         let client = Config::client_async().await?;
-        let execquery = format!("SELECT COUNT(*) FROM {}", Self::sql_table_name());
+        let execquery = format!("SELECT COUNT(*) FROM {}", Self::sql_table_name()); // Safe: returns hardcoded "locations"
         let rows = client.query(execquery.as_str(), &[]).await?;
         let counter: i64 = rows[0].get("count");
         Ok(counter)
