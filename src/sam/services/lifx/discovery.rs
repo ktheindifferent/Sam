@@ -5,8 +5,10 @@ use lifx_rs::lan::{Message, RawMessage};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Instant;
+use crate::sam::services::thread_manager::{self, ThreadConfig};
 
 pub struct DiscoveryService {
     bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
@@ -24,7 +26,20 @@ impl DiscoveryService {
         let bulbs = Arc::new(Mutex::new(HashMap::new()));
         let receiver_bulbs = bulbs.clone();
 
-        thread::spawn(move || Self::discovery_worker(recv_sock, source, receiver_bulbs));
+        let discovery_config = ThreadConfig {
+            name: "lifx_discovery_worker".to_string(),
+            restart_on_panic: true,
+            max_restarts: 5,
+            restart_delay_ms: 2000,
+            health_check_interval_ms: Some(30000),
+            enable_monitoring: true,
+        };
+        
+        thread_manager::spawn_with_config(discovery_config, move |shutdown_signal, _health_rx| {
+            log::info!("LIFX discovery worker started");
+            Self::discovery_worker_with_shutdown(recv_sock, source, receiver_bulbs, shutdown_signal);
+            log::info!("LIFX discovery worker stopped");
+        });
 
         let mut service = Self {
             bulbs,
@@ -72,13 +87,20 @@ impl DiscoveryService {
         &self.protocol
     }
 
-    fn discovery_worker(
+    fn discovery_worker_with_shutdown(
         recv_sock: UdpSocket,
         source: u32,
         receiver_bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
+        shutdown_signal: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) {
+        // Set non-blocking mode to allow checking shutdown signal
+        if let Err(e) = recv_sock.set_nonblocking(true) {
+            log::error!("Failed to set socket to non-blocking: {}", e);
+            return;
+        }
+        
         let mut buf = [0; 1024];
-        loop {
+        while !shutdown_signal.load(Ordering::Relaxed) {
             match recv_sock.recv_from(&mut buf) {
                 Ok((0, addr)) => log::info!("Received a zero-byte datagram from {:?}", addr),
                 Ok((nbytes, addr)) => match RawMessage::unpack(&buf[0..nbytes]) {
@@ -102,17 +124,30 @@ impl DiscoveryService {
                     Err(e) => log::info!("Error unpacking raw message from {}: {}", addr, e),
                 },
                 Err(e) => {
-                    log::error!("recv_from network error: {:?}", e);
                     match e.kind() {
-                        std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock => continue,
+                        std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock => {
+                            // Sleep briefly to avoid busy-waiting in non-blocking mode
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                            continue;
+                        }
                         _ => {
-                            log::error!("Fatal network error in LIFX discovery, breaking loop");
+                            log::error!("Fatal network error in LIFX discovery: {:?}", e);
                             break;
                         }
                     }
                 }
             }
         }
+    }
+    
+    // Keep the original method for backward compatibility
+    fn discovery_worker(
+        recv_sock: UdpSocket,
+        source: u32,
+        receiver_bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
+    ) {
+        let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        Self::discovery_worker_with_shutdown(recv_sock, source, receiver_bulbs, shutdown);
     }
 
     pub fn refresh_devices(&self) {

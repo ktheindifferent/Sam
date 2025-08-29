@@ -64,6 +64,7 @@ pub mod sprec;
 pub mod ssh;
 pub mod storage;
 pub mod stt;
+pub mod thread_manager;
 pub mod tts;
 pub mod voice;
 pub mod vulnerability_scanner;
