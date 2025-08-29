@@ -14,10 +14,11 @@ use rouille::try_or_400;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
 use std::thread;
-use std::thread::spawn;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+use crate::sam::services::thread_manager::{self, ThreadConfig};
 
 use rouille::post_input;
 use rouille::Response;
@@ -667,8 +668,18 @@ pub fn start(config: Config) -> StopHandle {
             let stop_flag_bg2 = stop_flag_bg.clone();
 
             // Background thread
-            thread::spawn(move || {
-                while !stop_flag_bg2.load(Ordering::SeqCst) {
+            let bg_config = ThreadConfig {
+                name: "lifx_api_background".to_string(),
+                restart_on_panic: true,
+                max_restarts: 3,
+                restart_delay_ms: 2000,
+                health_check_interval_ms: Some(30000),
+                enable_monitoring: true,
+            };
+            
+            thread_manager::spawn_with_config(bg_config, move |shutdown_signal, _health_rx| {
+                log::info!("LIFX API background thread started");
+                while !stop_flag_bg2.load(Ordering::SeqCst) && !shutdown_signal.load(Ordering::Relaxed) {
                     let mut lock = match th_arc_mgr.lock() {
                         Ok(l) => l,
                         Err(e) => {
@@ -682,13 +693,25 @@ pub fn start(config: Config) -> StopHandle {
                     std::mem::drop(lock);
                     thread::sleep(Duration::from_millis(1000));
                 }
+                log::info!("LIFX API background thread stopped");
             });
 
             let th2_arc_mgr = Arc::clone(&mgr_arc);
             let stop_flag_http2 = stop_flag_http.clone();
 
             // HTTP server thread
-            let http_thread = thread::spawn(move || {
+            let http_config = ThreadConfig {
+                name: "lifx_api_http_server".to_string(),
+                restart_on_panic: false,  // HTTP server shouldn't auto-restart
+                max_restarts: 0,
+                restart_delay_ms: 0,
+                health_check_interval_ms: Some(10000),
+                enable_monitoring: true,
+            };
+            
+            let http_thread = thread::Builder::new()
+                .name("lifx_api_http_server".to_string())
+                .spawn(move || {
                 let stop_flag_http2_clone = stop_flag_http2.clone();
                 let server = rouille::Server::new(
                     format!("0.0.0.0:{}", config.port).as_str(),
@@ -1163,7 +1186,7 @@ pub fn start(config: Config) -> StopHandle {
                     server.poll();
                     thread::sleep(Duration::from_millis(10));
                 }
-            }); // <-- this is the correct closing for thread::spawn
+            }).unwrap(); // <-- this is the correct closing for thread::spawn
                 // <-- this closes the Ok(mgr) arm
             return StopHandle {
                 stop_flag,

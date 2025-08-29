@@ -16,9 +16,11 @@ use std::{
     path::{Path, PathBuf},
     thread,
     time::{SystemTime, UNIX_EPOCH},
+    sync::atomic::Ordering,
 };
 use threadpool::ThreadPool;
 use crate::sam::services::errors::{CommonError, Result, ErrorContext};
+use crate::sam::services::thread_manager::{self, ThreadConfig};
 
 pub fn init() {
     // Initialize sound processing stages
@@ -29,7 +31,16 @@ pub fn init() {
 
 /// Caches VWAV files for observations.
 pub fn cache_vwavs() {
-    thread::spawn(move || {
+    let config = ThreadConfig {
+        name: "vwav_cache".to_string(),
+        restart_on_panic: true,
+        max_restarts: 3,
+        restart_delay_ms: 5000,
+        health_check_interval_ms: Some(60000),
+        enable_monitoring: true,
+    };
+    
+    thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
         let pool = ThreadPool::new(12); // Configurable thread pool size
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query
@@ -244,7 +255,19 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
 
 /// Stage One: Removes noise and trims silence.
 pub fn s1_init() {
-    thread::spawn(move || loop {
+    let config = ThreadConfig {
+        name: "sound_s1_processor".to_string(),
+        restart_on_panic: true,
+        max_restarts: 5,
+        restart_delay_ms: 3000,
+        health_check_interval_ms: Some(30000),
+        enable_monitoring: true,
+    };
+    
+    thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
+        log::info!("Sound S1 processor started");
+        
+        while !shutdown_signal.load(Ordering::Relaxed) {
         let thing_paths = match std::fs::read_dir("/opt/sam/tmp/sound") {
             Ok(paths) => paths,
             Err(e) => {
@@ -300,7 +323,12 @@ pub fn s1_init() {
                     }
                 }
             }
+            
+            // Sleep briefly to avoid busy loop
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
+        
+        log::info!("Sound S1 processor stopped");
     });
 }
 
@@ -309,8 +337,19 @@ pub fn s1_init() {
 /// Stage Two: Stitches consecutive audio clips into a single file for further processing.
 /// Results are stored in /opt/sam/tmp/sound/s3.
 pub fn s2_init() {
-    thread::spawn(move || {
-        loop {
+    let config = ThreadConfig {
+        name: "sound_s2_processor".to_string(),
+        restart_on_panic: true,
+        max_restarts: 5,
+        restart_delay_ms: 3000,
+        health_check_interval_ms: Some(30000),
+        enable_monitoring: true,
+    };
+    
+    thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
+        log::info!("Sound S2 processor started");
+        
+        while !shutdown_signal.load(Ordering::Relaxed) {
             // Iterate over all "thing" directories in /opt/sam/tmp/sound
             let thing_paths = match std::fs::read_dir("/opt/sam/tmp/sound") {
                 Ok(paths) => paths,
@@ -506,7 +545,12 @@ pub fn s2_init() {
                     }
                 }
             }
+            
+            // Sleep briefly to avoid busy loop
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
+        
+        log::info!("Sound S2 processor stopped");
     });
 }
 
@@ -515,14 +559,24 @@ pub fn s2_init() {
 /// Consumes files from /opt/sam/tmp/sound/*/s3, runs STT, observes, and cleans up.
 /// Uses a thread pool for parallel processing.
 pub fn s3_init() {
-    thread::spawn(move || {
+    let config = ThreadConfig {
+        name: "sound_s3_processor".to_string(),
+        restart_on_panic: true,
+        max_restarts: 5,
+        restart_delay_ms: 3000,
+        health_check_interval_ms: Some(30000),
+        enable_monitoring: true,
+    };
+    
+    thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
+        log::info!("Sound S3 processor started");
         // Use a thread pool with a configurable number of threads (default: 3)
         let pool = threadpool::Builder::new().num_threads(3).build();
 
         // Track files currently being processed to avoid duplicate work
         let mut processing_queue: Vec<String> = Vec::new();
 
-        loop {
+        while !shutdown_signal.load(Ordering::Relaxed) {
             // Iterate over all "thing" directories in /opt/sam/tmp/sound
             let thing_paths = match std::fs::read_dir("/opt/sam/tmp/sound") {
                 Ok(paths) => paths,
@@ -601,6 +655,8 @@ pub fn s3_init() {
             // Sleep briefly to avoid busy-waiting
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
+        
+        log::info!("Sound S3 processor stopped");
     });
 }
 

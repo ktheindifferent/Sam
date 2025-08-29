@@ -9,16 +9,35 @@
 
 use simple_websockets::{Event, Responder};
 use std::collections::HashMap;
-use std::thread;
+use std::sync::atomic::Ordering;
+use crate::sam::services::thread_manager::{self, ThreadConfig};
 
 pub fn init() {
-    thread::spawn(move || {
+    let config = ThreadConfig {
+        name: "websocket_server".to_string(),
+        restart_on_panic: true,
+        max_restarts: 5,
+        restart_delay_ms: 3000,
+        health_check_interval_ms: Some(30000),
+        enable_monitoring: true,
+    };
+    
+    thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
+        log::info!("WebSocket server starting on port 2794");
+        
         // listen for WebSockets on port 2794:
-        let event_hub = simple_websockets::launch(2794).expect("failed to listen on port 2794");
+        let event_hub = match simple_websockets::launch(2794) {
+            Ok(hub) => hub,
+            Err(e) => {
+                log::error!("Failed to listen on port 2794: {}", e);
+                return;
+            }
+        };
+        
         // map between client ids and the client's `Responder`:
         let mut clients: HashMap<u64, Responder> = HashMap::new();
 
-        loop {
+        while !shutdown_signal.load(Ordering::Relaxed) {
             match event_hub.poll_event() {
                 Event::Connect(client_id, responder) => {
                     log::info!("A WSS client connected with id #{}", client_id);
@@ -45,6 +64,11 @@ pub fn init() {
                     }
                 }
             }
+            
+            // Small sleep to prevent busy-waiting
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
+        
+        log::info!("WebSocket server stopped");
     });
 }
