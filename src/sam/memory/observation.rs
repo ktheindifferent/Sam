@@ -129,7 +129,7 @@ impl Observation {
         if rows.is_empty() {
             let mut obb_obv_str = String::new();
             for obv in &self.observation_objects {
-                obb_obv_str += format!("{obv},").as_str();
+                obb_obv_str += format!("{},", obv.name).as_str();
             }
 
             let mut obb_humans_str = String::new();
@@ -179,7 +179,7 @@ impl Observation {
 
             let mut obb_obv_str = String::new();
             for obv in &self.observation_objects {
-                obb_obv_str += format!("{obv},").as_str();
+                obb_obv_str += format!("{},", obv.name).as_str();
             }
 
             let mut obb_humans_str = String::new();
@@ -220,7 +220,7 @@ impl Observation {
         let rows = Self::select_async(None, None, None, Some(pg_query.clone())).await?;
         let mut obb_obv_str = String::new();
         for obv in &self.observation_objects {
-            obb_obv_str += format!("{obv},").as_str();
+            obb_obv_str += format!("{},", obv.name).as_str();
         }
         let mut obb_humans_str = String::new();
         for hum in &self.observation_humans {
@@ -393,15 +393,8 @@ impl Observation {
             let split = object.split(",");
             for s in split {
                 if !s.is_empty() {
-                    let obj = ObservationObjects::from_str(s);
-                    match obj {
-                        Ok(obj) => observation_objects.push(obj),
-                        Err(err) => log::error!(
-                            "sql_observation_objects: {:?}: {:?}",
-                            observation_objects.clone(),
-                            err
-                        ),
-                    }
+                    // Parse as simple object name for backward compatibility
+                    observation_objects.push(ObservationObjects::new(s.to_string(), 1.0));
                 }
             }
         }

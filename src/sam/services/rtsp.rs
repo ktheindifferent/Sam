@@ -9,8 +9,17 @@
 
 use std::path::Path;
 use std::thread;
+use tokio::sync::mpsc;
 
-// TO
+// Import deep learning and recording modules
+pub mod rtsp_dl_simple;
+pub mod rtsp_recording;
+
+use rtsp_dl_simple::{Alert, start_deep_learning_processor};
+use rtsp_recording::{
+    RecordingManager, RecordingConfig, RecordingTrigger, VideoEncoding, 
+    VideoCodec, AudioCodec, Resolution, PlaybackService, create_recording_tables
+};
 
 pub fn init() {
     // Initialize RTSP Cameras
@@ -58,9 +67,108 @@ pub fn init() {
                         crate::sam::tools::uinx_cmd(&script);
                     });
 
-                    // TODO - Perform Deep Learning on RTSP streams and log observations
+                    // Perform Deep Learning on RTSP streams and log observations
+                    let rtsp_dl_thing = thing.clone();
+                    thread::spawn(move || {
+                        // Create runtime for async operations
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        
+                        rt.block_on(async {
+                            // Create alert channel
+                            let (alert_tx, mut alert_rx) = mpsc::channel::<Alert>(100);
+                            
+                            // Spawn alert handler
+                            tokio::spawn(async move {
+                                while let Some(alert) = alert_rx.recv().await {
+                                    log::info!("RTSP Alert: {:?}", alert);
+                                    // Here you could send notifications, update UI, etc.
+                                }
+                            });
+                            
+                            // Start deep learning processor
+                            let rtsp_address = format!(
+                                "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
+                                rtsp_dl_thing.username,
+                                rtsp_dl_thing.password,
+                                rtsp_dl_thing.ip_address
+                            );
+                            
+                            if let Err(e) = start_deep_learning_processor(
+                                rtsp_dl_thing.oid.clone(),
+                                rtsp_address,
+                                alert_tx,
+                            ).await {
+                                log::error!("Deep learning processor error for {}: {}", rtsp_dl_thing.oid, e);
+                            }
+                        });
+                    });
 
-                    // TODO - Record slected RTSP streams to a network location
+                    // Record selected RTSP streams to a network location
+                    let rtsp_rec_thing = thing.clone();
+                    thread::spawn(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        
+                        rt.block_on(async {
+                            // Create recording tables if not exists
+                            if let Err(e) = create_recording_tables() {
+                                log::error!("Failed to create recording tables: {}", e);
+                                return;
+                            }
+                            
+                            // Initialize recording manager
+                            let storage_path = std::path::PathBuf::from(format!("/opt/sam/recordings/{}", rtsp_rec_thing.oid));
+                            let mut recording_manager = match RecordingManager::new(storage_path.clone()) {
+                                Ok(mgr) => mgr,
+                                Err(e) => {
+                                    log::error!("Failed to create recording manager: {}", e);
+                                    return;
+                                }
+                            };
+                            
+                            // Configure recording for this camera
+                            let rtsp_address = format!(
+                                "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
+                                rtsp_rec_thing.username,
+                                rtsp_rec_thing.password,
+                                rtsp_rec_thing.ip_address
+                            );
+                            
+                            let config = RecordingConfig {
+                                thing_oid: rtsp_rec_thing.oid.clone(),
+                                rtsp_url: rtsp_address,
+                                storage_path,
+                                network_storage: None, // Can be configured based on thing properties
+                                encoding: VideoEncoding {
+                                    codec: VideoCodec::H264,
+                                    bitrate: 2000,
+                                    fps: 25,
+                                    resolution: Resolution { width: 1920, height: 1080 },
+                                    audio_codec: AudioCodec::AAC,
+                                    audio_bitrate: 128,
+                                },
+                                segment_duration: std::time::Duration::from_secs(3600), // 1 hour segments
+                                retention_days: 30,
+                                triggers: vec![
+                                    RecordingTrigger::Motion,
+                                    RecordingTrigger::Continuous,
+                                ],
+                                max_storage_gb: 100.0,
+                            };
+                            
+                            if let Err(e) = recording_manager.add_camera(config) {
+                                log::error!("Failed to add camera config: {}", e);
+                                return;
+                            }
+                            
+                            // Start checking triggers periodically
+                            loop {
+                                if let Err(e) = recording_manager.check_triggers().await {
+                                    log::error!("Error checking recording triggers: {}", e);
+                                }
+                                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                            }
+                        });
+                    });
                 }
             }
             Err(e) => {
