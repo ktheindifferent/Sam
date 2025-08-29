@@ -11,8 +11,13 @@ use chrono::{DateTime, Utc};
 use log::{info, error, debug, warn};
 
 mod security;
+mod error;
+#[cfg(test)]
+mod tests;
+
 use crate::sam::network_monitor::NetworkMonitor;
 use security::{WebSocketLimits, WebSocketSecurityConfig, WsSecurityError, MessagePriority, SessionInfo};
+use error::{WebSocketError, safe_ops};
 
 /// WebSocket message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -395,9 +400,8 @@ async fn handle_connection(
                                             message: "Failed to process message".to_string(),
                                             code: Some(400),
                                         };
-                                        let _ = ws_sender.send(Message::Text(
-                                            serde_json::to_string(&error_msg).unwrap()
-                                        )).await;
+                                        let msg_json = safe_ops::serialize_json_or_default(&error_msg, r#"{"type":"error","message":"Authentication failed"}"#);
+                                        let _ = ws_sender.send(Message::Text(msg_json)).await;
                                     }
                                 } else {
                                     warn!("Invalid message format from client {}", client_id);
@@ -429,9 +433,8 @@ async fn handle_connection(
                                     },
                                     code: Some(429),
                                 };
-                                let _ = ws_sender.send(Message::Text(
-                                    serde_json::to_string(&error_msg).unwrap()
-                                )).await;
+                                let msg_json = safe_ops::serialize_json_or_default(&error_msg, r#"{"type":"error","message":"Message validation failed"}"#);
+                                let _ = ws_sender.send(Message::Text(msg_json)).await;
                                 
                                 // For session expiry, close connection
                                 if matches!(e, WsSecurityError::SessionExpired) {
@@ -603,12 +606,15 @@ async fn handle_client_message(
             security_limits.connection_tracker.update_activity(
                 clients.read().await.get(client_id)
                     .map(|c| c.remote_addr.ip())
-                    .unwrap_or_else(|| "127.0.0.1".parse().unwrap()),
+                    .unwrap_or_else(|| safe_ops::parse_ip_or_default("127.0.0.1")),
                 client_id
             ).await;
             
             let ack = WsMessage::HeartbeatAck { timestamp };
-            let msg_json = serde_json::to_string(&ack)?;
+            let msg_json = safe_ops::serialize_json(&ack).map_err(|e| {
+                error!("Failed to serialize heartbeat ack: {}", e);
+                e
+            })?;
             ws_sender.send(Message::Text(msg_json)).await?;
         }
         
