@@ -59,6 +59,10 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation, TokenData, errors::ErrorKind};
 
+// Import error module for safe operations
+use super::error::{WebSocketError, safe_ops};
+pub use super::error::WsSecurityError;
+
 const MAX_MESSAGE_SIZE: usize = 64 * 1024; // 64KB
 const MAX_MESSAGES_PER_MINUTE: u32 = 100;
 const MAX_CONNECTIONS_PER_IP: usize = 5;
@@ -68,7 +72,10 @@ const MESSAGE_QUEUE_SIZE: usize = 1000;
 
 // Pattern validation for messages
 static INJECTION_PATTERNS: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)(<script|javascript:|onerror=|onload=|onclick=|\.\./|%2e%2e|%252e)").unwrap()
+    safe_ops::compile_regex_or_default(
+        r"(?i)(<script|javascript:|onerror=|onload=|onclick=|\.\./|%2e%2e|%252e)",
+        r"(?i)(script|javascript)"  // Fallback to simpler pattern if compilation fails
+    )
 });
 
 /// WebSocket security configuration
@@ -103,48 +110,7 @@ impl Default for WebSocketSecurityConfig {
     }
 }
 
-/// WebSocket error types
-#[derive(Debug, Clone, Serialize)]
-pub enum WsSecurityError {
-    MessageTooLarge { size: usize, max_size: usize },
-    RateLimitExceeded { limit: u32, window: Duration },
-    TooManyConnections { ip: String, limit: usize },
-    SessionExpired,
-    SessionInvalid,
-    MessageValidationFailed(String),
-    InjectionAttempt(String),
-    UnauthorizedAction(String),
-    ConnectionIdle,
-    QueueFull,
-    InvalidToken(String),
-    TokenExpired,
-    MissingToken,
-}
-
-impl std::fmt::Display for WsSecurityError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WsSecurityError::MessageTooLarge { size, max_size } => 
-                write!(f, "Message size {} exceeds maximum {}", size, max_size),
-            WsSecurityError::RateLimitExceeded { limit, window } => 
-                write!(f, "Rate limit exceeded: {} messages per {:?}", limit, window),
-            WsSecurityError::TooManyConnections { ip, limit } => 
-                write!(f, "Too many connections from {}: limit {}", ip, limit),
-            WsSecurityError::SessionExpired => write!(f, "Session has expired"),
-            WsSecurityError::SessionInvalid => write!(f, "Invalid session"),
-            WsSecurityError::MessageValidationFailed(msg) => write!(f, "Message validation failed: {}", msg),
-            WsSecurityError::InjectionAttempt(msg) => write!(f, "Injection attempt detected: {}", msg),
-            WsSecurityError::UnauthorizedAction(msg) => write!(f, "Unauthorized action: {}", msg),
-            WsSecurityError::ConnectionIdle => write!(f, "Connection idle timeout"),
-            WsSecurityError::QueueFull => write!(f, "Message queue is full"),
-            WsSecurityError::InvalidToken(msg) => write!(f, "Invalid token: {}", msg),
-            WsSecurityError::TokenExpired => write!(f, "Token has expired"),
-            WsSecurityError::MissingToken => write!(f, "Token is missing"),
-        }
-    }
-}
-
-impl std::error::Error for WsSecurityError {}
+// Error types are now defined in error.rs module - re-exported above
 
 /// Rate limiter for WebSocket connections
 #[derive(Debug)]
@@ -634,10 +600,10 @@ impl SessionManager {
         match decode::<JwtClaims>(token, &key, &validation) {
             Ok(token_data) => {
                 // Additional validation: check if token is not expired
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as usize;
+                let now = safe_ops::unix_timestamp().map_err(|e| {
+                    error!("Failed to get system time: {}", e);
+                    WsSecurityError::InvalidToken("System time error".to_string())
+                })?;
                 
                 if token_data.claims.exp < now {
                     error!("Token expired for client {}", token_data.claims.client_id);
@@ -698,10 +664,10 @@ impl SessionManager {
     /// - Includes unique session_id for tracking
     /// - Sets appropriate expiry time based on configuration
     pub fn generate_token(&self, client_id: &str, user_id: &str, permissions: Vec<String>) -> Result<String, WsSecurityError> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as usize;
+        let now = safe_ops::unix_timestamp().map_err(|e| {
+            error!("Failed to get system time for token generation: {}", e);
+            WsSecurityError::InvalidToken("System time error".to_string())
+        })?;
         
         let claims = JwtClaims {
             sub: user_id.to_string(),
@@ -946,7 +912,7 @@ mod tests {
         };
         
         let tracker = ConnectionTracker::new(config);
-        let ip = "127.0.0.1".parse().unwrap();
+        let ip = safe_ops::parse_ip_or_default("127.0.0.1");
         
         // First 2 connections should succeed
         assert!(tracker.add_connection(ip, "client1".to_string()).await.is_ok());
