@@ -3,7 +3,7 @@ use bollard::Docker;
 use log::{error, info, warn};
 use once_cell::sync::{Lazy, OnceCell};
 use std::process::Command;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 use anyhow::{Result, Context};
@@ -236,7 +236,8 @@ pub async fn connect() -> Result<Pool> {
     
     // Check if pool already exists
     {
-        let pool_guard = pool_holder.read().unwrap();
+        let pool_guard = pool_holder.read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire read lock for pool: {}", e))?;
         if let Some(ref pool) = *pool_guard {
             return Ok(pool.clone());
         }
@@ -247,7 +248,8 @@ pub async fn connect() -> Result<Pool> {
     
     // Store for future use (write lock)
     {
-        let mut pool_guard = pool_holder.write().unwrap();
+        let mut pool_guard = pool_holder.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock for pool: {}", e))?;
         *pool_guard = Some(pool.clone());
     }
     
@@ -257,7 +259,8 @@ pub async fn connect() -> Result<Pool> {
 /// Reset the connection pool (useful for testing and reconnection)
 pub async fn reset_pool() -> Result<()> {
     if let Some(pool_holder) = POOL.get() {
-        let mut pool_guard = pool_holder.write().unwrap();
+        let mut pool_guard = pool_holder.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock for pool reset: {}", e))?;
         *pool_guard = None;
     }
     Ok(())

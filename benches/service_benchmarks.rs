@@ -151,7 +151,7 @@ fn bench_concurrent_access(c: &mut Criterion) {
                         let data = data.clone();
                         let handle = thread::spawn(move || {
                             for _ in 0..100 {
-                                let mut guard = data.lock().unwrap();
+                                let mut guard = data.lock().expect("Failed to acquire mutex lock in benchmark");
                                 *guard += 1;
                             }
                         });
@@ -159,7 +159,7 @@ fn bench_concurrent_access(c: &mut Criterion) {
                     }
                     
                     for handle in handles {
-                        handle.join().unwrap();
+                        handle.join().expect("Thread panicked during benchmark");
                     }
                 });
             },
