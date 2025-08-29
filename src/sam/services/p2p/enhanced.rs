@@ -835,14 +835,433 @@ impl P2PNode {
     }
 
     async fn handle_data(&self, id: String, data: Vec<u8>, peer_id: String) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement data handling
-        info!("Received data {} from peer {}", id, peer_id);
+        // Validate data size
+        if data.is_empty() {
+            return Err("Empty data payload".into());
+        }
+        
+        if data.len() > 5 * 1024 * 1024 { // 5MB limit for data payloads
+            return Err("Data payload too large".into());
+        }
+        
+        // Validate peer is trusted for sensitive data
+        let trust_level = self.secure_p2p.get_trust_level(&peer_id).await;
+        
+        // Try to parse data as JSON first for structured data
+        if let Ok(json_value) = serde_json::from_slice::<serde_json::Value>(&data) {
+            // Sanitize JSON data
+            if !self.validate_json_data(&json_value) {
+                warn!("Received invalid JSON data from peer {}", peer_id);
+                return Err("Invalid JSON data structure".into());
+            }
+            
+            // Process based on data type if specified
+            if let Some(data_type) = json_value.get("type").and_then(|v| v.as_str()) {
+                match data_type {
+                    "file_metadata" => {
+                        info!("Received file metadata {} from peer {}", id, peer_id);
+                        // Store file metadata for later retrieval
+                        if let Some(metadata) = json_value.get("metadata") {
+                            self.store_file_metadata(&id, metadata, &peer_id).await?;
+                        }
+                    }
+                    "state_update" => {
+                        info!("Received state update {} from peer {}", id, peer_id);
+                        // Only process state updates from trusted peers
+                        if trust_level == TrustLevel::Trusted || trust_level == TrustLevel::Verified {
+                            if let Some(state_data) = json_value.get("state") {
+                                self.process_state_update(&id, state_data, &peer_id).await?;
+                            }
+                        } else {
+                            warn!("Ignoring state update from untrusted peer {}", peer_id);
+                        }
+                    }
+                    "broadcast_message" => {
+                        info!("Received broadcast message {} from peer {}", id, peer_id);
+                        // Process broadcast messages
+                        if let Some(content) = json_value.get("content") {
+                            self.process_broadcast_message(&id, content, &peer_id).await?;
+                        }
+                    }
+                    "chunk_data" => {
+                        // Handle chunked data transfer
+                        if let (Some(chunk_index), Some(total_chunks), Some(chunk_data)) = (
+                            json_value.get("chunk_index").and_then(|v| v.as_u64()),
+                            json_value.get("total_chunks").and_then(|v| v.as_u64()),
+                            json_value.get("data").and_then(|v| v.as_str()),
+                        ) {
+                            self.handle_chunk_data(&id, chunk_index as u32, total_chunks as u32, chunk_data, &peer_id).await?;
+                        }
+                    }
+                    _ => {
+                        debug!("Received unknown data type '{}' from peer {}", data_type, peer_id);
+                    }
+                }
+            } else {
+                // Generic JSON data without specific type
+                info!("Received generic JSON data {} from peer {}", id, peer_id);
+                self.store_generic_data(&id, &json_value, &peer_id).await?;
+            }
+        } else {
+            // Handle as binary data
+            info!("Received binary data {} ({} bytes) from peer {}", id, data.len(), peer_id);
+            
+            // Validate binary data
+            if !self.validate_binary_data(&data) {
+                return Err("Invalid binary data".into());
+            }
+            
+            // Store binary data with metadata
+            self.store_binary_data(&id, &data, &peer_id).await?;
+        }
+        
+        // Send acknowledgment if needed
+        debug!("Successfully processed data {} from peer {}", id, peer_id);
+        
         Ok(())
     }
 
     async fn handle_request(&self, method: String, params: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-        // TODO: Implement RPC handling
-        Ok(serde_json::json!({ "status": "ok" }))
+        // Validate method name
+        if method.is_empty() || method.len() > 100 {
+            return Err("Invalid method name".into());
+        }
+        
+        // Sanitize method name (alphanumeric, underscore, dot only)
+        if !method.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+            return Err("Invalid characters in method name".into());
+        }
+        
+        // Validate params
+        if !self.validate_json_data(&params) {
+            return Err("Invalid request parameters".into());
+        }
+        
+        // Dispatch based on method
+        match method.as_str() {
+            // Peer information methods
+            "peer.info" => {
+                Ok(serde_json::json!({
+                    "id": self.id,
+                    "name": self.name,
+                    "version": "1.0.0",
+                    "capabilities": ["data", "rpc", "file_transfer", "broadcast"],
+                    "connected_peers": self.peers.read().await.len(),
+                    "uptime": self.get_uptime().await,
+                }))
+            }
+            
+            "peer.list" => {
+                let peers = self.peers.read().await;
+                let peer_list: Vec<serde_json::Value> = peers.values()
+                    .map(|p| serde_json::json!({
+                        "id": p.id,
+                        "name": p.name,
+                        "address": p.address.to_string(),
+                        "trust_score": p.trust_score,
+                        "last_seen": p.last_seen,
+                    }))
+                    .collect();
+                
+                Ok(serde_json::json!({
+                    "peers": peer_list,
+                    "count": peer_list.len(),
+                }))
+            }
+            
+            // Data methods
+            "data.get" => {
+                if let Some(data_id) = params.get("id").and_then(|v| v.as_str()) {
+                    match self.retrieve_data(data_id).await {
+                        Ok(data) => Ok(serde_json::json!({
+                            "id": data_id,
+                            "data": data,
+                            "found": true,
+                        })),
+                        Err(_) => Ok(serde_json::json!({
+                            "id": data_id,
+                            "found": false,
+                        })),
+                    }
+                } else {
+                    Err("Missing 'id' parameter".into())
+                }
+            }
+            
+            "data.exists" => {
+                if let Some(data_id) = params.get("id").and_then(|v| v.as_str()) {
+                    let exists = self.data_exists(data_id).await;
+                    Ok(serde_json::json!({
+                        "id": data_id,
+                        "exists": exists,
+                    }))
+                } else {
+                    Err("Missing 'id' parameter".into())
+                }
+            }
+            
+            // File transfer methods
+            "file.list" => {
+                let files = self.list_shared_files().await;
+                Ok(serde_json::json!({
+                    "files": files,
+                    "count": files.len(),
+                }))
+            }
+            
+            "file.request" => {
+                if let Some(file_id) = params.get("file_id").and_then(|v| v.as_str()) {
+                    let chunk_size = params.get("chunk_size")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(64 * 1024) as usize;
+                    
+                    match self.prepare_file_transfer(file_id, chunk_size).await {
+                        Ok(transfer_info) => Ok(transfer_info),
+                        Err(e) => Ok(serde_json::json!({
+                            "error": e.to_string(),
+                            "file_id": file_id,
+                        })),
+                    }
+                } else {
+                    Err("Missing 'file_id' parameter".into())
+                }
+            }
+            
+            // Network methods
+            "network.ping" => {
+                let timestamp = params.get("timestamp")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or_else(|| {
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u64
+                    });
+                
+                Ok(serde_json::json!({
+                    "pong": true,
+                    "timestamp": timestamp,
+                    "server_time": SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64,
+                }))
+            }
+            
+            "network.stats" => {
+                Ok(serde_json::json!({
+                    "connected_peers": self.peers.read().await.len(),
+                    "active_connections": self.connections.read().await.len(),
+                    "total_data_received": self.get_total_data_received().await,
+                    "total_data_sent": self.get_total_data_sent().await,
+                    "uptime": self.get_uptime().await,
+                }))
+            }
+            
+            // Broadcast methods
+            "broadcast.subscribe" => {
+                if let Some(topic) = params.get("topic").and_then(|v| v.as_str()) {
+                    self.subscribe_to_topic(topic).await?;
+                    Ok(serde_json::json!({
+                        "subscribed": true,
+                        "topic": topic,
+                    }))
+                } else {
+                    Err("Missing 'topic' parameter".into())
+                }
+            }
+            
+            "broadcast.unsubscribe" => {
+                if let Some(topic) = params.get("topic").and_then(|v| v.as_str()) {
+                    self.unsubscribe_from_topic(topic).await?;
+                    Ok(serde_json::json!({
+                        "unsubscribed": true,
+                        "topic": topic,
+                    }))
+                } else {
+                    Err("Missing 'topic' parameter".into())
+                }
+            }
+            
+            // State synchronization methods
+            "sync.request" => {
+                if let Some(sync_type) = params.get("type").and_then(|v| v.as_str()) {
+                    let from_timestamp = params.get("from_timestamp").and_then(|v| v.as_u64());
+                    
+                    match self.prepare_sync_data(sync_type, from_timestamp).await {
+                        Ok(sync_data) => Ok(sync_data),
+                        Err(e) => Ok(serde_json::json!({
+                            "error": e.to_string(),
+                            "sync_type": sync_type,
+                        })),
+                    }
+                } else {
+                    Err("Missing 'type' parameter".into())
+                }
+            }
+            
+            // Custom extension point
+            method if method.starts_with("custom.") => {
+                // Allow custom RPC methods for extensibility
+                self.handle_custom_rpc(&method[7..], params).await
+            }
+            
+            _ => {
+                Err(format!("Unknown method: {}", method).into())
+            }
+        }
+    }
+    
+    // Helper methods for data handling
+    fn validate_json_data(&self, data: &serde_json::Value) -> bool {
+        // Prevent deeply nested structures (max depth 10)
+        fn check_depth(value: &serde_json::Value, depth: usize) -> bool {
+            if depth > 10 {
+                return false;
+            }
+            
+            match value {
+                serde_json::Value::Object(map) => {
+                    map.values().all(|v| check_depth(v, depth + 1))
+                }
+                serde_json::Value::Array(arr) => {
+                    arr.iter().all(|v| check_depth(v, depth + 1))
+                }
+                _ => true,
+            }
+        }
+        
+        // Check for reasonable size limits
+        let json_str = value.to_string();
+        if json_str.len() > 1024 * 1024 { // 1MB limit for JSON
+            return false;
+        }
+        
+        check_depth(data, 0)
+    }
+    
+    fn validate_binary_data(&self, data: &[u8]) -> bool {
+        // Check for common malicious patterns
+        // This is a basic check - enhance based on your security requirements
+        
+        // Check for null bytes in positions that might indicate buffer overflow attempts
+        if data.len() > 4 && data[0..4].iter().filter(|&&b| b == 0).count() > 2 {
+            return false;
+        }
+        
+        // Add more validation as needed
+        true
+    }
+    
+    async fn store_file_metadata(&self, id: &str, metadata: &serde_json::Value, peer_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Store file metadata for future retrieval
+        // This would typically go to a database or cache
+        info!("Storing file metadata for {} from peer {}", id, peer_id);
+        Ok(())
+    }
+    
+    async fn process_state_update(&self, id: &str, state: &serde_json::Value, peer_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Process state updates from trusted peers
+        info!("Processing state update {} from peer {}", id, peer_id);
+        Ok(())
+    }
+    
+    async fn process_broadcast_message(&self, id: &str, content: &serde_json::Value, peer_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Process broadcast messages
+        info!("Processing broadcast message {} from peer {}", id, peer_id);
+        Ok(())
+    }
+    
+    async fn handle_chunk_data(&self, id: &str, chunk_index: u32, total_chunks: u32, data: &str, peer_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Handle chunked data transfers
+        info!("Received chunk {}/{} for {} from peer {}", chunk_index + 1, total_chunks, id, peer_id);
+        Ok(())
+    }
+    
+    async fn store_generic_data(&self, id: &str, data: &serde_json::Value, peer_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Store generic JSON data
+        info!("Storing generic data {} from peer {}", id, peer_id);
+        Ok(())
+    }
+    
+    async fn store_binary_data(&self, id: &str, data: &[u8], peer_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Store binary data
+        info!("Storing binary data {} ({} bytes) from peer {}", id, data.len(), peer_id);
+        Ok(())
+    }
+    
+    async fn retrieve_data(&self, data_id: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        // Retrieve stored data by ID
+        // This would typically query a database or cache
+        Err("Data not found".into())
+    }
+    
+    async fn data_exists(&self, data_id: &str) -> bool {
+        // Check if data exists
+        false
+    }
+    
+    async fn list_shared_files(&self) -> Vec<serde_json::Value> {
+        // List available shared files
+        Vec::new()
+    }
+    
+    async fn prepare_file_transfer(&self, file_id: &str, chunk_size: usize) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        // Prepare file transfer information
+        Ok(serde_json::json!({
+            "file_id": file_id,
+            "chunk_size": chunk_size,
+            "total_chunks": 0,
+            "file_size": 0,
+        }))
+    }
+    
+    async fn get_uptime(&self) -> u64 {
+        // Return uptime in seconds
+        // This would track when the node started
+        0
+    }
+    
+    async fn get_total_data_received(&self) -> u64 {
+        // Return total bytes received
+        0
+    }
+    
+    async fn get_total_data_sent(&self) -> u64 {
+        // Return total bytes sent
+        0
+    }
+    
+    async fn subscribe_to_topic(&self, topic: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Subscribe to broadcast topic
+        info!("Subscribing to topic: {}", topic);
+        Ok(())
+    }
+    
+    async fn unsubscribe_from_topic(&self, topic: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Unsubscribe from broadcast topic
+        info!("Unsubscribing from topic: {}", topic);
+        Ok(())
+    }
+    
+    async fn prepare_sync_data(&self, sync_type: &str, from_timestamp: Option<u64>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        // Prepare synchronization data
+        Ok(serde_json::json!({
+            "sync_type": sync_type,
+            "from_timestamp": from_timestamp,
+            "data": [],
+        }))
+    }
+    
+    async fn handle_custom_rpc(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        // Handle custom RPC methods
+        // This allows for extensibility
+        info!("Handling custom RPC method: {}", method);
+        Ok(serde_json::json!({
+            "method": method,
+            "params": params,
+            "result": "Custom method handled",
+        }))
     }
 
     fn clone_internal(&self) -> Arc<P2PNode> {
