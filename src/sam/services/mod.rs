@@ -50,6 +50,7 @@ pub mod notifications;
 pub mod openai;
 pub mod orchestrator;
 pub mod osf;
+pub mod restart;
 pub mod p2p;
 pub mod password_manager;
 pub mod pg;
