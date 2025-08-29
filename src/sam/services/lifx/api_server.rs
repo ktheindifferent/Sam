@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+use crate::sam::services::thread_manager::{self, ThreadConfig};
 
 pub struct StopHandle {
     stop_flag: Arc<AtomicBool>,
@@ -54,13 +55,24 @@ impl ApiServer {
         let refresh_interval = self.config.refresh_interval;
 
         // Background refresh thread
-        thread::spawn(move || {
-            while !stop_flag_bg.load(Ordering::SeqCst) {
+        let bg_config = ThreadConfig {
+            name: "lifx_api_refresh".to_string(),
+            restart_on_panic: true,
+            max_restarts: 5,
+            restart_delay_ms: 2000,
+            health_check_interval_ms: Some(30000),
+            enable_monitoring: true,
+        };
+        
+        thread_manager::spawn_with_config(bg_config, move |shutdown_signal, _health_rx| {
+            log::info!("LIFX API refresh thread started");
+            while !stop_flag_bg.load(Ordering::SeqCst) && !shutdown_signal.load(Ordering::Relaxed) {
                 if let Ok(discovery) = discovery_clone.lock() {
                     discovery.refresh_devices();
                 }
                 thread::sleep(refresh_interval);
             }
+            log::info!("LIFX API refresh thread stopped");
         });
 
         // HTTP server thread
@@ -69,7 +81,9 @@ impl ApiServer {
         let config = self.config.clone();
         let stop_flag_http2 = stop_flag_http.clone();
 
-        let http_thread = thread::spawn(move || {
+        let http_thread = thread::Builder::new()
+            .name("lifx_api_http".to_string())
+            .spawn(move || {
             let server = rouille::Server::new(
                 format!("0.0.0.0:{}", config.port),
                 move |request| {
@@ -133,7 +147,7 @@ impl ApiServer {
                     log::error!("Failed to bind LIFX API server: {}", e);
                 }
             }
-        });
+        }).unwrap();
 
         StopHandle {
             stop_flag,

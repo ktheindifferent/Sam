@@ -5,8 +5,10 @@ use log::info;
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
+use crate::sam::services::thread_manager::{self, ThreadConfig};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SpotifyStatus {
@@ -29,8 +31,11 @@ static SPOTIFY_STATE: Lazy<Arc<Mutex<SpotifyService>>> = Lazy::new(|| {
     }))
 });
 
-static PLAYBACK_THREAD: Lazy<Mutex<Option<thread::JoinHandle<()>>>> =
+static PLAYBACK_THREAD_ID: Lazy<Mutex<Option<String>>> =
     Lazy::new(|| Mutex::new(None));
+
+static SHUTDOWN_SIGNAL: Lazy<Arc<AtomicBool>> = 
+    Lazy::new(|| Arc::new(AtomicBool::new(false)));
 
 /// Start the Spotify service (background music thread)
 pub async fn start() {
@@ -48,16 +53,30 @@ pub async fn start() {
     state.status = SpotifyStatus::Playing;
     info!("Starting Spotify playback thread");
     let state_arc = SPOTIFY_STATE.clone();
-    let mut thread_guard = match PLAYBACK_THREAD.lock() {
+    let mut thread_guard = match PLAYBACK_THREAD_ID.lock() {
         Ok(guard) => guard,
         Err(e) => {
             log::error!("Failed to acquire playback thread lock: {}", e);
             return;
         }
     };
+    
     if thread_guard.is_none() {
-        *thread_guard = Some(thread::spawn(move || {
-            loop {
+        SHUTDOWN_SIGNAL.store(false, Ordering::Relaxed);
+        
+        let config = ThreadConfig {
+            name: "spotify_playback".to_string(),
+            restart_on_panic: true,
+            max_restarts: 3,
+            restart_delay_ms: 2000,
+            health_check_interval_ms: Some(30000),
+            enable_monitoring: true,
+        };
+        
+        let thread_id = thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
+            info!("Spotify playback thread started");
+            
+            while !shutdown_signal.load(Ordering::Relaxed) && !SHUTDOWN_SIGNAL.load(Ordering::Relaxed) {
                 {
                     let s = match state_arc.lock() {
                         Ok(guard) => guard,
@@ -82,7 +101,11 @@ pub async fn start() {
                 }
                 thread::sleep(Duration::from_secs(2));
             }
-        }));
+            
+            info!("Spotify playback thread stopped");
+        });
+        
+        *thread_guard = Some(thread_id);
     }
 }
 
@@ -98,15 +121,22 @@ pub async fn stop() {
             return;
         }
     }
-    let mut thread_guard = match PLAYBACK_THREAD.lock() {
+    // Signal the thread to stop
+    SHUTDOWN_SIGNAL.store(true, Ordering::Relaxed);
+    
+    let mut thread_guard = match PLAYBACK_THREAD_ID.lock() {
         Ok(guard) => guard,
         Err(e) => {
             log::error!("Failed to acquire playback thread lock: {}", e);
             return;
         }
     };
-    if let Some(handle) = thread_guard.take() {
-        let _ = handle.join();
+    
+    if let Some(thread_id) = thread_guard.take() {
+        // Stop the managed thread
+        if let Err(e) = thread_manager::stop_thread(&thread_id) {
+            log::error!("Failed to stop Spotify thread: {}", e);
+        }
     }
 }
 

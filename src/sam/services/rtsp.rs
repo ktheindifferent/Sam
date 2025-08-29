@@ -9,7 +9,9 @@
 
 use std::path::Path;
 use std::thread;
+use std::sync::atomic::Ordering;
 use tokio::sync::mpsc;
+use crate::sam::services::thread_manager::{self, ThreadConfig};
 
 // Import deep learning and recording modules
 pub mod rtsp_dl_simple;
@@ -24,7 +26,19 @@ use rtsp_recording::{
 pub fn init() {
     // Initialize RTSP Cameras
     // TODO - Customizable Port and Path
-    thread::spawn(move || {
+    
+    let config = ThreadConfig {
+        name: "rtsp_manager".to_string(),
+        restart_on_panic: true,
+        max_restarts: 5,
+        restart_delay_ms: 5000,
+        health_check_interval_ms: Some(30000),
+        enable_monitoring: true,
+    };
+    
+    thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
+        log::info!("RTSP manager thread started");
+        
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query
             .queries
@@ -35,36 +49,99 @@ pub fn init() {
         match rtsp_things {
             Ok(things) => {
                 for thing in things {
+                    if shutdown_signal.load(Ordering::Relaxed) {
+                        log::info!("RTSP manager received shutdown signal");
+                        break;
+                    }
+                    
                     // Convert RTSP to /streams http api
                     let rtsp_http_thing = thing.clone();
-                    thread::spawn(move || {
-                        let rtsp_address = format!(
-                            "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
-                            rtsp_http_thing.username,
-                            rtsp_http_thing.password,
-                            rtsp_http_thing.ip_address
-                        );
-                        let script = crate::sam::services::rtsp::gen_rtsp_to_http_stream_script(
-                            rtsp_address,
-                            rtsp_http_thing.oid,
-                        );
-                        crate::sam::tools::uinx_cmd(&script);
+                    let http_config = ThreadConfig {
+                        name: format!("rtsp_http_{}", thing.oid),
+                        restart_on_panic: true,
+                        max_restarts: 3,
+                        restart_delay_ms: 2000,
+                        health_check_interval_ms: Some(60000),
+                        enable_monitoring: true,
+                    };
+                    
+                    thread_manager::spawn_with_config(http_config, move |shutdown, _health_rx| {
+                        log::info!("Starting RTSP HTTP stream for {}", rtsp_http_thing.oid);
+                        
+                        while !shutdown.load(Ordering::Relaxed) {
+                            let rtsp_address = format!(
+                                "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
+                                rtsp_http_thing.username,
+                                rtsp_http_thing.password,
+                                rtsp_http_thing.ip_address
+                            );
+                            let script = crate::sam::services::rtsp::gen_rtsp_to_http_stream_script(
+                                rtsp_address,
+                                rtsp_http_thing.oid.clone(),
+                            );
+                            
+                            match std::panic::catch_unwind(|| {
+                                crate::sam::tools::uinx_cmd(&script)
+                            }) {
+                                Ok(result) => {
+                                    log::debug!("RTSP HTTP stream command completed: {:?}", result);
+                                }
+                                Err(e) => {
+                                    log::error!("RTSP HTTP stream command panicked: {:?}", e);
+                                    break;
+                                }
+                            }
+                            
+                            // Check for shutdown every second while ffmpeg runs
+                            std::thread::sleep(std::time::Duration::from_secs(1));
+                        }
+                        
+                        log::info!("RTSP HTTP stream thread {} stopped", rtsp_http_thing.oid);
                     });
 
                     // Convert RTSP streams to wav files for sam to parse
                     let rtsp_wav_thing = thing.clone();
-                    thread::spawn(move || {
-                        let rtsp_address = format!(
-                            "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
-                            rtsp_wav_thing.username,
-                            rtsp_wav_thing.password,
-                            rtsp_wav_thing.ip_address
-                        );
-                        let script = crate::sam::services::rtsp::gen_rtsp_to_wav_script(
-                            rtsp_address,
-                            rtsp_wav_thing.oid,
-                        );
-                        crate::sam::tools::uinx_cmd(&script);
+                    let wav_config = ThreadConfig {
+                        name: format!("rtsp_wav_{}", thing.oid),
+                        restart_on_panic: true,
+                        max_restarts: 3,
+                        restart_delay_ms: 2000,
+                        health_check_interval_ms: Some(60000),
+                        enable_monitoring: true,
+                    };
+                    
+                    thread_manager::spawn_with_config(wav_config, move |shutdown, _health_rx| {
+                        log::info!("Starting RTSP WAV conversion for {}", rtsp_wav_thing.oid);
+                        
+                        while !shutdown.load(Ordering::Relaxed) {
+                            let rtsp_address = format!(
+                                "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
+                                rtsp_wav_thing.username,
+                                rtsp_wav_thing.password,
+                                rtsp_wav_thing.ip_address
+                            );
+                            let script = crate::sam::services::rtsp::gen_rtsp_to_wav_script(
+                                rtsp_address,
+                                rtsp_wav_thing.oid.clone(),
+                            );
+                            
+                            match std::panic::catch_unwind(|| {
+                                crate::sam::tools::uinx_cmd(&script)
+                            }) {
+                                Ok(result) => {
+                                    log::debug!("RTSP WAV conversion command completed: {:?}", result);
+                                }
+                                Err(e) => {
+                                    log::error!("RTSP WAV conversion command panicked: {:?}", e);
+                                    break;
+                                }
+                            }
+                            
+                            // Check for shutdown every second while ffmpeg runs
+                            std::thread::sleep(std::time::Duration::from_secs(1));
+                        }
+                        
+                        log::info!("RTSP WAV conversion thread {} stopped", rtsp_wav_thing.oid);
                     });
 
                     // Perform Deep Learning on RTSP streams and log observations
@@ -172,9 +249,11 @@ pub fn init() {
                 }
             }
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("Failed to query RTSP things: {}", e);
             }
         }
+        
+        log::info!("RTSP manager thread completed");
     });
 }
 
