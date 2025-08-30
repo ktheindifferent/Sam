@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock, LockResult, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
@@ -10,6 +10,18 @@ use prometheus::{IntGauge, IntCounter, register_int_gauge, register_int_counter}
 use lazy_static::lazy_static;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
+use anyhow::{Result, Context};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum ThreadManagerError {
+    #[error("Failed to acquire lock: {0}")]
+    LockError(String),
+    #[error("Thread not found: {0}")]
+    ThreadNotFound(String),
+    #[error("Thread operation failed: {0}")]
+    OperationFailed(String),
+}
 
 lazy_static! {
     static ref THREAD_MANAGER: Arc<RwLock<ThreadManager>> = Arc::new(RwLock::new(ThreadManager::new()));
@@ -109,15 +121,24 @@ impl ManagedThread {
     }
     
     fn update_heartbeat(&self) {
-        let mut heartbeat = self.last_heartbeat.write().unwrap();
-        *heartbeat = Utc::now();
+        match self.last_heartbeat.write() {
+            Ok(mut heartbeat) => *heartbeat = Utc::now(),
+            Err(e) => error!("Failed to update heartbeat: {}", e),
+        }
     }
     
     fn is_healthy(&self) -> bool {
         if let Some(interval_ms) = self.config.health_check_interval_ms {
-            let last_heartbeat = self.last_heartbeat.read().unwrap();
-            let elapsed = Utc::now().signed_duration_since(*last_heartbeat);
-            elapsed.num_milliseconds() < (interval_ms * 2) as i64
+            match self.last_heartbeat.read() {
+                Ok(last_heartbeat) => {
+                    let elapsed = Utc::now().signed_duration_since(*last_heartbeat);
+                    elapsed.num_milliseconds() < (interval_ms * 2) as i64
+                }
+                Err(e) => {
+                    error!("Failed to read heartbeat: {}", e);
+                    false
+                }
+            }
         } else {
             true
         }
@@ -152,9 +173,21 @@ impl ThreadManager {
             while !shutdown.load(Ordering::Relaxed) {
                 thread::sleep(Duration::from_secs(5));
                 
-                let threads_map = threads.lock().unwrap();
+                let threads_map = match threads.lock() {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        error!("Monitor failed to acquire threads lock: {}", e);
+                        continue;
+                    }
+                };
                 for (id, thread_arc) in threads_map.iter() {
-                    let thread = thread_arc.lock().unwrap();
+                    let thread = match thread_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            error!("Monitor failed to acquire thread lock for {}: {}", id, e);
+                            continue;
+                        }
+                    };
                     
                     if !thread.is_healthy() {
                         warn!("Thread {} is unhealthy", id);
@@ -164,7 +197,7 @@ impl ThreadManager {
                         debug!(
                             "Thread {}: status={:?}, restarts={}, panics={}",
                             id,
-                            *thread.status.read().unwrap(),
+                            thread.status.read().map(|s| format!("{:?}", *s)).unwrap_or_else(|_| "unknown".to_string()),
                             thread.restart_count.load(Ordering::Relaxed),
                             thread.panic_count.load(Ordering::Relaxed)
                         );
@@ -204,17 +237,19 @@ impl ThreadManager {
         let (health_sender, health_receiver) = if config.health_check_interval_ms.is_some() {
             let (tx, rx) = mpsc::channel();
             managed_thread.health_sender = Some(tx);
-            (Some(managed_thread.health_sender.as_ref().unwrap().clone()), Some(rx))
+            (managed_thread.health_sender.clone(), Some(rx))
         } else {
             (None, None)
         };
         
         self.start_thread(&id, &mut managed_thread, f, health_receiver);
         
-        self.threads.lock().unwrap().insert(
+        if let Err(e) = self.threads.lock().map(|mut guard| guard.insert(
             id.clone(),
             Arc::new(Mutex::new(managed_thread))
-        );
+        )) {
+            error!("Failed to insert thread {}: {}", id, e);
+        }
         
         TOTAL_THREADS_CREATED.inc();
         info!("Started managed thread: {}", id);
@@ -239,7 +274,10 @@ impl ThreadManager {
         let thread_id = id.to_string();
         let health_sender = managed_thread.health_sender.clone();
         
-        *status.write().unwrap() = ThreadStatus::Running;
+        match status.write() {
+            Ok(mut s) => *s = ThreadStatus::Running,
+            Err(e) => error!("Failed to update thread status: {}", e),
+        }
         
         let handle = thread::Builder::new()
             .name(thread_name.clone())
@@ -271,7 +309,10 @@ impl ThreadManager {
                 
                 match result {
                     Ok(_) => {
-                        *status.write().unwrap() = ThreadStatus::Stopped;
+                        match status.write() {
+                            Ok(mut s) => *s = ThreadStatus::Stopped,
+                            Err(e) => error!("Failed to update status to stopped: {}", e),
+                        }
                     }
                     Err(e) => {
                         panic_count.fetch_add(1, Ordering::Relaxed);
@@ -285,8 +326,14 @@ impl ThreadManager {
                             "Unknown panic".to_string()
                         };
                         
-                        *last_error.write().unwrap() = Some(error_msg.clone());
-                        *status.write().unwrap() = ThreadStatus::Panicked;
+                        match last_error.write() {
+                            Ok(mut e) => *e = Some(error_msg.clone()),
+                            Err(e) => error!("Failed to update last error: {}", e),
+                        }
+                        match status.write() {
+                            Ok(mut s) => *s = ThreadStatus::Panicked,
+                            Err(e) => error!("Failed to update status to panicked: {}", e),
+                        }
                         
                         error!("Thread {} panicked: {}", thread_id, error_msg);
                     }
@@ -298,17 +345,21 @@ impl ThreadManager {
     }
     
     pub fn restart_thread(&mut self, id: &str) -> Result<(), String> {
-        let threads_map = self.threads.lock().unwrap();
+        let threads_map = self.threads.lock()
+            .map_err(|e| format!("Failed to acquire threads lock: {}", e))?;
         
         if let Some(thread_arc) = threads_map.get(id) {
-            let mut thread = thread_arc.lock().unwrap();
+            let mut thread = thread_arc.lock()
+                .map_err(|e| format!("Failed to acquire thread lock: {}", e))?;
             
             let current_restarts = thread.restart_count.load(Ordering::Relaxed);
             if current_restarts >= thread.config.max_restarts {
                 return Err(format!("Thread {} exceeded max restarts", id));
             }
             
-            *thread.status.write().unwrap() = ThreadStatus::Restarting;
+            thread.status.write()
+                .map_err(|e| format!("Failed to update status: {}", e))
+                .map(|mut s| *s = ThreadStatus::Restarting)?;
             thread.shutdown_signal.store(true, Ordering::Relaxed);
             
             if let Some(handle) = thread.handle.take() {
@@ -330,12 +381,16 @@ impl ThreadManager {
     }
     
     pub fn stop_thread(&mut self, id: &str) -> Result<(), String> {
-        let mut threads_map = self.threads.lock().unwrap();
+        let mut threads_map = self.threads.lock()
+            .map_err(|e| format!("Failed to acquire threads lock: {}", e))?;
         
         if let Some(thread_arc) = threads_map.remove(id) {
-            let mut thread = thread_arc.lock().unwrap();
+            let mut thread = thread_arc.lock()
+                .map_err(|e| format!("Failed to acquire thread lock: {}", e))?;
             
-            *thread.status.write().unwrap() = ThreadStatus::Shutting;
+            thread.status.write()
+                .map_err(|e| format!("Failed to update status: {}", e))
+                .map(|mut s| *s = ThreadStatus::Shutting)?;
             thread.shutdown_signal.store(true, Ordering::Relaxed);
             
             if let Some(handle) = thread.handle.take() {
@@ -350,37 +405,83 @@ impl ThreadManager {
     }
     
     pub fn get_thread_info(&self, id: &str) -> Option<ThreadInfo> {
-        let threads_map = self.threads.lock().unwrap();
+        let threads_map = match self.threads.lock() {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire threads lock: {}", e);
+                return None;
+            }
+        };
         
-        threads_map.get(id).map(|thread_arc| {
-            let thread = thread_arc.lock().unwrap();
-            ThreadInfo {
-                id: id.to_string(),
-                name: thread.config.name.clone(),
-                status: thread.status.read().unwrap().clone(),
-                created_at: thread.created_at,
-                last_heartbeat: *thread.last_heartbeat.read().unwrap(),
-                restart_count: thread.restart_count.load(Ordering::Relaxed),
-                panic_count: thread.panic_count.load(Ordering::Relaxed),
-                last_error: thread.last_error.read().unwrap().clone(),
+        threads_map.get(id).and_then(|thread_arc| {
+            match thread_arc.lock() {
+                Ok(thread) => {
+                    let status = thread.status.read()
+                        .map(|s| s.clone())
+                        .unwrap_or(ThreadStatus::Stopped);
+                    let last_heartbeat = thread.last_heartbeat.read()
+                        .map(|h| *h)
+                        .unwrap_or_else(|_| Utc::now());
+                    let last_error = thread.last_error.read()
+                        .map(|e| e.clone())
+                        .unwrap_or(None);
+                    
+                    Some(ThreadInfo {
+                        id: id.to_string(),
+                        name: thread.config.name.clone(),
+                        status,
+                        created_at: thread.created_at,
+                        last_heartbeat,
+                        restart_count: thread.restart_count.load(Ordering::Relaxed),
+                        panic_count: thread.panic_count.load(Ordering::Relaxed),
+                        last_error,
+                    })
+                }
+                Err(e) => {
+                    error!("Failed to acquire thread lock for {}: {}", id, e);
+                    None
+                }
             }
         })
     }
     
     pub fn list_threads(&self) -> Vec<ThreadInfo> {
-        let threads_map = self.threads.lock().unwrap();
+        let threads_map = match self.threads.lock() {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire threads lock: {}", e);
+                return Vec::new();
+            }
+        };
         
-        threads_map.iter().map(|(id, thread_arc)| {
-            let thread = thread_arc.lock().unwrap();
-            ThreadInfo {
-                id: id.clone(),
-                name: thread.config.name.clone(),
-                status: thread.status.read().unwrap().clone(),
-                created_at: thread.created_at,
-                last_heartbeat: *thread.last_heartbeat.read().unwrap(),
-                restart_count: thread.restart_count.load(Ordering::Relaxed),
-                panic_count: thread.panic_count.load(Ordering::Relaxed),
-                last_error: thread.last_error.read().unwrap().clone(),
+        threads_map.iter().filter_map(|(id, thread_arc)| {
+            match thread_arc.lock() {
+                Ok(thread) => {
+                    let status = thread.status.read()
+                        .map(|s| s.clone())
+                        .unwrap_or(ThreadStatus::Stopped);
+                    let last_heartbeat = thread.last_heartbeat.read()
+                        .map(|h| *h)
+                        .unwrap_or_else(|_| Utc::now());
+                    let last_error = thread.last_error.read()
+                        .map(|e| e.clone())
+                        .unwrap_or(None);
+                    
+                    Some(ThreadInfo {
+                        id: id.clone(),
+                        name: thread.config.name.clone(),
+                        status,
+                        created_at: thread.created_at,
+                        last_heartbeat,
+                        restart_count: thread.restart_count.load(Ordering::Relaxed),
+                        panic_count: thread.panic_count.load(Ordering::Relaxed),
+                        last_error,
+                    })
+                }
+                Err(e) => {
+                    error!("Failed to acquire thread lock for {}: {}", id, e);
+                    None
+                }
             }
         }).collect()
     }
@@ -390,9 +491,21 @@ impl ThreadManager {
         
         self.shutdown_signal.store(true, Ordering::Relaxed);
         
-        let threads_map = self.threads.lock().unwrap().clone();
+        let threads_map = match self.threads.lock() {
+            Ok(guard) => guard.clone(),
+            Err(e) => {
+                error!("Failed to acquire threads lock for shutdown: {}", e);
+                return;
+            }
+        };
         for (id, thread_arc) in threads_map {
-            let mut thread = thread_arc.lock().unwrap();
+            let mut thread = match thread_arc.lock() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    error!("Failed to acquire thread lock for {}: {}", id, e);
+                    continue;
+                }
+            };
             thread.shutdown_signal.store(true, Ordering::Relaxed);
             
             if let Some(handle) = thread.handle.take() {
@@ -402,7 +515,10 @@ impl ThreadManager {
             info!("Shut down thread {}", id);
         }
         
-        self.threads.lock().unwrap().clear();
+        match self.threads.lock() {
+            Ok(mut guard) => guard.clear(),
+            Err(e) => error!("Failed to clear threads map: {}", e),
+        }
         
         if let Some(handle) = self.monitor_handle.take() {
             let _ = handle.join();
@@ -419,7 +535,13 @@ where
         ..Default::default()
     };
     
-    let mut manager = THREAD_MANAGER.write().unwrap();
+    let mut manager = match THREAD_MANAGER.write() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("Failed to acquire manager write lock: {}", e);
+            return format!("error_{}", nanoid::nanoid!());
+        }
+    };
     manager.spawn_managed(config, f)
 }
 
@@ -427,7 +549,13 @@ pub fn spawn_with_config<F>(config: ThreadConfig, f: F) -> String
 where
     F: FnOnce(Arc<AtomicBool>, Option<Receiver<()>>) + Send + 'static + Clone + UnwindSafe,
 {
-    let mut manager = THREAD_MANAGER.write().unwrap();
+    let mut manager = match THREAD_MANAGER.write() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("Failed to acquire manager write lock: {}", e);
+            return format!("error_{}", nanoid::nanoid!());
+        }
+    };
     manager.spawn_managed(config, f)
 }
 
@@ -473,28 +601,42 @@ where
 }
 
 pub fn get_thread_info(id: &str) -> Option<ThreadInfo> {
-    let manager = THREAD_MANAGER.read().unwrap();
-    manager.get_thread_info(id)
+    match THREAD_MANAGER.read() {
+        Ok(manager) => manager.get_thread_info(id),
+        Err(e) => {
+            error!("Failed to acquire manager read lock: {}", e);
+            None
+        }
+    }
 }
 
 pub fn list_threads() -> Vec<ThreadInfo> {
-    let manager = THREAD_MANAGER.read().unwrap();
-    manager.list_threads()
+    match THREAD_MANAGER.read() {
+        Ok(manager) => manager.list_threads(),
+        Err(e) => {
+            error!("Failed to acquire manager read lock: {}", e);
+            Vec::new()
+        }
+    }
 }
 
 pub fn stop_thread(id: &str) -> Result<(), String> {
-    let mut manager = THREAD_MANAGER.write().unwrap();
+    let mut manager = THREAD_MANAGER.write()
+        .map_err(|e| format!("Failed to acquire manager write lock: {}", e))?;
     manager.stop_thread(id)
 }
 
 pub fn restart_thread(id: &str) -> Result<(), String> {
-    let mut manager = THREAD_MANAGER.write().unwrap();
+    let mut manager = THREAD_MANAGER.write()
+        .map_err(|e| format!("Failed to acquire manager write lock: {}", e))?;
     manager.restart_thread(id)
 }
 
 pub fn shutdown_all() {
-    let mut manager = THREAD_MANAGER.write().unwrap();
-    manager.shutdown_all();
+    match THREAD_MANAGER.write() {
+        Ok(mut manager) => manager.shutdown_all(),
+        Err(e) => error!("Failed to acquire manager write lock for shutdown: {}", e),
+    }
 }
 
 #[cfg(test)]
@@ -534,7 +676,7 @@ mod tests {
         let info = get_thread_info(&panic_thread_id);
         assert!(info.is_some());
         
-        let thread_info = info.unwrap();
+        let thread_info = info.expect("Thread info should be available");
         assert_eq!(thread_info.status, ThreadStatus::Panicked);
         assert_eq!(thread_info.panic_count, 1);
     }

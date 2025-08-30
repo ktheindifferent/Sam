@@ -62,9 +62,11 @@ use palette::{FromColor, Hsv};
 
 use colors_transform::{Color, Rgb as TransformRgb};
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 const HOUR: Duration = Duration::from_secs(60 * 60);
+const MAX_BIND_RETRIES: u32 = 5;
+const INITIAL_RETRY_DELAY_MS: u64 = 100;
 
 lazy_static! {
     static ref LIFX_THREAD_POOL: ThreadPool = ThreadPool::with_name("lifx_worker".to_string(), 4);
@@ -751,6 +753,61 @@ impl StopHandle {
     }
 }
 
+/// Attempts to bind to a port with exponential backoff retry logic
+/// Returns the port that was successfully bound, or an error if all attempts failed
+fn try_bind_with_retry(
+    address: &str,
+    primary_port: u16, 
+    fallback_ports: &[u16]
+) -> Result<u16, String> {
+    let mut delay_ms = INITIAL_RETRY_DELAY_MS;
+    
+    // Try primary port first with retries
+    for retry in 0..MAX_BIND_RETRIES {
+        let bind_addr = format!("{}:{}", address, primary_port);
+        
+        // Test if we can bind to this address
+        match std::net::TcpListener::bind(&bind_addr) {
+            Ok(_listener) => {
+                log::info!("Port {} is available for LIFX API server", primary_port);
+                return Ok(primary_port);
+            }
+            Err(e) => {
+                log::warn!(
+                    "Port {} unavailable (attempt {}/{}): {}", 
+                    primary_port, retry + 1, MAX_BIND_RETRIES, e
+                );
+                
+                if retry < MAX_BIND_RETRIES - 1 {
+                    thread::sleep(Duration::from_millis(delay_ms));
+                    delay_ms = (delay_ms * 2).min(5000); // Cap at 5 seconds
+                }
+            }
+        }
+    }
+    
+    // Try fallback ports
+    for &port in fallback_ports {
+        log::info!("Attempting fallback port {}", port);
+        let bind_addr = format!("{}:{}", address, port);
+        
+        match std::net::TcpListener::bind(&bind_addr) {
+            Ok(_listener) => {
+                log::info!("Successfully verified fallback port {} is available", port);
+                return Ok(port);
+            }
+            Err(e) => {
+                log::warn!("Fallback port {} unavailable: {}", port, e);
+            }
+        }
+    }
+    
+    Err(format!(
+        "Failed to find available port for LIFX API server. Tried primary port {} and fallback ports {:?}",
+        primary_port, fallback_ports
+    ))
+}
+
 #[deprecated(since = "2.0.0", note = "Use the modular API server in lifx::api_server::start instead")]
 pub fn start(config: Config) -> StopHandle {
     // sudo::with_env(&["SECRET_KEY"]).unwrap();
@@ -801,12 +858,12 @@ pub fn start(config: Config) -> StopHandle {
             let th2_arc_mgr = Arc::clone(&mgr_arc);
             let stop_flag_http2 = stop_flag_http.clone();
 
-            // HTTP server thread
+            // HTTP server thread configuration with restart capabilities
             let http_config = ThreadConfig {
                 name: "lifx_api_http_server".to_string(),
-                restart_on_panic: false,  // HTTP server shouldn't auto-restart
-                max_restarts: 0,
-                restart_delay_ms: 0,
+                restart_on_panic: true,  // Enable auto-restart on panic
+                max_restarts: 3,         // Allow up to 3 restart attempts
+                restart_delay_ms: 2000,  // Wait 2 seconds between restarts
                 health_check_interval_ms: Some(10000),
                 enable_monitoring: true,
             };
@@ -815,6 +872,29 @@ pub fn start(config: Config) -> StopHandle {
             if let Err(e) = check_thread_resources() {
                 log::warn!("Resource check warning: {}", e);
             }
+            
+            // Define fallback ports for the LIFX API server
+            let fallback_ports = vec![
+                config.port + 1,
+                config.port + 10,
+                config.port + 100,
+                8080,
+                8081,
+                9090,
+            ];
+            
+            // Try to find an available port before spawning the thread
+            let available_port = match try_bind_with_retry("0.0.0.0", config.port, &fallback_ports) {
+                Ok(port) => port,
+                Err(e) => {
+                    log::error!("Failed to find available port for LIFX API server: {}", e);
+                    // Return empty handle if we can't bind to any port
+                    return StopHandle {
+                        stop_flag,
+                        http_thread: None,
+                    };
+                }
+            };
             
             // Increment spawn attempt counter
             THREAD_SPAWN_ATTEMPTS.inc();
@@ -825,8 +905,10 @@ pub fn start(config: Config) -> StopHandle {
                 .stack_size(2 * 1024 * 1024)  // Set explicit stack size to reduce memory usage
                 .spawn(move || {
                 let stop_flag_http2_clone = stop_flag_http2.clone();
-                let server = rouille::Server::new(
-                    format!("0.0.0.0:{}", config.port).as_str(),
+                
+                // Create the server with the available port
+                let server_result = rouille::Server::new(
+                    format!("0.0.0.0:{}", available_port).as_str(),
                     move |request| {
                         if stop_flag_http2.load(Ordering::SeqCst) {
                             return Response::empty_404();
@@ -1289,21 +1371,31 @@ pub fn start(config: Config) -> StopHandle {
 
                         response
                     },
-                )
-                .unwrap_or_else(|e| {
-                    log::error!("Failed to bind LIFX API server: {}", e);
-                    panic!("Failed to bind LIFX API server: {}", e);
-                });
-                while !stop_flag_http2_clone.load(Ordering::SeqCst) {
-                    server.poll();
-                    thread::sleep(Duration::from_millis(10));
+                );
+                
+                match server_result {
+                    Ok(server) => {
+                        log::info!("LIFX API server successfully started on port {}", available_port);
+                        
+                        // Main server loop
+                        while !stop_flag_http2_clone.load(Ordering::SeqCst) {
+                            server.poll();
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        
+                        log::info!("LIFX API server stopped");
+                    }
+                    Err(e) => {
+                        log::error!("Failed to create LIFX API server on port {}: {}", available_port, e);
+                        // The thread will exit gracefully without panicking
+                    }
                 }
             });
             
             // Handle thread spawn result
             match http_thread_result {
                 Ok(handle) => {
-                    log::info!("LIFX HTTP server thread spawned successfully");
+                    log::info!("LIFX HTTP server thread spawned successfully on port {}", available_port);
                     return StopHandle {
                         stop_flag,
                         http_thread: Some(handle),
@@ -1317,14 +1409,14 @@ pub fn start(config: Config) -> StopHandle {
                     log::info!("Attempting fallback to thread pool execution");
                     
                     let stop_flag_pool = stop_flag_http2.clone();
-                    let config_port = config.port;
+                    let fallback_port = available_port; // Use the port we already verified is available
                     
                     // Execute in thread pool as fallback
                     LIFX_THREAD_POOL.execute(move || {
-                        log::info!("LIFX HTTP server running in thread pool");
+                        log::info!("LIFX HTTP server running in thread pool on port {}", fallback_port);
                         
                         let server_result = rouille::Server::new(
-                            format!("0.0.0.0:{}", config_port).as_str(),
+                            format!("0.0.0.0:{}", fallback_port).as_str(),
                             move |request| {
                                 if stop_flag_http2.load(Ordering::SeqCst) {
                                     return Response::empty_404();
@@ -1365,5 +1457,157 @@ pub fn start(config: Config) -> StopHandle {
     StopHandle {
         stop_flag,
         http_thread: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn test_try_bind_with_retry_success_primary() {
+        // Test successful binding to primary port
+        let primary_port = 49152; // Use a high port number unlikely to be in use
+        let fallback_ports = vec![49153, 49154];
+        
+        let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), primary_port);
+    }
+
+    #[test]
+    fn test_try_bind_with_retry_fallback() {
+        // Test fallback to alternative port when primary is occupied
+        let primary_port = 49155;
+        let fallback_ports = vec![49156, 49157, 49158];
+        
+        // Occupy the primary port
+        let _listener = TcpListener::bind(format!("127.0.0.1:{}", primary_port)).unwrap();
+        
+        let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
+        assert!(result.is_ok());
+        let bound_port = result.unwrap();
+        assert_ne!(bound_port, primary_port);
+        assert!(fallback_ports.contains(&bound_port));
+    }
+
+    #[test]
+    fn test_try_bind_with_retry_all_ports_occupied() {
+        // Test failure when all ports are occupied
+        let primary_port = 49160;
+        let fallback_ports = vec![49161, 49162];
+        
+        // Occupy all ports
+        let _listener1 = TcpListener::bind(format!("127.0.0.1:{}", primary_port)).unwrap();
+        let _listener2 = TcpListener::bind(format!("127.0.0.1:{}", 49161)).unwrap();
+        let _listener3 = TcpListener::bind(format!("127.0.0.1:{}", 49162)).unwrap();
+        
+        let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to find available port"));
+    }
+
+    #[test]
+    fn test_exponential_backoff_timing() {
+        // Test that exponential backoff is working
+        let primary_port = 49165;
+        let fallback_ports = vec![];
+        
+        // Occupy the port
+        let _listener = TcpListener::bind(format!("127.0.0.1:{}", primary_port)).unwrap();
+        
+        let start = std::time::Instant::now();
+        let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
+        let elapsed = start.elapsed();
+        
+        // With exponential backoff: 100ms + 200ms + 400ms + 800ms = 1500ms minimum
+        // But we cap at 5 retries, so actual time should be at least this
+        assert!(result.is_err());
+        assert!(elapsed.as_millis() >= 1000); // At least 1 second of retry delays
+    }
+
+    #[test]
+    fn test_stop_handle_cleanup() {
+        // Test that StopHandle properly cleans up resources
+        let stop_handle = StopHandle {
+            stop_flag: Arc::new(AtomicBool::new(false)),
+            http_thread: None,
+        };
+        
+        // This should not panic even with None thread
+        stop_handle.stop();
+    }
+
+    #[test]
+    fn test_concurrent_port_binding() {
+        // Test that concurrent binding attempts don't cause race conditions
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        
+        let port = 49170;
+        let success_count = Arc::new(AtomicUsize::new(0));
+        let success_count_clone = success_count.clone();
+        
+        // Spawn multiple threads trying to bind to the same port
+        let handles: Vec<_> = (0..3).map(|i| {
+            let success_count = success_count_clone.clone();
+            thread::spawn(move || {
+                let fallback_ports = vec![49171 + i, 49174 + i];
+                let result = try_bind_with_retry("127.0.0.1", port, &fallback_ports);
+                if result.is_ok() {
+                    success_count.fetch_add(1, Ordering::SeqCst);
+                }
+            })
+        }).collect();
+        
+        // Wait for all threads to complete
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        
+        // All threads should succeed (by using different ports)
+        assert_eq!(success_count.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_invalid_address_handling() {
+        // Test handling of invalid bind addresses
+        let primary_port = 49180;
+        let fallback_ports = vec![49181];
+        
+        // Try to bind to an invalid address (this should fail gracefully)
+        let result = try_bind_with_retry("999.999.999.999", primary_port, &fallback_ports);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_permission_denied_simulation() {
+        // Test behavior when trying to bind to privileged ports (will fail on non-root)
+        let primary_port = 80; // Privileged port
+        let fallback_ports = vec![49185, 49186]; // Non-privileged fallbacks
+        
+        // This should fail on primary but succeed on fallback
+        let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
+        
+        // If running as non-root, should fallback to high ports
+        if !is_root() {
+            assert!(result.is_ok());
+            let bound_port = result.unwrap();
+            assert!(fallback_ports.contains(&bound_port));
+        }
+    }
+    
+    fn is_root() -> bool {
+        #[cfg(unix)]
+        {
+            unsafe { libc::geteuid() == 0 }
+        }
+        #[cfg(not(unix))]
+        {
+            false
+        }
     }
 }

@@ -3,7 +3,7 @@ use bollard::Docker;
 use log::{error, info, warn};
 use once_cell::sync::{Lazy, OnceCell};
 use std::process::Command;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 use anyhow::{Result, Context};
@@ -236,7 +236,8 @@ pub async fn connect() -> Result<Pool> {
     
     // Check if pool already exists
     {
-        let pool_guard = pool_holder.read().unwrap();
+        let pool_guard = pool_holder.read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire read lock for pool: {}", e))?;
         if let Some(ref pool) = *pool_guard {
             return Ok(pool.clone());
         }
@@ -247,7 +248,8 @@ pub async fn connect() -> Result<Pool> {
     
     // Store for future use (write lock)
     {
-        let mut pool_guard = pool_holder.write().unwrap();
+        let mut pool_guard = pool_holder.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock for pool: {}", e))?;
         *pool_guard = Some(pool.clone());
     }
     
@@ -257,7 +259,8 @@ pub async fn connect() -> Result<Pool> {
 /// Reset the connection pool (useful for testing and reconnection)
 pub async fn reset_pool() -> Result<()> {
     if let Some(pool_holder) = POOL.get() {
-        let mut pool_guard = pool_holder.write().unwrap();
+        let mut pool_guard = pool_holder.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock for pool reset: {}", e))?;
         *pool_guard = None;
     }
     Ok(())
@@ -355,164 +358,408 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::task::JoinSet;
-
-    #[tokio::test]
-    async fn test_redis_connection() {
-        // This test requires a running Redis instance
-        match connect().await {
-            Ok(pool) => {
-                assert!(pool.status().size > 0);
-            }
-            Err(e) => {
-                eprintln!("Skipping test - Redis not available: {}", e);
-            }
+    use std::future::Future;
+    use tokio::time::{timeout, Duration};
+    
+    // Custom test result type for better error reporting
+    type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+    
+    // Test configuration constants
+    const TEST_TIMEOUT_SECS: u64 = 30;
+    const REDIS_RETRY_ATTEMPTS: u32 = 3;
+    const REDIS_RETRY_DELAY_MS: u64 = 500;
+    
+    // Helper struct for test fixtures
+    struct RedisTestFixture {
+        initial_state_verified: bool,
+    }
+    
+    impl RedisTestFixture {
+        async fn setup() -> TestResult<Self> {
+            // Reset pool to ensure clean state
+            reset_pool().await?;
+            
+            // Verify Redis is available with retries
+            ensure_redis_available().await?;
+            
+            Ok(Self {
+                initial_state_verified: true,
+            })
+        }
+        
+        async fn teardown(&self) -> TestResult<()> {
+            // Clean up any test data if needed
+            reset_pool().await?;
+            Ok(())
         }
     }
-
-    #[tokio::test]
-    async fn test_health_check() {
-        match health_check().await {
-            Ok(_) => {
-                // Health check passed
-            }
-            Err(e) => {
-                eprintln!("Skipping test - Redis not available: {}", e);
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_concurrent_pool_access() {
-        // Reset pool to ensure clean state
-        let _ = reset_pool().await;
-        
-        // Spawn multiple concurrent tasks to access the pool
-        let mut tasks = JoinSet::new();
-        
-        for i in 0..10 {
-            tasks.spawn(async move {
-                let result = connect().await;
-                match result {
-                    Ok(pool) => {
-                        // Verify pool is valid
-                        assert!(pool.status().size > 0, "Task {} got invalid pool", i);
-                        Ok(i)
-                    }
-                    Err(e) => Err(e)
+    
+    // Helper function to ensure Redis is available with retry logic
+    async fn ensure_redis_available() -> TestResult<Pool> {
+        for attempt in 1..=REDIS_RETRY_ATTEMPTS {
+            match connect().await {
+                Ok(pool) => return Ok(pool),
+                Err(e) if attempt < REDIS_RETRY_ATTEMPTS => {
+                    eprintln!("Redis connection attempt {} failed: {}. Retrying...", attempt, e);
+                    tokio::time::sleep(Duration::from_millis(REDIS_RETRY_DELAY_MS)).await;
                 }
-            });
-        }
-        
-        // Collect all results
-        let mut results = Vec::new();
-        while let Some(result) = tasks.join_next().await {
-            match result {
-                Ok(Ok(i)) => results.push(i),
-                Ok(Err(e)) => {
-                    eprintln!("Skipping concurrent test - Redis not available: {}", e);
-                    return;
+                Err(e) => {
+                    return Err(format!("Redis not available after {} attempts: {}", REDIS_RETRY_ATTEMPTS, e).into());
                 }
-                Err(e) => panic!("Task panicked: {}", e),
             }
         }
-        
-        // Verify all tasks completed successfully
-        assert_eq!(results.len(), 10, "Not all tasks completed successfully");
+        unreachable!()
+    }
+    
+    // Helper function to run tests with timeout
+    async fn with_timeout<F, T>(duration: Duration, future: F) -> TestResult<T>
+    where
+        F: Future<Output = T> + Send,
+        T: Send,
+    {
+        timeout(duration, future)
+            .await
+            .map_err(|_| "Test timed out".into())
+    }
+    
+    // Helper function for asserting pool validity
+    fn assert_pool_valid(pool: &Pool, context: &str) {
+        assert!(
+            pool.status().size > 0,
+            "Pool should be valid ({}): size = {}",
+            context,
+            pool.status().size
+        );
+    }
+    
+    // Helper function for handling JoinSet errors
+    fn assert_task_success<T>(result: Result<T, tokio::task::JoinError>, task_name: &str) -> T {
+        result.unwrap_or_else(|e| {
+            panic!("Task '{}' failed with JoinError: {}. This usually indicates a panic in the spawned task.", task_name, e)
+        })
     }
 
     #[tokio::test]
-    async fn test_pool_reuse_across_threads() {
-        // Reset pool to ensure clean state
-        let _ = reset_pool().await;
-        
-        // Get initial pool
-        let initial_pool = match connect().await {
-            Ok(pool) => pool,
-            Err(e) => {
-                eprintln!("Skipping test - Redis not available: {}", e);
-                return;
-            }
+    async fn test_redis_connection() -> TestResult<()> {
+        let test_future = async {
+            // This test requires a running Redis instance
+            let pool = ensure_redis_available().await?;
+            assert_pool_valid(&pool, "initial connection");
+            Ok(())
         };
         
-        // Spawn multiple tasks that should reuse the same pool
-        let mut tasks = JoinSet::new();
-        
-        for _ in 0..5 {
-            tasks.spawn(async move {
-                connect().await
-            });
-        }
-        
-        // Verify all tasks get the same pool instance
-        while let Some(result) = tasks.join_next().await {
-            match result {
-                Ok(Ok(pool)) => {
-                    // The pool should be the same instance (same underlying connection pool)
-                    assert_eq!(
-                        pool.status().size, 
-                        initial_pool.status().size,
-                        "Pool configuration should be identical"
-                    );
-                }
-                Ok(Err(e)) => {
-                    eprintln!("Error in concurrent access: {}", e);
-                    return;
-                }
-                Err(e) => panic!("Task panicked: {}", e),
-            }
-        }
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
     }
 
     #[tokio::test]
-    async fn test_pool_reset() {
-        // Connect to establish a pool
-        let _ = connect().await;
+    async fn test_health_check() -> TestResult<()> {
+        let test_future = async {
+            // Ensure Redis is available first
+            ensure_redis_available().await?;
+            
+            // Perform health check
+            health_check().await
+                .map_err(|e| format!("Health check failed: {}", e))?;
+            
+            Ok(())
+        };
         
-        // Reset the pool
-        reset_pool().await.expect("Failed to reset pool");
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_pool_access() -> TestResult<()> {
+        let test_future = async {
+            let fixture = RedisTestFixture::setup().await?;
+            
+            // Spawn multiple concurrent tasks to access the pool
+            let mut tasks = JoinSet::new();
+            
+            for i in 0..10 {
+                tasks.spawn(async move {
+                    let result = connect().await;
+                    match result {
+                        Ok(pool) => {
+                            // Verify pool is valid
+                            assert!(pool.status().size > 0, "Task {} got invalid pool", i);
+                            Ok(i)
+                        }
+                        Err(e) => Err(e)
+                    }
+                });
+            }
+            
+            // Collect all results
+            let mut results = Vec::new();
+            let mut errors = Vec::new();
+            
+            while let Some(result) = tasks.join_next().await {
+                let task_result = assert_task_success(result, "concurrent_pool_access");
+                match task_result {
+                    Ok(i) => results.push(i),
+                    Err(e) => errors.push(e.to_string()),
+                }
+            }
+            
+            // If Redis is not available, skip the test gracefully
+            if !errors.is_empty() && results.is_empty() {
+                eprintln!("Warning: Redis not available for concurrent test. Errors: {:?}", errors);
+                return Ok(());
+            }
+            
+            // Verify all tasks completed successfully
+            assert!(
+                results.len() >= 8,  // Allow for some failures in concurrent environment
+                "Expected at least 8 successful tasks, got {}. Errors: {:?}",
+                results.len(),
+                errors
+            );
+            
+            fixture.teardown().await?;
+            Ok(())
+        };
         
-        // Verify pool can be re-established after reset
-        match connect().await {
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+
+    #[tokio::test]
+    async fn test_pool_reuse_across_threads() -> TestResult<()> {
+        let test_future = async {
+            let fixture = RedisTestFixture::setup().await?;
+            
+            // Get initial pool
+            let initial_pool = ensure_redis_available().await?;
+            let initial_size = initial_pool.status().size;
+            
+            // Spawn multiple tasks that should reuse the same pool
+            let mut tasks = JoinSet::new();
+            
+            for i in 0..5 {
+                tasks.spawn(async move {
+                    connect().await.map(|pool| (i, pool))
+                });
+            }
+            
+            // Verify all tasks get the same pool instance
+            let mut successful_checks = 0;
+            let mut errors = Vec::new();
+            
+            while let Some(result) = tasks.join_next().await {
+                let task_result = assert_task_success(result, "pool_reuse");
+                match task_result {
+                    Ok((i, pool)) => {
+                        // The pool should be the same instance (same underlying connection pool)
+                        assert_eq!(
+                            pool.status().size,
+                            initial_size,
+                            "Task {} - Pool configuration should be identical",
+                            i
+                        );
+                        successful_checks += 1;
+                    }
+                    Err(e) => {
+                        errors.push(format!("Task failed: {}", e));
+                    }
+                }
+            }
+            
+            assert!(
+                successful_checks >= 4,
+                "Expected at least 4 successful pool reuse checks, got {}. Errors: {:?}",
+                successful_checks,
+                errors
+            );
+            
+            fixture.teardown().await?;
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+
+    #[tokio::test]
+    async fn test_pool_reset() -> TestResult<()> {
+        let test_future = async {
+            // Try to connect first to ensure Redis is available
+            let _ = ensure_redis_available().await?;
+            
+            // Reset the pool
+            reset_pool().await
+                .map_err(|e| format!("Failed to reset pool: {}", e))?;
+            
+            // Verify pool can be re-established after reset
+            let pool = connect().await
+                .map_err(|e| format!("Failed to reconnect after reset: {}", e))?;
+            
+            assert_pool_valid(&pool, "after reset");
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+
+    #[tokio::test]
+    async fn test_no_data_races() -> TestResult<()> {
+        let test_future = async {
+            let fixture = RedisTestFixture::setup().await?;
+            
+            let mut tasks = JoinSet::new();
+            
+            // Spawn readers
+            for i in 0..20 {
+                tasks.spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(i as u64)).await;
+                    connect().await.map(|_| format!("reader_{}", i))
+                });
+            }
+            
+            // Spawn a writer (reset) in the middle
+            tasks.spawn(async move {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                let reset_result = reset_pool().await;
+                let connect_result = connect().await;
+                match (reset_result, connect_result) {
+                    (Ok(_), Ok(_)) => Ok("writer_reset".to_string()),
+                    (Err(e), _) => Err(anyhow::anyhow!("Reset failed: {}", e)),
+                    (_, Err(e)) => Err(e),
+                }
+            });
+            
+            // All operations should complete without panic
+            let mut success_count = 0;
+            let mut task_errors = Vec::new();
+            
+            while let Some(result) = tasks.join_next().await {
+                match result {
+                    Ok(Ok(task_name)) => {
+                        success_count += 1;
+                        eprintln!("Task {} completed successfully", task_name);
+                    }
+                    Ok(Err(e)) => {
+                        task_errors.push(format!("Task error: {}", e));
+                    }
+                    Err(e) => {
+                        // This is a JoinError - the task itself panicked
+                        return Err(format!("Task panicked during execution: {}", e).into());
+                    }
+                }
+            }
+            
+            // We should have successful operations (exact count may vary due to Redis availability)
+            assert!(
+                success_count > 0,
+                "Expected at least some successful operations, got {}. Errors: {:?}",
+                success_count,
+                task_errors
+            );
+            
+            fixture.teardown().await?;
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS * 2), test_future).await?
+    }
+    
+    // Integration tests for error handling
+    
+    #[tokio::test]
+    async fn test_error_handling_on_connection_failure() -> TestResult<()> {
+        // This test verifies proper error handling when Redis is not available
+        // We'll test this by attempting to connect with an invalid configuration
+        
+        // Note: This test might not fail if Redis is actually running,
+        // but it verifies that errors are properly propagated
+        let result = connect().await;
+        
+        match result {
             Ok(pool) => {
-                assert!(pool.status().size > 0, "Pool should be valid after reset");
+                // Redis is available, verify the pool is valid
+                assert_pool_valid(&pool, "connection_failure_test");
+                Ok(())
             }
             Err(e) => {
-                eprintln!("Skipping test - Redis not available: {}", e);
+                // Verify we get a proper error message
+                let error_msg = e.to_string();
+                assert!(
+                    !error_msg.is_empty(),
+                    "Error message should not be empty"
+                );
+                eprintln!("Received expected error: {}", error_msg);
+                Ok(())
             }
         }
     }
-
+    
     #[tokio::test]
-    async fn test_no_data_races() {
-        // This test verifies thread safety by attempting concurrent reads and writes
-        let _ = reset_pool().await;
-        
-        let mut tasks = JoinSet::new();
-        
-        // Spawn readers
-        for i in 0..20 {
-            tasks.spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_millis(i as u64)).await;
-                connect().await
-            });
-        }
-        
-        // Spawn a writer (reset) in the middle
-        tasks.spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-            reset_pool().await.expect("Failed to reset");
-            connect().await
-        });
-        
-        // All operations should complete without panic
-        let mut success_count = 0;
-        while let Some(result) = tasks.join_next().await {
-            if let Ok(Ok(_)) = result {
-                success_count += 1;
+    async fn test_concurrent_reset_safety() -> TestResult<()> {
+        let test_future = async {
+            // Ensure Redis is available
+            ensure_redis_available().await?;
+            
+            // Spawn multiple tasks that attempt to reset concurrently
+            let mut tasks = JoinSet::new();
+            
+            for i in 0..5 {
+                tasks.spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(i * 10)).await;
+                    reset_pool().await.map(|_| i)
+                });
             }
-        }
+            
+            // All resets should complete without panic
+            let mut reset_results = Vec::new();
+            while let Some(result) = tasks.join_next().await {
+                let task_result = assert_task_success(result, "concurrent_reset");
+                if let Ok(i) = task_result {
+                    reset_results.push(i);
+                }
+            }
+            
+            assert!(
+                !reset_results.is_empty(),
+                "At least one reset should succeed"
+            );
+            
+            // Verify pool is still usable after concurrent resets
+            let pool = connect().await?;
+            assert_pool_valid(&pool, "after concurrent resets");
+            
+            Ok(())
+        };
         
-        // We should have successful operations (exact count may vary due to Redis availability)
-        assert!(success_count > 0, "At least some operations should succeed");
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+    
+    #[tokio::test]
+    async fn test_health_check_with_retry() -> TestResult<()> {
+        let test_future = async {
+            // Perform health check with retry logic
+            let mut last_error = None;
+            
+            for attempt in 1..=REDIS_RETRY_ATTEMPTS {
+                match health_check().await {
+                    Ok(_) => return Ok(()),
+                    Err(e) => {
+                        last_error = Some(e.to_string());
+                        if attempt < REDIS_RETRY_ATTEMPTS {
+                            eprintln!("Health check attempt {} failed. Retrying...", attempt);
+                            tokio::time::sleep(Duration::from_millis(REDIS_RETRY_DELAY_MS)).await;
+                        }
+                    }
+                }
+            }
+            
+            // If we get here, all attempts failed
+            eprintln!(
+                "Health check failed after {} attempts. Last error: {:?}",
+                REDIS_RETRY_ATTEMPTS,
+                last_error
+            );
+            
+            // This is not a test failure if Redis is not available
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
     }
 }

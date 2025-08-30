@@ -7,6 +7,17 @@ use log::{info, warn, error, debug};
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
 use async_trait::async_trait;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum RestartError {
+    #[error("Lock acquisition failed: {0}")]
+    LockError(String),
+    #[error("Service not found: {0}")]
+    ServiceNotFound(String),
+    #[error("Restart failed: {0}")]
+    RestartFailed(String),
+}
 
 use super::orchestrator::{ServiceName, ServiceStatus, ServiceHealth};
 
@@ -183,20 +194,36 @@ impl RestartManager {
     }
 
     /// Register a restart configuration for a service
-    pub fn register_config(&self, service: ServiceName, config: RestartConfig) {
-        self.configs.write().unwrap().insert(service.clone(), config);
-        self.metrics.write().unwrap().insert(service.clone(), RestartMetrics::default());
-        self.circuit_states.write().unwrap().insert(service, CircuitState::Closed);
+    pub fn register_config(&self, service: ServiceName, config: RestartConfig) -> Result<()> {
+        self.configs.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire configs lock: {}", e))?
+            .insert(service.clone(), config);
+        self.metrics.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire metrics lock: {}", e))?
+            .insert(service.clone(), RestartMetrics::default());
+        self.circuit_states.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire circuit states lock: {}", e))?
+            .insert(service, CircuitState::Closed);
+        Ok(())
     }
 
     /// Add a notification handler
-    pub fn add_notifier(&self, notifier: Arc<dyn RestartNotifier>) {
-        self.notifiers.write().unwrap().push(notifier);
+    pub fn add_notifier(&self, notifier: Arc<dyn RestartNotifier>) -> Result<()> {
+        self.notifiers.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire notifiers lock: {}", e))?
+            .push(notifier);
+        Ok(())
     }
 
     /// Send notification to all handlers
     pub async fn notify(&self, event: RestartEvent) {
-        let notifiers = self.notifiers.read().unwrap().clone();
+        let notifiers = match self.notifiers.read() {
+            Ok(guard) => guard.clone(),
+            Err(e) => {
+                error!("Failed to acquire notifiers lock: {}", e);
+                return;
+            }
+        };
         for notifier in notifiers {
             if let Err(e) = notifier.notify(event.clone()).await {
                 error!("Failed to send restart notification: {}", e);
@@ -206,7 +233,13 @@ impl RestartManager {
 
     /// Calculate delay based on restart strategy and attempt number
     pub fn calculate_delay(&self, service: &ServiceName, attempt: u32) -> Duration {
-        let configs = self.configs.read().unwrap();
+        let configs = match self.configs.read() {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire configs lock: {}", e);
+                return Duration::from_secs(1);
+            }
+        };
         let config = configs.get(service).cloned().unwrap_or_default();
         
         match config.strategy {
@@ -230,8 +263,20 @@ impl RestartManager {
 
     /// Check if circuit breaker allows restart
     pub fn check_circuit_breaker(&self, service: &ServiceName) -> bool {
-        let mut states = self.circuit_states.write().unwrap();
-        let configs = self.configs.read().unwrap();
+        let mut states = match self.circuit_states.write() {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire circuit states lock: {}", e);
+                return false;
+            }
+        };
+        let configs = match self.configs.read() {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire configs lock: {}", e);
+                return false;
+            }
+        };
         let config = configs.get(service).cloned().unwrap_or_default();
         
         if !config.circuit_breaker_enabled {
@@ -302,7 +347,13 @@ impl RestartManager {
 
     /// Update restart metrics
     pub fn update_metrics(&self, service: &ServiceName, success: bool, duration: Duration) {
-        let mut metrics = self.metrics.write().unwrap();
+        let mut metrics = match self.metrics.write() {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire metrics lock: {}", e);
+                return;
+            }
+        };
         let m = metrics.entry(service.clone()).or_insert_with(RestartMetrics::default);
         
         m.total_restarts += 1;
@@ -324,18 +375,35 @@ impl RestartManager {
 
     /// Get restart metrics for a service
     pub fn get_metrics(&self, service: &ServiceName) -> Option<RestartMetrics> {
-        self.metrics.read().unwrap().get(service).cloned()
+        match self.metrics.read() {
+            Ok(guard) => guard.get(service).cloned(),
+            Err(e) => {
+                error!("Failed to acquire metrics lock: {}", e);
+                None
+            }
+        }
     }
 
     /// Get all restart metrics
     pub fn get_all_metrics(&self) -> HashMap<ServiceName, RestartMetrics> {
-        self.metrics.read().unwrap().clone()
+        match self.metrics.read() {
+            Ok(guard) => guard.clone(),
+            Err(e) => {
+                error!("Failed to acquire metrics lock: {}", e);
+                HashMap::new()
+            }
+        }
     }
 
     /// Reset metrics for a service
-    pub fn reset_metrics(&self, service: &ServiceName) {
-        self.metrics.write().unwrap().insert(service.clone(), RestartMetrics::default());
-        self.circuit_states.write().unwrap().insert(service.clone(), CircuitState::Closed);
+    pub fn reset_metrics(&self, service: &ServiceName) -> Result<()> {
+        self.metrics.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire metrics lock: {}", e))?
+            .insert(service.clone(), RestartMetrics::default());
+        self.circuit_states.write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire circuit states lock: {}", e))?
+            .insert(service.clone(), CircuitState::Closed);
+        Ok(())
     }
 }
 
@@ -359,7 +427,7 @@ mod tests {
             ..Default::default()
         };
         
-        manager.register_config(ServiceName::Redis, config);
+        manager.register_config(ServiceName::Redis, config).expect("Failed to register config");
         
         // Test backoff progression
         assert_eq!(manager.calculate_delay(&ServiceName::Redis, 0), Duration::from_secs(1));
@@ -379,7 +447,7 @@ mod tests {
             ..Default::default()
         };
         
-        manager.register_config(ServiceName::PostgreSQL, config);
+        manager.register_config(ServiceName::PostgreSQL, config).expect("Failed to register config");
         
         // Initially closed
         assert!(manager.check_circuit_breaker(&ServiceName::PostgreSQL));
@@ -397,12 +465,12 @@ mod tests {
     #[test]
     fn test_metrics_tracking() {
         let manager = RestartManager::new();
-        manager.register_config(ServiceName::Docker, RestartConfig::default());
+        manager.register_config(ServiceName::Docker, RestartConfig::default()).expect("Failed to register config");
         
         // Simulate successful restart
         manager.update_metrics(&ServiceName::Docker, true, Duration::from_secs(5));
         
-        let metrics = manager.get_metrics(&ServiceName::Docker).unwrap();
+        let metrics = manager.get_metrics(&ServiceName::Docker).expect("Failed to get metrics");
         assert_eq!(metrics.total_restarts, 1);
         assert_eq!(metrics.successful_restarts, 1);
         assert_eq!(metrics.failed_restarts, 0);
@@ -411,7 +479,7 @@ mod tests {
         // Simulate failed restart
         manager.update_metrics(&ServiceName::Docker, false, Duration::from_secs(0));
         
-        let metrics = manager.get_metrics(&ServiceName::Docker).unwrap();
+        let metrics = manager.get_metrics(&ServiceName::Docker).expect("Failed to get metrics after failure");
         assert_eq!(metrics.total_restarts, 2);
         assert_eq!(metrics.successful_restarts, 1);
         assert_eq!(metrics.failed_restarts, 1);
