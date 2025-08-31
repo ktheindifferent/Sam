@@ -148,7 +148,7 @@ impl ManagedThread {
 pub struct ThreadManager {
     threads: Arc<Mutex<HashMap<String, Arc<Mutex<ManagedThread>>>>>,
     shutdown_signal: Arc<AtomicBool>,
-    monitor_handle: Option<JoinHandle<()>>,
+    monitor_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl ThreadManager {
@@ -156,7 +156,7 @@ impl ThreadManager {
         let manager = ThreadManager {
             threads: Arc::new(Mutex::new(HashMap::new())),
             shutdown_signal: Arc::new(AtomicBool::new(false)),
-            monitor_handle: None,
+            monitor_handle: Arc::new(Mutex::new(None)),
         };
         
         manager.start_monitor();
@@ -210,10 +210,11 @@ impl ThreadManager {
             info!("Thread monitor stopped");
         });
         
-        let mut self_mut = unsafe { 
-            &mut *(self as *const ThreadManager as *mut ThreadManager)
-        };
-        self_mut.monitor_handle = Some(handle);
+        if let Ok(mut monitor) = self.monitor_handle.lock() {
+            *monitor = Some(handle);
+        } else {
+            error!("Failed to store monitor handle");
+        }
     }
     
     pub fn get_instance() -> Arc<RwLock<ThreadManager>> {
@@ -520,8 +521,12 @@ impl ThreadManager {
             Err(e) => error!("Failed to clear threads map: {}", e),
         }
         
-        if let Some(handle) = self.monitor_handle.take() {
-            let _ = handle.join();
+        if let Ok(mut monitor) = self.monitor_handle.lock() {
+            if let Some(handle) = monitor.take() {
+                let _ = handle.join();
+            }
+        } else {
+            error!("Failed to acquire monitor handle lock for shutdown");
         }
     }
 }
@@ -638,6 +643,10 @@ pub fn shutdown_all() {
         Err(e) => error!("Failed to acquire manager write lock for shutdown: {}", e),
     }
 }
+
+#[cfg(test)]
+#[path = "thread_manager_miri_tests.rs"]
+mod miri_tests;
 
 #[cfg(test)]
 mod tests {
