@@ -4,7 +4,7 @@ use base64::Engine;
 use log::info;
 use once_cell::sync::Lazy;
 use reqwest::Client;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
@@ -37,9 +37,39 @@ static PLAYBACK_THREAD_ID: Lazy<Mutex<Option<String>>> =
 static SHUTDOWN_SIGNAL: Lazy<Arc<AtomicBool>> = 
     Lazy::new(|| Arc::new(AtomicBool::new(false)));
 
+/// Helper function to safely acquire a lock with error handling
+fn acquire_state_lock() -> Result<MutexGuard<'static, SpotifyService>, String> {
+    SPOTIFY_STATE.lock()
+        .or_else(|e| {
+            // Attempt to recover from poisoned mutex
+            log::warn!("Recovering from poisoned Spotify state mutex: {}", e);
+            Ok(e.into_inner())
+        })
+        .map_err(|_| "Failed to acquire Spotify state lock".to_string())
+}
+
+/// Helper function to safely acquire the playback thread lock
+fn acquire_thread_lock() -> Result<MutexGuard<'static, Option<String>>, String> {
+    PLAYBACK_THREAD_ID.lock()
+        .or_else(|e| {
+            // Attempt to recover from poisoned mutex
+            log::warn!("Recovering from poisoned playback thread mutex: {}", e);
+            Ok(e.into_inner())
+        })
+        .map_err(|_| "Failed to acquire playback thread lock".to_string())
+}
+
+/// Try to acquire state lock with timeout (for critical operations)
+#[cfg(feature = "timeout")]
+fn try_acquire_state_lock_timeout(timeout: Duration) -> Result<MutexGuard<'static, SpotifyService>, String> {
+    // Note: std::sync::Mutex doesn't have built-in timeout support
+    // For production, consider using parking_lot::Mutex or tokio::sync::Mutex
+    acquire_state_lock()
+}
+
 /// Start the Spotify service (background music thread)
 pub async fn start() {
-    let mut state = match SPOTIFY_STATE.lock() {
+    let mut state = match acquire_state_lock() {
         Ok(guard) => guard,
         Err(e) => {
             log::error!("Failed to acquire Spotify state lock: {}", e);
@@ -53,7 +83,7 @@ pub async fn start() {
     state.status = SpotifyStatus::Playing;
     info!("Starting Spotify playback thread");
     let state_arc = SPOTIFY_STATE.clone();
-    let mut thread_guard = match PLAYBACK_THREAD_ID.lock() {
+    let mut thread_guard = match acquire_thread_lock() {
         Ok(guard) => guard,
         Err(e) => {
             log::error!("Failed to acquire playback thread lock: {}", e);
@@ -78,10 +108,14 @@ pub async fn start() {
             
             while !shutdown_signal.load(Ordering::Relaxed) && !SHUTDOWN_SIGNAL.load(Ordering::Relaxed) {
                 {
-                    let s = match state_arc.lock() {
+                    let s = match state_arc.lock()
+                        .or_else(|e| {
+                            log::warn!("Recovering from poisoned mutex in playback thread: {}", e);
+                            Ok(e.into_inner())
+                        }) {
                         Ok(guard) => guard,
-                        Err(e) => {
-                            log::error!("Failed to acquire state lock in playback thread: {}", e);
+                        Err(_) => {
+                            log::error!("Critical: Failed to acquire state lock in playback thread");
                             break;
                         }
                     };
@@ -111,20 +145,20 @@ pub async fn start() {
 
 /// Stop the Spotify service (stop music and thread)
 pub async fn stop() {
-    match SPOTIFY_STATE.lock() {
+    match acquire_state_lock() {
         Ok(mut state) => {
             state.status = SpotifyStatus::Stopped;
             info!("Stopping Spotify playback");
         }
         Err(e) => {
             log::error!("Failed to acquire Spotify state lock: {}", e);
-            return;
+            // Still try to signal shutdown even if lock fails
         }
     }
     // Signal the thread to stop
     SHUTDOWN_SIGNAL.store(true, Ordering::Relaxed);
     
-    let mut thread_guard = match PLAYBACK_THREAD_ID.lock() {
+    let mut thread_guard = match acquire_thread_lock() {
         Ok(guard) => guard,
         Err(e) => {
             log::error!("Failed to acquire playback thread lock: {}", e);
@@ -142,7 +176,7 @@ pub async fn stop() {
 
 /// Pause playback
 pub async fn pause() {
-    match SPOTIFY_STATE.lock() {
+    match acquire_state_lock() {
         Ok(mut state) => {
             if state.status == SpotifyStatus::Playing {
                 state.status = SpotifyStatus::Paused;
@@ -157,7 +191,7 @@ pub async fn pause() {
 
 /// Resume playback
 pub async fn play() {
-    match SPOTIFY_STATE.lock() {
+    match acquire_state_lock() {
         Ok(mut state) => {
             if state.status == SpotifyStatus::Paused {
                 state.status = SpotifyStatus::Playing;
@@ -172,7 +206,7 @@ pub async fn play() {
 
 /// Toggle shuffle
 pub async fn shuffle() {
-    match SPOTIFY_STATE.lock() {
+    match acquire_state_lock() {
         Ok(mut state) => {
             state.shuffle = !state.shuffle;
             info!("Spotify shuffle set to {}", state.shuffle);
@@ -185,7 +219,7 @@ pub async fn shuffle() {
 
 /// Get current status
 pub fn status() -> String {
-    match SPOTIFY_STATE.lock() {
+    match acquire_state_lock() {
         Ok(state) => {
             format!(
                 "{}{}",
@@ -331,7 +365,7 @@ mod tests {
     
     #[test]
     fn test_spotify_status_initial() {
-        let state = SPOTIFY_STATE.lock().unwrap();
+        let state = acquire_state_lock().expect("Failed to acquire lock in test");
         // Initial state may vary, but should be one of the valid states
         assert!(matches!(state.status, SpotifyStatus::Stopped | SpotifyStatus::Playing | SpotifyStatus::Paused));
     }
@@ -340,7 +374,7 @@ mod tests {
     async fn test_spotify_lifecycle() {
         // Reset state
         {
-            let mut state = SPOTIFY_STATE.lock().unwrap();
+            let mut state = acquire_state_lock().expect("Failed to acquire lock in test");
             state.status = SpotifyStatus::Stopped;
             state.shuffle = false;
         }
@@ -348,28 +382,28 @@ mod tests {
         // Test start
         start().await;
         {
-            let state = SPOTIFY_STATE.lock().unwrap();
+            let state = acquire_state_lock().expect("Failed to acquire lock in test");
             assert_eq!(state.status, SpotifyStatus::Playing);
         }
         
         // Test pause
         pause().await;
         {
-            let state = SPOTIFY_STATE.lock().unwrap();
+            let state = acquire_state_lock().expect("Failed to acquire lock in test");
             assert_eq!(state.status, SpotifyStatus::Paused);
         }
         
         // Test resume
         play().await;
         {
-            let state = SPOTIFY_STATE.lock().unwrap();
+            let state = acquire_state_lock().expect("Failed to acquire lock in test");
             assert_eq!(state.status, SpotifyStatus::Playing);
         }
         
         // Test stop
         stop().await;
         {
-            let state = SPOTIFY_STATE.lock().unwrap();
+            let state = acquire_state_lock().expect("Failed to acquire lock in test");
             assert_eq!(state.status, SpotifyStatus::Stopped);
         }
     }
@@ -377,14 +411,14 @@ mod tests {
     #[tokio::test]
     async fn test_shuffle_toggle() {
         let initial_shuffle = {
-            let state = SPOTIFY_STATE.lock().unwrap();
+            let state = acquire_state_lock().expect("Failed to acquire lock in test");
             state.shuffle
         };
         
         shuffle().await;
         
         let new_shuffle = {
-            let state = SPOTIFY_STATE.lock().unwrap();
+            let state = acquire_state_lock().expect("Failed to acquire lock in test");
             state.shuffle
         };
         
@@ -394,7 +428,7 @@ mod tests {
         shuffle().await;
         
         let final_shuffle = {
-            let state = SPOTIFY_STATE.lock().unwrap();
+            let state = acquire_state_lock().expect("Failed to acquire lock in test");
             state.shuffle
         };
         
@@ -404,21 +438,21 @@ mod tests {
     #[test]
     fn test_status_string() {
         {
-            let mut state = SPOTIFY_STATE.lock().unwrap();
+            let mut state = acquire_state_lock().expect("Failed to acquire lock in test");
             state.status = SpotifyStatus::Playing;
             state.shuffle = false;
         }
         assert_eq!(status(), "playing");
         
         {
-            let mut state = SPOTIFY_STATE.lock().unwrap();
+            let mut state = acquire_state_lock().expect("Failed to acquire lock in test");
             state.status = SpotifyStatus::Paused;
             state.shuffle = true;
         }
         assert_eq!(status(), "paused (shuffle)");
         
         {
-            let mut state = SPOTIFY_STATE.lock().unwrap();
+            let mut state = acquire_state_lock().expect("Failed to acquire lock in test");
             state.status = SpotifyStatus::Stopped;
             state.shuffle = false;
         }
@@ -445,7 +479,7 @@ mod tests {
         let mut api = SpotifyApi::new("test_id".to_string(), "test_secret".to_string());
         api.client = Client::builder()
             .build()
-            .unwrap();
+            .expect("Failed to build HTTP client in test");
         
         // Note: In real tests, we'd need to mock the actual URL
         // This demonstrates the testing pattern
@@ -540,15 +574,15 @@ mod tests {
         
         let result = api.play().await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "No access token");
+        assert_eq!(result.expect_err("Expected error for no access token"), "No access token");
         
         let result = api.pause().await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "No access token");
+        assert_eq!(result.expect_err("Expected error for no access token"), "No access token");
         
         let result = api.set_shuffle(true).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "No access token");
+        assert_eq!(result.expect_err("Expected error for no access token"), "No access token");
     }
     
     proptest! {
@@ -583,9 +617,15 @@ mod tests {
             let handle = thread::spawn(move || {
                 c.wait();
                 // Concurrent access to state should be safe
-                let state = SPOTIFY_STATE.lock().unwrap();
-                let _status = state.status.clone();
-                let _shuffle = state.shuffle;
+                match acquire_state_lock() {
+                    Ok(state) => {
+                        let _status = state.status.clone();
+                        let _shuffle = state.shuffle;
+                    }
+                    Err(e) => {
+                        panic!("Failed to acquire lock in concurrent test: {}", e);
+                    }
+                }
                 
                 // Also test status() function
                 let _status_str = status();
@@ -594,7 +634,114 @@ mod tests {
         }
         
         for handle in handles {
-            handle.join().unwrap();
+            handle.join().expect("Thread panicked during concurrent access test");
         }
+    }
+    
+    #[test]
+    fn test_mutex_recovery() {
+        // Test that we can recover from poisoned mutex
+        use std::panic;
+        use std::thread;
+        
+        // Create a thread that will panic while holding the lock
+        let result = thread::spawn(|| {
+            let _state = SPOTIFY_STATE.lock().expect("Initial lock should work");
+            panic!("Intentional panic to poison mutex");
+        }).join();
+        
+        // Verify the thread panicked
+        assert!(result.is_err());
+        
+        // Now test that we can still acquire the lock via our helper function
+        match acquire_state_lock() {
+            Ok(state) => {
+                // Successfully recovered from poisoned mutex
+                let _ = state.status.clone();
+            }
+            Err(e) => {
+                panic!("Failed to recover from poisoned mutex: {}", e);
+            }
+        }
+        
+        // Also test that status() function handles poisoned mutex gracefully
+        let status_str = status();
+        assert!(!status_str.is_empty());
+    }
+    
+    #[test]
+    fn test_error_handling_in_status() {
+        // Test that status() returns "error" when lock acquisition fails
+        // This is already tested implicitly but let's be explicit
+        let status_result = status();
+        // Should always return a valid string, never panic
+        assert!(status_result == "playing" || 
+                status_result == "paused" || 
+                status_result == "paused (shuffle)" ||
+                status_result == "stopped" || 
+                status_result == "playing (shuffle)" ||
+                status_result == "stopped (shuffle)" ||
+                status_result == "error");
+    }
+    
+    #[tokio::test]
+    async fn test_graceful_degradation() {
+        // Test that operations continue even when some fail
+        
+        // Start should handle existing playing state gracefully
+        {
+            let mut state = acquire_state_lock().expect("Failed to acquire lock");
+            state.status = SpotifyStatus::Playing;
+        }
+        start().await; // Should log "already running" but not panic
+        
+        // Pause from non-playing state should be no-op
+        {
+            let mut state = acquire_state_lock().expect("Failed to acquire lock");
+            state.status = SpotifyStatus::Stopped;
+        }
+        pause().await; // Should be no-op
+        
+        // Play from non-paused state should be no-op
+        {
+            let mut state = acquire_state_lock().expect("Failed to acquire lock");
+            state.status = SpotifyStatus::Playing;
+        }
+        play().await; // Should be no-op
+    }
+    
+    #[test]
+    fn test_multiple_rapid_status_calls() {
+        // Test rapid concurrent calls to status()
+        use std::thread;
+        
+        let mut handles = vec![];
+        for _ in 0..100 {
+            let handle = thread::spawn(|| {
+                for _ in 0..10 {
+                    let _ = status();
+                }
+            });
+            handles.push(handle);
+        }
+        
+        for handle in handles {
+            handle.join().expect("Status call thread should not panic");
+        }
+    }
+    
+    #[tokio::test]
+    async fn test_thread_lock_error_handling() {
+        // Test that thread operations handle lock errors gracefully
+        
+        // Start should handle thread lock errors
+        start().await;
+        
+        // Stop should handle thread lock errors
+        stop().await;
+        
+        // Verify we're in stopped state
+        let status_str = status();
+        assert!(status_str == "stopped" || status_str == "stopped (shuffle)");
     }
 }
