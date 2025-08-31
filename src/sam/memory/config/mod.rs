@@ -1,6 +1,7 @@
 use crate::sam::memory::PostgresServer;
 use crate::sam::memory::Result;
 use crate::sam::memory::{PGCol, PostgresQueries};
+use crate::sam::services::thread_manager;
 use deadpool_postgres::Manager;
 use deadpool_postgres::Pool;
 use native_tls::TlsConnector;
@@ -9,7 +10,6 @@ use postgres_native_tls::MakeTlsConnector;
 use rouille::Response;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use std::thread;
 use tokio_postgres::Row;
 
 pub mod file_storage_location;
@@ -57,7 +57,9 @@ impl Config {
         }
 
         let _config = self.clone();
-        thread::spawn(move || {
+        thread_manager::spawn("http-server", move |shutdown_signal, _health_rx| {
+            // Note: rouille::start_server is blocking, so we can't easily check shutdown_signal
+            // This would need refactoring to use a different HTTP server that supports graceful shutdown
             rouille::start_server("0.0.0.0:8000".to_string().as_str(), move |request| {
                 match crate::sam::http::handle(request) {
                     Ok(request) => request,

@@ -13,19 +13,22 @@ extern crate lifx_rs as lifx;
 pub mod lifx_api_server;
 
 use crate::sam::services::Result;
+use crate::sam::services::thread_manager::{self, ThreadConfig, ThreadPriority};
 use once_cell::sync::Lazy;
 use online::check;
 use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
 use std::sync::{Arc, Mutex};
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 
 // Add a static for the StopHandle
 static LIFX_SERVER_STOP_HANDLE: Lazy<
     Arc<Mutex<Option<crate::sam::services::lifx::lifx_api_server::StopHandle>>>,
 > = Lazy::new(|| Arc::new(Mutex::new(None)));
 static LIFX_SERVER_HANDLE: Lazy<Arc<Mutex<Option<JoinHandle<()>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
+static LIFX_THREAD_ID: Lazy<Arc<Mutex<Option<String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 static LIFX_SERVER_RUNNING: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| Arc::new(Mutex::new(false)));
 
@@ -43,7 +46,7 @@ pub fn start_service() {
         return;
     }
     *running = true;
-    let handle = thread::spawn(move || {
+    let thread_id = thread_manager::spawn("lifx-service", move |shutdown_signal, _health_rx| {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query
             .queries
@@ -62,6 +65,9 @@ pub fn start_service() {
         }
         // Keep thread alive until stopped
         loop {
+            if shutdown_signal.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
             match LIFX_SERVER_RUNNING.lock() {
                 Ok(guard) => {
                     if !*guard {
@@ -77,13 +83,14 @@ pub fn start_service() {
         }
         log::info!("LIFX service thread exiting");
     });
-    match LIFX_SERVER_HANDLE.lock() {
-        Ok(mut handle_slot) => {
-            *handle_slot = Some(handle);
-            log::info!("LIFX service started");
+    // Store the thread_id for managed thread control
+    match LIFX_THREAD_ID.lock() {
+        Ok(mut id_slot) => {
+            *id_slot = Some(thread_id);
+            log::info!("LIFX service started with managed thread");
         }
         Err(e) => {
-            log::error!("Failed to acquire LIFX_SERVER_HANDLE lock: {}", e);
+            log::error!("Failed to acquire LIFX_THREAD_ID lock: {}", e);
         }
     }
 }
@@ -116,16 +123,16 @@ pub fn stop_service() {
         }
     }
 
-    // Join the background thread
-    match LIFX_SERVER_HANDLE.lock() {
-        Ok(mut handle_slot) => {
-            if let Some(handle) = handle_slot.take() {
-                let _ = handle.join();
+    // Stop the managed thread
+    match LIFX_THREAD_ID.lock() {
+        Ok(mut id_slot) => {
+            if let Some(thread_id) = id_slot.take() {
+                let _ = thread_manager::stop_thread(&thread_id);
                 log::info!("LIFX service stopped");
             }
         }
         Err(e) => {
-            log::error!("Failed to acquire LIFX_SERVER_HANDLE lock: {}", e);
+            log::error!("Failed to acquire LIFX_THREAD_ID lock: {}", e);
         }
     }
 }
@@ -823,7 +830,7 @@ mod tests {
         
         for _ in 0..5 {
             let c = barrier.clone();
-            let handle = thread::spawn(move || {
+            let handle = std::thread::spawn(move || {
                 c.wait();
                 // Attempting to start service multiple times should be safe
                 // Only one should actually start
