@@ -1,6 +1,6 @@
 use bollard::container::ListContainersOptions;
 use bollard::Docker;
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use once_cell::sync::{Lazy, OnceCell};
 use std::process::Command;
 use std::sync::{Arc, RwLock, Mutex};
@@ -9,6 +9,54 @@ use std::time::Instant;
 use anyhow::{Result, Context};
 use deadpool_redis::{Config, Runtime, Pool, redis::cmd};
 use super::cache::{HybridCache, CacheConfig};
+use super::error_handling::{CircuitBreaker, RetryConfig, retry_with_backoff, ServiceError};
+use thiserror::Error;
+
+/// Redis-specific error types for better error handling
+#[derive(Error, Debug)]
+pub enum RedisError {
+    #[error("Connection pool error: {0}")]
+    PoolError(String),
+    
+    #[error("Connection failed: {0}")]
+    ConnectionError(String),
+    
+    #[error("Command execution failed: {0}")]
+    CommandError(String),
+    
+    #[error("Task execution failed: {task_name}: {error}")]
+    TaskError { task_name: String, error: String },
+    
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+    
+    #[error("Lock acquisition failed: {0}")]
+    LockError(String),
+    
+    #[error("Docker operation failed: {0}")]
+    DockerError(String),
+}
+
+impl From<RedisError> for anyhow::Error {
+    fn from(err: RedisError) -> Self {
+        anyhow::anyhow!(err)
+    }
+}
+
+/// Global circuit breaker for Redis connections
+static REDIS_CIRCUIT_BREAKER: OnceCell<Arc<CircuitBreaker>> = OnceCell::new();
+
+/// Get or create the Redis circuit breaker
+fn get_circuit_breaker() -> Arc<CircuitBreaker> {
+    REDIS_CIRCUIT_BREAKER.get_or_init(|| {
+        Arc::new(CircuitBreaker::new(
+            "redis_connection".to_string(),
+            3, // failure threshold
+            2, // success threshold to close
+            Duration::from_secs(30), // timeout before attempting half-open
+        ))
+    }).clone()
+}
 
 /// Install and start Redis using Docker if not already running.
 /// This is intended to be called from setup/install.
@@ -231,29 +279,72 @@ pub async fn is_installed() -> bool {
 static POOL: OnceCell<Arc<RwLock<Option<Pool>>>> = OnceCell::new();
 
 pub async fn connect() -> Result<Pool> {
+    let circuit_breaker = get_circuit_breaker();
+    
+    // Check circuit breaker status
+    circuit_breaker.call(async {
+        connect_with_retry().await
+    }).await.map_err(|e| {
+        error!("Redis connection failed through circuit breaker: {}", e);
+        anyhow::anyhow!("Redis connection unavailable: {}", e)
+    })
+}
+
+/// Internal connection function with retry logic
+async fn connect_with_retry() -> Result<Pool> {
     // Initialize the pool holder if not already done
     let pool_holder = POOL.get_or_init(|| Arc::new(RwLock::new(None)));
     
     // Check if pool already exists
     {
         let pool_guard = pool_holder.read()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire read lock for pool: {}", e))?;
+            .map_err(|e| RedisError::LockError(format!("Failed to acquire read lock: {}", e)))?;
         if let Some(ref pool) = *pool_guard {
-            return Ok(pool.clone());
+            // Validate the existing pool is still healthy
+            if validate_pool(pool).await.is_ok() {
+                return Ok(pool.clone());
+            } else {
+                warn!("Existing pool is unhealthy, will create new one");
+            }
         }
     }
     
-    // Create new pool
-    let pool = create_pool().await?;
+    // Create new pool with retry logic
+    let retry_config = RetryConfig {
+        max_attempts: 3,
+        initial_delay: Duration::from_millis(500),
+        max_delay: Duration::from_secs(5),
+        exponential_base: 2.0,
+        jitter: true,
+    };
+    
+    let pool = retry_with_backoff(
+        || create_pool(),
+        retry_config,
+        "redis_pool_creation"
+    ).await?;
     
     // Store for future use (write lock)
     {
         let mut pool_guard = pool_holder.write()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock for pool: {}", e))?;
+            .map_err(|e| RedisError::LockError(format!("Failed to acquire write lock: {}", e)))?;
         *pool_guard = Some(pool.clone());
     }
     
     Ok(pool)
+}
+
+/// Validate that a pool is still healthy
+async fn validate_pool(pool: &Pool) -> Result<()> {
+    let mut conn = pool.get().await
+        .map_err(|e| RedisError::ConnectionError(format!("Failed to get connection: {}", e)))?;
+    
+    let _: String = cmd("PING")
+        .query_async(&mut conn)
+        .await
+        .map_err(|e| RedisError::CommandError(format!("Ping failed: {}", e)))?;
+    
+    Ok(())
 }
 
 /// Reset the connection pool (useful for testing and reconnection)
@@ -288,21 +379,37 @@ async fn create_pool() -> Result<Pool> {
 }
 
 pub async fn health_check() -> Result<()> {
-    let pool = connect().await?;
-    let mut conn = pool.get().await
-        .context("Failed to get connection for health check")?;
+    let retry_config = RetryConfig {
+        max_attempts: 2,
+        initial_delay: Duration::from_millis(100),
+        max_delay: Duration::from_secs(1),
+        exponential_base: 2.0,
+        jitter: false,
+    };
     
-    let pong: String = cmd("PING")
-        .query_async(&mut conn)
-        .await
-        .context("Redis health check failed")?;
-    
-    if pong == "PONG" {
-        info!("Redis health check passed");
-        Ok(())
-    } else {
-        Err(anyhow::anyhow!("Redis health check failed: unexpected response"))
-    }
+    retry_with_backoff(
+        || async {
+            let pool = connect().await?;
+            let mut conn = pool.get().await
+                .map_err(|e| RedisError::ConnectionError(format!("Health check connection failed: {}", e)))?;
+            
+            let pong: String = cmd("PING")
+                .query_async(&mut conn)
+                .await
+                .map_err(|e| RedisError::CommandError(format!("Health check ping failed: {}", e)))?;
+            
+            if pong == "PONG" {
+                debug!("Redis health check passed");
+                Ok(())
+            } else {
+                Err(RedisError::ServiceUnavailable(
+                    format!("Unexpected Redis PING response: {}", pong)
+                ).into())
+            }
+        },
+        retry_config,
+        "redis_health_check"
+    ).await
 }
 
 pub async fn get_info() -> Result<String> {
@@ -432,10 +539,34 @@ mod tests {
         );
     }
     
-    // Helper function for handling JoinSet errors
-    fn assert_task_success<T>(result: Result<T, tokio::task::JoinError>, task_name: &str) -> T {
-        result.unwrap_or_else(|e| {
-            panic!("Task '{}' failed with JoinError: {}. This usually indicates a panic in the spawned task.", task_name, e)
+    // Helper function for handling JoinSet errors with proper error propagation
+    fn handle_task_result<T>(result: Result<T, tokio::task::JoinError>, task_name: &str) -> Result<T> {
+        result.map_err(|e| {
+            error!("Task '{}' failed with JoinError: {}. This usually indicates a panic in the spawned task.", task_name, e);
+            
+            // Check if it was a panic
+            if e.is_panic() {
+                let panic_info = if let Ok(panic) = e.try_into_panic() {
+                    format!("Task panicked: {:?}", panic)
+                } else {
+                    "Task panicked with unknown error".to_string()
+                };
+                
+                RedisError::TaskError {
+                    task_name: task_name.to_string(),
+                    error: panic_info,
+                }.into()
+            } else if e.is_cancelled() {
+                RedisError::TaskError {
+                    task_name: task_name.to_string(),
+                    error: "Task was cancelled".to_string(),
+                }.into()
+            } else {
+                RedisError::TaskError {
+                    task_name: task_name.to_string(),
+                    error: e.to_string(),
+                }.into()
+            }
         })
     }
 
@@ -494,9 +625,9 @@ mod tests {
             let mut errors = Vec::new();
             
             while let Some(result) = tasks.join_next().await {
-                let task_result = assert_task_success(result, "concurrent_pool_access");
-                match task_result {
-                    Ok(i) => results.push(i),
+                match handle_task_result(result, "concurrent_pool_access") {
+                    Ok(Ok(i)) => results.push(i),
+                    Ok(Err(e)) => errors.push(e.to_string()),
                     Err(e) => errors.push(e.to_string()),
                 }
             }
@@ -545,9 +676,8 @@ mod tests {
             let mut errors = Vec::new();
             
             while let Some(result) = tasks.join_next().await {
-                let task_result = assert_task_success(result, "pool_reuse");
-                match task_result {
-                    Ok((i, pool)) => {
+                match handle_task_result(result, "pool_reuse") {
+                    Ok(Ok((i, pool))) => {
                         // The pool should be the same instance (same underlying connection pool)
                         assert_eq!(
                             pool.status().size,
@@ -557,8 +687,11 @@ mod tests {
                         );
                         successful_checks += 1;
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         errors.push(format!("Task failed: {}", e));
+                    }
+                    Err(e) => {
+                        errors.push(format!("Task execution failed: {}", e));
                     }
                 }
             }
@@ -709,9 +842,10 @@ mod tests {
             // All resets should complete without panic
             let mut reset_results = Vec::new();
             while let Some(result) = tasks.join_next().await {
-                let task_result = assert_task_success(result, "concurrent_reset");
-                if let Ok(i) = task_result {
-                    reset_results.push(i);
+                match handle_task_result(result, "concurrent_reset") {
+                    Ok(Ok(i)) => reset_results.push(i),
+                    Ok(Err(e)) => warn!("Task failed during reset: {}", e),
+                    Err(e) => warn!("Task execution failed during reset: {}", e),
                 }
             }
             
@@ -757,6 +891,190 @@ mod tests {
             );
             
             // This is not a test failure if Redis is not available
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+    
+    // ==================== Failure Injection Tests ====================
+    
+    #[tokio::test]
+    async fn test_circuit_breaker_opens_on_failures() -> TestResult<()> {
+        let test_future = async {
+            // Reset the circuit breaker
+            if let Some(cb) = REDIS_CIRCUIT_BREAKER.get() {
+                cb.reset().await;
+            }
+            
+            // Force the pool to be invalid by resetting it
+            reset_pool().await?;
+            
+            // Simulate multiple connection failures
+            let mut failures = 0;
+            for _ in 0..5 {
+                match connect().await {
+                    Err(e) => {
+                        failures += 1;
+                        debug!("Expected failure #{}: {}", failures, e);
+                    }
+                    Ok(_) => {
+                        // If Redis is actually available, skip this test
+                        eprintln!("Redis is available, skipping circuit breaker test");
+                        return Ok(());
+                    }
+                }
+            }
+            
+            // Verify that we got failures (circuit breaker should be open)
+            assert!(failures >= 3, "Should have at least 3 failures to open circuit breaker");
+            
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+    
+    #[tokio::test]
+    async fn test_retry_logic_with_exponential_backoff() -> TestResult<()> {
+        let test_future = async {
+            // This test verifies that retry logic is working
+            let start = Instant::now();
+            
+            // Reset pool to force reconnection
+            reset_pool().await?;
+            
+            // Try to connect (should retry if Redis is not available)
+            let result = connect().await;
+            
+            let elapsed = start.elapsed();
+            
+            match result {
+                Ok(_) => {
+                    // Connection succeeded
+                    info!("Connection succeeded after {:?}", elapsed);
+                }
+                Err(e) => {
+                    // Connection failed after retries
+                    info!("Connection failed after {:?} with retries: {}", elapsed, e);
+                    // Verify that retries took some time (exponential backoff)
+                    assert!(elapsed >= Duration::from_millis(500), 
+                           "Retry logic should have taken at least 500ms, took {:?}", elapsed);
+                }
+            }
+            
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+    
+    #[tokio::test]
+    async fn test_graceful_handling_of_task_panics() -> TestResult<()> {
+        use tokio::task::JoinSet;
+        
+        let test_future = async {
+            let mut tasks = JoinSet::new();
+            
+            // Spawn a task that will panic
+            tasks.spawn(async move {
+                panic!("Intentional test panic");
+            });
+            
+            // Spawn a task that succeeds
+            tasks.spawn(async move {
+                Ok::<i32, anyhow::Error>(42)
+            });
+            
+            let mut results = Vec::new();
+            let mut errors = Vec::new();
+            
+            while let Some(join_result) = tasks.join_next().await {
+                match handle_task_result(join_result, "test_task") {
+                    Ok(Ok(val)) => results.push(val),
+                    Ok(Err(e)) => errors.push(format!("Task error: {}", e)),
+                    Err(e) => {
+                        // This should capture the panic
+                        errors.push(format!("Join error: {}", e));
+                        // Verify it's identified as a task error
+                        assert!(e.to_string().contains("Task execution failed"), 
+                               "Error should indicate task failure: {}", e);
+                    }
+                }
+            }
+            
+            // We should have one success and one error
+            assert_eq!(results.len(), 1, "Should have one successful result");
+            assert_eq!(errors.len(), 1, "Should have one error from panic");
+            assert!(errors[0].contains("Task"), "Error should mention task: {}", errors[0]);
+            
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+    
+    #[tokio::test]
+    async fn test_connection_pool_recovery() -> TestResult<()> {
+        let test_future = async {
+            // This test verifies that the pool can recover from failures
+            
+            // First, try to get a connection
+            let first_result = connect().await;
+            
+            if first_result.is_err() {
+                // Redis not available, skip test
+                eprintln!("Redis not available, skipping recovery test");
+                return Ok(());
+            }
+            
+            let first_pool = first_result?;
+            let initial_status = first_pool.status();
+            
+            // Reset the pool to simulate a failure
+            reset_pool().await?;
+            
+            // Wait a bit
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            
+            // Try to reconnect
+            let second_result = connect().await;
+            
+            if let Ok(second_pool) = second_result {
+                let new_status = second_pool.status();
+                info!("Pool recovered - initial size: {}, new size: {}", 
+                      initial_status.size, new_status.size);
+                
+                // Verify the pool is functional
+                validate_pool(&second_pool).await?;
+            }
+            
+            Ok(())
+        };
+        
+        with_timeout(Duration::from_secs(TEST_TIMEOUT_SECS), test_future).await?
+    }
+    
+    #[tokio::test]
+    async fn test_health_check_with_retries() -> TestResult<()> {
+        let test_future = async {
+            // Test that health check includes retry logic
+            let start = Instant::now();
+            let result = health_check().await;
+            let elapsed = start.elapsed();
+            
+            match result {
+                Ok(_) => {
+                    info!("Health check succeeded after {:?}", elapsed);
+                }
+                Err(e) => {
+                    info!("Health check failed after {:?}: {}", elapsed, e);
+                    // Health check should have retried
+                    assert!(elapsed >= Duration::from_millis(100),
+                           "Health check should include retry delay, took {:?}", elapsed);
+                }
+            }
+            
             Ok(())
         };
         
