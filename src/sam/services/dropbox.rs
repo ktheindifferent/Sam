@@ -7,6 +7,11 @@ use rouille::Response;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
+use sha2::{Sha256, Digest};
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use std::collections::HashMap;
 
 use std::io::prelude::*;
 
@@ -207,8 +212,104 @@ pub fn create_folder(path: &str) -> Result<(), crate::sam::services::Error> {
     Ok(())
 }
 
-// TODO: Cache Files
+/// File cache entry with metadata
+#[derive(Clone, Debug)]
+struct CachedFile {
+    data: Vec<u8>,
+    hash: String,
+    cached_at: u64,
+    size: usize,
+}
+
+/// In-memory cache for Dropbox files with TTL
+static FILE_CACHE: Lazy<Mutex<HashMap<String, CachedFile>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
+});
+
+/// Cache configuration
+const CACHE_TTL_SECONDS: u64 = 3600; // 1 hour TTL
+const MAX_CACHE_SIZE_MB: usize = 100; // Maximum 100MB cache size
+const MAX_FILE_SIZE_MB: usize = 10; // Don't cache files larger than 10MB
+
+/// Calculate SHA256 hash of data
+fn calculate_hash(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
+}
+
+/// Get current timestamp in seconds
+fn current_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Clean expired entries from cache
+fn clean_expired_cache() {
+    let now = current_timestamp();
+    if let Ok(mut cache) = FILE_CACHE.lock() {
+        cache.retain(|_, entry| {
+            now - entry.cached_at < CACHE_TTL_SECONDS
+        });
+    }
+}
+
+/// Get total cache size in bytes
+fn get_cache_size() -> usize {
+    if let Ok(cache) = FILE_CACHE.lock() {
+        cache.values().map(|entry| entry.size).sum()
+    } else {
+        0
+    }
+}
+
+/// Evict least recently cached files if cache is too large
+fn evict_if_needed(new_size: usize) {
+    let max_size_bytes = MAX_CACHE_SIZE_MB * 1024 * 1024;
+    
+    if let Ok(mut cache) = FILE_CACHE.lock() {
+        let current_size = cache.values().map(|e| e.size).sum::<usize>();
+        
+        if current_size + new_size > max_size_bytes {
+            // Sort by cached_at timestamp and remove oldest entries
+            let mut entries: Vec<(String, u64, usize)> = cache
+                .iter()
+                .map(|(k, v)| (k.clone(), v.cached_at, v.size))
+                .collect();
+            entries.sort_by_key(|e| e.1);
+            
+            let mut removed_size = 0;
+            for (key, _, size) in entries {
+                if current_size - removed_size + new_size <= max_size_bytes {
+                    break;
+                }
+                cache.remove(&key);
+                removed_size += size;
+                log::debug!("Evicted cached file: {} ({}KB)", key, size / 1024);
+            }
+        }
+    }
+}
+
+/// Download file with caching support
 pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
+    // Clean expired entries periodically
+    clean_expired_cache();
+    
+    // Check cache first
+    if let Ok(cache) = FILE_CACHE.lock() {
+        if let Some(entry) = cache.get(dropbox_path) {
+            let now = current_timestamp();
+            if now - entry.cached_at < CACHE_TTL_SECONDS {
+                log::info!("Cache hit for file: {}", dropbox_path);
+                return Ok(entry.data.clone());
+            }
+        }
+    }
+    
+    log::info!("Cache miss for file: {}, downloading from Dropbox", dropbox_path);
     let obj = get_db_obj().map_err(|e| {
         log::error!("Failed to get dropbox database object: {}", e);
         format!("Failed to get dropbox database object: {}", e)
@@ -247,6 +348,27 @@ pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
         format!("Unable to read dropbox download data: {}", e)
     })?;
 
+    // Cache the file if it's not too large
+    let file_size = data.len();
+    if file_size <= MAX_FILE_SIZE_MB * 1024 * 1024 {
+        // Evict old entries if needed
+        evict_if_needed(file_size);
+        
+        let cached_file = CachedFile {
+            data: data.clone(),
+            hash: calculate_hash(&data),
+            cached_at: current_timestamp(),
+            size: file_size,
+        };
+        
+        if let Ok(mut cache) = FILE_CACHE.lock() {
+            cache.insert(dropbox_path.to_string(), cached_file);
+            log::info!("Cached file: {} ({}KB)", dropbox_path, file_size / 1024);
+        }
+    } else {
+        log::info!("File too large to cache: {} ({}MB)", dropbox_path, file_size / 1024 / 1024);
+    }
+    
     Ok(data)
 
     // log::info!("dropbox_file: {:?}", );

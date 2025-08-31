@@ -725,4 +725,139 @@ mod tests {
         let content = fs::read_to_string(restored_file).await.expect("Failed to read restored file");
         assert_eq!(content, "test content");
     }
+    
+    // ==================== Encryption Methods ====================
+    
+    /// Encrypt a file using AES-256-GCM
+    async fn encrypt_file(&self, file_path: &Path, backup_id: &str) -> Result<PathBuf> {
+        let key = self.get_or_create_encryption_key().await?;
+        let cipher = Aes256Gcm::new(&key);
+        
+        // Read the file
+        let plaintext = fs::read(file_path).await?;
+        
+        // Generate a random nonce
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        
+        // Encrypt the data
+        let ciphertext = cipher.encrypt(&nonce, plaintext.as_ref())
+            .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
+        
+        // Create encrypted file path
+        let encrypted_path = file_path.with_extension("enc");
+        
+        // Write encrypted data with nonce prepended
+        let mut encrypted_data = Vec::new();
+        encrypted_data.extend_from_slice(&nonce);
+        encrypted_data.extend_from_slice(&ciphertext);
+        
+        fs::write(&encrypted_path, encrypted_data).await?;
+        
+        // Remove original file
+        fs::remove_file(file_path).await?;
+        
+        info!("Encrypted backup file: {:?}", encrypted_path);
+        Ok(encrypted_path)
+    }
+    
+    /// Decrypt a file using AES-256-GCM
+    async fn decrypt_file(&self, file_path: &Path, backup_id: &str) -> Result<PathBuf> {
+        let key = self.get_or_create_encryption_key().await?;
+        let cipher = Aes256Gcm::new(&key);
+        
+        // Read the encrypted file
+        let encrypted_data = fs::read(file_path).await?;
+        
+        if encrypted_data.len() < 12 {
+            return Err(anyhow::anyhow!("Invalid encrypted file: too short"));
+        }
+        
+        // Extract nonce and ciphertext
+        let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
+        let nonce = Nonce::from_slice(nonce_bytes);
+        
+        // Decrypt the data
+        let plaintext = cipher.decrypt(nonce, ciphertext)
+            .map_err(|e| anyhow::anyhow!("Decryption failed: {}", e))?;
+        
+        // Create decrypted file path
+        let decrypted_path = file_path.with_extension("tar.gz");
+        
+        // Write decrypted data
+        fs::write(&decrypted_path, plaintext).await?;
+        
+        info!("Decrypted backup file: {:?}", decrypted_path);
+        Ok(decrypted_path)
+    }
+    
+    /// Get or create the encryption key
+    async fn get_or_create_encryption_key(&self) -> Result<Key<Aes256Gcm>> {
+        // Try to get key from environment variable
+        if let Ok(key_str) = std::env::var("BACKUP_ENCRYPTION_KEY") {
+            let key_bytes = general_purpose::STANDARD
+                .decode(&key_str)
+                .context("Failed to decode encryption key from base64")?;
+            
+            if key_bytes.len() != 32 {
+                return Err(anyhow::anyhow!("Invalid key length: expected 32 bytes"));
+            }
+            
+            let mut key_array = [0u8; 32];
+            key_array.copy_from_slice(&key_bytes);
+            return Ok(Key::<Aes256Gcm>::from(key_array));
+        }
+        
+        // Try to read key from secure file
+        let key_file = Path::new("/etc/sam/backup_key");
+        if key_file.exists() {
+            let key_data = fs::read_to_string(key_file).await?;
+            let key_bytes = general_purpose::STANDARD
+                .decode(key_data.trim())
+                .context("Failed to decode key from file")?;
+            
+            if key_bytes.len() != 32 {
+                return Err(anyhow::anyhow!("Invalid key in file: expected 32 bytes"));
+            }
+            
+            let mut key_array = [0u8; 32];
+            key_array.copy_from_slice(&key_bytes);
+            return Ok(Key::<Aes256Gcm>::from(key_array));
+        }
+        
+        // Generate a new key
+        let key = Aes256Gcm::generate_key(&mut OsRng);
+        
+        // Save the key securely
+        let key_str = general_purpose::STANDARD.encode(key.as_slice());
+        
+        // Create directory if it doesn't exist
+        fs::create_dir_all("/etc/sam").await?;
+        
+        // Write key with secure permissions
+        fs::write(key_file, &key_str).await?;
+        
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(key_file, permissions)?;
+        }
+        
+        warn!("Generated new encryption key and saved to /etc/sam/backup_key");
+        Ok(key)
+    }
+    
+    /// Get a key identifier for metadata
+    fn get_key_id(&self) -> String {
+        // Generate a key ID based on the key's hash
+        // This allows tracking which key was used without exposing the key
+        if let Ok(key) = std::env::var("BACKUP_ENCRYPTION_KEY") {
+            let mut hasher = Sha256::new();
+            hasher.update(key.as_bytes());
+            let hash = hasher.finalize();
+            format!("{:x}", &hash[..8])
+        } else {
+            "default".to_string()
+        }
+    }
 }

@@ -46,32 +46,102 @@ pub fn init() {
     }
 }
 
-// TODO - Automatically apply security settings and config
-// /etc/snapserver.conf
+/// Configure Snapcast server with security settings
 pub fn configure() {
-    let cfg = "[server]
+    // Get credentials from environment or secure storage
+    let username = std::env::var("SNAPCAST_USERNAME").unwrap_or_else(|_| {
+        log::warn!("SNAPCAST_USERNAME not set, using default");
+        "sam_user".to_string()
+    });
+    
+    let password = std::env::var("SNAPCAST_PASSWORD").unwrap_or_else(|_| {
+        log::warn!("SNAPCAST_PASSWORD not set, generating random password");
+        generate_secure_password()
+    });
+    
+    let device_name = std::env::var("SNAPCAST_DEVICE_NAME")
+        .unwrap_or_else(|_| "Sam".to_string());
+    
+    // Security settings: bind to localhost by default, require explicit config for external
+    let bind_address = std::env::var("SNAPCAST_BIND_ADDRESS")
+        .unwrap_or_else(|_| "127.0.0.1".to_string());
+    
+    // Build secure configuration
+    let cfg = format!(r#"[server]
 threads = -1
 pidfile = /var/run/snapserver/pid
+user = snapserver
+group = audio
 
 [http]
 enabled = true
-bind_to_address = 0.0.0.0
+bind_to_address = {}
 port = 1780
 doc_root = /usr/share/snapserver/snapweb
+# Enable HTTPS for production
+ssl_certificate = 
+ssl_certificate_key = 
 
 [tcp]
 enabled = true
-bind_to_address = 0.0.0.0
+bind_to_address = {}
 port = 1705
 
 [stream]
-bind_to_address = 0.0.0.0
+bind_to_address = {}
 port = 1704
-source = librespot:///bin/librespot?name=Sam&username=calebsmithdev&password=Nofear1234&devicename=Sam&bitrate=320&nomalize=true
-source = pipe:///tmp/snapfifo?name=samfifo
-[logging]".to_string();
-    log::info!("cfg: {:?}", cfg);
-    std::fs::write("/etc/snapserver.conf", &cfg).expect("Unable to write file");
+# Use environment variables for credentials
+source = librespot:///bin/librespot?name={}&username={}&password={}&devicename={}&bitrate=320&normalize=true
+source = pipe:///tmp/snapfifo?name=samfifo&mode=0666
+
+[logging]
+loglevel = info
+logfile = /var/log/snapserver.log"#,
+        bind_address,
+        bind_address,
+        bind_address,
+        device_name,
+        username,
+        password,
+        device_name
+    );
+    
+    log::info!("Applying security configuration for Snapcast server");
+    
+    // Write configuration with secure permissions
+    match std::fs::write("/etc/snapserver.conf", &cfg) {
+        Ok(_) => {
+            // Set secure file permissions (readable only by root and snapserver user)
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let permissions = std::fs::Permissions::from_mode(0o640);
+                if let Err(e) = std::fs::set_permissions("/etc/snapserver.conf", permissions) {
+                    log::error!("Failed to set secure permissions on config file: {}", e);
+                }
+            }
+            log::info!("Snapcast configuration written successfully with security settings");
+        }
+        Err(e) => {
+            log::error!("Failed to write Snapcast configuration: {}", e);
+        }
+    }
+}
+
+/// Generate a secure random password
+fn generate_secure_password() -> String {
+    use rand::Rng;
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                            abcdefghijklmnopqrstuvwxyz\
+                            0123456789!@#$%^&*";
+    let mut rng = rand::thread_rng();
+    
+    (0..16)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect()
 }
 
 // Only one install() definition per compilation
