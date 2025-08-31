@@ -10,7 +10,7 @@
 use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
-use std::thread;
+use crate::sam::services::thread_manager;
 
 pub fn handle(
     _current_session: crate::sam::memory::cache::WebSessions,
@@ -76,7 +76,7 @@ pub fn handle(
 }
 
 pub fn set_defaults() {
-    thread::spawn(move || {
+    thread_manager::spawn("settings-defaults", move |_shutdown_signal, _health_rx| {
         let objects = crate::sam::memory::config::Setting::select(None, None, None, None).unwrap();
         if objects.is_empty() {
             // enable_embedded_lifx_server

@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::thread;
+use crate::sam::services::thread_manager;
 // Add missing import for tools module
 
 /// Initializes the SPREC service (currently a placeholder).
@@ -19,7 +19,7 @@ pub fn init() {
 
 /// Builds the SPREC model by processing observations and generating audio files.
 pub fn build() {
-    thread::spawn(move || {
+    thread_manager::spawn("sprec-builder", move |shutdown_signal, _health_rx| {
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query
             .queries

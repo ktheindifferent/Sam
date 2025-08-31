@@ -1,17 +1,19 @@
-use std::sync::{Arc, Mutex, RwLock, LockResult, PoisonError};
+use std::sync::{Arc, Mutex, RwLock, LockResult, PoisonError, Condvar};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::panic::{self, UnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Sender, Receiver};
+use std::sync::mpsc::{self, Sender, Receiver, TryRecvError};
 use tracing::{error, warn, info, debug};
-use prometheus::{IntGauge, IntCounter, register_int_gauge, register_int_counter};
+use prometheus::{IntGauge, IntCounter, Histogram, register_int_gauge, register_int_counter, register_histogram};
 use lazy_static::lazy_static;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use anyhow::{Result, Context};
 use thiserror::Error;
+use crossbeam_channel::{bounded, unbounded, Select};
+use parking_lot::FairMutex;
 
 #[derive(Error, Debug)]
 pub enum ThreadManagerError {
@@ -21,10 +23,20 @@ pub enum ThreadManagerError {
     ThreadNotFound(String),
     #[error("Thread operation failed: {0}")]
     OperationFailed(String),
+    #[error("Thread pool exhausted: {0}")]
+    PoolExhausted(String),
+    #[error("Resource limit exceeded: {0}")]
+    ResourceLimitExceeded(String),
+    #[error("Queue full: {0}")]
+    QueueFull(String),
 }
 
 lazy_static! {
     static ref THREAD_MANAGER: Arc<RwLock<ThreadManager>> = Arc::new(RwLock::new(ThreadManager::new()));
+    
+    static ref THREAD_POOL_MANAGER: Arc<ThreadPoolManager> = Arc::new(ThreadPoolManager::new(
+        ThreadPoolConfig::default()
+    ));
     
     static ref ACTIVE_THREADS: IntGauge = register_int_gauge!(
         "thread_manager_active_threads",
@@ -44,6 +56,21 @@ lazy_static! {
     static ref RESTART_COUNT: IntCounter = register_int_counter!(
         "thread_manager_restart_count",
         "Total number of thread restarts"
+    ).unwrap();
+    
+    static ref QUEUED_TASKS: IntGauge = register_int_gauge!(
+        "thread_manager_queued_tasks",
+        "Number of tasks waiting in queue"
+    ).unwrap();
+    
+    static ref REJECTED_TASKS: IntCounter = register_int_counter!(
+        "thread_manager_rejected_tasks",
+        "Total number of rejected tasks due to backpressure"
+    ).unwrap();
+    
+    static ref TASK_LATENCY: Histogram = register_histogram!(
+        "thread_manager_task_latency_seconds",
+        "Task execution latency in seconds"
     ).unwrap();
 }
 
@@ -76,6 +103,17 @@ pub struct ThreadConfig {
     pub restart_delay_ms: u64,
     pub health_check_interval_ms: Option<u64>,
     pub enable_monitoring: bool,
+    pub priority: ThreadPriority,
+    pub max_memory_mb: Option<usize>,
+    pub cpu_affinity: Option<Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ThreadPriority {
+    Low = 0,
+    Normal = 1,
+    High = 2,
+    Critical = 3,
 }
 
 impl Default for ThreadConfig {
@@ -87,7 +125,348 @@ impl Default for ThreadConfig {
             restart_delay_ms: 1000,
             health_check_interval_ms: Some(5000),
             enable_monitoring: true,
+            priority: ThreadPriority::Normal,
+            max_memory_mb: None,
+            cpu_affinity: None,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ThreadPoolConfig {
+    pub max_threads: usize,
+    pub core_threads: usize,
+    pub queue_size: usize,
+    pub keep_alive_ms: u64,
+    pub enable_backpressure: bool,
+    pub backpressure_threshold: f64,
+    pub enable_auto_scaling: bool,
+    pub scale_up_threshold: f64,
+    pub scale_down_threshold: f64,
+    pub monitoring_interval_ms: u64,
+}
+
+impl Default for ThreadPoolConfig {
+    fn default() -> Self {
+        let num_cpus = num_cpus::get();
+        ThreadPoolConfig {
+            max_threads: num_cpus * 4,
+            core_threads: num_cpus,
+            queue_size: 1000,
+            keep_alive_ms: 60000,
+            enable_backpressure: true,
+            backpressure_threshold: 0.8,
+            enable_auto_scaling: true,
+            scale_up_threshold: 0.75,
+            scale_down_threshold: 0.25,
+            monitoring_interval_ms: 5000,
+        }
+    }
+}
+
+pub struct ThreadPoolManager {
+    config: ThreadPoolConfig,
+    worker_threads: Arc<Mutex<Vec<WorkerThread>>>,
+    task_queue: Arc<(Mutex<VecDeque<Task>>, Condvar)>,
+    active_count: Arc<AtomicUsize>,
+    total_threads: Arc<AtomicUsize>,
+    shutdown_signal: Arc<AtomicBool>,
+    metrics: Arc<ThreadPoolMetrics>,
+    monitor_handle: Option<JoinHandle<()>>,
+}
+
+struct WorkerThread {
+    id: String,
+    handle: Option<JoinHandle<()>>,
+    status: WorkerStatus,
+    created_at: Instant,
+    last_active: Instant,
+    tasks_completed: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum WorkerStatus {
+    Idle,
+    Running,
+    Terminating,
+}
+
+struct Task {
+    id: String,
+    priority: ThreadPriority,
+    func: Box<dyn FnOnce() + Send + 'static>,
+    created_at: Instant,
+    max_duration: Option<Duration>,
+}
+
+struct ThreadPoolMetrics {
+    tasks_submitted: AtomicUsize,
+    tasks_completed: AtomicUsize,
+    tasks_failed: AtomicUsize,
+    tasks_rejected: AtomicUsize,
+    avg_wait_time_ms: AtomicUsize,
+    avg_execution_time_ms: AtomicUsize,
+}
+
+impl ThreadPoolManager {
+    pub fn new(config: ThreadPoolConfig) -> Self {
+        let manager = ThreadPoolManager {
+            config: config.clone(),
+            worker_threads: Arc::new(Mutex::new(Vec::with_capacity(config.max_threads))),
+            task_queue: Arc::new((Mutex::new(VecDeque::with_capacity(config.queue_size)), Condvar::new())),
+            active_count: Arc::new(AtomicUsize::new(0)),
+            total_threads: Arc::new(AtomicUsize::new(0)),
+            shutdown_signal: Arc::new(AtomicBool::new(false)),
+            metrics: Arc::new(ThreadPoolMetrics {
+                tasks_submitted: AtomicUsize::new(0),
+                tasks_completed: AtomicUsize::new(0),
+                tasks_failed: AtomicUsize::new(0),
+                tasks_rejected: AtomicUsize::new(0),
+                avg_wait_time_ms: AtomicUsize::new(0),
+                avg_execution_time_ms: AtomicUsize::new(0),
+            }),
+            monitor_handle: None,
+        };
+        
+        manager.initialize_core_threads();
+        manager.start_monitor();
+        manager
+    }
+    
+    fn initialize_core_threads(&self) {
+        for i in 0..self.config.core_threads {
+            self.spawn_worker(format!("core-worker-{}", i));
+        }
+        info!("Initialized {} core worker threads", self.config.core_threads);
+    }
+    
+    fn spawn_worker(&self, name: String) -> Result<(), ThreadManagerError> {
+        let current_count = self.total_threads.load(Ordering::Relaxed);
+        if current_count >= self.config.max_threads {
+            return Err(ThreadManagerError::PoolExhausted(
+                format!("Maximum thread limit {} reached", self.config.max_threads)
+            ));
+        }
+        
+        let worker_id = format!("{}_{}", name, nanoid::nanoid!());
+        let task_queue = self.task_queue.clone();
+        let active_count = self.active_count.clone();
+        let shutdown_signal = self.shutdown_signal.clone();
+        let metrics = self.metrics.clone();
+        let keep_alive = Duration::from_millis(self.config.keep_alive_ms);
+        
+        let handle = thread::Builder::new()
+            .name(worker_id.clone())
+            .spawn(move || {
+                info!("Worker thread {} started", worker_id);
+                
+                loop {
+                    let (queue_lock, condvar) = &*task_queue;
+                    let result = condvar.wait_timeout_while(
+                        queue_lock.lock().unwrap(),
+                        keep_alive,
+                        |queue| queue.is_empty() && !shutdown_signal.load(Ordering::Relaxed)
+                    );
+                    
+                    if shutdown_signal.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    
+                    match result {
+                        Ok((mut queue, timeout_result)) if !timeout_result.timed_out() => {
+                            if let Some(task) = queue.pop_front() {
+                                drop(queue);
+                                
+                                active_count.fetch_add(1, Ordering::Relaxed);
+                                let wait_time = task.created_at.elapsed();
+                                let exec_start = Instant::now();
+                                
+                                let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                                    (task.func)();
+                                }));
+                                
+                                let exec_time = exec_start.elapsed();
+                                active_count.fetch_sub(1, Ordering::Relaxed);
+                                
+                                match result {
+                                    Ok(_) => {
+                                        metrics.tasks_completed.fetch_add(1, Ordering::Relaxed);
+                                        debug!("Task {} completed in {:?}", task.id, exec_time);
+                                    }
+                                    Err(e) => {
+                                        metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                                        error!("Task {} panicked: {:?}", task.id, e);
+                                    }
+                                }
+                                
+                                metrics.avg_wait_time_ms.store(
+                                    wait_time.as_millis() as usize,
+                                    Ordering::Relaxed
+                                );
+                                metrics.avg_execution_time_ms.store(
+                                    exec_time.as_millis() as usize,
+                                    Ordering::Relaxed
+                                );
+                            }
+                        }
+                        _ => {
+                            break;
+                        }
+                    }
+                }
+                
+                info!("Worker thread {} terminated", worker_id);
+            })
+            .map_err(|e| ThreadManagerError::OperationFailed(format!("Failed to spawn worker: {}", e)))?;
+        
+        let mut workers = self.worker_threads.lock().unwrap();
+        workers.push(WorkerThread {
+            id: worker_id,
+            handle: Some(handle),
+            status: WorkerStatus::Running,
+            created_at: Instant::now(),
+            last_active: Instant::now(),
+            tasks_completed: 0,
+        });
+        
+        self.total_threads.fetch_add(1, Ordering::Relaxed);
+        TOTAL_THREADS_CREATED.inc();
+        
+        Ok(())
+    }
+    
+    pub fn submit<F>(&self, name: String, priority: ThreadPriority, f: F) -> Result<String, ThreadManagerError>
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        if self.should_apply_backpressure() {
+            REJECTED_TASKS.inc();
+            return Err(ThreadManagerError::QueueFull(
+                "Task queue is full, applying backpressure".to_string()
+            ));
+        }
+        
+        let task_id = format!("{}_{}", name, nanoid::nanoid!());
+        let task = Task {
+            id: task_id.clone(),
+            priority,
+            func: Box::new(f),
+            created_at: Instant::now(),
+            max_duration: None,
+        };
+        
+        let (queue_lock, condvar) = &*self.task_queue;
+        let mut queue = queue_lock.lock().unwrap();
+        
+        if queue.len() >= self.config.queue_size {
+            REJECTED_TASKS.inc();
+            return Err(ThreadManagerError::QueueFull(
+                format!("Queue size limit {} exceeded", self.config.queue_size)
+            ));
+        }
+        
+        let insert_pos = queue.iter().position(|t| t.priority < priority).unwrap_or(queue.len());
+        queue.insert(insert_pos, task);
+        
+        QUEUED_TASKS.set(queue.len() as i64);
+        self.metrics.tasks_submitted.fetch_add(1, Ordering::Relaxed);
+        
+        condvar.notify_one();
+        
+        if self.config.enable_auto_scaling {
+            self.check_scaling();
+        }
+        
+        Ok(task_id)
+    }
+    
+    fn should_apply_backpressure(&self) -> bool {
+        if !self.config.enable_backpressure {
+            return false;
+        }
+        
+        let (queue_lock, _) = &*self.task_queue;
+        let queue = queue_lock.lock().unwrap();
+        let queue_utilization = queue.len() as f64 / self.config.queue_size as f64;
+        
+        queue_utilization > self.config.backpressure_threshold
+    }
+    
+    fn check_scaling(&self) {
+        let active = self.active_count.load(Ordering::Relaxed);
+        let total = self.total_threads.load(Ordering::Relaxed);
+        let utilization = active as f64 / total.max(1) as f64;
+        
+        if utilization > self.config.scale_up_threshold && total < self.config.max_threads {
+            if let Err(e) = self.spawn_worker(format!("scaled-worker-{}", total)) {
+                warn!("Failed to scale up: {}", e);
+            } else {
+                info!("Scaled up to {} threads", total + 1);
+            }
+        } else if utilization < self.config.scale_down_threshold && total > self.config.core_threads {
+            self.scale_down();
+        }
+    }
+    
+    fn scale_down(&self) {
+        let mut workers = self.worker_threads.lock().unwrap();
+        if let Some(pos) = workers.iter().position(|w| w.status == WorkerStatus::Idle) {
+            if let Some(mut worker) = workers.get_mut(pos) {
+                worker.status = WorkerStatus::Terminating;
+                self.total_threads.fetch_sub(1, Ordering::Relaxed);
+                info!("Scaled down, {} threads remaining", self.total_threads.load(Ordering::Relaxed));
+            }
+        }
+    }
+    
+    fn start_monitor(&self) {
+        let workers = self.worker_threads.clone();
+        let metrics = self.metrics.clone();
+        let shutdown = self.shutdown_signal.clone();
+        let interval = Duration::from_millis(self.config.monitoring_interval_ms);
+        
+        let handle = thread::spawn(move || {
+            while !shutdown.load(Ordering::Relaxed) {
+                thread::sleep(interval);
+                
+                let workers_guard = workers.lock().unwrap();
+                let active_workers = workers_guard.iter().filter(|w| w.status == WorkerStatus::Running).count();
+                let idle_workers = workers_guard.iter().filter(|w| w.status == WorkerStatus::Idle).count();
+                
+                info!(
+                    "ThreadPool stats: active={}, idle={}, submitted={}, completed={}, failed={}, rejected={}",
+                    active_workers,
+                    idle_workers,
+                    metrics.tasks_submitted.load(Ordering::Relaxed),
+                    metrics.tasks_completed.load(Ordering::Relaxed),
+                    metrics.tasks_failed.load(Ordering::Relaxed),
+                    metrics.tasks_rejected.load(Ordering::Relaxed)
+                );
+            }
+        });
+        
+        unsafe {
+            let self_mut = &mut *(self as *const ThreadPoolManager as *mut ThreadPoolManager);
+            self_mut.monitor_handle = Some(handle);
+        }
+    }
+    
+    pub fn shutdown(&self) {
+        info!("Shutting down thread pool");
+        self.shutdown_signal.store(true, Ordering::Relaxed);
+        
+        let (_, condvar) = &*self.task_queue;
+        condvar.notify_all();
+        
+        let mut workers = self.worker_threads.lock().unwrap();
+        for worker in workers.iter_mut() {
+            if let Some(handle) = worker.handle.take() {
+                let _ = handle.join();
+            }
+        }
+        workers.clear();
+        
+        info!("Thread pool shut down complete");
     }
 }
 
@@ -603,6 +982,76 @@ where
             }
         }
     })
+}
+
+pub fn submit_task<F>(name: &str, f: F) -> Result<String, ThreadManagerError>
+where
+    F: FnOnce() + Send + 'static,
+{
+    THREAD_POOL_MANAGER.submit(name.to_string(), ThreadPriority::Normal, f)
+}
+
+pub fn submit_task_with_priority<F>(name: &str, priority: ThreadPriority, f: F) -> Result<String, ThreadManagerError>
+where
+    F: FnOnce() + Send + 'static,
+{
+    THREAD_POOL_MANAGER.submit(name.to_string(), priority, f)
+}
+
+pub fn spawn_pooled<F>(name: &str, f: F) -> Result<String, ThreadManagerError>
+where
+    F: FnOnce() + Send + 'static,
+{
+    submit_task(name, f)
+}
+
+pub fn spawn_pooled_with_config<F>(config: ThreadConfig, f: F) -> Result<String, ThreadManagerError>
+where
+    F: FnOnce() + Send + 'static,
+{
+    THREAD_POOL_MANAGER.submit(config.name, config.priority, f)
+}
+
+pub fn get_pool_stats() -> ThreadPoolStats {
+    let workers = THREAD_POOL_MANAGER.worker_threads.lock().unwrap();
+    let active_workers = workers.iter().filter(|w| w.status == WorkerStatus::Running).count();
+    let idle_workers = workers.iter().filter(|w| w.status == WorkerStatus::Idle).count();
+    
+    let (queue_lock, _) = &*THREAD_POOL_MANAGER.task_queue;
+    let queue = queue_lock.lock().unwrap();
+    let queued_tasks = queue.len();
+    
+    ThreadPoolStats {
+        active_threads: active_workers,
+        idle_threads: idle_workers,
+        total_threads: THREAD_POOL_MANAGER.total_threads.load(Ordering::Relaxed),
+        queued_tasks,
+        tasks_submitted: THREAD_POOL_MANAGER.metrics.tasks_submitted.load(Ordering::Relaxed),
+        tasks_completed: THREAD_POOL_MANAGER.metrics.tasks_completed.load(Ordering::Relaxed),
+        tasks_failed: THREAD_POOL_MANAGER.metrics.tasks_failed.load(Ordering::Relaxed),
+        tasks_rejected: THREAD_POOL_MANAGER.metrics.tasks_rejected.load(Ordering::Relaxed),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadPoolStats {
+    pub active_threads: usize,
+    pub idle_threads: usize,
+    pub total_threads: usize,
+    pub queued_tasks: usize,
+    pub tasks_submitted: usize,
+    pub tasks_completed: usize,
+    pub tasks_failed: usize,
+    pub tasks_rejected: usize,
+}
+
+pub fn configure_thread_pool(config: ThreadPoolConfig) -> Result<(), ThreadManagerError> {
+    warn!("Thread pool reconfiguration is not supported after initialization");
+    Ok(())
+}
+
+pub fn shutdown_thread_pool() {
+    THREAD_POOL_MANAGER.shutdown();
 }
 
 pub fn get_thread_info(id: &str) -> Option<ThreadInfo> {

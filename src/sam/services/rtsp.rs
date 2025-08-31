@@ -146,7 +146,18 @@ pub fn init() {
 
                     // Perform Deep Learning on RTSP streams and log observations
                     let rtsp_dl_thing = thing.clone();
-                    thread::spawn(move || {
+                    let dl_config = ThreadConfig {
+                        name: format!("rtsp_dl_{}", rtsp_dl_thing.oid),
+                        restart_on_panic: true,
+                        max_restarts: 3,
+                        restart_delay_ms: 2000,
+                        health_check_interval_ms: Some(10000),
+                        enable_monitoring: true,
+                        priority: thread_manager::ThreadPriority::High,
+                        max_memory_mb: None,
+                        cpu_affinity: None,
+                    };
+                    thread_manager::spawn_with_config(dl_config, move |shutdown, _health_rx| {
                         // Create runtime for async operations
                         let rt = tokio::runtime::Runtime::new().unwrap();
                         
@@ -182,7 +193,18 @@ pub fn init() {
 
                     // Record selected RTSP streams to a network location
                     let rtsp_rec_thing = thing.clone();
-                    thread::spawn(move || {
+                    let rec_config = ThreadConfig {
+                        name: format!("rtsp_rec_{}", rtsp_rec_thing.oid),
+                        restart_on_panic: true,
+                        max_restarts: 3,
+                        restart_delay_ms: 2000,
+                        health_check_interval_ms: Some(10000),
+                        enable_monitoring: true,
+                        priority: thread_manager::ThreadPriority::Normal,
+                        max_memory_mb: None,
+                        cpu_affinity: None,
+                    };
+                    thread_manager::spawn_with_config(rec_config, move |shutdown, _health_rx| {
                         let rt = tokio::runtime::Runtime::new().unwrap();
                         
                         rt.block_on(async {
