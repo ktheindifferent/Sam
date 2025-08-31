@@ -67,6 +67,9 @@ pub mod storage;
 pub mod stt;
 pub mod thread_manager;
 pub mod tts;
+
+#[cfg(test)]
+mod thread_safety_test;
 pub mod voice;
 pub mod vulnerability_scanner;
 pub mod who;

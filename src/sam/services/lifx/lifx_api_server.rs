@@ -1603,7 +1603,7 @@ mod tests {
     fn is_root() -> bool {
         #[cfg(unix)]
         {
-            unsafe { libc::geteuid() == 0 }
+            nix::unistd::geteuid().is_root()
         }
         #[cfg(not(unix))]
         {
