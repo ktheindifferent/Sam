@@ -172,7 +172,7 @@ pub struct ThreadPoolManager {
     total_threads: Arc<AtomicUsize>,
     shutdown_signal: Arc<AtomicBool>,
     metrics: Arc<ThreadPoolMetrics>,
-    monitor_handle: Option<JoinHandle<()>>,
+    monitor_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 struct WorkerThread {
@@ -225,7 +225,7 @@ impl ThreadPoolManager {
                 avg_wait_time_ms: AtomicUsize::new(0),
                 avg_execution_time_ms: AtomicUsize::new(0),
             }),
-            monitor_handle: None,
+            monitor_handle: Arc::new(Mutex::new(None)),
         };
         
         manager.initialize_core_threads();
@@ -255,10 +255,11 @@ impl ThreadPoolManager {
         let metrics = self.metrics.clone();
         let keep_alive = Duration::from_millis(self.config.keep_alive_ms);
         
+        let worker_id_clone = worker_id.clone();
         let handle = thread::Builder::new()
             .name(worker_id.clone())
             .spawn(move || {
-                info!("Worker thread {} started", worker_id);
+                info!("Worker thread {} started", worker_id_clone);
                 
                 loop {
                     let (queue_lock, condvar) = &*task_queue;
@@ -315,7 +316,7 @@ impl ThreadPoolManager {
                     }
                 }
                 
-                info!("Worker thread {} terminated", worker_id);
+                info!("Worker thread {} terminated", worker_id_clone);
             })
             .map_err(|e| ThreadManagerError::OperationFailed(format!("Failed to spawn worker: {}", e)))?;
         
@@ -445,10 +446,8 @@ impl ThreadPoolManager {
             }
         });
         
-        unsafe {
-            let self_mut = &mut *(self as *const ThreadPoolManager as *mut ThreadPoolManager);
-            self_mut.monitor_handle = Some(handle);
-        }
+        let mut monitor_handle = self.monitor_handle.lock().unwrap();
+        *monitor_handle = Some(handle);
     }
     
     pub fn shutdown(&self) {
@@ -672,10 +671,11 @@ impl ThreadManager {
                     info!("Thread {} started", thread_id);
                     
                     if let Some(sender) = health_sender.as_ref() {
+                        let sender_clone = sender.clone();
                         thread::spawn(move || {
                             loop {
                                 thread::sleep(Duration::from_millis(1000));
-                                if sender.send(()).is_err() {
+                                if sender_clone.send(()).is_err() {
                                     break;
                                 }
                             }

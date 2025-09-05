@@ -82,7 +82,7 @@ impl DbPool {
                 create: Some(Duration::from_secs(config.connection_timeout_sec)),
                 recycle: Some(Duration::from_secs(5)),
             },
-            queue_mode: deadpool_postgres::QueueMode::Fifo,
+            queue_mode: deadpool::managed::QueueMode::Fifo,
         });
         
         // Create manager configuration
@@ -300,9 +300,11 @@ impl QueryBuilder {
     }
 
     pub async fn execute(self) -> Result<Vec<Row>, Box<dyn std::error::Error>> {
-        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Send + Sync)> = 
             self.params.iter().map(|p| p.as_ref()).collect();
-        DbPool::query(&self.query, &params).await
+        let params_slice: &[&(dyn tokio_postgres::types::ToSql + Sync)] = 
+            unsafe { std::mem::transmute(params.as_slice()) };
+        DbPool::query(&self.query, params_slice).await
     }
 }
 

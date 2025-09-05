@@ -20,3 +20,9 @@ pub fn handle(
 
     Ok(Response::empty_404())
 }
+
+/// Initialize the media service
+pub async fn initialize() -> anyhow::Result<()> {
+    log::info!("Media service initialized");
+    Ok(())
+}

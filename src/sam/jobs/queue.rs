@@ -11,6 +11,7 @@ const SCHEDULED_JOBS_KEY: &str = "jobs:scheduled";
 const RUNNING_JOBS_KEY: &str = "jobs:running";
 const STATS_KEY: &str = "jobs:stats";
 
+#[derive(Debug)]
 pub struct JobQueue {
     redis_pool: Pool,
 }
@@ -36,7 +37,7 @@ impl JobQueue {
         cmd("SET")
             .arg(&job_key)
             .arg(&job_json)
-            .query_async(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .context("Failed to store job")?;
         
@@ -44,7 +45,7 @@ impl JobQueue {
         cmd("EXPIRE")
             .arg(&job_key)
             .arg(604800)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to set job expiration")?;
         
@@ -54,7 +55,7 @@ impl JobQueue {
                 .arg(SCHEDULED_JOBS_KEY)
                 .arg(scheduled_at.timestamp())
                 .arg(&job.id)
-                .query_async(&mut conn)
+                .query_async::<i32>(&mut conn)
                 .await
                 .context("Failed to add job to scheduled set")?;
             
@@ -65,7 +66,7 @@ impl JobQueue {
             cmd("LPUSH")
                 .arg(&queue_name)
                 .arg(&job.id)
-                .query_async(&mut conn)
+                .query_async::<i32>(&mut conn)
                 .await
                 .context("Failed to add job to queue")?;
             
@@ -89,7 +90,7 @@ impl JobQueue {
             // Pop job ID from queue
             let job_id: Option<String> = cmd("RPOP")
                 .arg(&queue_name)
-                .query_async(&mut conn)
+                .query_async::<Option<String>>(&mut conn)
                 .await
                 .context("Failed to pop job from queue")?;
             
@@ -98,7 +99,7 @@ impl JobQueue {
                 let job_key = format!("{}job:{}", JOBS_KEY_PREFIX, id);
                 let job_json: Option<String> = cmd("GET")
                     .arg(&job_key)
-                    .query_async(&mut conn)
+                    .query_async::<Option<String>>(&mut conn)
                     .await
                     .context("Failed to get job data")?;
                 
@@ -118,7 +119,7 @@ impl JobQueue {
                     cmd("SET")
                         .arg(&job_key)
                         .arg(&updated_json)
-                        .query_async(&mut conn)
+                        .query_async::<()>(&mut conn)
                         .await
                         .context("Failed to update job")?;
                     
@@ -126,7 +127,7 @@ impl JobQueue {
                     cmd("SADD")
                         .arg(RUNNING_JOBS_KEY)
                         .arg(&job.id)
-                        .query_async(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .context("Failed to add job to running set")?;
                     
@@ -165,7 +166,7 @@ impl JobQueue {
         cmd("SREM")
             .arg(RUNNING_JOBS_KEY)
             .arg(&job.id)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to remove job from running set")?;
         
@@ -202,7 +203,7 @@ impl JobQueue {
         cmd("SREM")
             .arg(RUNNING_JOBS_KEY)
             .arg(&job.id)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to remove job from running set")?;
         
@@ -246,7 +247,7 @@ impl JobQueue {
         cmd("SREM")
             .arg(RUNNING_JOBS_KEY)
             .arg(&job.id)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to remove job from running set")?;
         
@@ -255,7 +256,7 @@ impl JobQueue {
             .arg(SCHEDULED_JOBS_KEY)
             .arg(retry_at.timestamp())
             .arg(&job.id)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to schedule job retry")?;
         
@@ -274,7 +275,7 @@ impl JobQueue {
         let job_key = format!("{}job:{}", JOBS_KEY_PREFIX, job_id);
         let job_json: Option<String> = cmd("GET")
             .arg(&job_key)
-            .query_async(&mut conn)
+            .query_async::<Option<String>>(&mut conn)
             .await
             .context("Failed to get job")?;
         
@@ -297,7 +298,7 @@ impl JobQueue {
         // Get the job first
         let job_json: Option<String> = cmd("GET")
             .arg(&job_key)
-            .query_async(&mut conn)
+            .query_async::<Option<String>>(&mut conn)
             .await
             .context("Failed to get job")?;
         
@@ -328,7 +329,7 @@ impl JobQueue {
                         .arg(&queue_name)
                         .arg(0)
                         .arg(job_id)
-                        .query_async::<_, ()>(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .ok();
                 }
@@ -337,7 +338,7 @@ impl JobQueue {
                 cmd("ZREM")
                     .arg(SCHEDULED_JOBS_KEY)
                     .arg(job_id)
-                    .query_async::<_, ()>(&mut conn)
+                    .query_async::<i32>(&mut conn)
                     .await
                     .ok();
                 
@@ -356,7 +357,7 @@ impl JobQueue {
         let queue_name = priority.queue_name();
         let length: usize = cmd("LLEN")
             .arg(&queue_name)
-            .query_async(&mut conn)
+            .query_async::<usize>(&mut conn)
             .await
             .context("Failed to get queue length")?;
         
@@ -374,7 +375,7 @@ impl JobQueue {
             .arg(SCHEDULED_JOBS_KEY)
             .arg("-inf")
             .arg(now)
-            .query_async(&mut conn)
+            .query_async::<Vec<String>>(&mut conn)
             .await
             .context("Failed to get scheduled jobs")?;
         
@@ -384,7 +385,7 @@ impl JobQueue {
                 cmd("ZREM")
                     .arg(SCHEDULED_JOBS_KEY)
                     .arg(job_id)
-                    .query_async::<_, ()>(&mut conn)
+                    .query_async::<i32>(&mut conn)
                     .await
                     .ok();
             }
@@ -401,7 +402,7 @@ impl JobQueue {
             .arg(STATS_KEY)
             .arg(stat_name)
             .arg(1)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to increment stat")?;
         
@@ -414,7 +415,7 @@ impl JobQueue {
         
         let stats: std::collections::HashMap<String, i64> = cmd("HGETALL")
             .arg(STATS_KEY)
-            .query_async(&mut conn)
+            .query_async::<std::collections::HashMap<String, i64>>(&mut conn)
             .await
             .context("Failed to get stats")?;
         

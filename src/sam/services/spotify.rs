@@ -40,7 +40,7 @@ static SHUTDOWN_SIGNAL: Lazy<Arc<AtomicBool>> =
 /// Helper function to safely acquire a lock with error handling
 fn acquire_state_lock() -> Result<MutexGuard<'static, SpotifyService>, String> {
     SPOTIFY_STATE.lock()
-        .or_else(|e| {
+        .or_else(|e| -> Result<MutexGuard<'static, SpotifyService>, std::sync::PoisonError<MutexGuard<'static, SpotifyService>>> {
             // Attempt to recover from poisoned mutex
             log::warn!("Recovering from poisoned Spotify state mutex: {}", e);
             Ok(e.into_inner())
@@ -51,7 +51,7 @@ fn acquire_state_lock() -> Result<MutexGuard<'static, SpotifyService>, String> {
 /// Helper function to safely acquire the playback thread lock
 fn acquire_thread_lock() -> Result<MutexGuard<'static, Option<String>>, String> {
     PLAYBACK_THREAD_ID.lock()
-        .or_else(|e| {
+        .or_else(|e| -> Result<MutexGuard<'static, Option<String>>, std::sync::PoisonError<MutexGuard<'static, Option<String>>>> {
             // Attempt to recover from poisoned mutex
             log::warn!("Recovering from poisoned playback thread mutex: {}", e);
             Ok(e.into_inner())
@@ -101,6 +101,9 @@ pub async fn start() {
             restart_delay_ms: 2000,
             health_check_interval_ms: Some(30000),
             enable_monitoring: true,
+            priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+            max_memory_mb: None,
+            cpu_affinity: None,
         };
         
         let thread_id = thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
@@ -109,7 +112,7 @@ pub async fn start() {
             while !shutdown_signal.load(Ordering::Relaxed) && !SHUTDOWN_SIGNAL.load(Ordering::Relaxed) {
                 {
                     let s = match state_arc.lock()
-                        .or_else(|e| {
+                        .or_else(|e: std::sync::PoisonError<std::sync::MutexGuard<SpotifyService>>| -> Result<std::sync::MutexGuard<SpotifyService>, std::sync::PoisonError<std::sync::MutexGuard<SpotifyService>>> {
                             log::warn!("Recovering from poisoned mutex in playback thread: {}", e);
                             Ok(e.into_inner())
                         }) {

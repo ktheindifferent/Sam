@@ -293,7 +293,7 @@ fn contains_malicious_patterns(data: &[u8]) -> bool {
 }
 
 // JSON input validation
-pub fn validate_json_input<T: InputValidation>(json_str: &str) -> Result<T, ValidationErrors> {
+pub fn validate_json_input<T: InputValidation + for<'de> serde::Deserialize<'de>>(json_str: &str) -> Result<T, ValidationErrors> {
     let mut input: T = serde_json::from_str(json_str)
         .map_err(|_| {
             let mut errors = ValidationErrors::new();

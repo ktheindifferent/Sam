@@ -20,7 +20,8 @@ pub fn get_db_obj() -> Result<crate::sam::memory::config::Service, crate::sam::s
         .queries
         .push(crate::sam::memory::PGCol::String("jupiter".to_string()));
     pg_query.query_columns.push("identifier =".to_string());
-    let service = crate::sam::memory::config::Service::select(None, None, None, Some(pg_query))?;
+    let service = crate::sam::memory::config::Service::select(None, None, None, Some(pg_query))
+        .map_err(|e| crate::sam::services::Error::Other(e.to_string()))?;
     Ok(service[0].clone())
 }
 

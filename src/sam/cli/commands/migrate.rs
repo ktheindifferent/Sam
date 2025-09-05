@@ -1,8 +1,9 @@
 use anyhow::{Result, Context};
 use colored::Colorize;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
-pub async fn handle_migrate(args: Vec<String>, _output_lines: &std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+pub async fn handle_migrate(args: Vec<String>, _output_lines: &Arc<Mutex<Vec<String>>>) {
     let subcommand = args.get(0).map(|s| s.as_str()).unwrap_or("status");
     
     match subcommand {
@@ -114,7 +115,7 @@ fn create_migration(name: Option<&String>) {
     let version_number = timestamp.to_string().parse::<i64>().unwrap_or(0) / 1000000;
     let filename = format!("v{:03}_{}.rs", version_number, name.to_lowercase().replace(' ', "_"));
     
-    let template = format!(r#"use anyhow::Result;
+    let template = format!("use anyhow::Result;
 use async_trait::async_trait;
 use deadpool_postgres::Transaction;
 
@@ -127,29 +128,29 @@ impl super::Migration for Migration {{
     }}
     
     fn name(&self) -> &str {{
-        "{}"
+        \"{}\"
     }}
     
     fn description(&self) -> &str {{
-        "TODO: Add description"
+        \"TODO: Add description\"
     }}
     
     async fn up(&self, tx: &Transaction<'_>) -> Result<()> {{
-        tx.batch_execute(r#"
+        tx.batch_execute(r#\"
             -- TODO: Add your UP migration SQL here
-        "#).await?;
+        \"#).await?;
         
         Ok(())
     }}
     
     async fn down(&self, tx: &Transaction<'_>) -> Result<()> {{
-        tx.batch_execute(r#"
+        tx.batch_execute(r#\"
             -- TODO: Add your DOWN migration SQL here
-        "#).await?;
+        \"#).await?;
         
         Ok(())
     }}
-}}"#, version_number, name);
+}}", version_number, name);
     
     println!("{}", format!("Created migration template: src/sam/db/migrations/{}", filename).green());
     println!("Next steps:");

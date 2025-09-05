@@ -29,6 +29,7 @@ pub enum RestartStrategy {
     /// Restart after a delay
     Delayed(Duration),
     /// Restart at a scheduled time
+    #[serde(skip)]
     Scheduled(Instant),
     /// Exponential backoff with base delay and maximum delay
     ExponentialBackoff {
@@ -91,8 +92,11 @@ pub struct RestartMetrics {
     pub total_restarts: u64,
     pub successful_restarts: u64,
     pub failed_restarts: u64,
+    #[serde(skip)]
     pub last_restart: Option<Instant>,
+    #[serde(skip)]
     pub last_success: Option<Instant>,
+    #[serde(skip)]
     pub last_failure: Option<Instant>,
     pub average_restart_time: Duration,
     pub consecutive_failures: u32,
@@ -254,7 +258,7 @@ impl RestartManager {
                 }
             }
             RestartStrategy::ExponentialBackoff { base_delay, max_delay, multiplier } => {
-                let delay_ms = (base_delay.as_millis() as f64 * multiplier.powi(attempt as i32)) as u64;
+                let delay_ms = (base_delay.as_millis() as f64 * (multiplier as f64).powi(attempt as i32)) as u64;
                 let delay = Duration::from_millis(delay_ms);
                 std::cmp::min(delay, max_delay)
             }

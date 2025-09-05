@@ -3,8 +3,9 @@ use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tokio::sync::{RwLock, mpsc, oneshot};
+use tokio::sync::{RwLock, Mutex, mpsc, oneshot};
 use tokio::time::{timeout, sleep};
 use super::handler::JobHandler;
 use super::queue::JobQueue;
@@ -127,13 +128,9 @@ impl Worker {
                                         
                                         monitor.record_failure(&job.id, processing_time).await;
                                     }
-                                    Ok(Ok(JobResult::Retry(error))) | Ok(Err(e)) => {
+                                    Ok(Ok(JobResult::Retry(error))) => {
                                         // Job should be retried
-                                        let error_msg = match result {
-                                            Ok(Ok(JobResult::Retry(e))) => e,
-                                            Ok(Err(e)) => e.to_string(),
-                                            _ => "Unknown error".to_string(),
-                                        };
+                                        let error_msg = error;
                                         
                                         warn!("Job {} failed, will retry: {}", job.id, error_msg);
                                         
@@ -151,6 +148,35 @@ impl Worker {
                                             // Max retries exceeded
                                             error!("Job {} exceeded max retries", job.id);
                                             
+                                            if let Err(e) = queue.fail_job(job.clone(), error_msg).await {
+                                                error!("Failed to mark job {} as failed: {}", job.id, e);
+                                            }
+                                            
+                                            if let Err(e) = dead_letter.add(job.clone()).await {
+                                                error!("Failed to add job {} to dead letter queue: {}", job.id, e);
+                                            }
+                                            
+                                            monitor.record_failure(&job.id, processing_time).await;
+                                        }
+                                    }
+                                    Ok(Err(e)) => {
+                                        // Job failed with error
+                                        let error_msg = e.to_string();
+                                        
+                                        warn!("Job {} failed, will retry: {}", job.id, error_msg);
+                                        
+                                        if job.should_retry() {
+                                            if let Err(e) = queue.retry_job(job.clone(), error_msg.clone()).await {
+                                                error!("Failed to retry job {}: {}", job.id, e);
+                                            }
+                                            
+                                            if let Err(e) = handler.on_retry(&job.payload, job.retry_count, &JobError::ExecutionFailed(error_msg)).await {
+                                                error!("Job {} on_retry hook failed: {}", job.id, e);
+                                            }
+                                            
+                                            monitor.record_retry(&job.id).await;
+                                        } else {
+                                            // Max retries exceeded
                                             if let Err(e) = queue.fail_job(job.clone(), error_msg).await {
                                                 error!("Failed to mark job {} as failed: {}", job.id, e);
                                             }
@@ -229,13 +255,25 @@ impl Worker {
     }
 }
 
+impl std::fmt::Debug for Worker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Worker")
+            .field("id", &self.id)
+            .field("queue", &"<JobQueue>")
+            .field("handlers", &format!("<{} handlers>", self.handlers.try_read().map(|h| h.len()).unwrap_or(0)))
+            .field("monitor", &"<JobMonitor>")
+            .field("dead_letter", &"<DeadLetterQueue>")
+            .finish()
+    }
+}
+
 pub struct WorkerPool {
-    workers: Vec<Worker>,
+    workers: Arc<Mutex<Vec<Worker>>>,
     queue: Arc<JobQueue>,
     handlers: Arc<RwLock<HashMap<String, Arc<dyn JobHandler>>>>,
     monitor: Arc<JobMonitor>,
     dead_letter: Arc<DeadLetterQueue>,
-    num_workers: usize,
+    num_workers: AtomicUsize,
 }
 
 impl WorkerPool {
@@ -260,37 +298,40 @@ impl WorkerPool {
         }
         
         Ok(Self {
-            workers,
+            workers: Arc::new(Mutex::new(workers)),
             queue,
             handlers,
             monitor,
             dead_letter,
-            num_workers,
+            num_workers: AtomicUsize::new(num_workers),
         })
     }
     
-    pub async fn start(&mut self) -> Result<()> {
-        info!("Starting worker pool with {} workers", self.num_workers);
+    pub async fn start(&self) -> Result<()> {
+        info!("Starting worker pool with {} workers", self.num_workers.load(Ordering::Relaxed));
         
-        for worker in &mut self.workers {
+        let mut workers = self.workers.lock().await;
+        for worker in workers.iter_mut() {
             worker.start().await?;
         }
         
         Ok(())
     }
     
-    pub async fn stop(&mut self) -> Result<()> {
+    pub async fn stop(&self) -> Result<()> {
         info!("Stopping worker pool");
         
-        for worker in &mut self.workers {
+        let mut workers = self.workers.lock().await;
+        for worker in workers.iter_mut() {
             worker.stop().await?;
         }
         
         Ok(())
     }
     
-    pub async fn resize(&mut self, new_size: usize) -> Result<()> {
-        let current_size = self.workers.len();
+    pub async fn resize(&self, new_size: usize) -> Result<()> {
+        let mut workers = self.workers.lock().await;
+        let current_size = workers.len();
         
         if new_size > current_size {
             // Add workers
@@ -303,24 +344,38 @@ impl WorkerPool {
                     self.dead_letter.clone(),
                 );
                 worker.start().await?;
-                self.workers.push(worker);
+                workers.push(worker);
             }
             info!("Worker pool expanded from {} to {} workers", current_size, new_size);
         } else if new_size < current_size {
             // Remove workers
-            while self.workers.len() > new_size {
-                if let Some(mut worker) = self.workers.pop() {
+            while workers.len() > new_size {
+                if let Some(mut worker) = workers.pop() {
                     worker.stop().await?;
                 }
             }
             info!("Worker pool reduced from {} to {} workers", current_size, new_size);
         }
         
-        self.num_workers = new_size;
+        self.num_workers.store(new_size, Ordering::Relaxed);
         Ok(())
     }
     
     pub fn size(&self) -> usize {
-        self.workers.len()
+        // Use num_workers as the size since workers is behind a mutex
+        self.num_workers.load(Ordering::Relaxed)
+    }
+}
+
+impl std::fmt::Debug for WorkerPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkerPool")
+            .field("workers", &format!("<{} workers>", self.num_workers.load(std::sync::atomic::Ordering::Relaxed)))
+            .field("queue", &"<JobQueue>")
+            .field("handlers", &format!("<{} handlers>", self.handlers.try_read().map(|h| h.len()).unwrap_or(0)))
+            .field("monitor", &"<JobMonitor>")
+            .field("dead_letter", &"<DeadLetterQueue>")
+            .field("num_workers", &self.num_workers)
+            .finish()
     }
 }

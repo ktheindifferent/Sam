@@ -55,7 +55,8 @@ pub fn install() -> Result<(), crate::sam::services::Error> {
         pos += bytes_written;
     }
 
-    crate::sam::tools::extract_zip("/opt/sam/games/Flappy_Kitty.zip", "/opt/sam/games/")?;
+    crate::sam::tools::extract_zip("/opt/sam/games/Flappy_Kitty.zip", "/opt/sam/games/")
+        .map_err(|e| crate::sam::services::Error::Other(e.to_string()))?;
 
     Ok(())
 }

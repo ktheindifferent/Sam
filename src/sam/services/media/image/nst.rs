@@ -171,7 +171,8 @@ pub fn styles() -> Result<Vec<Style>, crate::sam::services::Error> {
 
 pub fn install() -> Result<(), crate::sam::services::Error> {
     if !Path::new("/opt/sam/models/vgg16.ot").exists() {
-        crate::sam::tools::cmd("wget -O /opt/sam/models/vgg16.ot https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot")?;
+        crate::sam::tools::cmd("wget -O /opt/sam/models/vgg16.ot https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot")
+            .map_err(|e| crate::sam::services::Error::Other(e.to_string()))?;
         // Fix `?` operator error by ensuring the command returns a compatible type
     }
 

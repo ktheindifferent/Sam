@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use deadpool_redis::{Pool};
-use redis::AsyncCommands;
+use deadpool_redis::redis::AsyncCommands;
 
 /// Rate limiting configuration
 #[derive(Debug, Clone)]
@@ -128,10 +128,19 @@ impl HttpSecurityMiddleware {
         let window_start = now - self.rate_limit_config.window_seconds;
         
         // Remove old entries
-        let _: Result<(), _> = conn.zremrangebyscore(&key, 0, window_start as f64).await;
+        let _: Result<(), _> = deadpool_redis::redis::cmd("ZREMRANGEBYSCORE")
+            .arg(&key)
+            .arg(0)
+            .arg(window_start as f64)
+            .query_async::<()>(&mut conn)
+            .await;
         
         // Count current requests in window
-        let count: u32 = conn.zcount(&key, window_start as f64, now as f64)
+        let count: u32 = deadpool_redis::redis::cmd("ZCOUNT")
+            .arg(&key)
+            .arg(window_start as f64)
+            .arg(now as f64)
+            .query_async::<u32>(&mut conn)
             .await
             .map_err(|e| format!("Redis error: {}", e))?;
         
@@ -146,7 +155,12 @@ impl HttpSecurityMiddleware {
         }
         
         // Add current request
-        let _: Result<(), _> = conn.zadd(&key, now as f64, now).await;
+        let _: Result<i32, _> = deadpool_redis::redis::cmd("ZADD")
+            .arg(&key)
+            .arg(now as f64)
+            .arg(now)
+            .query_async::<i32>(&mut conn)
+            .await;
         
         // Set expiration
         let _: Result<(), _> = conn.expire(&key, self.rate_limit_config.window_seconds as i64).await;

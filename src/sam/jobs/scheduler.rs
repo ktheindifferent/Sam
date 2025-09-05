@@ -4,7 +4,7 @@ use deadpool_redis::Pool;
 use log::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex};
 use tokio::time::{interval, sleep};
 use super::queue::JobQueue;
 use super::types::{Job, Priority};
@@ -12,6 +12,11 @@ use super::types::{Job, Priority};
 pub struct JobScheduler {
     redis_pool: Pool,
     queue: Arc<JobQueue>,
+    state: Arc<Mutex<SchedulerState>>,
+}
+
+#[derive(Debug)]
+struct SchedulerState {
     shutdown_tx: Option<oneshot::Sender<()>>,
     handle: Option<tokio::task::JoinHandle<()>>,
 }
@@ -23,8 +28,10 @@ impl JobScheduler {
         Ok(Self {
             redis_pool,
             queue,
-            shutdown_tx: None,
-            handle: None,
+            state: Arc::new(Mutex::new(SchedulerState {
+                shutdown_tx: None,
+                handle: None,
+            })),
         })
     }
     
@@ -48,7 +55,7 @@ impl JobScheduler {
         let recurring_job = RecurringJob {
             id: recurring_id.clone(),
             template: job_template,
-            schedule,
+            schedule: schedule.clone(),
             last_run: None,
             next_run: schedule.next_run_after(Utc::now()),
             enabled: true,
@@ -60,7 +67,7 @@ impl JobScheduler {
         deadpool_redis::redis::cmd("SET")
             .arg(&recurring_key)
             .arg(&job_json)
-            .query_async(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .context("Failed to store recurring job")?;
         
@@ -68,9 +75,10 @@ impl JobScheduler {
         Ok(recurring_id)
     }
     
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&self) -> Result<()> {
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
-        self.shutdown_tx = Some(shutdown_tx);
+        let mut state = self.state.lock().await;
+        state.shutdown_tx = Some(shutdown_tx);
         
         let queue = self.queue.clone();
         let redis_pool = self.redis_pool.clone();
@@ -126,22 +134,24 @@ impl JobScheduler {
             info!("Job scheduler stopped");
         });
         
-        self.handle = Some(handle);
+        state.handle = Some(handle);
         Ok(())
     }
     
-    pub async fn stop(&mut self) -> Result<()> {
-        if let Some(tx) = self.shutdown_tx.take() {
+    pub async fn stop(&self) -> Result<()> {
+        let mut state = self.state.lock().await;
+        if let Some(tx) = state.shutdown_tx.take() {
             let _ = tx.send(());
         }
         
-        if let Some(handle) = self.handle.take() {
+        if let Some(handle) = state.handle.take() {
+            drop(state); // Release the lock before awaiting
             handle.await.context("Failed to join scheduler task")?;
         }
         
         Ok(())
     }
-    
+
     async fn process_recurring_jobs(redis_pool: &Pool, queue: &JobQueue) -> Result<()> {
         let mut conn = redis_pool.get().await
             .context("Failed to get Redis connection")?;
@@ -150,7 +160,7 @@ impl JobScheduler {
         let pattern = "jobs:recurring:*";
         let keys: Vec<String> = deadpool_redis::redis::cmd("KEYS")
             .arg(pattern)
-            .query_async(&mut conn)
+            .query_async::<Vec<String>>(&mut conn)
             .await
             .context("Failed to get recurring job keys")?;
         
@@ -159,7 +169,7 @@ impl JobScheduler {
         for key in keys {
             let job_json: Option<String> = deadpool_redis::redis::cmd("GET")
                 .arg(&key)
-                .query_async(&mut conn)
+                .query_async::<Option<String>>(&mut conn)
                 .await
                 .context("Failed to get recurring job")?;
             
@@ -189,7 +199,7 @@ impl JobScheduler {
                                     deadpool_redis::redis::cmd("SET")
                                         .arg(&key)
                                         .arg(&updated_json)
-                                        .query_async::<_, ()>(&mut conn)
+                                        .query_async::<()>(&mut conn)
                                         .await
                                         .ok();
                                 }
@@ -328,5 +338,15 @@ impl Weekday {
             Weekday::Saturday => chrono::Weekday::Sat,
             Weekday::Sunday => chrono::Weekday::Sun,
         }
+    }
+}
+
+impl std::fmt::Debug for JobScheduler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JobScheduler")
+            .field("redis_pool", &"<Pool>")
+            .field("queue", &"<JobQueue>")
+            .field("state", &"<SchedulerState>")
+            .finish()
     }
 }

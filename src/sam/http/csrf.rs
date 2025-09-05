@@ -88,6 +88,6 @@ pub fn generate_csrf_token(session_id: &str) -> String {
 }
 
 /// Add CSRF token to response headers for GET requests
-pub fn add_csrf_token_header(response: Response, token: &str) -> Response {
+pub fn add_csrf_token_header(response: Response, token: String) -> Response {
     response.with_additional_header("X-CSRF-Token", token)
 }

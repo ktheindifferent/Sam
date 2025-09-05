@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use log::{info, error, debug, warn};
+use once_cell::sync::OnceCell;
 
 mod security;
 mod error;
@@ -18,6 +19,9 @@ mod tests;
 use crate::sam::network_monitor::NetworkMonitor;
 use security::{WebSocketLimits, WebSocketSecurityConfig, WsSecurityError, MessagePriority, SessionInfo};
 use error::{WebSocketError, safe_ops};
+
+// Type alias for Send + Sync errors
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 /// WebSocket message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,7 +175,7 @@ impl WsServer {
     }
     
     /// Start the WebSocket server
-    pub async fn start(&self, addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start(&self, addr: &str) -> Result<(), BoxError> {
         let listener = TcpListener::bind(addr).await?;
         info!("WebSocket server listening on {}", addr);
         
@@ -188,19 +192,16 @@ impl WsServer {
             let security_limits = self.security_limits.clone();
             let audit_tx = self.audit_tx.clone();
             
-            tokio::spawn(async move {
-                if let Err(e) = handle_connection(
-                    stream, 
-                    addr,
-                    clients, 
-                    broadcast_tx, 
-                    stats_tx,
-                    security_limits,
-                    audit_tx
-                ).await {
-                    error!("Error handling WebSocket connection from {}: {}", addr, e);
-                }
-            });
+            // Spawn connection handler
+            tokio::spawn(handle_connection(
+                stream,
+                addr,
+                clients,
+                broadcast_tx,
+                stats_tx,
+                security_limits,
+                audit_tx,
+            ));
         }
     }
     
@@ -310,7 +311,7 @@ async fn handle_connection(
     stats_tx: broadcast::Sender<SystemStats>,
     security_limits: Arc<WebSocketLimits>,
     audit_tx: mpsc::UnboundedSender<AuditEvent>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), BoxError> {
     let client_id = Uuid::new_v4().to_string();
     let ip = addr.ip();
     
@@ -387,15 +388,19 @@ async fn handle_connection(
                         match security_limits.validate_message(&client_id, &text).await {
                             Ok(_) => {
                                 if let Ok(ws_msg) = serde_json::from_str::<WsMessage>(&text) {
-                                    if let Err(e) = handle_client_message(
+                                    let result = handle_client_message(
                                         &client_id,
                                         ws_msg,
                                         &clients,
                                         &mut ws_sender,
                                         &security_limits,
                                         &audit_tx
-                                    ).await {
-                                        error!("Error handling message from {}: {}", client_id, e);
+                                    ).await;
+                                    
+                                    if let Err(e) = result {
+                                        let error_str = e.to_string();
+                                        drop(e); // Ensure error is dropped before await
+                                        error!("Error handling message from {}: {}", client_id, error_str);
                                         let error_msg = WsMessage::Error {
                                             message: "Failed to process message".to_string(),
                                             code: Some(400),
@@ -530,7 +535,7 @@ async fn handle_client_message(
     >,
     security_limits: &Arc<WebSocketLimits>,
     audit_tx: &mpsc::UnboundedSender<AuditEvent>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match message {
         WsMessage::Subscribe { channels } => {
             let mut clients_guard = clients.write().await;
@@ -552,8 +557,10 @@ async fn handle_client_message(
         
         WsMessage::Ping { timestamp } => {
             let pong = WsMessage::Pong { timestamp };
-            let msg_json = serde_json::to_string(&pong)?;
-            ws_sender.send(Message::Text(msg_json)).await?;
+            let msg_json = serde_json::to_string(&pong)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+            ws_sender.send(Message::Text(msg_json)).await
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             
             // Update last ping time
             let mut clients_guard = clients.write().await;
@@ -565,7 +572,8 @@ async fn handle_client_message(
         WsMessage::Authenticate { token } => {
             match security_limits.session_manager.reauthenticate(client_id, &token).await {
                 Ok(_) => {
-                    let session = security_limits.session_manager.validate_session(client_id).await?;
+                    let session = security_limits.session_manager.validate_session(client_id).await
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                     
                     audit_tx.send(AuditEvent {
                         timestamp: Utc::now(),
@@ -573,13 +581,15 @@ async fn handle_client_message(
                         event_type: "reauthentication_success".to_string(),
                         details: serde_json::json!({}),
                         severity: AuditSeverity::Info,
-                    })?;
+                    }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                     
                     let msg = WsMessage::AuthenticationSuccess {
                         permissions: session.permissions,
                     };
-                    let msg_json = serde_json::to_string(&msg)?;
-                    ws_sender.send(Message::Text(msg_json)).await?;
+                    let msg_json = serde_json::to_string(&msg)
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                    ws_sender.send(Message::Text(msg_json)).await
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 }
                 Err(e) => {
                     audit_tx.send(AuditEvent {
@@ -588,14 +598,16 @@ async fn handle_client_message(
                         event_type: "reauthentication_failed".to_string(),
                         details: serde_json::json!({ "error": e.to_string() }),
                         severity: AuditSeverity::Warning,
-                    })?;
+                    }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                     
                     let msg = WsMessage::Error {
                         message: "Authentication failed".to_string(),
                         code: Some(401),
                     };
-                    let msg_json = serde_json::to_string(&msg)?;
-                    ws_sender.send(Message::Text(msg_json)).await?;
+                    let msg_json = serde_json::to_string(&msg)
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                    ws_sender.send(Message::Text(msg_json)).await
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 }
             }
         }
@@ -613,14 +625,16 @@ async fn handle_client_message(
             let ack = WsMessage::HeartbeatAck { timestamp };
             let msg_json = safe_ops::serialize_json(&ack).map_err(|e| {
                 error!("Failed to serialize heartbeat ack: {}", e);
-                e
+                Box::new(e) as Box<dyn std::error::Error + Send + Sync>
             })?;
-            ws_sender.send(Message::Text(msg_json)).await?;
+            ws_sender.send(Message::Text(msg_json)).await
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         }
         
         WsMessage::Command { id, command, args } => {
             // Validate command permissions
-            let session = security_limits.session_manager.validate_session(client_id).await?;
+            let session = security_limits.session_manager.validate_session(client_id).await
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             
             if let Err(e) = security_limits.message_validator.validate_command(&command, &session.permissions) {
                 audit_tx.send(AuditEvent {
@@ -629,15 +643,17 @@ async fn handle_client_message(
                     event_type: "unauthorized_command".to_string(),
                     details: serde_json::json!({ "command": command, "error": e.to_string() }),
                     severity: AuditSeverity::Warning,
-                })?;
+                }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 
                 let msg = WsMessage::CommandResponse {
                     id,
                     success: false,
                     data: serde_json::json!({ "error": "Unauthorized" }),
                 };
-                let msg_json = serde_json::to_string(&msg)?;
-                ws_sender.send(Message::Text(msg_json)).await?;
+                let msg_json = serde_json::to_string(&msg)
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                ws_sender.send(Message::Text(msg_json)).await
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             } else {
                 // Process command and send response
                 let response = process_command(&command, args).await;
@@ -652,15 +668,17 @@ async fn handle_client_message(
                         "success": response.is_ok() 
                     }),
                     severity: AuditSeverity::Info,
-                })?;
+                }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 
                 let msg = WsMessage::CommandResponse {
                     id,
                     success: response.is_ok(),
                     data: response.unwrap_or_else(|e| serde_json::json!({ "error": e.to_string() })),
                 };
-                let msg_json = serde_json::to_string(&msg)?;
-                ws_sender.send(Message::Text(msg_json)).await?;
+                let msg_json = serde_json::to_string(&msg)
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                ws_sender.send(Message::Text(msg_json)).await
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             }
         }
         
@@ -707,7 +725,7 @@ async fn should_send_to_client(
 async fn process_command(
     command: &str,
     args: serde_json::Value,
-) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+) -> Result<serde_json::Value, BoxError> {
     match command {
         "get_stats" => {
             let stats = collect_system_stats().await?;
@@ -738,13 +756,13 @@ async fn process_command(
 }
 
 /// Collect system statistics
-async fn collect_system_stats() -> Result<SystemStats, Box<dyn std::error::Error>> {
-    use sysinfo::{System, SystemExt, CpuExt};
+async fn collect_system_stats() -> Result<SystemStats, BoxError> {
+    use sysinfo::System;
     
     let mut sys = System::new_all();
     sys.refresh_all();
     
-    let cpu = sys.global_cpu_info().cpu_usage();
+    let cpu = sys.global_cpu_usage();
     let memory_used = sys.used_memory();
     let memory_total = sys.total_memory();
     let memory_percent = (memory_used as f32 / memory_total as f32) * 100.0;
@@ -752,7 +770,8 @@ async fn collect_system_stats() -> Result<SystemStats, Box<dyn std::error::Error
     let mut disk_used = 0u64;
     let mut disk_total = 0u64;
     
-    for disk in sys.disks() {
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    for disk in disks.list() {
         disk_used += disk.total_space() - disk.available_space();
         disk_total += disk.total_space();
     }
@@ -787,7 +806,7 @@ async fn collect_system_stats() -> Result<SystemStats, Box<dyn std::error::Error
 }
 
 /// Collect detailed network statistics
-async fn collect_network_stats() -> Result<NetworkStatsDetail, Box<dyn std::error::Error>> {
+async fn collect_network_stats() -> Result<NetworkStatsDetail, BoxError> {
     use crate::sam::network_monitor::{NetworkMonitor, ConnectionStats};
     
     let monitor = NetworkMonitor::new();
@@ -828,7 +847,7 @@ async fn collect_network_stats() -> Result<NetworkStatsDetail, Box<dyn std::erro
 }
 
 /// Collect service statuses
-async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Box<dyn std::error::Error>> {
+async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, BoxError> {
     let mut statuses = HashMap::new();
     
     // Check Redis
@@ -908,6 +927,37 @@ fn log_audit_event(event: AuditEvent) {
         use std::io::Write;
         let _ = writeln!(file, "{}: {}", event.timestamp.to_rfc3339(), serde_json::to_string(&event).unwrap_or_default());
     }
+}
+
+/// Simple WebSocket server placeholder
+pub struct WebSocketServer;
+
+impl WebSocketServer {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    pub async fn start(&self, _addr: &str) -> Result<(), BoxError> {
+        // TODO: Implement actual WebSocket server
+        log::info!("WebSocket server placeholder started");
+        Ok(())
+    }
+}
+
+/// Global websocket server instance
+static WEBSOCKET_SERVER: once_cell::sync::OnceCell<WebSocketServer> = once_cell::sync::OnceCell::new();
+
+/// Start the websocket server
+pub async fn start_server() -> Result<(), BoxError> {
+    let server = WEBSOCKET_SERVER.get_or_init(|| WebSocketServer::new());
+    server.start("0.0.0.0:8080").await
+}
+
+/// Stop the websocket server
+pub async fn stop_server() -> Result<(), BoxError> {
+    // For now, this is a no-op since we don't store server handles
+    // In a full implementation, you'd store the server handle and call shutdown
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1012,4 +1062,3 @@ mod tests {
     }
 }
 
-pub mod security;

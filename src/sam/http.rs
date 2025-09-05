@@ -43,6 +43,10 @@ pub enum Error {
     InternalServiceError(#[from] crate::sam::services::Error),
     #[error("Sam memory error: {0}")]
     SamMemoryError(#[from] crate::sam::memory::Error),
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+    #[error("Internal server error: {0}")]
+    InternalServerError(String),
     #[error("Other error: {0}")]
     Other(String),
 }
@@ -63,6 +67,12 @@ impl From<&str> for Error {
 impl From<anyhow::Error> for Error {
     fn from(err: anyhow::Error) -> Self {
         Error::Other(err.to_string())
+    }
+}
+
+impl Error {
+    pub fn new(msg: &str) -> Self {
+        Error::Other(msg.to_string())
     }
 }
 
@@ -147,7 +157,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                                         )
                                         .with_additional_header(
                                             "Access-Control-Allow-Origin",
-                                            request.header("Origin").unwrap_or("http://localhost:8080"),
+                                            request.header("Origin").unwrap_or("http://localhost:8080").to_string(),
                                         ));
                                 }
                             }
@@ -156,7 +166,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                         // No Range header, serve the whole file
                         return Ok(Response::from_file("video/mp4", file)
                             .with_additional_header("Accept-Ranges", "bytes")
-                            .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080")));
+                            .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080").to_string()));
                     }
                 }
             }
@@ -167,8 +177,9 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
         {
             let xresponse = rouille::match_assets(request, "./www/");
             if xresponse.is_success() {
+                let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
                 return Ok(xresponse
-                    .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
+                    .with_additional_header("Access-Control-Allow-Origin", origin)
                     .with_no_cache());
             }
         }
@@ -177,8 +188,9 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
         {
             let xresponse = rouille::match_assets(&request, "/opt/sam/www/");
             if xresponse.is_success() {
+                let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
                 return Ok(xresponse
-                    .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
+                    .with_additional_header("Access-Control-Allow-Origin", origin)
                     .with_no_cache());
             }
         }
@@ -188,13 +200,13 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
     let sessions = crate::sam::memory::cache::WebSessions::select(None, None, None, None)?;
 
     // Use proper session timeout (24 hours)
-    const SESSION_DURATION: i64 = 86400; // 24 hours in seconds
+    const SESSION_DURATION: u64 = 86400; // 24 hours in seconds
     
     Ok(session::session(
         request,
         "SID",
         SESSION_DURATION,
-        |session| {
+        |session| -> Response {
             // Setup/Restore Current Session
             let mut current_session =
                 crate::sam::memory::cache::WebSessions::new(session.id().to_string());
@@ -212,7 +224,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                     Response::empty_404()
                 }
             }
-        },
+        }
     ))
 }
 
@@ -399,8 +411,9 @@ pub fn handle_with_session(
     if request.url().contains("/streams") {
         let xresponse = rouille::match_assets(request, "/opt/sam/");
         if xresponse.is_success() {
+            let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
             return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
+                .with_additional_header("Access-Control-Allow-Origin", origin)
                 .with_no_cache());
         }
     }
@@ -411,8 +424,9 @@ pub fn handle_with_session(
     {
         let xresponse = rouille::match_assets(request, "/opt/sam/");
         if xresponse.is_success() {
+            let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
             return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
+                .with_additional_header("Access-Control-Allow-Origin", origin)
                 .with_no_cache());
         }
     }
@@ -421,8 +435,9 @@ pub fn handle_with_session(
     {
         let xresponse = rouille::match_assets(request, "./www/");
         if xresponse.is_success() {
+            let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
             return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
+                .with_additional_header("Access-Control-Allow-Origin", origin)
                 .with_no_cache());
         }
     }
@@ -431,8 +446,9 @@ pub fn handle_with_session(
     {
         let xresponse = rouille::match_assets(&request, "/opt/sam/www/");
         if xresponse.is_success() {
+            let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
             return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080"))
+                .with_additional_header("Access-Control-Allow-Origin", origin)
                 .with_no_cache());
         }
     }

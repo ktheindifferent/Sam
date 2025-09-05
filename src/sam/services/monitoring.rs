@@ -330,9 +330,15 @@ impl Tracer {
         use nanoid::nanoid;
         
         let span_id = nanoid!();
-        let trace_id = parent_span_id.as_ref()
-            .and_then(|pid| self.spans.read().await.get(pid).map(|s| s.trace_id.clone()))
-            .unwrap_or_else(|| nanoid!());
+        let trace_id = if let Some(pid) = parent_span_id.as_ref() {
+            if let Some(span) = self.spans.read().await.get(pid) {
+                span.trace_id.clone()
+            } else {
+                nanoid!()
+            }
+        } else {
+            nanoid!()
+        };
         
         let span = TraceSpan {
             trace_id,

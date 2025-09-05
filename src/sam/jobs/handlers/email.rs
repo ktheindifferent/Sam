@@ -3,6 +3,7 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
+use rand::Rng;
 use crate::sam::jobs::{JobHandler, JobResult, JobError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,7 +58,7 @@ impl EmailJobHandler {
         tokio::time::sleep(Duration::from_millis(100)).await;
         
         // Simulate occasional failures
-        if rand::random::<f32>() < 0.05 {
+        if rand::thread_rng().gen::<f32>() < 0.05 {
             return Err("SMTP connection failed".to_string());
         }
         

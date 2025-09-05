@@ -238,12 +238,13 @@ impl SyncManager {
         }
         
         // Handle conflicts
+        let conflicts_count = response.conflicts.len();
         if !response.conflicts.is_empty() {
             self.handle_conflicts(response.conflicts).await?;
         }
         
         // Record sync event
-        self.record_sync_event(peer_id.to_string(), response.sync_type, true, 0, response.conflicts.len()).await;
+        self.record_sync_event(peer_id.to_string(), response.sync_type, true, 0, conflicts_count).await;
         
         Ok(())
     }

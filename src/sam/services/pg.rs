@@ -155,6 +155,7 @@ fn create_pool() -> futures::future::BoxFuture<'static, Result<Pool>> {
             create: Some(Duration::from_secs(5)),
             recycle: Some(Duration::from_secs(5)),
         },
+        queue_mode: deadpool::managed::QueueMode::Fifo,
     });
     
     // Manager configuration
@@ -162,7 +163,25 @@ fn create_pool() -> futures::future::BoxFuture<'static, Result<Pool>> {
         recycling_method: RecyclingMethod::Fast,
     };
     
-    let mgr = Manager::from_config(cfg, NoTls, mgr_config);
+    // Convert deadpool config to tokio_postgres config
+    let mut pg_config = tokio_postgres::Config::new();
+    if let Some(host) = &cfg.host {
+        pg_config.host(host);
+    }
+    if let Some(port) = cfg.port {
+        pg_config.port(port);
+    }
+    if let Some(dbname) = &cfg.dbname {
+        pg_config.dbname(dbname);
+    }
+    if let Some(user) = &cfg.user {
+        pg_config.user(user);
+    }
+    if let Some(password) = &cfg.password {
+        pg_config.password(password);
+    }
+    
+    let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
     let pool = Pool::builder(mgr)
         .max_size(32)
         .runtime(Runtime::Tokio1)
@@ -422,7 +441,7 @@ where
     let start = std::time::Instant::now();
     
     // Get connection with timeout
-    let client = tokio::time::timeout(
+    let mut client = tokio::time::timeout(
         Duration::from_secs(5),
         pool.get()
     ).await
@@ -430,6 +449,7 @@ where
         .context("Failed to get client")?;
     
     let mut all_results = Vec::new();
+    let batch_len = params_batch.len();
     
     // Execute all queries in a single transaction for better performance
     let transaction = client.transaction().await
@@ -450,11 +470,11 @@ where
     // Update metrics
     if let Some(metrics) = POOL_METRICS.get() {
         let mut metrics = metrics.write().await;
-        metrics.successful_queries += params_batch.len() as u64;
+        metrics.successful_queries += batch_len as u64;
         metrics.total_connections += 1;
     }
     
-    info!("Batch query executed {} queries in {:?}", params_batch.len(), start.elapsed());
+    info!("Batch query executed {} queries in {:?}", batch_len, start.elapsed());
     Ok(all_results)
 }
 

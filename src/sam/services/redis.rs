@@ -37,11 +37,6 @@ pub enum RedisError {
     DockerError(String),
 }
 
-impl From<RedisError> for anyhow::Error {
-    fn from(err: RedisError) -> Self {
-        anyhow::anyhow!(err)
-    }
-}
 
 /// Global circuit breaker for Redis connections
 static REDIS_CIRCUIT_BREAKER: OnceCell<Arc<CircuitBreaker>> = OnceCell::new();
@@ -282,7 +277,7 @@ pub async fn connect() -> Result<Pool> {
     let circuit_breaker = get_circuit_breaker();
     
     // Check circuit breaker status
-    circuit_breaker.call(async {
+    circuit_breaker.call(|| async {
         connect_with_retry().await
     }).await.map_err(|e| {
         error!("Redis connection failed through circuit breaker: {}", e);
@@ -340,7 +335,7 @@ async fn validate_pool(pool: &Pool) -> Result<()> {
         .map_err(|e| RedisError::ConnectionError(format!("Failed to get connection: {}", e)))?;
     
     let _: String = cmd("PING")
-        .query_async(&mut conn)
+        .query_async::<String>(&mut conn)
         .await
         .map_err(|e| RedisError::CommandError(format!("Ping failed: {}", e)))?;
     
@@ -370,7 +365,7 @@ async fn create_pool() -> Result<Pool> {
         .context("Failed to get connection from pool")?;
     
     let _: String = cmd("PING")
-        .query_async(&mut conn)
+        .query_async::<String>(&mut conn)
         .await
         .context("Failed to ping Redis")?;
     
@@ -394,7 +389,7 @@ pub async fn health_check() -> Result<()> {
                 .map_err(|e| RedisError::ConnectionError(format!("Health check connection failed: {}", e)))?;
             
             let pong: String = cmd("PING")
-                .query_async(&mut conn)
+                .query_async::<String>(&mut conn)
                 .await
                 .map_err(|e| RedisError::CommandError(format!("Health check ping failed: {}", e)))?;
             
@@ -417,7 +412,7 @@ pub async fn get_info() -> Result<String> {
     let mut conn = pool.get().await?;
     
     let info: String = cmd("INFO")
-        .query_async(&mut conn)
+        .query_async::<String>(&mut conn)
         .await
         .context("Failed to get Redis info")?;
     
@@ -429,7 +424,7 @@ pub async fn flush_db() -> Result<()> {
     let mut conn = pool.get().await?;
     
     cmd("FLUSHDB")
-        .query_async(&mut conn)
+        .query_async::<()>(&mut conn)
         .await
         .context("Failed to flush Redis database")?;
     

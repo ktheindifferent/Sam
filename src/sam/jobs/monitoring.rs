@@ -6,17 +6,21 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Mutex};
 use tokio::time::interval;
 use super::types::{JobStatus, Priority};
 
 const METRICS_KEY_PREFIX: &str = "jobs:metrics:";
 const STATS_KEY: &str = "jobs:stats";
 
-#[derive(Debug, Clone)]
 pub struct JobMonitor {
     redis_pool: Pool,
     metrics: Arc<RwLock<Metrics>>,
+    state: Arc<Mutex<MonitorState>>,
+}
+
+#[derive(Debug)]
+struct MonitorState {
     shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
     handle: Option<tokio::task::JoinHandle<()>>,
 }
@@ -26,14 +30,17 @@ impl JobMonitor {
         Ok(Self {
             redis_pool,
             metrics: Arc::new(RwLock::new(Metrics::default())),
-            shutdown_tx: None,
-            handle: None,
+            state: Arc::new(Mutex::new(MonitorState {
+                shutdown_tx: None,
+                handle: None,
+            })),
         })
     }
     
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&self) -> Result<()> {
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
-        self.shutdown_tx = Some(shutdown_tx);
+        let mut state = self.state.lock().await;
+        state.shutdown_tx = Some(shutdown_tx);
         
         let redis_pool = self.redis_pool.clone();
         let metrics = self.metrics.clone();
@@ -66,16 +73,18 @@ impl JobMonitor {
             info!("Job monitor stopped");
         });
         
-        self.handle = Some(handle);
+        state.handle = Some(handle);
         Ok(())
     }
     
-    pub async fn stop(&mut self) -> Result<()> {
-        if let Some(tx) = self.shutdown_tx.take() {
+    pub async fn stop(&self) -> Result<()> {
+        let mut state = self.state.lock().await;
+        if let Some(tx) = state.shutdown_tx.take() {
             let _ = tx.send(());
         }
         
-        if let Some(handle) = self.handle.take() {
+        if let Some(handle) = state.handle.take() {
+            drop(state); // Release the lock before awaiting
             handle.await.context("Failed to join monitor task")?;
         }
         
@@ -129,7 +138,7 @@ impl JobMonitor {
             let queue_name = priority.queue_name();
             let length: u64 = cmd("LLEN")
                 .arg(&queue_name)
-                .query_async(&mut conn)
+                .query_async::<u64>(&mut conn)
                 .await
                 .unwrap_or(0);
             pending_jobs += length;
@@ -138,21 +147,21 @@ impl JobMonitor {
         // Get running jobs count
         let running_jobs: u64 = cmd("SCARD")
             .arg("jobs:running")
-            .query_async(&mut conn)
+            .query_async::<u64>(&mut conn)
             .await
             .unwrap_or(0);
         
         // Get scheduled jobs count
         let scheduled_jobs: u64 = cmd("ZCARD")
             .arg("jobs:scheduled")
-            .query_async(&mut conn)
+            .query_async::<u64>(&mut conn)
             .await
             .unwrap_or(0);
         
         // Get dead letter queue size
         let dead_letter_jobs: u64 = cmd("LLEN")
             .arg("jobs:dead_letter")
-            .query_async(&mut conn)
+            .query_async::<u64>(&mut conn)
             .await
             .unwrap_or(0);
         
@@ -217,7 +226,7 @@ impl JobMonitor {
             .arg(&key)
             .arg(604800)
             .arg(&snapshot_json)
-            .query_async(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .context("Failed to persist metrics")?;
         
@@ -226,7 +235,7 @@ impl JobMonitor {
             .arg(STATS_KEY)
             .arg("total_completed")
             .arg(metrics.total_completed)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -234,7 +243,7 @@ impl JobMonitor {
             .arg(STATS_KEY)
             .arg("total_failed")
             .arg(metrics.total_failed)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -270,7 +279,7 @@ impl JobMonitor {
             let queue_name = priority.queue_name();
             let length: u64 = cmd("LLEN")
                 .arg(&queue_name)
-                .query_async(&mut conn)
+                .query_async::<u64>(&mut conn)
                 .await
                 .unwrap_or(0);
             
@@ -291,7 +300,7 @@ impl JobMonitor {
             .arg(&history_key)
             .arg(0)
             .arg(-1)
-            .query_async(&mut conn)
+            .query_async::<Vec<String>>(&mut conn)
             .await
             .context("Failed to get job history")?;
         
@@ -323,7 +332,7 @@ impl JobMonitor {
         cmd("LPUSH")
             .arg(&history_key)
             .arg(&event_json)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to record job event")?;
         
@@ -332,7 +341,7 @@ impl JobMonitor {
             .arg(&history_key)
             .arg(0)
             .arg(99)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -340,7 +349,7 @@ impl JobMonitor {
         cmd("EXPIRE")
             .arg(&history_key)
             .arg(604800) // 7 days
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -385,4 +394,14 @@ pub enum JobEventType {
     TimedOut,
     Cancelled,
     MovedToDeadLetter,
+}
+
+impl std::fmt::Debug for JobMonitor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JobMonitor")
+            .field("redis_pool", &"<Pool>")
+            .field("metrics", &"<RwLock<Metrics>>")
+            .field("state", &"<MonitorState>")
+            .finish()
+    }
 }

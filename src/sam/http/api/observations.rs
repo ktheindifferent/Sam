@@ -109,10 +109,7 @@ pub fn handle(
             .as_str(),
         );
 
-        crate::sam::services::stt::patch_whisper_wts(format!(
-            "{}.16.wav.wts",
-            tmp_file_path.clone()
-        ))?;
+        crate::sam::services::stt::patch_whisper_wts()?;
 
         crate::sam::tools::uinx_cmd(
             format!("chmod +x {}.16.wav.wts", tmp_file_path.clone()).as_str(),

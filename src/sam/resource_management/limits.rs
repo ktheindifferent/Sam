@@ -456,7 +456,7 @@ pub enum MemoryRejectionReason {
 /// Get system memory usage as percentage
 fn get_system_memory_usage() -> f32 {
     // Use sysinfo crate to get actual memory usage
-    use sysinfo::{System, SystemExt};
+    use sysinfo::System;
     
     let mut sys = System::new();
     sys.refresh_memory();

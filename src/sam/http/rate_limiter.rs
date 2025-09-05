@@ -192,27 +192,27 @@ impl RateLimiter {
         let window = Duration::from_secs(limit_config.window_seconds);
         
         // Use Redis INCR with TTL
-        let count: u32 = redis::cmd("INCR")
+        let count: u32 = deadpool_redis::redis::cmd("INCR")
             .arg(&key)
-            .query_async(&mut conn)
+            .query_async::<u32>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
         
         if count == 1 {
             // First request in window, set TTL
-            redis::cmd("EXPIRE")
+            deadpool_redis::redis::cmd("EXPIRE")
                 .arg(&key)
                 .arg(window.as_secs())
-                .query_async::<_, ()>(&mut conn)
+                .query_async::<i32>(&mut conn)
                 .await
                 .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
         }
         
         if count > limit_config.limit {
             // Get TTL for retry-after header
-            let ttl: i64 = redis::cmd("TTL")
+            let ttl: i64 = deadpool_redis::redis::cmd("TTL")
                 .arg(&key)
-                .query_async(&mut conn)
+                .query_async::<i64>(&mut conn)
                 .await
                 .unwrap_or(window.as_secs() as i64);
             

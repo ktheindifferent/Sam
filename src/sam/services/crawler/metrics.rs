@@ -231,11 +231,14 @@ impl MetricsCollector {
         }
 
         // Update domain metrics
-        let domain_metric = metrics.domain_metrics.entry(domain.to_string()).or_default();
-        domain_metric.urls_crawled += 1;
-        domain_metric.successes += 1;
-        domain_metric.bytes_downloaded += bytes;
-        domain_metric.last_crawl = SystemTime::now();
+        let domain_name = domain.to_string();
+        {
+            let domain_metric = metrics.domain_metrics.entry(domain_name.clone()).or_default();
+            domain_metric.urls_crawled += 1;
+            domain_metric.successes += 1;
+            domain_metric.bytes_downloaded += bytes;
+            domain_metric.last_crawl = SystemTime::now();
+        }
         
         // Update performance metrics
         performance.add_response_time(response_time);
@@ -244,6 +247,9 @@ impl MetricsCollector {
         // Update average response times
         let avg_response = performance.get_avg_response_time();
         metrics.avg_response_time_ms = avg_response.as_millis() as f64;
+        
+        // Update domain average response time separately
+        let domain_metric = metrics.domain_metrics.get_mut(&domain_name).unwrap();
         domain_metric.avg_response_time_ms = 
             (domain_metric.avg_response_time_ms * (domain_metric.urls_crawled - 1) as f64 
              + response_time.as_millis() as f64) / domain_metric.urls_crawled as f64;
@@ -473,6 +479,16 @@ pub async fn get_crawler_metrics() -> CrawlerMetrics {
 /// Generate a metrics report from the global collector
 pub async fn generate_metrics_report() -> String {
     GLOBAL_METRICS.generate_report().await
+}
+
+/// Standalone function to record robots.txt blocks
+pub async fn record_robots_block(domain: &str, url: &str) {
+    GLOBAL_METRICS.record_robots_block(domain, url).await;
+}
+
+/// Standalone function to record circuit breaker blocks
+pub async fn record_circuit_breaker_block(domain: &str) {
+    GLOBAL_METRICS.record_circuit_breaker_block(domain).await;
 }
 
 #[cfg(test)]

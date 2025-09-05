@@ -95,7 +95,7 @@ pub async fn handle_command(
     };
 
     execute_command(cmd, &mut ctx).await;
-    adjust_scroll_offset(&ctx).await;
+    adjust_scroll_offset(&mut ctx).await;
 }
 
 async fn execute_command(cmd: &str, ctx: &mut CommandContext<'_>) {
@@ -173,7 +173,7 @@ async fn handle_ssh_command(cmd: &str, ctx: &CommandContext<'_>) {
     }
 }
 
-async fn adjust_scroll_offset(ctx: &CommandContext<'_>) {
+async fn adjust_scroll_offset(ctx: &mut CommandContext<'_>) {
     let lines = ctx.output_lines.lock().await;
     *ctx.scroll_offset = 0;
     if lines.len() > ctx.output_height {

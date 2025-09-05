@@ -99,7 +99,7 @@ pub trait PooledConnection: Send + Sync + 'static {
 }
 
 /// Pool metrics
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct PoolMetrics {
     pub total_created: u64,
     pub total_closed: u64,
@@ -324,7 +324,7 @@ impl<C: PooledConnection> ConnectionPool<C> {
     
     /// Get pool metrics
     pub async fn get_metrics(&self) -> PoolMetrics {
-        self.metrics.read().await.clone()
+        (*self.metrics.read().await).clone()
     }
     
     /// Close all connections and shutdown pool

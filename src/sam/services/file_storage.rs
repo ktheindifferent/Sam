@@ -643,6 +643,12 @@ pub trait MetadataStore: Send + Sync {
     async fn search(&self, query: &SearchQuery) -> Result<Vec<FileMetadata>, StorageError>;
 }
 
+/// Initialize the file storage service
+pub async fn initialize() -> anyhow::Result<()> {
+    info!("File storage service initialized");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

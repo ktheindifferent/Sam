@@ -114,7 +114,7 @@ static ROBOTS_CACHE: Lazy<Arc<RwLock<HashMap<String, RobotsRules>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 /// Fetch and parse robots.txt for a given domain
-pub async fn fetch_robots_txt(domain: &str) -> Result<RobotsRules, Box<dyn std::error::Error>> {
+pub async fn fetch_robots_txt(domain: &str) -> Result<RobotsRules, Box<dyn std::error::Error + Send + Sync>> {
     let robots_url = format!("{}://{}/robots.txt", 
         if domain.starts_with("https") { "https" } else { "http" },
         domain.replace("http://", "").replace("https://", ""));
@@ -125,9 +125,11 @@ pub async fn fetch_robots_txt(domain: &str) -> Result<RobotsRules, Box<dyn std::
         .user_agent(DEFAULT_USER_AGENT)
         .timeout(Duration::from_secs(10))
         .danger_accept_invalid_certs(false) // Fixed: Enable proper certificate validation
-        .build()?;
+        .build()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     
-    let response = client.get(&robots_url).send().await?;
+    let response = client.get(&robots_url).send().await
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     
     if !response.status().is_success() {
         // If robots.txt doesn't exist, allow all crawling
@@ -140,12 +142,13 @@ pub async fn fetch_robots_txt(domain: &str) -> Result<RobotsRules, Box<dyn std::
         });
     }
     
-    let content = response.text().await?;
+    let content = response.text().await
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     parse_robots_txt(&content)
 }
 
 /// Parse robots.txt content
-fn parse_robots_txt(content: &str) -> Result<RobotsRules, Box<dyn std::error::Error>> {
+fn parse_robots_txt(content: &str) -> Result<RobotsRules, Box<dyn std::error::Error + Send + Sync>> {
     let mut user_agent_rules = Vec::new();
     let mut default_rules = Vec::new();
     let mut crawl_delay = None;

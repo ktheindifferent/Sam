@@ -1,5 +1,6 @@
 // Flexible observation objects structure
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ObservationObjects {
@@ -23,5 +24,14 @@ impl ObservationObjects {
             confidence,
             location: Some(location),
         }
+    }
+}
+
+impl FromStr for ObservationObjects {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // For backward compatibility, parse simple object names as basic objects
+        Ok(Self::new(s.to_string(), 1.0))
     }
 }

@@ -143,7 +143,7 @@ fn load_dns_cache(should_use_redis: bool) -> Pin<Box<dyn Future<Output = ()> + S
                 Ok(Ok(mut con)) => {
                     match deadpool_redis::redis::cmd("GET")
                         .arg("sam:dns_cache")
-                        .query_async::<_, Option<Vec<u8>>>(&mut con)
+                        .query_async::<Option<Vec<u8>>>(&mut con)
                         .await
                     {
                         Ok(Some(data)) => {
@@ -229,7 +229,7 @@ async fn save_dns_cache() {
                 match deadpool_redis::redis::cmd("SET")
                     .arg("sam:dns_cache")
                     .arg(cache_bytes.clone())
-                    .query_async::<_, ()>(&mut con)
+                    .query_async::<()>(&mut con)
                     .await
                 {
                     Ok(_) => {
@@ -285,7 +285,7 @@ pub async fn write_url_to_retry_cache(url: &str) {
                 if let Err(e) = deadpool_redis::redis::cmd("RPUSH")
                     .arg("sam:crawl_retry")
                     .arg(url)
-                    .query_async::<_, ()>(&mut con)
+                    .query_async::<i32>(&mut con)
                     .await
                 {
                     should_fallback = true;
@@ -574,7 +574,7 @@ async fn crawl_url_inner(
 
                 filter_tokens(&mut tokens, &url);
 
-                let mut all_tokens = mime_tokens;
+                let mut all_tokens = mime_tokens.clone();
                 all_tokens.extend(tokens);
                 tokens = all_tokens;
 
@@ -669,7 +669,9 @@ fn crawl_url_boxed<'a>(
 ) -> std::pin::Pin<
     Box<dyn std::future::Future<Output = crate::sam::memory::Result<Vec<CrawledPage>>> + Send + 'a>,
 > {
-    Box::pin(crawl_url_inner(job_oid, url, depth, client))
+    Box::pin(async move {
+        crawl_url_inner(job_oid, url, depth, client).await
+    })
 }
 
 /// Public entry point for crawling a URL (non-recursive).
@@ -788,8 +790,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     // let words = COMMON_WORDS.clone();
 
     // DNS resolver setup
-    let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
-        .expect("Failed to create DNS resolver");
+    let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
     // Load DNS cache from redis or file
     load_dns_cache(true).await;

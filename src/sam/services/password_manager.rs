@@ -4,7 +4,7 @@ use aes::cipher::{
     generic_array::GenericArray,
 };
 use chrono::{DateTime, Utc};
-use pbkdf2::{pbkdf2_hmac};
+use ring::pbkdf2;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -71,10 +71,11 @@ impl PasswordVault {
     /// Derive encryption key from master password
     fn derive_key(&self, master_password: &str) -> Vec<u8> {
         let mut key = vec![0u8; 32];
-        pbkdf2_hmac::<Sha256>(
-            master_password.as_bytes(),
+        pbkdf2::derive(
+            pbkdf2::PBKDF2_HMAC_SHA256,
+            std::num::NonZeroU32::new(self.iterations).unwrap(),
             &self.salt,
-            self.iterations,
+            master_password.as_bytes(),
             &mut key,
         );
         key
@@ -127,10 +128,10 @@ impl PasswordVault {
         master_password: &str,
         entry_id: &str,
     ) -> Result<(PasswordEntry, String), String> {
+        let key = self.derive_key(master_password);
+        
         let entry = self.entries.get_mut(entry_id)
             .ok_or_else(|| "Entry not found".to_string())?;
-        
-        let key = self.derive_key(master_password);
         let password = decrypt_password(&entry.encrypted_password, &key)?;
         
         // Update last accessed time
@@ -151,12 +152,18 @@ impl PasswordVault {
         new_notes: Option<String>,
         new_tags: Option<Vec<String>>,
     ) -> Result<(), String> {
+        let key = if new_password.is_some() {
+            Some(self.derive_key(master_password))
+        } else {
+            None
+        };
+        
         let entry = self.entries.get_mut(entry_id)
             .ok_or_else(|| "Entry not found".to_string())?;
         
         if let Some(password) = new_password {
-            let key = self.derive_key(master_password);
-            entry.encrypted_password = encrypt_password(&password, &key)?;
+            let key = key.as_ref().unwrap();
+            entry.encrypted_password = encrypt_password(&password, key)?;
             entry.password_strength = analyze_password_strength(&password);
         }
         

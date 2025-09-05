@@ -191,7 +191,7 @@ mod panic_handler_tests {
         // Note: Requires Redis to be running
         
         use deadpool_redis::{Config, Runtime};
-        use redis::AsyncCommands;
+        use deadpool_redis::redis::AsyncCommands;
         
         // Try to connect to Redis
         let redis_url = std::env::var("REDIS_URL")

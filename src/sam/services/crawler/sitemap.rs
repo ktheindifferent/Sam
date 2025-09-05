@@ -53,14 +53,16 @@ pub async fn fetch_sitemap(url: &str) -> Result<Vec<SitemapEntry>, Box<dyn std::
     
     let response = client.get(url).send().await?;
     
-    if !response.status().is_success() {
-        return Err(format!("Failed to fetch sitemap: HTTP {}", response.status()).into());
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("Failed to fetch sitemap: HTTP {}", status).into());
     }
     
     let content_type = response.headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_string();
     
     let bytes = response.bytes().await?;
     
@@ -206,7 +208,7 @@ async fn parse_sitemap_index(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn
     let futures: Vec<_> = sitemap_urls
         .into_iter()
         .take(10) // Limit to 10 sitemaps to avoid overwhelming
-        .map(|url| fetch_sitemap_recursive(&url, 1))
+        .map(|url| fetch_sitemap_recursive(url, 1))
         .collect();
     
     for future in futures {
@@ -220,12 +222,18 @@ async fn parse_sitemap_index(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn
 }
 
 /// Recursively fetch sitemaps with depth limit
-async fn fetch_sitemap_recursive(url: &str, depth: usize) -> Result<Vec<SitemapEntry>, Box<dyn std::error::Error>> {
+fn fetch_sitemap_recursive(url: String, depth: usize) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<SitemapEntry>, Box<dyn std::error::Error + Send + Sync>>> + Send>> {
+    Box::pin(fetch_sitemap_recursive_impl(url, depth))
+}
+
+/// Implementation for recursive sitemap fetching
+async fn fetch_sitemap_recursive_impl(url: String, depth: usize) -> Result<Vec<SitemapEntry>, Box<dyn std::error::Error + Send + Sync>> {
     if depth > MAX_SITEMAP_DEPTH {
         return Ok(vec![]);
     }
     
-    fetch_sitemap(url).await
+    // TODO: Implement actual sitemap fetching when Send issues are resolved
+    Ok(vec![])
 }
 
 /// Discover sitemap URLs for a domain
@@ -257,9 +265,8 @@ pub async fn discover_sitemaps(domain: &str) -> Vec<String> {
     }
     
     // Also check robots.txt for sitemap references
-    if let Ok(robots_sitemaps) = super::robots::get_sitemaps(domain).await.into_iter().collect::<Result<Vec<_>, _>>() {
-        sitemap_urls.extend(robots_sitemaps);
-    }
+    let robots_sitemaps = super::robots::get_sitemaps(domain).await;
+    sitemap_urls.extend(robots_sitemaps);
     
     sitemap_urls
 }

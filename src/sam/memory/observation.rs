@@ -383,7 +383,8 @@ impl Observation {
         let mut observation_type = ObservationType::UNKNOWN;
         let sql_observation_type: Option<String> = row.get("observation_type");
         if let Some(object) = sql_observation_type {
-            let obj = ObservationType::from_str(&object)?;
+            let obj = ObservationType::from_str(&object)
+                .map_err(|e| anyhow::anyhow!(e))?;
             observation_type = obj.clone();
         }
 
@@ -470,7 +471,8 @@ impl Observation {
         let mut observation_type = ObservationType::UNKNOWN;
         let sql_observation_type: Option<String> = row.get("observation_type");
         if let Some(object) = sql_observation_type {
-            let obj = ObservationType::from_str(&object)?;
+            let obj = ObservationType::from_str(&object)
+                .map_err(|e| anyhow::anyhow!(e))?;
             observation_type = obj.clone();
         }
 

@@ -13,12 +13,9 @@ use std::sync::atomic::Ordering;
 use tokio::sync::mpsc;
 use crate::sam::services::thread_manager::{self, ThreadConfig};
 
-// Import deep learning and recording modules
-pub mod rtsp_dl_simple;
-pub mod rtsp_recording;
-
-use rtsp_dl_simple::{Alert, start_deep_learning_processor};
-use rtsp_recording::{
+// Import deep learning and recording modules from services root
+use crate::sam::services::rtsp_dl_simple::{Alert, start_deep_learning_processor};
+use crate::sam::services::rtsp_recording::{
     RecordingManager, RecordingConfig, RecordingTrigger, VideoEncoding, 
     VideoCodec, AudioCodec, Resolution, PlaybackService, create_recording_tables
 };
@@ -34,6 +31,9 @@ pub fn init() {
         restart_delay_ms: 5000,
         health_check_interval_ms: Some(30000),
         enable_monitoring: true,
+        priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+        max_memory_mb: None,
+        cpu_affinity: None,
     };
     
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
@@ -63,6 +63,9 @@ pub fn init() {
                         restart_delay_ms: 2000,
                         health_check_interval_ms: Some(60000),
                         enable_monitoring: true,
+                        priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+                        max_memory_mb: None,
+                        cpu_affinity: None,
                     };
                     
                     thread_manager::spawn_with_config(http_config, move |shutdown, _health_rx| {
@@ -108,6 +111,9 @@ pub fn init() {
                         restart_delay_ms: 2000,
                         health_check_interval_ms: Some(60000),
                         enable_monitoring: true,
+                        priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+                        max_memory_mb: None,
+                        cpu_affinity: None,
                     };
                     
                     thread_manager::spawn_with_config(wav_config, move |shutdown, _health_rx| {

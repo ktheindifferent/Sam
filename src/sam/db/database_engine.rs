@@ -62,7 +62,7 @@ pub trait DatabaseConnection: Send + Sync {
     async fn query(&self, query: &str, params: Vec<Value>) -> Result<Vec<Row>>;
     async fn transaction<F, R>(&self, f: F) -> Result<R>
     where
-        F: FnOnce(Box<dyn DatabaseTransaction>) -> futures::future::BoxFuture<'_, Result<R>> + Send,
+        F: FnOnce(Box<dyn DatabaseTransaction + '_>) -> futures::future::BoxFuture<'_, Result<R>> + Send,
         R: Send;
     async fn health_check(&self) -> Result<()>;
     async fn close(&self) -> Result<()>;
@@ -219,9 +219,44 @@ impl FromValue for chrono::DateTime<chrono::Utc> {
     }
 }
 
+pub enum DatabaseConnectionWrapper {
+    SQLite(SqliteConnection),
+    Postgres(PostgresConnection),
+}
+
+impl DatabaseConnectionWrapper {
+    pub async fn execute(&self, query: &str, params: Vec<Value>) -> Result<u64> {
+        match self {
+            DatabaseConnectionWrapper::SQLite(conn) => conn.execute(query, params).await,
+            DatabaseConnectionWrapper::Postgres(conn) => conn.execute(query, params).await,
+        }
+    }
+
+    pub async fn query(&self, query: &str, params: Vec<Value>) -> Result<Vec<Row>> {
+        match self {
+            DatabaseConnectionWrapper::SQLite(conn) => conn.query(query, params).await,
+            DatabaseConnectionWrapper::Postgres(conn) => conn.query(query, params).await,
+        }
+    }
+
+    pub async fn health_check(&self) -> Result<()> {
+        match self {
+            DatabaseConnectionWrapper::SQLite(conn) => conn.health_check().await,
+            DatabaseConnectionWrapper::Postgres(conn) => conn.health_check().await,
+        }
+    }
+
+    pub async fn close(&self) -> Result<()> {
+        match self {
+            DatabaseConnectionWrapper::SQLite(conn) => conn.close().await,
+            DatabaseConnectionWrapper::Postgres(conn) => conn.close().await,
+        }
+    }
+}
+
 pub struct DatabasePool {
     engine: DatabaseEngine,
-    connection: Arc<Box<dyn DatabaseConnection>>,
+    connection: Arc<DatabaseConnectionWrapper>,
 }
 
 impl DatabasePool {
@@ -229,11 +264,11 @@ impl DatabasePool {
         let connection = match engine {
             DatabaseEngine::SQLite => {
                 let conn = SqliteConnection::new(&engine.connection_string()).await?;
-                Arc::new(Box::new(conn) as Box<dyn DatabaseConnection>)
+                Arc::new(DatabaseConnectionWrapper::SQLite(conn))
             }
             DatabaseEngine::PostgreSQL => {
                 let conn = PostgresConnection::new(&engine.connection_string()).await?;
-                Arc::new(Box::new(conn) as Box<dyn DatabaseConnection>)
+                Arc::new(DatabaseConnectionWrapper::Postgres(conn))
             }
             _ => {
                 return Err(anyhow::anyhow!("Database engine {:?} not yet implemented", engine));
@@ -250,7 +285,7 @@ impl DatabasePool {
         &self.engine
     }
     
-    pub fn connection(&self) -> Arc<Box<dyn DatabaseConnection>> {
+    pub fn connection(&self) -> Arc<DatabaseConnectionWrapper> {
         self.connection.clone()
     }
     
@@ -339,7 +374,7 @@ impl DatabaseConnection for SqliteConnection {
     
     async fn transaction<F, R>(&self, f: F) -> Result<R>
     where
-        F: FnOnce(Box<dyn DatabaseTransaction>) -> futures::future::BoxFuture<'_, Result<R>> + Send,
+        F: FnOnce(Box<dyn DatabaseTransaction + '_>) -> futures::future::BoxFuture<'_, Result<R>> + Send,
         R: Send,
     {
         Err(anyhow::anyhow!("SQLite transactions not yet implemented"))
@@ -407,13 +442,32 @@ impl PostgresConnection {
                 create: Some(Duration::from_secs(5)),
                 recycle: Some(Duration::from_secs(5)),
             },
+            queue_mode: deadpool::managed::QueueMode::Fifo,
         });
         
         let mgr_config = ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         };
         
-        let mgr = Manager::from_config(cfg, NoTls, mgr_config);
+        // Convert deadpool config to tokio_postgres config
+        let mut tokio_cfg = tokio_postgres::Config::new();
+        if let Some(host) = &cfg.host {
+            tokio_cfg.host(host);
+        }
+        if let Some(port) = cfg.port {
+            tokio_cfg.port(port);
+        }
+        if let Some(dbname) = &cfg.dbname {
+            tokio_cfg.dbname(dbname);
+        }
+        if let Some(user) = &cfg.user {
+            tokio_cfg.user(user);
+        }
+        if let Some(password) = &cfg.password {
+            tokio_cfg.password(password);
+        }
+        
+        let mgr = Manager::from_config(tokio_cfg, NoTls, mgr_config);
         let pool = Pool::builder(mgr)
             .max_size(32)
             .runtime(Runtime::Tokio1)
@@ -436,9 +490,9 @@ impl DatabaseConnection for PostgresConnection {
         
         let pg_params = convert_values_to_postgres(&params);
         let pg_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            pg_params.iter().map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+            pg_params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
         
-        let affected = client.execute(query, &pg_params_refs[..]).await
+        let affected = client.execute(query, &pg_params_refs).await
             .context("Failed to execute PostgreSQL query")?;
         
         Ok(affected)
@@ -450,9 +504,9 @@ impl DatabaseConnection for PostgresConnection {
         
         let pg_params = convert_values_to_postgres(&params);
         let pg_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            pg_params.iter().map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+            pg_params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
         
-        let rows = client.query(query, &pg_params_refs[..]).await
+        let rows = client.query(query, &pg_params_refs).await
             .context("Failed to query PostgreSQL")?;
         
         let mut result = Vec::new();
@@ -475,7 +529,7 @@ impl DatabaseConnection for PostgresConnection {
     
     async fn transaction<F, R>(&self, f: F) -> Result<R>
     where
-        F: FnOnce(Box<dyn DatabaseTransaction>) -> futures::future::BoxFuture<'_, Result<R>> + Send,
+        F: FnOnce(Box<dyn DatabaseTransaction + '_>) -> futures::future::BoxFuture<'_, Result<R>> + Send,
         R: Send,
     {
         let mut client = self.pool.get().await?;
@@ -505,9 +559,9 @@ impl DatabaseTransaction for PostgresTransaction<'_> {
     async fn execute(&self, query: &str, params: Vec<Value>) -> Result<u64> {
         let pg_params = convert_values_to_postgres(&params);
         let pg_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            pg_params.iter().map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+            pg_params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
         
-        let affected = self.tx.execute(query, &pg_params_refs[..]).await
+        let affected = self.tx.execute(query, &pg_params_refs).await
             .context("Failed to execute PostgreSQL transaction query")?;
         Ok(affected)
     }
@@ -515,9 +569,9 @@ impl DatabaseTransaction for PostgresTransaction<'_> {
     async fn query(&self, query: &str, params: Vec<Value>) -> Result<Vec<Row>> {
         let pg_params = convert_values_to_postgres(&params);
         let pg_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            pg_params.iter().map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+            pg_params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
         
-        let rows = self.tx.query(query, &pg_params_refs[..]).await
+        let rows = self.tx.query(query, &pg_params_refs).await
             .context("Failed to query PostgreSQL transaction")?;
         
         let mut result = Vec::new();

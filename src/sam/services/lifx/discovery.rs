@@ -1,5 +1,5 @@
-use crate::services::lifx::bulb::BulbInfo;
-use crate::services::lifx::protocol::ProtocolHandler;
+use super::bulb::BulbInfo;
+use super::protocol::ProtocolHandler;
 use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
 use lifx_rs::lan::{Message, RawMessage};
 use std::collections::HashMap;
@@ -33,11 +33,23 @@ impl DiscoveryService {
             restart_delay_ms: 2000,
             health_check_interval_ms: Some(30000),
             enable_monitoring: true,
+            priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+            max_memory_mb: None,
+            cpu_affinity: None,
         };
         
         thread_manager::spawn_with_config(discovery_config, move |shutdown_signal, _health_rx| {
             log::info!("LIFX discovery worker started");
-            Self::discovery_worker_with_shutdown(recv_sock, source, receiver_bulbs, shutdown_signal);
+            // Note: We can't clone UdpSocket, so we need a different approach
+            // For now, create a new socket for the worker
+            match UdpSocket::bind("0.0.0.0:56701") {
+                Ok(worker_sock) => {
+                    Self::discovery_worker_with_shutdown(worker_sock, source, receiver_bulbs, shutdown_signal);
+                }
+                Err(e) => {
+                    log::error!("Failed to create worker socket: {}", e);
+                }
+            }
             log::info!("LIFX discovery worker stopped");
         });
 

@@ -20,12 +20,12 @@ pub fn handle_api_request(
     let url = request.url();
 
     // Handle exact route matches
-    if let Some(response) = handle_exact_routes(&current_session, url)? {
+    if let Some(response) = handle_exact_routes(&current_session, &url)? {
         return Ok(response);
     }
 
     // Handle prefix-based routes
-    if let Some(response) = handle_prefix_routes(current_session, request, url)? {
+    if let Some(response) = handle_prefix_routes(current_session, request, &url)? {
         return Ok(response);
     }
 

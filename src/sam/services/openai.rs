@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct ChatMessage {
     role: String,
     content: String,

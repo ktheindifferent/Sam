@@ -25,7 +25,7 @@ pub enum ChannelType {
 }
 
 /// Priority levels for message queuing
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Priority {
     Low = 0,
     Normal = 1,

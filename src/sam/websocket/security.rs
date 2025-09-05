@@ -372,6 +372,7 @@ pub struct JwtClaims {
 }
 
 /// JWT configuration
+#[derive(Debug)]
 pub struct JwtConfig {
     pub secret: String,
     pub issuer: String,

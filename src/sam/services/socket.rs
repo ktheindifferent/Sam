@@ -20,6 +20,9 @@ pub fn init() {
         restart_delay_ms: 3000,
         health_check_interval_ms: Some(30000),
         enable_monitoring: true,
+        priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+        max_memory_mb: None,
+        cpu_affinity: None,
     };
     
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
@@ -29,7 +32,7 @@ pub fn init() {
         let event_hub = match simple_websockets::launch(2794) {
             Ok(hub) => hub,
             Err(e) => {
-                log::error!("Failed to listen on port 2794: {}", e);
+                log::error!("Failed to listen on port 2794: {:?}", e);
                 return;
             }
         };

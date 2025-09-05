@@ -1,6 +1,6 @@
-use crate::services::lifx::config::Config;
-use crate::services::lifx::discovery::DiscoveryService;
-use crate::services::lifx::handlers::HttpHandlers;
+use super::config::Config;
+use super::discovery::DiscoveryService;
+use super::handlers::HttpHandlers;
 use rouille::Response;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -62,6 +62,9 @@ impl ApiServer {
             restart_delay_ms: 2000,
             health_check_interval_ms: Some(30000),
             enable_monitoring: true,
+            priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+            max_memory_mb: None,
+            cpu_affinity: None,
         };
         
         thread_manager::spawn_with_config(bg_config, move |shutdown_signal, _health_rx| {
@@ -113,12 +116,13 @@ impl ApiServer {
                     // Handle requests
                     let discovery = match discovery_clone.lock() {
                         Ok(d) => d,
-                        Err(_) => return Response::empty_500(),
+                        Err(_) => return Response::text("Internal Server Error").with_status_code(500),
                     };
 
-                    let bulbs = match discovery.get_bulbs().lock() {
+                    let bulbs_arc = discovery.get_bulbs();
+                    let bulbs = match bulbs_arc.lock() {
                         Ok(b) => b,
-                        Err(_) => return Response::empty_500(),
+                        Err(_) => return Response::text("Internal Server Error").with_status_code(500),
                     };
 
                     if request.url().contains("/lights/states") {

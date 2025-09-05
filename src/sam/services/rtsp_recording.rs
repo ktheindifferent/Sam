@@ -2,9 +2,9 @@
 // Provides recording capabilities for RTSP streams with triggers, storage management, and playback
 
 use crate::sam::memory::{Thing, PostgresQueries, PGCol};
-use crate::sam::services::errors::ServiceError;
+use crate::sam::services::error_handling::ServiceError;
 use anyhow::{Result, Context};
-use chrono::{DateTime, Utc, Duration as ChronoDuration};
+use chrono::{DateTime, Utc, Duration as ChronoDuration, Weekday, Datelike};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -307,7 +307,7 @@ impl RecordingManager {
             }
             RecordingTrigger::Schedule(schedule) => {
                 let now = Utc::now();
-                let weekday = now.weekday().num_days_from_sunday() as u8;
+                let weekday = now.weekday().num_days_from_monday() as u8;
                 
                 if !schedule.days_of_week.contains(&weekday) {
                     return Ok(false);
@@ -823,32 +823,35 @@ impl PlaybackService {
         let input_path = self.get_recording(session_id).await?;
         let export_path = input_path.with_extension(format.extension());
         
+        let input_path_str = input_path.to_string_lossy().to_string();
+        let export_path_str = export_path.to_string_lossy().to_string();
+        
         let ffmpeg_args = match format {
             ExportFormat::MP4 => vec![
-                "-i", &input_path.to_string_lossy(),
+                "-i", &input_path_str,
                 "-c", "copy",
                 "-y",
-                &export_path.to_string_lossy(),
+                &export_path_str,
             ],
             ExportFormat::AVI => vec![
-                "-i", &input_path.to_string_lossy(),
+                "-i", &input_path_str,
                 "-c:v", "mpeg4",
                 "-c:a", "mp3",
                 "-y",
-                &export_path.to_string_lossy(),
+                &export_path_str,
             ],
             ExportFormat::WebM => vec![
-                "-i", &input_path.to_string_lossy(),
+                "-i", &input_path_str,
                 "-c:v", "libvpx-vp9",
                 "-c:a", "libopus",
                 "-y",
-                &export_path.to_string_lossy(),
+                &export_path_str,
             ],
             ExportFormat::GIF => vec![
-                "-i", &input_path.to_string_lossy(),
+                "-i", &input_path_str,
                 "-vf", "fps=10,scale=320:-1:flags=lanczos",
                 "-y",
-                &export_path.to_string_lossy(),
+                &export_path_str,
             ],
         };
         

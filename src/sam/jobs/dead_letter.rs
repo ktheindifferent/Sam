@@ -10,6 +10,7 @@ const DEAD_LETTER_KEY: &str = "jobs:dead_letter";
 const DEAD_LETTER_SET_KEY: &str = "jobs:dead_letter:set";
 const DEAD_LETTER_STATS_KEY: &str = "jobs:dead_letter:stats";
 
+#[derive(Debug)]
 pub struct DeadLetterQueue {
     redis_pool: Pool,
 }
@@ -34,7 +35,7 @@ impl DeadLetterQueue {
         cmd("LPUSH")
             .arg(DEAD_LETTER_KEY)
             .arg(&job_json)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to add job to dead letter queue")?;
         
@@ -42,7 +43,7 @@ impl DeadLetterQueue {
         cmd("SADD")
             .arg(DEAD_LETTER_SET_KEY)
             .arg(&job.id)
-            .query_async(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .context("Failed to add job ID to dead letter set")?;
         
@@ -51,7 +52,7 @@ impl DeadLetterQueue {
             .arg(DEAD_LETTER_STATS_KEY)
             .arg("total_jobs")
             .arg(1)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -59,7 +60,7 @@ impl DeadLetterQueue {
             .arg(DEAD_LETTER_STATS_KEY)
             .arg(&job.job_type)
             .arg(1)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -75,7 +76,7 @@ impl DeadLetterQueue {
             .arg(DEAD_LETTER_KEY)
             .arg(0)
             .arg(limit as isize - 1)
-            .query_async(&mut conn)
+            .query_async::<Vec<String>>(&mut conn)
             .await
             .context("Failed to get jobs from dead letter queue")?;
         
@@ -98,7 +99,7 @@ impl DeadLetterQueue {
         let is_member: bool = cmd("SISMEMBER")
             .arg(DEAD_LETTER_SET_KEY)
             .arg(job_id)
-            .query_async(&mut conn)
+            .query_async::<bool>(&mut conn)
             .await
             .context("Failed to check if job is in dead letter queue")?;
         
@@ -111,7 +112,7 @@ impl DeadLetterQueue {
             .arg(DEAD_LETTER_KEY)
             .arg(0)
             .arg(-1)
-            .query_async(&mut conn)
+            .query_async::<Vec<String>>(&mut conn)
             .await
             .context("Failed to get jobs from dead letter queue")?;
         
@@ -136,7 +137,7 @@ impl DeadLetterQueue {
                         .arg(DEAD_LETTER_KEY)
                         .arg(1)
                         .arg(json)
-                        .query_async::<_, ()>(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .ok();
                     
@@ -144,7 +145,7 @@ impl DeadLetterQueue {
                     cmd("SREM")
                         .arg(DEAD_LETTER_SET_KEY)
                         .arg(job_id)
-                        .query_async::<_, ()>(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .ok();
                     
@@ -153,7 +154,7 @@ impl DeadLetterQueue {
                         .arg(DEAD_LETTER_STATS_KEY)
                         .arg("total_retried")
                         .arg(1)
-                        .query_async::<_, ()>(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .ok();
                     
@@ -174,7 +175,7 @@ impl DeadLetterQueue {
             .arg(DEAD_LETTER_KEY)
             .arg(0)
             .arg(-1)
-            .query_async(&mut conn)
+            .query_async::<Vec<String>>(&mut conn)
             .await
             .context("Failed to get jobs from dead letter queue")?;
         
@@ -198,7 +199,7 @@ impl DeadLetterQueue {
                     cmd("SREM")
                         .arg(DEAD_LETTER_SET_KEY)
                         .arg(&job.id)
-                        .query_async::<_, ()>(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .ok();
                 }
@@ -208,7 +209,7 @@ impl DeadLetterQueue {
         // Clear the dead letter queue
         cmd("DEL")
             .arg(DEAD_LETTER_KEY)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -217,7 +218,7 @@ impl DeadLetterQueue {
             .arg(DEAD_LETTER_STATS_KEY)
             .arg("total_retried")
             .arg(retried_count as i64)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -233,7 +234,7 @@ impl DeadLetterQueue {
         let is_member: bool = cmd("SISMEMBER")
             .arg(DEAD_LETTER_SET_KEY)
             .arg(job_id)
-            .query_async(&mut conn)
+            .query_async::<bool>(&mut conn)
             .await
             .context("Failed to check if job is in dead letter queue")?;
         
@@ -246,7 +247,7 @@ impl DeadLetterQueue {
             .arg(DEAD_LETTER_KEY)
             .arg(0)
             .arg(-1)
-            .query_async(&mut conn)
+            .query_async::<Vec<String>>(&mut conn)
             .await
             .context("Failed to get jobs from dead letter queue")?;
         
@@ -259,7 +260,7 @@ impl DeadLetterQueue {
                         .arg(DEAD_LETTER_KEY)
                         .arg(1)
                         .arg(&json)
-                        .query_async::<_, ()>(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .ok();
                     
@@ -267,7 +268,7 @@ impl DeadLetterQueue {
                     cmd("SREM")
                         .arg(DEAD_LETTER_SET_KEY)
                         .arg(job_id)
-                        .query_async::<_, ()>(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .ok();
                     
@@ -276,7 +277,7 @@ impl DeadLetterQueue {
                         .arg(DEAD_LETTER_STATS_KEY)
                         .arg("total_purged")
                         .arg(1)
-                        .query_async::<_, ()>(&mut conn)
+                        .query_async::<i32>(&mut conn)
                         .await
                         .ok();
                     
@@ -296,21 +297,21 @@ impl DeadLetterQueue {
         // Get count before purging
         let count: usize = cmd("LLEN")
             .arg(DEAD_LETTER_KEY)
-            .query_async(&mut conn)
+            .query_async::<usize>(&mut conn)
             .await
             .unwrap_or(0);
         
         // Clear the dead letter queue
         cmd("DEL")
             .arg(DEAD_LETTER_KEY)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
         // Clear the set
         cmd("DEL")
             .arg(DEAD_LETTER_SET_KEY)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -319,7 +320,7 @@ impl DeadLetterQueue {
             .arg(DEAD_LETTER_STATS_KEY)
             .arg("total_purged")
             .arg(count as i64)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<i32>(&mut conn)
             .await
             .ok();
         
@@ -333,7 +334,7 @@ impl DeadLetterQueue {
         
         let stats: std::collections::HashMap<String, i64> = cmd("HGETALL")
             .arg(DEAD_LETTER_STATS_KEY)
-            .query_async(&mut conn)
+            .query_async::<std::collections::HashMap<String, i64>>(&mut conn)
             .await
             .context("Failed to get dead letter stats")?;
         
@@ -346,7 +347,7 @@ impl DeadLetterQueue {
         
         let size: usize = cmd("LLEN")
             .arg(DEAD_LETTER_KEY)
-            .query_async(&mut conn)
+            .query_async::<usize>(&mut conn)
             .await
             .context("Failed to get dead letter queue size")?;
         

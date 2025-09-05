@@ -112,7 +112,8 @@ pub fn predict(file_path: &str) -> Result<SprecPrediction, crate::sam::services:
     }
     std::fs::copy(file_path, test_file)?;
 
-    let result = crate::sam::tools::cmd("python3 /opt/sam/scripts/sprec/predict.py")?;
+    let result = crate::sam::tools::cmd("python3 /opt/sam/scripts/sprec/predict.py")
+        .map_err(|e| crate::sam::services::Error::Other(e.to_string()))?;
     let vec: Vec<&str> = result.split(":::::").collect();
 
     if vec.len() > 2 {

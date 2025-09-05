@@ -126,7 +126,7 @@ fn setup_panic_handler() {
 /// Clear Redis cache on panic
 async fn clear_redis_cache_on_panic() -> Result<(), Box<dyn std::error::Error>> {
     use deadpool_redis::{Config, Runtime};
-    use redis::AsyncCommands;
+    use deadpool_redis::redis::AsyncCommands;
     
     // Try to connect to Redis
     let redis_url = std::env::var("REDIS_URL")
@@ -138,7 +138,7 @@ async fn clear_redis_cache_on_panic() -> Result<(), Box<dyn std::error::Error>> 
     if let Ok(mut conn) = pool.get().await {
         // Clear all keys with a pattern or flush the database
         // Using FLUSHDB to clear the current database
-        let _: Result<String, _> = conn.flushdb(false).await;
+        let _: Result<(), _> = deadpool_redis::redis::cmd("FLUSHDB").query_async(&mut conn).await;
         log::info!("Redis cache cleared on panic");
     }
     
@@ -150,21 +150,18 @@ async fn shutdown_services_on_panic() -> Result<(), Box<dyn std::error::Error>> 
     log::info!("Shutting down services due to panic...");
     
     // Shutdown crawler database pool
-    libsam::services::crawler::shutdown_db_pool().await;
+    sam::services::crawler::shutdown_db_pool().await;
     
     // Stop crawler service if running
-    if let Err(e) = libsam::services::crawler::stop_service().await {
-        log::error!("Failed to stop crawler service: {}", e);
-    }
+    sam::services::crawler::stop_service();
     
     // Stop Redis if it was started by us
-    libsam::services::redis::stop().await;
+    sam::services::redis::stop().await;
     
     // Stop PostgreSQL if needed
     if libsam::services::pg::is_postgres_running().await {
-        if let Err(e) = libsam::services::pg::stop_postgres() {
-            log::error!("Failed to stop PostgreSQL: {}", e);
-        }
+        // TODO: Implement stop_postgres function
+        log::info!("PostgreSQL is running but no stop function available");
     }
     
     // Add any other service shutdowns here

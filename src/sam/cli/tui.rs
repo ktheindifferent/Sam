@@ -297,10 +297,12 @@ fn render_services_mode(
     list_state.select(Some(selected));
 
     // Service details
+    let unknown_status = String::from("Unknown");
     let (selected_name, selected_status) = if selected < services.len() {
-        services[selected]
+        let (name, status) = services[selected];
+        (name, status)
     } else {
-        ("Unknown", "unknown")
+        ("Unknown", &unknown_status)
     };
 
     let details_lines = vec![
@@ -649,12 +651,13 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 )
             };
 
-            let cpu_usage = format!("{:.1}%", sys.global_cpu_info().cpu_usage());
+            let cpu_usage = format!("{:.1}%", sys.global_cpu_usage());
 
             let disk_usage = {
                 let mut total_space = 0u64;
                 let mut available_space = 0u64;
-                for disk in sys.disks() {
+                let disks = sysinfo::Disks::new_with_refreshed_list();
+                for disk in disks.list() {
                     total_space += disk.total_space();
                     available_space += disk.available_space();
                 }

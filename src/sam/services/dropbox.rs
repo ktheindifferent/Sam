@@ -21,7 +21,8 @@ pub fn get_db_obj() -> Result<crate::sam::memory::config::Service, crate::sam::s
         .queries
         .push(crate::sam::memory::PGCol::String("dropbox".to_string()));
     pg_query.query_columns.push("identifier =".to_string());
-    let service = crate::sam::memory::config::Service::select(None, None, None, Some(pg_query))?;
+    let service = crate::sam::memory::config::Service::select(None, None, None, Some(pg_query))
+        .map_err(|e| crate::sam::services::Error::Other(e.to_string()))?;
     Ok(service[0].clone())
 }
 
@@ -114,11 +115,11 @@ pub fn handle(
     if request.url() == "/api/services/dropbox/download" {
         let path_param = request.get_param("path").ok_or_else(|| {
             log::error!("Missing required 'path' parameter for dropbox download");
-            crate::sam::http::Error::BadRequest
+            crate::sam::http::Error::BadRequest("Missing path parameter".to_string())
         })?;
         let data = download_file(&path_param).map_err(|e| {
             log::error!("Failed to download file from dropbox: {}", e);
-            crate::sam::http::Error::InternalServerError
+            crate::sam::http::Error::InternalServerError(e.to_string())
         })?;
 
         let response = Response::from_data("", data);
@@ -142,15 +143,15 @@ pub fn handle(
         let noc = NoauthDefaultClient::default();
         let new = auth.obtain_access_token(noc).map_err(|e| {
             log::error!("Failed to obtain access token from dropbox: {}", e);
-            crate::sam::http::Error::InternalServerError
+            crate::sam::http::Error::InternalServerError("Failed to obtain access token".to_string())
         })?;
-        let saved_key = auth.save().map_err(|e| {
-            log::error!("Failed to save dropbox auth: {}", e);
-            crate::sam::http::Error::InternalServerError
+        let saved_key = auth.save().ok_or_else(|| {
+            log::error!("Failed to save dropbox auth");
+            crate::sam::http::Error::InternalServerError("Failed to save auth".to_string())
         })?;
         update_key(saved_key, Some(new.refresh_token)).map_err(|e| {
             log::error!("Failed to update dropbox key: {}", e);
-            crate::sam::http::Error::InternalServerError
+            crate::sam::http::Error::InternalServerError("Failed to update key".to_string())
         })?;
 
         let response = Response::redirect_302("/services.html");
@@ -197,9 +198,9 @@ pub fn create_folder(path: &str) -> Result<(), crate::sam::services::Error> {
         crate::sam::services::Error::Other(format!("Failed to get dropbox database object: {}", e))
     })?;
     let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret)
-        .map_err(|e| {
-            log::error!("Failed to load dropbox authorization: {}", e);
-            crate::sam::services::Error::Other(format!("Failed to load dropbox authorization: {}", e))
+        .ok_or_else(|| {
+            log::error!("Failed to load dropbox authorization");
+            crate::sam::services::Error::Other("Failed to load dropbox authorization".to_string())
         })?;
     let client = UserAuthDefaultClient::new(auth.clone());
     dropbox_sdk::files::create_folder_v2(
@@ -315,9 +316,9 @@ pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
         format!("Failed to get dropbox database object: {}", e)
     })?;
     let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret)
-        .map_err(|e| {
-            log::error!("Failed to load dropbox authorization: {}", e);
-            format!("Failed to load dropbox authorization: {}", e)
+        .ok_or_else(|| {
+            log::error!("Failed to load dropbox authorization");
+            "Failed to load dropbox authorization".to_string()
         })?;
     let client = UserAuthDefaultClient::new(auth.clone());
     let dropbox_file = dropbox_sdk::files::download(
@@ -380,9 +381,9 @@ pub fn delete(path: &str) -> Result<(), crate::sam::services::Error> {
         crate::sam::services::Error::Other(format!("Failed to get dropbox database object: {}", e))
     })?;
     let auth = dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret)
-        .map_err(|e| {
-            log::error!("Failed to load dropbox authorization: {}", e);
-            crate::sam::services::Error::Other(format!("Failed to load dropbox authorization: {}", e))
+        .ok_or_else(|| {
+            log::error!("Failed to load dropbox authorization");
+            crate::sam::services::Error::Other("Failed to load dropbox authorization".to_string())
         })?;
     let client = UserAuthDefaultClient::new(auth.clone());
     dropbox_sdk::files::delete_v2(
@@ -471,9 +472,9 @@ pub fn empty_directories() -> Vec<String> {
         }
     };
     let auth = match dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret) {
-        Ok(auth) => auth,
-        Err(e) => {
-            log::error!("Failed to load dropbox authorization: {}", e);
+        Some(auth) => auth,
+        None => {
+            log::error!("Failed to load dropbox authorization");
             return Vec::new();
         }
     };
@@ -531,9 +532,9 @@ pub fn is_path_empty(path: &str) -> bool {
         }
     };
     let auth = match dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret) {
-        Ok(auth) => auth,
-        Err(e) => {
-            log::error!("Failed to load dropbox authorization: {}", e);
+        Some(auth) => auth,
+        None => {
+            log::error!("Failed to load dropbox authorization");
             return false; // Conservative approach - assume not empty if we can't check
         }
     };

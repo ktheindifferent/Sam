@@ -638,12 +638,11 @@ fn check_redis_health() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn check_disk_space() -> Result<bool, Box<dyn std::error::Error>> {
-    use sysinfo::{System, SystemExt, DiskExt};
+    use sysinfo::Disks;
     
-    let mut sys = System::new_all();
-    sys.refresh_disks_list();
+    let disks = Disks::new_with_refreshed_list();
     
-    for disk in sys.disks() {
+    for disk in disks.list() {
         let total = disk.total_space();
         let available = disk.available_space();
         
@@ -681,7 +680,8 @@ fn get_system_metrics() -> SystemMetrics {
     let mut disk_used = 0u64;
     let mut disk_available = 0u64;
     
-    for disk in sys.disks() {
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    for disk in disks.list() {
         disk_total += disk.total_space();
         disk_used += disk.total_space() - disk.available_space();
         disk_available += disk.available_space();
@@ -691,13 +691,14 @@ fn get_system_metrics() -> SystemMetrics {
     let disk_used_gb = disk_used as f64 / 1024.0 / 1024.0 / 1024.0;
     let disk_available_gb = disk_available as f64 / 1024.0 / 1024.0 / 1024.0;
     
-    let cpu_usage = sys.global_cpu_info().cpu_usage() as f64;
+    let cpu_usage = sys.global_cpu_usage() as f64;
     
     // Network metrics (simplified)
     let mut rx_bytes = 0u64;
     let mut tx_bytes = 0u64;
     
-    for (_name, data) in sys.networks() {
+    let networks = sysinfo::Networks::new_with_refreshed_list();
+    for (_name, data) in networks.iter() {
         rx_bytes += data.received();
         tx_bytes += data.transmitted();
     }

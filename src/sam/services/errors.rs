@@ -19,6 +19,7 @@ pub enum CommonError {
     Authorization(String),
     Validation(String),
     External(Box<dyn Error + Send + Sync>),
+    Other(String),
 }
 
 impl fmt::Display for CommonError {
@@ -40,6 +41,7 @@ impl fmt::Display for CommonError {
             CommonError::Authorization(msg) => write!(f, "Authorization error: {}", msg),
             CommonError::Validation(msg) => write!(f, "Validation error: {}", msg),
             CommonError::External(e) => write!(f, "External error: {}", e),
+            CommonError::Other(msg) => write!(f, "Other error: {}", msg),
         }
     }
 }
@@ -91,6 +93,18 @@ impl<T> From<std::sync::PoisonError<T>> for CommonError {
 impl From<std::time::SystemTimeError> for CommonError {
     fn from(err: std::time::SystemTimeError) -> Self {
         CommonError::External(Box::new(err))
+    }
+}
+
+impl From<String> for CommonError {
+    fn from(err: String) -> Self {
+        CommonError::Other(err)
+    }
+}
+
+impl From<&str> for CommonError {
+    fn from(err: &str) -> Self {
+        CommonError::Other(err.to_string())
     }
 }
 

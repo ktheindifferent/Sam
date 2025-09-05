@@ -299,14 +299,14 @@ pub async fn cleanup_old_health_records(days: i32) -> Result<u64> {
             // but we can use parameterized queries with julianday
             (
                 "DELETE FROM service_health WHERE julianday('now') - julianday(checked_at) > ?1",
-                vec![Value::I32(days)]
+                vec![Value::Int32(days)]
             )
         }
         DatabaseEngine::PostgreSQL => {
             // PostgreSQL supports parameterized intervals
             (
                 "DELETE FROM service_health WHERE checked_at < NOW() - ($1::integer || ' days')::interval",
-                vec![Value::I32(days)]
+                vec![Value::Int32(days)]
             )
         }
         _ => return Err(anyhow::anyhow!("Cleanup not implemented for {:?}", pool.engine())),

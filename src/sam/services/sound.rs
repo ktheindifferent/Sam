@@ -38,6 +38,9 @@ pub fn cache_vwavs() {
         restart_delay_ms: 5000,
         health_check_interval_ms: Some(60000),
         enable_monitoring: true,
+        priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+        max_memory_mb: None,
+        cpu_affinity: None,
     };
     
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
@@ -163,10 +166,7 @@ pub fn cache_vwavs() {
                             ],
                         );
 
-                        if let Err(e) = crate::sam::services::stt::patch_whisper_wts(format!(
-                            "{}.16.wav.wts",
-                            tmp_file_path
-                        )) {
+                        if let Err(e) = crate::sam::services::stt::patch_whisper_wts() {
                             log::error!("Failed to patch whisper wts file: {}", e);
                         }
 
@@ -199,7 +199,7 @@ pub fn cache_vwavs() {
 pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: &str) {
     let mut observation = crate::sam::memory::Observation::new();
     observation.observation_type = crate::sam::memory::ObservationType::HEARD;
-    observation.observation_notes.push(prediction.stt.clone());
+    observation.observation_notes.push(prediction.text.clone());
     observation.observation_file = match std::fs::read(file_path) {
         Ok(data) => Some(data),
         Err(e) => {
@@ -208,15 +208,17 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
         }
     };
 
-    if !prediction.stt.is_empty() {
+    if !prediction.text.is_empty() {
         observation
             .observation_objects
-            .push(crate::sam::memory::ObservationObjects::PERSON);
+            .push(crate::sam::memory::ObservationObjects::new("Person".to_string(), 0.8));
     }
 
-    if prediction.human.contains("Unknown") {
+    // TODO: Implement speaker identification
+    // For now, create a generic "Unknown Speaker" entry when we have speech
+    if !prediction.text.is_empty() {
         let mut human = crate::sam::memory::Human::new();
-        human.name = prediction.human.clone();
+        human.name = "Unknown Speaker".to_string();
         human.heard_count = 1;
         if let Err(e) = human.save() {
             log::error!("Failed to save human: {}", e);
@@ -226,7 +228,7 @@ pub fn observe(prediction: crate::sam::services::stt::STTPrediction, file_path: 
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query
             .queries
-            .push(crate::sam::memory::PGCol::String(prediction.human.clone()));
+            .push(crate::sam::memory::PGCol::String("Unknown Speaker".to_string()));
         pg_query.query_columns.push("oid ilike".to_string());
         let humans = match crate::sam::memory::Human::select(None, None, None, Some(pg_query)) {
             Ok(h) => h,
@@ -262,6 +264,9 @@ pub fn s1_init() {
         restart_delay_ms: 3000,
         health_check_interval_ms: Some(30000),
         enable_monitoring: true,
+        priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+        max_memory_mb: None,
+        cpu_affinity: None,
     };
     
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
@@ -309,10 +314,12 @@ pub fn s1_init() {
 
                 if let Ok(reader) = WavReader::open(&spath) {
                     let header = reader.spec();
-                    if let Ok(samples) = reader
+                    let samples: std::result::Result<Vec<_>, _> = reader
                         .into_samples::<i16>()
                         .map(|result| result.map(|sample| [sample]))
-                        .collect::<Result<Vec<_>, _>>()
+                        .collect();
+                    
+                    if let Ok(samples) = samples
                     {
                         let release_time = (header.sample_rate as f32 * 1.3).round();
                         let s2_path = PathBuf::from(format!("{tpath}/s2"));
@@ -323,9 +330,10 @@ pub fn s1_init() {
                     }
                 }
             }
+        }
             
-            // Sleep briefly to avoid busy loop
-            std::thread::sleep(std::time::Duration::from_millis(100));
+        // Sleep briefly to avoid busy loop
+        std::thread::sleep(std::time::Duration::from_millis(100));
         }
         
         log::info!("Sound S1 processor stopped");
@@ -344,6 +352,9 @@ pub fn s2_init() {
         restart_delay_ms: 3000,
         health_check_interval_ms: Some(30000),
         enable_monitoring: true,
+        priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+        max_memory_mb: None,
+        cpu_affinity: None,
     };
     
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
@@ -471,10 +482,12 @@ pub fn s2_init() {
                         match WavReader::open(file_path) {
                             Ok(reader) => {
                                 let spec = reader.spec();
-                                let samples = match reader
+                                let samples: std::result::Result<Vec<_>, _> = reader
                                     .into_samples::<i16>()
                                     .map(|r| r.map(|s| [s]))
-                                    .collect::<Result<Vec<_>, _>>()
+                                    .collect();
+                                
+                                let samples = match samples
                                 {
                                     Ok(s) => s,
                                     Err(e) => {
@@ -566,6 +579,9 @@ pub fn s3_init() {
         restart_delay_ms: 3000,
         health_check_interval_ms: Some(30000),
         enable_monitoring: true,
+        priority: crate::sam::services::thread_manager::ThreadPriority::Normal,
+        max_memory_mb: None,
+        cpu_affinity: None,
     };
     
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
@@ -626,7 +642,7 @@ pub fn s3_init() {
                             match crate::sam::services::stt::deep_speech_process(
                                 fpath_thread.clone(),
                             ) {
-                                Ok(stt) if !stt.stt.is_empty() => {
+                                Ok(stt) if !stt.text.is_empty() => {
                                     // Optionally play a notification sound
                                     // crate::sam::tools::uinx_cmd("aplay /opt/sam/beep.wav".to_string());
 

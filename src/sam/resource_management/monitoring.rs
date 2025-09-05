@@ -313,8 +313,9 @@ impl ResourceMonitor {
                     alerts.extend(new_alerts);
                     
                     // Keep only recent alerts (last 1000)
-                    if alerts.len() > 1000 {
-                        alerts.drain(0..alerts.len() - 1000);
+                    let len = alerts.len();
+                    if len > 1000 {
+                        alerts.drain(0..len - 1000);
                     }
                 }
             }
@@ -325,7 +326,7 @@ impl ResourceMonitor {
     
     /// Collect current metrics
     async fn collect_metrics() -> ResourceMetrics {
-        use sysinfo::{System, SystemExt, ProcessExt, DiskExt, NetworkExt, CpuExt};
+        use sysinfo::System;
         
         let mut sys = System::new_all();
         sys.refresh_all();
@@ -339,13 +340,13 @@ impl ResourceMonitor {
             swap_used: sys.used_swap() * 1024,
             swap_free: sys.free_swap() * 1024,
             buffer_cache: 0, // Platform specific
-            process_rss: std::process::id()
+            process_rss: (std::process::id() as usize)
                 .try_into()
                 .ok()
                 .and_then(|pid| sys.process(pid))
                 .map(|p| p.memory())
                 .unwrap_or(0) * 1024,
-            process_vms: std::process::id()
+            process_vms: (std::process::id() as usize)
                 .try_into()
                 .ok()
                 .and_then(|pid| sys.process(pid))
@@ -354,12 +355,12 @@ impl ResourceMonitor {
         };
         
         let cpu = CpuMetrics {
-            usage_percent: sys.global_cpu_info().cpu_usage(),
-            load_average_1m: sys.load_average().one as f32,
-            load_average_5m: sys.load_average().five as f32,
-            load_average_15m: sys.load_average().fifteen as f32,
+            usage_percent: sys.global_cpu_usage(),
+            load_average_1m: sysinfo::System::load_average().one as f32,
+            load_average_5m: sysinfo::System::load_average().five as f32,
+            load_average_15m: sysinfo::System::load_average().fifteen as f32,
             core_count: sys.cpus().len(),
-            process_cpu_percent: std::process::id()
+            process_cpu_percent: (std::process::id() as usize)
                 .try_into()
                 .ok()
                 .and_then(|pid| sys.process(pid))
@@ -373,7 +374,8 @@ impl ResourceMonitor {
             let mut total = 0u64;
             let mut used = 0u64;
             
-            for disk in sys.disks() {
+            let disks = sysinfo::Disks::new_with_refreshed_list();
+            for disk in disks.list() {
                 total += disk.total_space();
                 used += disk.total_space() - disk.available_space();
             }
@@ -397,18 +399,25 @@ impl ResourceMonitor {
         };
         
         let network = {
-            let networks = sys.networks();
+            let networks = sysinfo::Networks::new_with_refreshed_list();
             let mut bytes_sent = 0u64;
             let mut bytes_received = 0u64;
             let mut packets_sent = 0u64;
             let mut packets_received = 0u64;
             
-            for (_name, network) in networks {
-                bytes_sent += network.total_transmitted();
-                bytes_received += network.total_received();
-                packets_sent += network.total_packets_transmitted();
-                packets_received += network.total_packets_received();
+            for (_interface_name, network_data) in &networks {
+                bytes_sent += network_data.total_transmitted();
+                bytes_received += network_data.total_received();
+                packets_sent += network_data.total_packets_transmitted();
+                packets_received += network_data.total_packets_received();
             }
+            
+            // for (_name, network) in networks {
+            //     bytes_sent += network.total_transmitted();
+            //     bytes_received += network.total_received();
+            //     packets_sent += network.total_packets_transmitted();
+            //     packets_received += network.total_packets_received();
+            // }
             
             NetworkMetrics {
                 bytes_sent,

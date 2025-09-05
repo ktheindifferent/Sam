@@ -57,6 +57,8 @@ pub mod pg;
 pub mod redis;
 pub mod rivescript;
 pub mod rtsp;
+pub mod rtsp_dl_simple;
+pub mod rtsp_recording;
 pub mod sms;
 pub mod socket;
 pub mod sound;
@@ -77,6 +79,7 @@ pub mod who;
 // Re-export commonly used types
 pub use config::{ConfigManager, GlobalConfig, ServiceConfig};
 pub use errors::{CommonError, ErrorContext, Result};
+pub type Error = CommonError;
 pub use http_client::{ApiClient, HttpClientConfig, SharedHttpClient};
 pub use retry::{ExponentialBackoffRetry, RetryConfig, RetryStrategy};
 pub use traits::{Service, ServiceFactory, ServiceHealth, ServiceRegistry};

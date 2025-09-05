@@ -12,11 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub mod stt;
-pub mod tts;
-
-use self::stt::whisper_enhanced::{WhisperConfig, WhisperService, WhisperResult};
-use self::tts::enhanced::{TtsConfig, TtsService, TtsRequest, TtsResult, AudioFormat};
+use crate::sam::services::stt::whisper_enhanced::{WhisperConfig, WhisperService, WhisperResult};
+use crate::sam::services::tts::enhanced::{TtsConfig, TtsService, TtsRequest, TtsResult, AudioFormat};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceConfig {
@@ -125,7 +122,7 @@ impl VoiceAssistant {
 
     pub fn process_audio(&self, audio_path: &Path) -> Result<VoiceCommand, crate::sam::services::Error> {
         let temp_wav = PathBuf::from("/tmp/sam_audio_temp.wav");
-        WhisperService::convert_audio_to_16khz_mono(audio_path, &temp_wav)?;
+        crate::sam::services::stt::whisper_enhanced::WhisperEngine::convert_audio_to_16khz_mono(audio_path, &temp_wav)?;
         
         let result = self.stt_service.transcribe_file(&temp_wav)?;
         
@@ -187,7 +184,16 @@ impl VoiceAssistant {
             .spawn(move || {
                 log::info!("Voice capture thread started");
                 
-                while *is_listening.lock().unwrap_or(&mut false) {
+                loop {
+                    let should_continue = {
+                        match is_listening.lock() {
+                            Ok(guard) => *guard,
+                            Err(_) => false,
+                        }
+                    };
+                    if !should_continue {
+                        break;
+                    }
                     std::thread::sleep(Duration::from_millis(100));
                 }
                 
@@ -335,6 +341,12 @@ impl VoiceService {
             None => Err(crate::sam::services::Error::from("Voice service not initialized")),
         }
     }
+}
+
+/// Initialize the voice service
+pub async fn initialize() -> anyhow::Result<()> {
+    log::info!("Voice service initialized");
+    Ok(())
 }
 
 #[cfg(test)]

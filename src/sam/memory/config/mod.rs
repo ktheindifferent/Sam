@@ -1,6 +1,6 @@
 use crate::sam::memory::PostgresServer;
 use crate::sam::memory::Result;
-use crate::sam::memory::{PGCol, PostgresQueries};
+use crate::sam::memory::{PGCol, PostgresQueries, MemoryError};
 use crate::sam::services::thread_manager;
 use deadpool_postgres::Manager;
 use deadpool_postgres::Pool;

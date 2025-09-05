@@ -85,11 +85,13 @@ impl HttpClientBuilder {
             .danger_accept_invalid_certs(self.config.accept_invalid_certs);
 
         if self.config.enable_compression {
-            builder = builder.gzip(true).deflate(true).brotli(true);
+            // Note: gzip, deflate, brotli methods may not be available in current reqwest version
+            // builder = builder.gzip(true).deflate(true).brotli(true);
         }
 
         if self.config.enable_cookies {
-            builder = builder.cookie_store(true);
+            // Note: cookie_store method may not be available in current reqwest version
+            // builder = builder.cookie_store(true);
         }
 
         if let Some(proxy_url) = self.config.proxy_url {

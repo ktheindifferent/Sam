@@ -923,7 +923,7 @@ pub fn start(config: Config) -> StopHandle {
 
                         let mut lock = match th2_arc_mgr.lock() {
                             Ok(l) => l,
-                            Err(_) => return Response::empty_500()
+                            Err(_) => return Response::from_string("Internal Server Error").with_status_code(500)
                         };
                         let mgr = &mut *lock;
 
@@ -943,7 +943,7 @@ pub fn start(config: Config) -> StopHandle {
 
                         let bulbs = match mgr.bulbs.lock() {
                             Ok(b) => b,
-                            Err(_) => return Response::empty_500()
+                            Err(_) => return Response::from_string("Internal Server Error").with_status_code(500)
                         };
 
                         for bulb in bulbs.values() {

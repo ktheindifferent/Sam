@@ -18,7 +18,7 @@ pub mod pool;
 pub mod monitoring;
 
 pub use cleanup::{TempFile, ResourceCleanup, CleanupGuard};
-pub use limits::{ResourceLimits, RequestLimits, FileLimits};
+pub use limits::ResourceLimits;
 pub use pool::{ConnectionPool, PooledConnection};
 pub use monitoring::{ResourceMonitor, ResourceMetrics};
 
@@ -299,7 +299,7 @@ impl ResourceManager {
         let semaphore = self.get_or_create_upload_semaphore(user_id).await;
         
         // Try to acquire permit
-        match semaphore.try_acquire() {
+        match semaphore.try_acquire_owned() {
             Ok(permit) => Ok(UploadPermission::Allowed { permit: Some(permit) }),
             Err(_) => Ok(UploadPermission::Denied {
                 reason: format!(
@@ -450,12 +450,12 @@ async fn scan_file(path: &Path) -> Result<()> {
     let content = fs::read(path).await?;
     
     // Check for common malware signatures (very basic)
-    let suspicious_patterns = [
+    let suspicious_patterns: &[&[u8]] = &[
         b"EICAR",  // EICAR test virus
         b"X5O!P%@AP",  // Another EICAR pattern
     ];
     
-    for pattern in &suspicious_patterns {
+    for pattern in suspicious_patterns {
         if content.windows(pattern.len()).any(|w| w == *pattern) {
             return Err(anyhow::anyhow!("Suspicious pattern detected"));
         }

@@ -54,7 +54,7 @@ pub async fn initialize_db_pool() -> Result<(), Box<dyn std::error::Error>> {
             create: Some(std::time::Duration::from_secs(5)),
             recycle: Some(std::time::Duration::from_secs(5)),
         },
-        queue_mode: deadpool_postgres::QueueMode::Fifo,
+        queue_mode: deadpool::managed::QueueMode::Fifo,
     });
     
     let pool = cfg.create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls)?;

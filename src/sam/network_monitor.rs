@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
+use log::info;
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
 use log::{debug, error, warn};
@@ -27,7 +28,7 @@ pub struct NetworkInterface {
     pub tx_dropped: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NetworkSpeed {
     pub interface: String,
     pub download_speed_bps: f64,  // Bytes per second
@@ -35,15 +36,17 @@ pub struct NetworkSpeed {
     pub download_speed_mbps: f64, // Megabits per second
     pub upload_speed_mbps: f64,   // Megabits per second
     pub total_speed_mbps: f64,    // Combined speed in Mbps
+    #[serde(skip)]
     pub timestamp: Instant,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NetworkLatency {
     pub host: String,
     pub latency_ms: f64,
     pub packet_loss: f64,
     pub jitter_ms: f64,
+    #[serde(skip)]
     pub timestamp: Instant,
 }
 
@@ -654,5 +657,83 @@ mod tests {
             assert!(stats.tcp_listen >= 0);
             assert!(stats.total_connections >= 0);
         }
+    }
+}
+
+impl Default for NetworkSpeed {
+    fn default() -> Self {
+        Self {
+            interface: String::new(),
+            download_speed_bps: 0.0,
+            upload_speed_bps: 0.0,
+            download_speed_mbps: 0.0,
+            upload_speed_mbps: 0.0,
+            total_speed_mbps: 0.0,
+            timestamp: Instant::now(),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for NetworkSpeed {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct NetworkSpeedData {
+            interface: String,
+            download_speed_bps: f64,
+            upload_speed_bps: f64,
+            download_speed_mbps: f64,
+            upload_speed_mbps: f64,
+            total_speed_mbps: f64,
+        }
+        
+        let data = NetworkSpeedData::deserialize(deserializer)?;
+        Ok(NetworkSpeed {
+            interface: data.interface,
+            download_speed_bps: data.download_speed_bps,
+            upload_speed_bps: data.upload_speed_bps,
+            download_speed_mbps: data.download_speed_mbps,
+            upload_speed_mbps: data.upload_speed_mbps,
+            total_speed_mbps: data.total_speed_mbps,
+            timestamp: Instant::now(), // Use current time for deserialization
+        })
+    }
+}
+
+impl Default for NetworkLatency {
+    fn default() -> Self {
+        Self {
+            host: String::new(),
+            latency_ms: 0.0,
+            packet_loss: 0.0,
+            jitter_ms: 0.0,
+            timestamp: Instant::now(),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for NetworkLatency {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct NetworkLatencyData {
+            host: String,
+            latency_ms: f64,
+            packet_loss: f64,
+            jitter_ms: f64,
+        }
+        
+        let data = NetworkLatencyData::deserialize(deserializer)?;
+        Ok(NetworkLatency {
+            host: data.host,
+            latency_ms: data.latency_ms,
+            packet_loss: data.packet_loss,
+            jitter_ms: data.jitter_ms,
+            timestamp: Instant::now(), // Use current time for deserialization
+        })
     }
 }

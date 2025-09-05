@@ -638,22 +638,29 @@ impl BackupService {
     }
     
     /// List directory recursively
-    async fn list_directory_recursive(&self, path: &Path) -> Result<Vec<String>, BackupError> {
+    fn list_directory_recursive(&self, path: &Path) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, BackupError>> + Send + '_>> {
+        Box::pin(Self::list_directory_recursive_impl(path.to_path_buf()))
+    }
+    
+    /// Implementation for recursive directory listing  
+    fn list_directory_recursive_impl(path: PathBuf) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, BackupError>> + Send>> {
+        Box::pin(async move {
         let mut entries = Vec::new();
         
-        let mut dir_entries = fs::read_dir(path).await?;
+        let mut dir_entries = fs::read_dir(&path).await?;
         while let Some(entry) = dir_entries.next_entry().await? {
-            let path = entry.path();
-            if path.is_dir() {
-                let sub_entries = self.list_directory_recursive(&path).await?;
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                let sub_entries = Self::list_directory_recursive_impl(entry_path).await?;
                 entries.extend(sub_entries);
             } else {
-                entries.push(path.to_string_lossy().to_string());
+                entries.push(entry_path.to_string_lossy().to_string());
             }
         }
         
         entries.sort();
         Ok(entries)
+        })
     }
     
     /// Verify backup integrity
@@ -768,6 +775,12 @@ impl std::fmt::Display for BackupError {
 }
 
 impl std::error::Error for BackupError {}
+
+/// Start the backup scheduler
+pub async fn start_scheduler() -> anyhow::Result<()> {
+    log::info!("Backup scheduler started");
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {

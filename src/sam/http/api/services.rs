@@ -20,7 +20,7 @@ pub fn handle(
     }
 
     if request.url().contains("/api/services/lifx") {
-        return crate::sam::services::lifx::handle(current_session, request);
+        return Ok(crate::sam::services::lifx::handle(Some(current_session.sid.clone()), request));
     }
 
     if request.url().contains("/api/services/notifications") {
@@ -40,7 +40,7 @@ pub fn handle(
     }
 
     if request.url().contains("/api/services/stt") {
-        return crate::sam::services::stt::handle(current_session, request);
+        return Ok(crate::sam::services::stt::handle(Some(current_session.sid.clone()), request));
     }
 
     if request.url().contains("/api/services/jupiter") {

@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct JobSystem {
     pub queue: Arc<JobQueue>,
     pub worker_pool: Arc<WorkerPool>,
@@ -30,6 +30,19 @@ pub struct JobSystem {
     pub monitor: Arc<JobMonitor>,
     pub dead_letter: Arc<DeadLetterQueue>,
     handlers: Arc<RwLock<HashMap<String, Arc<dyn JobHandler>>>>,
+}
+
+impl std::fmt::Debug for JobSystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JobSystem")
+            .field("queue", &"<JobQueue>")
+            .field("worker_pool", &"<WorkerPool>")
+            .field("scheduler", &"<JobScheduler>")
+            .field("monitor", &"<JobMonitor>")
+            .field("dead_letter", &"<DeadLetterQueue>")
+            .field("handlers", &format!("<{} handlers>", self.handlers.try_read().map(|h| h.len()).unwrap_or(0)))
+            .finish()
+    }
 }
 
 impl JobSystem {

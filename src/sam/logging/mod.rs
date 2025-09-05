@@ -362,7 +362,8 @@ impl MetricsCollector {
             .set(sys.total_memory() as f64);
         
         // Disk usage
-        for disk in sys.disks() {
+        let disks = sysinfo::Disks::new_with_refreshed_list();
+        for disk in disks.list() {
             let mount_point = disk.mount_point().to_string_lossy();
             self.disk_usage_gauge
                 .with_label_values(&[&mount_point])

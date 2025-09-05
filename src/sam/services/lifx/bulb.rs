@@ -1,4 +1,4 @@
-use crate::services::lifx::traits::{DeviceInfo, GroupInfo, LightDevice, LocationInfo};
+use super::traits::{DeviceInfo, GroupInfo, LightDevice, LocationInfo};
 use lifx_rs::lan::{Message, PowerLevel, ProductInfo, HSBK};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -51,7 +51,7 @@ pub struct LifxColor {
     pub brightness: u16,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LifxGroup {
     pub id: String,
     pub name: String,

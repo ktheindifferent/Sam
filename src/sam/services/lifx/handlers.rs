@@ -1,6 +1,6 @@
-use crate::services::lifx::bulb::BulbInfo;
-use crate::services::lifx::protocol::ProtocolHandler;
-use crate::services::lifx::traits::ColorCommand;
+use super::bulb::BulbInfo;
+use super::protocol::ProtocolHandler;
+use super::traits::ColorCommand;
 use colors_transform::{Color as TransformColor, Rgb as TransformRgb};
 use lifx_rs::lan::{PowerLevel, HSBK};
 use palette::{FromColor, Hsv};

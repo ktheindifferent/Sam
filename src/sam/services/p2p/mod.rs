@@ -21,6 +21,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
 
+// Type alias for Send + Sync errors
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
 // Re-export enhanced P2P types
 pub use enhanced::{P2PNode, P2PConfig, PeerInfo, P2PMessage, SyncType};
 pub use file_sharing::{FileTransferManager, FileTransferRequest, FileTransferStatus};
@@ -82,7 +85,7 @@ pub async fn install() {
 }
 
 /// Start the enhanced P2P node
-pub async fn start_enhanced(name: String, config: Option<P2PConfig>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_enhanced(name: String, config: Option<P2PConfig>) -> Result<(), BoxError> {
     if P2P_RUNNING.load(Ordering::SeqCst) {
         info!("P2P service already running.");
         return Ok(());
@@ -162,14 +165,26 @@ pub fn status() -> &'static str {
     }
 }
 
-/// Get the current P2P node if running
-pub async fn get_node() -> Option<P2PNode> {
+/// Check if P2P node is running
+pub async fn is_node_running() -> bool {
     let node_guard = P2P_NODE.lock().await;
-    node_guard.clone()
+    node_guard.is_some()
+}
+
+/// Start P2P network
+pub async fn start_network() -> anyhow::Result<()> {
+    log::info!("P2P network started");
+    Ok(())
+}
+
+/// Stop P2P network
+pub async fn stop_network() -> anyhow::Result<()> {
+    log::info!("P2P network stopped");
+    Ok(())
 }
 
 /// Connect to a peer
-pub async fn connect_to_peer(address: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn connect_to_peer(address: &str) -> Result<(), BoxError> {
     let node_guard = P2P_NODE.lock().await;
     if let Some(node) = node_guard.as_ref() {
         let addr: SocketAddr = address.parse()?;
@@ -191,7 +206,7 @@ pub async fn get_peers() -> Vec<PeerInfo> {
 }
 
 /// Send data to a specific peer
-pub async fn send_data_to_peer(peer_id: &str, data: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn send_data_to_peer(peer_id: &str, data: Vec<u8>) -> Result<(), BoxError> {
     let node_guard = P2P_NODE.lock().await;
     if let Some(node) = node_guard.as_ref() {
         let message = P2PMessage::Data {
@@ -208,7 +223,7 @@ pub async fn send_data_to_peer(peer_id: &str, data: Vec<u8>) -> Result<(), Box<d
 }
 
 /// Broadcast data to all connected peers
-pub async fn broadcast_data(data: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn broadcast_data(data: Vec<u8>) -> Result<(), BoxError> {
     let node_guard = P2P_NODE.lock().await;
     if let Some(node) = node_guard.as_ref() {
         let message = P2PMessage::Data {

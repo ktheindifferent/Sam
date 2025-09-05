@@ -154,7 +154,7 @@ impl fmt::Display for ObservationType {
     }
 }
 impl std::str::FromStr for ObservationType {
-    type Err = ();
+    type Err = String;
     fn from_str(input: &str) -> std::result::Result<ObservationType, Self::Err> {
         match input {
             "UNKNOWN" => Ok(ObservationType::UNKNOWN),
@@ -162,7 +162,7 @@ impl std::str::FromStr for ObservationType {
             "HEARD" => Ok(ObservationType::HEARD),
             "Motion" => Ok(ObservationType::Motion),
             "Object" => Ok(ObservationType::Object),
-            _ => Err(()),
+            _ => Err(format!("Unknown observation type: {}", input)),
         }
     }
 }
