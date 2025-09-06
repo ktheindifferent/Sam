@@ -1125,7 +1125,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             let mut sampled_words = words.clone();
             sampled_words.shuffle(&mut rng);
             // Use rayon's par_iter to efficiently take the first 1,000 elements in parallel
-            let sampled_words: Vec<_> = sampled_words.par_iter().take(10).cloned().collect();
+            let sampled_words: Vec<_> = sampled_words.par_iter().take(5).cloned().collect(); // Reduced for faster startup
 
             let domain_gen_duration = domain_gen_start.elapsed();
             log::info!("Domain generation took {:?}", domain_gen_duration);
@@ -1172,22 +1172,35 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             let mut urls_found = Vec::new();
 
             // Use higher concurrency for DNS lookups (DNS is lightweight)
-            let concurrency = (num_cpus::get() * 4).max(16).min(64);
+            let concurrency = (num_cpus::get() * 8).max(32).min(128);
             log::info!(
                 "Starting DNS lookups for {} domains with concurrency {}",
                 domains.len(),
                 concurrency
             );
             let dns_start = tokio::time::Instant::now();
+            let total_domains = domains.len();
+            let processed = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
-            let found_domains = tokio_stream::iter(domains.iter().cloned())
-                .map(|domain| {
+            let found_domains = tokio_stream::iter(domains.iter().cloned().enumerate())
+                .map(|(idx, domain)| {
                     let resolver = resolver.clone();
                     let client_clone = client.clone();
+                    let processed = processed.clone();
                     async move {
                         let lookup_start = tokio::time::Instant::now();
                         let found = lookup_domain(&resolver, &domain, client_clone).await;
                         let lookup_duration = lookup_start.elapsed();
+                        
+                        // Update progress counter
+                        let count = processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                        if count % 50 == 0 || count == total_domains {
+                            log::info!(
+                                "DNS lookup progress: {}/{} domains processed ({:.1}%)",
+                                count, total_domains, (count as f64 / total_domains as f64) * 100.0
+                            );
+                        }
+                        
                         log::debug!(
                             "DNS+HTTP lookup for domain {} took {:?} (found={})",
                             domain,
@@ -1292,7 +1305,7 @@ async fn lookup_domain(
     let mut found = false;
     for attempt in 0..3 {
         let result = match tokio::time::timeout(
-            Duration::from_secs(15), // Increased from 10 to 15
+            Duration::from_secs(3), // Reduced for faster processing
             resolver.lookup_ip(domain),
         )
         .await
@@ -1308,7 +1321,7 @@ async fn lookup_domain(
                     let http_fut = client.head(&http_url).send();
                     let https_fut = client.head(&https_url).send();
                     let result = tokio::time::timeout(
-                            Duration::from_secs(15),
+                            Duration::from_secs(5),
                             async {
                                 tokio::select! {
                                     resp = http_fut => resp.ok().map(|r| r.status().is_success() || r.status().is_redirection()),
