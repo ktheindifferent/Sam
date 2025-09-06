@@ -742,10 +742,67 @@ async fn process_command(
             Ok(serde_json::to_value(stats)?)
         }
         
+        "start_service" => {
+            if let Some(service_name) = args.get("service").and_then(|s| s.as_str()) {
+                match service_name {
+                    "redis" => {
+                        crate::sam::services::redis::start().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Redis service started" }))
+                    }
+                    "crawler" => {
+                        crate::sam::services::crawler::start_service_async().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Crawler service started" }))
+                    }
+                    "docker" => {
+                        crate::sam::services::docker::start().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Docker service started" }))
+                    }
+                    _ => Err(format!("Unknown service: {}", service_name).into())
+                }
+            } else {
+                Err("Missing service name".into())
+            }
+        }
+        
+        "stop_service" => {
+            if let Some(service_name) = args.get("service").and_then(|s| s.as_str()) {
+                match service_name {
+                    "redis" => {
+                        crate::sam::services::redis::stop().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Redis service stopped" }))
+                    }
+                    "crawler" => {
+                        crate::sam::services::crawler::stop_service();
+                        Ok(serde_json::json!({ "success": true, "message": "Crawler service stopped" }))
+                    }
+                    "docker" => {
+                        crate::sam::services::docker::stop().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Docker service stopped" }))
+                    }
+                    _ => Err(format!("Unknown service: {}", service_name).into())
+                }
+            } else {
+                Err("Missing service name".into())
+            }
+        }
+        
         "restart_service" => {
             if let Some(service_name) = args.get("service").and_then(|s| s.as_str()) {
-                // Implement service restart logic
-                Ok(serde_json::json!({ "message": format!("Service {} restart initiated", service_name) }))
+                match service_name {
+                    "redis" => {
+                        crate::sam::services::redis::stop().await;
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        crate::sam::services::redis::start().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Redis service restarted" }))
+                    }
+                    "crawler" => {
+                        crate::sam::services::crawler::stop_service();
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        crate::sam::services::crawler::start_service_async().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Crawler service restarted" }))
+                    }
+                    _ => Err(format!("Unknown service: {}", service_name).into())
+                }
             } else {
                 Err("Missing service name".into())
             }
@@ -873,6 +930,23 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
         );
     }
     
+    // Check Crawler
+    let crawler_status = crate::sam::services::crawler::service_status();
+    let crawler_state = if crawler_status.contains("running") {
+        "healthy"
+    } else {
+        "stopped"
+    };
+    statuses.insert(
+        "crawler".to_string(),
+        ServiceStatus {
+            state: crawler_state.to_string(),
+            message: Some(crawler_status.to_string()),
+            progress: None,
+            last_check: Utc::now(),
+        },
+    );
+    
     // Check Docker
     if crate::sam::services::docker::is_running() {
         statuses.insert(
@@ -896,7 +970,56 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
         );
     }
     
-    // Add more service checks as needed
+    // Check PostgreSQL
+    match crate::sam::memory::is_connected() {
+        Ok(connected) => {
+            let state = if connected { "healthy" } else { "stopped" };
+            let message = if connected { "PostgreSQL is connected" } else { "PostgreSQL is not connected" };
+            statuses.insert(
+                "postgres".to_string(),
+                ServiceStatus {
+                    state: state.to_string(),
+                    message: Some(message.to_string()),
+                    progress: None,
+                    last_check: Utc::now(),
+                },
+            );
+        }
+        Err(_) => {
+            statuses.insert(
+                "postgres".to_string(),
+                ServiceStatus {
+                    state: "error".to_string(),
+                    message: Some("Failed to check PostgreSQL status".to_string()),
+                    progress: None,
+                    last_check: Utc::now(),
+                },
+            );
+        }
+    }
+    
+    // Check WebSocket
+    statuses.insert(
+        "websocket".to_string(),
+        ServiceStatus {
+            state: "healthy".to_string(),
+            message: Some("WebSocket server is running".to_string()),
+            progress: None,
+            last_check: Utc::now(),
+        },
+    );
+    
+    // Check Voice/TTS service
+    // For now, just return a placeholder status
+    statuses.insert(
+        "voice".to_string(),
+        ServiceStatus {
+            state: "stopped".to_string(),
+            message: Some("Voice service not configured".to_string()),
+            progress: None,
+            last_check: Utc::now(),
+        },
+    );
     
     Ok(statuses)
 }

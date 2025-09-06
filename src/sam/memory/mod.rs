@@ -38,6 +38,33 @@ pub use room::*;
 use thiserror::Error;
 pub type Result<T> = anyhow::Result<T>;
 
+/// Check if the database is connected
+pub fn is_connected() -> Result<bool> {
+    // Check if we can connect to PostgreSQL
+    let config = Config::new();
+    
+    // Try to establish a connection using blocking client
+    match postgres::Client::connect(
+        &format!(
+            "postgresql://{}:{}@{}/{}?sslmode=prefer",
+            std::env::var("PG_USER").unwrap_or_else(|_| "sam".to_string()),
+            std::env::var("PG_PASS").unwrap_or_else(|_| "sam".to_string()),
+            std::env::var("PG_ADDRESS").unwrap_or_else(|_| "localhost".to_string()),
+            std::env::var("PG_DBNAME").unwrap_or_else(|_| "sam".to_string())
+        ),
+        postgres::NoTls,
+    ) {
+        Ok(mut client) => {
+            // Try a simple query to verify connection
+            match client.simple_query("SELECT 1") {
+                Ok(_) => Ok(true),
+                Err(_) => Ok(false),
+            }
+        }
+        Err(_) => Ok(false),
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum MemoryError {
     #[error("IO error: {0}")]

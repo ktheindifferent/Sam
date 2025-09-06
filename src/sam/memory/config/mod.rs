@@ -65,6 +65,7 @@ impl Config {
             }
         }
 
+        // Start HTTP server
         let _config = self.clone();
         thread_manager::spawn("http-server", move |shutdown_signal, _health_rx| {
             // Note: rouille::start_server is blocking, so we can't easily check shutdown_signal
@@ -76,6 +77,23 @@ impl Config {
                         log::error!("HTTP_ERROR: {}", err);
                         Response::empty_404()
                     }
+                }
+            });
+        });
+
+        // Start WebSocket server
+        thread_manager::spawn("websocket-server", move |shutdown_signal, _health_rx| {
+            // Create a new Tokio runtime for the WebSocket server
+            let runtime = tokio::runtime::Runtime::new().expect("Failed to create WebSocket runtime");
+            
+            runtime.block_on(async {
+                log::info!("Starting WebSocket server on port 8080");
+                let ws_server = crate::sam::websocket::WsServer::new();
+                
+                // Start the WebSocket server
+                match ws_server.start("0.0.0.0:8080").await {
+                    Ok(_) => log::info!("WebSocket server started successfully"),
+                    Err(e) => log::error!("Failed to start WebSocket server: {}", e),
                 }
             });
         });

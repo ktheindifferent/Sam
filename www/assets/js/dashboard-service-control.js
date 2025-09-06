@@ -71,10 +71,16 @@ function initWebSocket() {
 function handleWebSocketMessage(data) {
     if (data.type === 'service_status') {
         updateServiceStatus(data.service, data.status);
-    } else if (data.type === 'metrics') {
-        updateMetrics(data);
-    } else if (data.type === 'log') {
-        addLog(data.message, data.level);
+    } else if (data.type === 'system_stats') {
+        updateSystemStats(data.stats);
+    } else if (data.type === 'command_response') {
+        handleCommandResponse(data);
+    } else if (data.type === 'error') {
+        addLog(data.message, 'error');
+    } else if (data.type === 'activity') {
+        addLog(data.activity.message, 'info');
+    } else if (data.type === 'alert') {
+        addLog(data.message, data.severity);
     }
 }
 
@@ -111,10 +117,68 @@ function updateConnectionStatus(connected) {
 // Request service status via WebSocket or HTTP
 function requestServiceStatus() {
     if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'get_status' }));
+        // Subscribe to service updates
+        ws.send(JSON.stringify({ 
+            type: 'subscribe', 
+            channels: ['services', 'stats', 'alerts', 'activity'] 
+        }));
+        // Request current service statuses
+        ws.send(JSON.stringify({ 
+            type: 'command', 
+            id: generateCommandId(),
+            command: 'get_services',
+            args: {}
+        }));
     } else {
         // Fall back to HTTP polling
         fetchServiceStatus();
+    }
+}
+
+// Generate unique command ID
+function generateCommandId() {
+    return `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Handle command responses from WebSocket
+function handleCommandResponse(data) {
+    if (data.success) {
+        if (data.data) {
+            // Handle service control responses
+            if (data.data.message) {
+                showToast(data.data.message, 'success');
+                addLog(data.data.message, 'success');
+            }
+            // Handle service status response
+            if (typeof data.data === 'object' && !data.data.message) {
+                for (const [service, status] of Object.entries(data.data)) {
+                    if (typeof status === 'object' && status.state) {
+                        updateServiceStatus(service, status);
+                    }
+                }
+            }
+        }
+    } else {
+        console.error('Command failed:', data.data);
+        const errorMsg = data.data?.error || data.data?.message || 'Unknown error';
+        showToast(`Command failed: ${errorMsg}`, 'error');
+        addLog(`Command failed: ${errorMsg}`, 'error');
+    }
+}
+
+// Update system statistics
+function updateSystemStats(stats) {
+    if (stats.cpu !== undefined) {
+        const cpuElement = document.getElementById('cpu-usage');
+        if (cpuElement) cpuElement.textContent = `${stats.cpu.toFixed(1)}%`;
+    }
+    if (stats.memory_percent !== undefined) {
+        const memElement = document.getElementById('memory-usage');
+        if (memElement) memElement.textContent = `${stats.memory_percent.toFixed(1)}%`;
+    }
+    if (stats.disk_percent !== undefined) {
+        const diskElement = document.getElementById('disk-usage');
+        if (diskElement) diskElement.textContent = `${stats.disk_percent.toFixed(1)}%`;
     }
 }
 
@@ -265,28 +329,44 @@ async function startService(service) {
     disableServiceButtons(service, true);
     
     try {
-        let response;
-        
-        // Service-specific start endpoints
-        switch(service) {
-            case 'redis':
-                response = await fetch('/api/services/redis/start', { method: 'POST' });
-                break;
-            case 'crawler':
-                response = await fetch('/api/services/crawler/start', { method: 'POST' });
-                break;
-            case 'docker':
-                response = await fetch('/api/services/docker/start', { method: 'POST' });
-                break;
-            default:
-                response = await fetch(`/api/services/${service}/start`, { method: 'POST' });
-        }
-        
-        if (response && response.ok) {
-            showToast(`${service} started successfully`, 'success');
-            addLog(`Started ${service} service`, 'success');
+        // Use WebSocket if available
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const commandId = generateCommandId();
+            ws.send(JSON.stringify({
+                type: 'command',
+                id: commandId,
+                command: 'start_service',
+                args: { service: service }
+            }));
+            
+            // Wait for response via WebSocket (handled by handleCommandResponse)
+            showToast(`${service} start command sent`, 'info');
+            addLog(`Sent start command for ${service} service`, 'info');
         } else {
-            throw new Error(`Failed to start ${service}`);
+            // Fall back to HTTP
+            let response;
+            
+            // Service-specific start endpoints
+            switch(service) {
+                case 'redis':
+                    response = await fetch('/api/services/redis/start', { method: 'POST' });
+                    break;
+                case 'crawler':
+                    response = await fetch('/api/services/crawler/start', { method: 'POST' });
+                    break;
+                case 'docker':
+                    response = await fetch('/api/services/docker/start', { method: 'POST' });
+                    break;
+                default:
+                    response = await fetch(`/api/services/${service}/start`, { method: 'POST' });
+            }
+            
+            if (response && response.ok) {
+                showToast(`${service} started successfully`, 'success');
+                addLog(`Started ${service} service`, 'success');
+            } else {
+                throw new Error(`Failed to start ${service}`);
+            }
         }
     } catch (error) {
         showToast(`Failed to start ${service}`, 'error');
@@ -302,28 +382,44 @@ async function stopService(service) {
     disableServiceButtons(service, true);
     
     try {
-        let response;
-        
-        // Service-specific stop endpoints
-        switch(service) {
-            case 'redis':
-                response = await fetch('/api/services/redis/stop', { method: 'POST' });
-                break;
-            case 'crawler':
-                response = await fetch('/api/services/crawler/stop', { method: 'POST' });
-                break;
-            case 'docker':
-                response = await fetch('/api/services/docker/stop', { method: 'POST' });
-                break;
-            default:
-                response = await fetch(`/api/services/${service}/stop`, { method: 'POST' });
-        }
-        
-        if (response && response.ok) {
-            showToast(`${service} stopped successfully`, 'success');
-            addLog(`Stopped ${service} service`, 'success');
+        // Use WebSocket if available
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const commandId = generateCommandId();
+            ws.send(JSON.stringify({
+                type: 'command',
+                id: commandId,
+                command: 'stop_service',
+                args: { service: service }
+            }));
+            
+            // Wait for response via WebSocket (handled by handleCommandResponse)
+            showToast(`${service} stop command sent`, 'info');
+            addLog(`Sent stop command for ${service} service`, 'info');
         } else {
-            throw new Error(`Failed to stop ${service}`);
+            // Fall back to HTTP
+            let response;
+            
+            // Service-specific stop endpoints
+            switch(service) {
+                case 'redis':
+                    response = await fetch('/api/services/redis/stop', { method: 'POST' });
+                    break;
+                case 'crawler':
+                    response = await fetch('/api/services/crawler/stop', { method: 'POST' });
+                    break;
+                case 'docker':
+                    response = await fetch('/api/services/docker/stop', { method: 'POST' });
+                    break;
+                default:
+                    response = await fetch(`/api/services/${service}/stop`, { method: 'POST' });
+            }
+            
+            if (response && response.ok) {
+                showToast(`${service} stopped successfully`, 'success');
+                addLog(`Stopped ${service} service`, 'success');
+            } else {
+                throw new Error(`Failed to stop ${service}`);
+            }
         }
     } catch (error) {
         showToast(`Failed to stop ${service}`, 'error');
@@ -339,11 +435,26 @@ async function restartService(service) {
     disableServiceButtons(service, true);
     
     try {
-        // Stop then start
-        await stopService(service);
-        setTimeout(async () => {
-            await startService(service);
-        }, 2000);
+        // Use WebSocket if available
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const commandId = generateCommandId();
+            ws.send(JSON.stringify({
+                type: 'command',
+                id: commandId,
+                command: 'restart_service',
+                args: { service: service }
+            }));
+            
+            // Wait for response via WebSocket (handled by handleCommandResponse)
+            showToast(`${service} restart command sent`, 'info');
+            addLog(`Sent restart command for ${service} service`, 'info');
+        } else {
+            // Fall back to HTTP (stop then start)
+            await stopService(service);
+            setTimeout(async () => {
+                await startService(service);
+            }, 2000);
+        }
     } catch (error) {
         showToast(`Failed to restart ${service}`, 'error');
         addLog(`Failed to restart ${service}: ${error.message}`, 'error');
