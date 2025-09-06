@@ -96,19 +96,39 @@ fn setup_panic_handler() {
         // Log panic information
         log::error!("Application panic occurred: {}", info);
         
-        // Clear Redis cache on panic
-        if let Ok(runtime) = tokio::runtime::Runtime::new() {
-            runtime.block_on(async {
-                // Clear Redis cache
-                if let Err(e) = clear_redis_cache_on_panic().await {
-                    log::error!("Failed to clear Redis cache on panic: {}", e);
+        // Try to perform cleanup without creating a new runtime
+        // Use Handle::try_current() to check if we're in a runtime context
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                // We're in a runtime context, spawn a task for cleanup
+                handle.spawn(async {
+                    // Clear Redis cache
+                    if let Err(e) = clear_redis_cache_on_panic().await {
+                        log::error!("Failed to clear Redis cache on panic: {}", e);
+                    }
+                    
+                    // Shutdown all services gracefully
+                    if let Err(e) = shutdown_services_on_panic().await {
+                        log::error!("Failed to shutdown services on panic: {}", e);
+                    }
+                });
+            },
+            Err(_) => {
+                // We're not in a runtime context, try to create one
+                if let Ok(runtime) = tokio::runtime::Runtime::new() {
+                    runtime.block_on(async {
+                        // Clear Redis cache
+                        if let Err(e) = clear_redis_cache_on_panic().await {
+                            log::error!("Failed to clear Redis cache on panic: {}", e);
+                        }
+                        
+                        // Shutdown all services gracefully
+                        if let Err(e) = shutdown_services_on_panic().await {
+                            log::error!("Failed to shutdown services on panic: {}", e);
+                        }
+                    });
                 }
-                
-                // Shutdown all services gracefully
-                if let Err(e) = shutdown_services_on_panic().await {
-                    log::error!("Failed to shutdown services on panic: {}", e);
-                }
-            });
+            }
         }
         
         // Optionally log to a file
