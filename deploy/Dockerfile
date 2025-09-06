@@ -30,16 +30,17 @@ WORKDIR /usr/src/sam
 COPY Cargo.toml Cargo.lock build.rs ./
 
 # Cache bust to force rebuild after installer binary addition
-RUN echo "Cache bust: 2025-09-06-02:26"
+RUN echo "Cache bust: 2025-09-06-02:48"
 
 # Create dummy source structure for dependency compilation
-RUN mkdir -p src/bin && \
+RUN mkdir -p src/bin benches && \
     echo "fn main() {}" > src/main.rs && \
     echo "fn main() {}" > src/bin/installer.rs && \
     echo "pub mod sam;" > src/lib.rs && \
     echo "pub fn hello() {}" > src/sam.rs && \
     mkdir -p src/sam && \
-    echo "pub fn placeholder() {}" > src/sam/mod.rs
+    echo "pub fn placeholder() {}" > src/sam/mod.rs && \
+    echo "fn main() {}" > benches/service_benchmarks.rs
 
 # Build dependencies only
 RUN cargo build --release && \
@@ -47,6 +48,7 @@ RUN cargo build --release && \
 
 # Copy actual source code
 COPY src ./src/
+COPY benches ./benches/
 COPY cfg ./cfg/
 COPY data ./data/
 COPY scripts ./scripts/
