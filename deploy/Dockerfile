@@ -97,7 +97,7 @@ COPY --from=builder /usr/src/sam/packages /app/packages
 COPY --from=builder /usr/src/sam/www /app/www
 
 # Copy and setup entrypoint script
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Set environment variables for CapRover
