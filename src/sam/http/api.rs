@@ -5,6 +5,7 @@ pub mod locations;
 pub mod observations;
 pub mod pets;
 pub mod rooms;
+pub mod service_control;
 pub mod services;
 pub mod settings;
 pub mod things;
@@ -62,6 +63,18 @@ fn handle_prefix_routes(
     request: &Request,
     url: &str,
 ) -> Result<Option<Response>, crate::sam::http::Error> {
+    // Handle service control endpoints first (more specific)
+    if url.contains("/api/services/redis") || 
+       url.contains("/api/services/crawler") || 
+       url.contains("/api/services/docker") ||
+       url.contains("/api/services/postgres") ||
+       url.contains("/api/services/voice") ||
+       url.contains("/api/services/websocket") ||
+       url == "/api/services/status" ||
+       url == "/api/environment" {
+        return service_control::handle(request).map(Some);
+    }
+    
     const ROUTE_HANDLERS: &[(
         &str,
         fn(
