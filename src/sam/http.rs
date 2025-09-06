@@ -237,8 +237,14 @@ pub fn handle_with_session(
     // Core Web Functions: setup, auth, deauth, etc.
     // =================================================================
 
+    // Is Setup?
+    let locations: Vec<crate::sam::memory::Location> =
+        crate::sam::memory::Location::select(None, None, None, None)?;
+    let is_initial_setup = locations.is_empty();
+
+
     // Setup: POST
-    if request.url() == "/setup" {
+    if request.url() == "/setup" && is_initial_setup {
         // Collect input params from post request
         let input = post_input!(request, {
             name: String,
@@ -364,17 +370,10 @@ pub fn handle_with_session(
     // Checkpoint -- Redirect the user as required
     // =================================================================
 
-    // Is Setup?
-    let locations: Vec<crate::sam::memory::Location> =
-        crate::sam::memory::Location::select(None, None, None, None)?;
-    let is_initial_setup = locations.is_empty();
-    
-    // Allow access to setup page and setup endpoint during initial setup
-    let setup_urls = ["/setup.html", "/setup"];
-    let is_setup_url = setup_urls.iter().any(|&url| request.url() == url);
+
     
     // During initial setup, redirect to setup page UNLESS already on setup or login page
-    if !is_setup_url && is_initial_setup && request.url() != "/login.html" && request.url() != "/setup.html" {
+    if is_initial_setup && request.url() != "/setup.html" {
         let response = Response::redirect_302("/setup.html");
         return Ok(response);
     }
@@ -387,12 +386,6 @@ pub fn handle_with_session(
        !current_session.authenticated {
         let response = Response::redirect_302("/login.html");
         return Ok(response);
-    }
-    
-    // If in initial setup mode, don't require authentication for setup pages
-    if is_initial_setup && is_setup_url {
-        // Allow access to setup pages without authentication during initial setup
-        // This prevents the redirect loop
     }
 
     // Is Authenticated?
@@ -449,27 +442,15 @@ pub fn handle_with_session(
         }
     }
 
-    #[cfg(debug_assertions)]
-    {
-        let xresponse = rouille::match_assets(request, "./www/");
-        if xresponse.is_success() {
-            let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
-            return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", origin)
-                .with_no_cache());
-        }
-    }
 
-    #[cfg(not(debug_assertions))]
-    {
-        let xresponse = rouille::match_assets(&request, "/opt/sam/www/");
-        if xresponse.is_success() {
-            let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
-            return Ok(xresponse
-                .with_additional_header("Access-Control-Allow-Origin", origin)
-                .with_no_cache());
-        }
+    let xresponse = rouille::match_assets(request, "./www/");
+    if xresponse.is_success() {
+        let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
+        return Ok(xresponse
+            .with_additional_header("Access-Control-Allow-Origin", origin)
+            .with_no_cache());
     }
+    
 
     let response = Response::redirect_302("/index.html");
     Ok(response)
