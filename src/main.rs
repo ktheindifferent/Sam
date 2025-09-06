@@ -84,11 +84,26 @@ async fn initialize_application() {
     // Check if we're running in serve mode (for Docker/CapRover)
     let args: Vec<String> = env::args().collect();
     let is_serve_mode = args.len() > 1 && args[1] == "serve";
+    let database_engine = env::var("DATABASE_ENGINE").unwrap_or_else(|_| "postgres".to_string());
     
-    // Skip PostgreSQL setup in serve mode when using SQLite
-    if !is_serve_mode || env::var("DATABASE_ENGINE").unwrap_or_default() != "sqlite" {
+    if is_serve_mode {
+        log::info!("Running in serve mode with database engine: {}", database_engine);
+    }
+    
+    // Handle database setup based on engine type
+    if database_engine == "sqlite" {
+        // For SQLite, we don't need PostgreSQL setup
+        // Set dummy values for PostgreSQL config to prevent panics
+        env::set_var("PG_DBNAME", "dummy");
+        env::set_var("PG_USER", "dummy");
+        env::set_var("PG_PASS", "dummy");
+        env::set_var("PG_ADDRESS", "dummy");
+        log::info!("Using SQLite database engine");
+    } else {
+        // For PostgreSQL, do the full setup
         setup_postgres(&user).await;
         configure_database_connection();
+        log::info!("Using PostgreSQL database engine");
     }
 
     let config = crate::sam::memory::Config::new();
@@ -96,7 +111,7 @@ async fn initialize_application() {
 
     if is_serve_mode {
         // In serve mode, just run the event loop (HTTP server is started by config.init())
-        log::info!("Running in serve mode - HTTP server started on port 8000");
+        log::info!("HTTP server started on port 8000");
         run_event_loop().await;
     } else {
         // In interactive mode, start the TUI
@@ -228,7 +243,13 @@ fn get_application_user() -> String {
 fn setup_environment_variables() {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
-        sudo::with_env(&[
+        // Skip sudo setup in Docker containers or when running as root
+        if env::var("DOCKER_CONTAINER").is_ok() || env::var("CAPROVER").is_ok() || unsafe { libc::geteuid() } == 0 {
+            log::info!("Running in container or as root, skipping sudo environment setup");
+            return;
+        }
+        
+        match sudo::with_env(&[
             "LIBTORCH",
             "LD_LIBRARY_PATH",
             "PG_DBNAME",
@@ -236,8 +257,10 @@ fn setup_environment_variables() {
             "PG_PASS",
             "PG_ADDRESS",
             "SAM_USER",
-        ])
-        .expect("Failed to set up sudo environment variables");
+        ]) {
+            Ok(_) => log::debug!("Sudo environment variables set up successfully"),
+            Err(e) => log::warn!("Failed to set up sudo environment variables: {}. This is expected in Docker.", e),
+        }
     }
 }
 
