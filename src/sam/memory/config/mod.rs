@@ -46,14 +46,23 @@ impl Config {
     /// Initializes the PostgreSQL database and starts the HTTP server.
     /// TODO: Make http a service
     pub async fn init(&self) {
+        log::info!("Connecting to PostgreSQL at: {}@{}/{}", 
+                  self.postgres.username, self.postgres.address, self.postgres.db_name);
+        
         match self.create_db().await {
             Ok(_) => log::info!("Database created successfully"),
-            Err(e) => log::debug!("failed to create database: {}", e),
+            Err(e) => {
+                log::error!("Failed to create database: {}", e);
+                log::error!("Connection string: postgresql://{}:***@{}/{}?sslmode=prefer", 
+                           self.postgres.username, self.postgres.address, self.postgres.db_name);
+            }
         }
 
         match self.build_tables().await {
             Ok(_) => log::info!("Tables created successfully"),
-            Err(e) => log::debug!("failed to create tables: {}", e),
+            Err(e) => {
+                log::error!("Failed to create tables: {}", e);
+            }
         }
 
         let _config = self.clone();
