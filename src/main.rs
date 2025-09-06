@@ -80,14 +80,29 @@ async fn initialize_application() {
     libsam::print_banner(user.clone());
 
     setup_environment_variables();
-    setup_postgres(&user).await;
-    configure_database_connection();
+    
+    // Check if we're running in serve mode (for Docker/CapRover)
+    let args: Vec<String> = env::args().collect();
+    let is_serve_mode = args.len() > 1 && args[1] == "serve";
+    
+    // Skip PostgreSQL setup in serve mode when using SQLite
+    if !is_serve_mode || env::var("DATABASE_ENGINE").unwrap_or_default() != "sqlite" {
+        setup_postgres(&user).await;
+        configure_database_connection();
+    }
 
     let config = crate::sam::memory::Config::new();
     config.init().await;
 
-    crate::sam::cli::start_prompt().await;
-    run_event_loop().await;
+    if is_serve_mode {
+        // In serve mode, just run the event loop (HTTP server is started by config.init())
+        log::info!("Running in serve mode - HTTP server started on port 8000");
+        run_event_loop().await;
+    } else {
+        // In interactive mode, start the TUI
+        crate::sam::cli::start_prompt().await;
+        run_event_loop().await;
+    }
 }
 
 /// Sets up the panic handler for the application
