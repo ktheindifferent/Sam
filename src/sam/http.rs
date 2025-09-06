@@ -119,7 +119,15 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
             #[cfg(debug_assertions)]
             let file_path = format!("./www{}", request.url());
             #[cfg(not(debug_assertions))]
-            let file_path = format!("/opt/sam/www{}", request.url());
+            let file_path = {
+                // Try /app/www first (Docker/CapRover), then /opt/sam/www
+                let docker_path = format!("/app/www{}", request.url());
+                if std::path::Path::new(&docker_path).exists() {
+                    docker_path
+                } else {
+                    format!("/opt/sam/www{}", request.url())
+                }
+            };
 
             if let Ok(mut file) = File::open(&file_path) {
                 if let Ok(metadata) = file.metadata() {
@@ -187,6 +195,16 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
 
         #[cfg(not(debug_assertions))]
         {
+            // Try /app/www first (Docker/CapRover path)
+            let xresponse = rouille::match_assets(&request, "/app/www/");
+            if xresponse.is_success() {
+                let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
+                return Ok(xresponse
+                    .with_additional_header("Access-Control-Allow-Origin", origin)
+                    .with_no_cache());
+            }
+            
+            // Fallback to /opt/sam/www for traditional installations
             let xresponse = rouille::match_assets(&request, "/opt/sam/www/");
             if xresponse.is_success() {
                 let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
