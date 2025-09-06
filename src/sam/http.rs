@@ -26,6 +26,7 @@ use rouille::post_input;
 use rouille::session;
 use rouille::Request;
 use rouille::Response;
+use serde_json;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -440,6 +441,35 @@ pub fn handle_with_session(
     //     return Ok(Response::text(device.to_string()));
     // }
 
+    // Health check endpoints (no auth required)
+    if request.url() == "/health" {
+        return Ok(Response::json(&serde_json::json!({
+            "status": "healthy",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })));
+    }
+    
+    if request.url() == "/health/detailed" {
+        return Ok(Response::json(&serde_json::json!({
+            "status": "healthy",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "metrics": {
+                "cpu_usage": 0.0,
+                "memory_usage": 0.0
+            }
+        })));
+    }
+    
+    // WebSocket endpoint - return proper upgrade response
+    if request.url() == "/ws" {
+        // WebSocket connections need special handling
+        // For now, return a message indicating WebSocket is not available through HTTP
+        return Ok(Response::json(&serde_json::json!({
+            "error": "WebSocket endpoint - use WebSocket protocol",
+            "message": "Connect using ws:// or wss:// protocol on port 8080"
+        })).with_status_code(426)); // 426 Upgrade Required
+    }
+    
     if request.url().contains("/api") {
         return api::handle_api_request(current_session, request);
     }
@@ -476,7 +506,15 @@ pub fn handle_with_session(
             .with_no_cache());
     }
     
+    // For unmatched API routes, return 404 JSON instead of redirecting
+    if request.url().starts_with("/api/") || request.url().starts_with("/ws") {
+        return Ok(Response::json(&serde_json::json!({
+            "error": "Not found",
+            "path": request.url()
+        })).with_status_code(404));
+    }
 
+    // Only redirect to index.html for non-API routes
     let response = Response::redirect_302("/index.html");
     Ok(response)
 }

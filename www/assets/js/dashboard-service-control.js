@@ -8,11 +8,28 @@ let startTime = Date.now();
 
 // Initialize WebSocket connection
 function initWebSocket() {
+    // Skip WebSocket if we know backend is offline
+    const systemStatus = document.getElementById('system-status');
+    if (systemStatus && systemStatus.textContent === 'Backend Offline') {
+        console.log('Skipping WebSocket - backend is offline');
+        return;
+    }
+    
+    // WebSocket runs on port 8080, not the same as HTTP
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const hostname = window.location.hostname;
+    // Use port 8080 for WebSocket, or same port if specified in env
+    const wsPort = window.location.port === '8080' ? window.location.port : '8080';
+    const wsUrl = `${protocol}//${hostname}:${wsPort}/ws`;
+    
+    // For production, WebSocket might be on same port as HTTP
+    // Try same port first, then fall back to 8080
+    const primaryWsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    console.log('Attempting WebSocket connection to:', primaryWsUrl);
     
     try {
-        ws = new WebSocket(wsUrl);
+        ws = new WebSocket(primaryWsUrl);
         
         ws.onopen = () => {
             console.log('WebSocket connected');
@@ -103,6 +120,8 @@ function requestServiceStatus() {
 
 // Fetch service status via HTTP
 async function fetchServiceStatus() {
+    let hasBackendError = false;
+    
     try {
         // Fetch individual service statuses
         const services = ['redis', 'crawler', 'postgres', 'docker', 'voice', 'websocket'];
@@ -117,9 +136,18 @@ async function fetchServiceStatus() {
                     case 'redis':
                         statusUrl = '/api/services/redis/status';
                         const redisResponse = await fetch(statusUrl);
+                        if (redisResponse.status === 502) {
+                            hasBackendError = true;
+                            break;
+                        }
                         if (redisResponse.ok) {
-                            const text = await redisResponse.text();
-                            status.running = text.includes('running');
+                            const contentType = redisResponse.headers.get('content-type');
+                            if (contentType && contentType.includes('application/json')) {
+                                status = await redisResponse.json();
+                            } else {
+                                const text = await redisResponse.text();
+                                status.running = text.includes('running');
+                            }
                         }
                         break;
                         
@@ -151,6 +179,10 @@ async function fetchServiceStatus() {
                 console.error(`Failed to fetch ${service} status:`, error);
                 updateServiceStatus(service, { running: false });
             }
+        }
+        
+        if (hasBackendError) {
+            showBackendError();
         }
     } catch (error) {
         console.error('Failed to fetch service status:', error);
@@ -375,10 +407,18 @@ async function updateSystemMetrics() {
         // Try to get system metrics from health endpoint
         const response = await fetch('/health/detailed');
         if (response.ok) {
-            const data = await response.json();
-            if (data.metrics) {
-                updateMetrics(data.metrics);
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const data = await response.json();
+                if (data.metrics) {
+                    updateMetrics(data.metrics);
+                }
+            } else {
+                console.warn('Health endpoint returned non-JSON response');
             }
+        } else if (response.status === 502) {
+            console.error('Backend server is not running (502 Bad Gateway)');
+            showBackendError();
         }
     } catch (error) {
         console.error('Failed to fetch system metrics:', error);
@@ -465,6 +505,27 @@ async function checkEnvironment() {
     }
 }
 
+// Show backend error message
+function showBackendError() {
+    const systemStatus = document.getElementById('system-status');
+    if (systemStatus) {
+        systemStatus.textContent = 'Backend Offline';
+        systemStatus.className = 'status-badge offline';
+    }
+    
+    // Update all service cards to show offline
+    const services = ['redis', 'crawler', 'postgres', 'docker', 'voice', 'websocket'];
+    services.forEach(service => {
+        updateServiceStatus(service, { 
+            running: false, 
+            status_text: 'Backend offline' 
+        });
+    });
+    
+    // Show error in log
+    addLog('Backend server is not responding. Please check if SAM is running.', 'error');
+}
+
 // Initialize dashboard
 function init() {
     addLog('Initializing SAM Control Center...', 'info');
@@ -472,8 +533,8 @@ function init() {
     // Check environment first
     checkEnvironment();
     
-    // Try WebSocket first
-    initWebSocket();
+    // Try WebSocket first (but don't let it block other operations)
+    setTimeout(() => initWebSocket(), 100);
     
     // Initial data fetch
     fetchServiceStatus();
