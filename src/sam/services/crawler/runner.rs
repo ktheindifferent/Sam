@@ -1166,7 +1166,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             domains.dedup();
             domains.shuffle(&mut rng);
 
-            let max_domains = 1000;
+            let max_domains = 50; // Reduced from 1000 for faster processing
             let domains = &domains[..std::cmp::min(domains.len(), max_domains)];
 
             let mut urls_found = Vec::new();
@@ -1187,6 +1187,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     let resolver = resolver.clone();
                     let client_clone = client.clone();
                     let processed = processed.clone();
+                    let total = total_domains;
                     async move {
                         let lookup_start = tokio::time::Instant::now();
                         let found = lookup_domain(&resolver, &domain, client_clone).await;
@@ -1194,10 +1195,10 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                         
                         // Update progress counter
                         let count = processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                        if count % 50 == 0 || count == total_domains {
+                        if count % 10 == 0 || count == total {
                             log::info!(
                                 "DNS lookup progress: {}/{} domains processed ({:.1}%)",
-                                count, total_domains, (count as f64 / total_domains as f64) * 100.0
+                                count, total, (count as f64 / total as f64) * 100.0
                             );
                         }
                         
