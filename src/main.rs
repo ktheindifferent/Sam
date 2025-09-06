@@ -90,7 +90,7 @@ async fn initialize_application() {
         log::info!("Running in serve mode with database engine: {}", database_engine);
     }
     
-    // Handle database setup based on engine type
+    // Handle database setup based on engine type and mode
     if database_engine == "sqlite" {
         // For SQLite, we don't need PostgreSQL setup
         // Set dummy values for PostgreSQL config to prevent panics
@@ -99,11 +99,20 @@ async fn initialize_application() {
         env::set_var("PG_PASS", "dummy");
         env::set_var("PG_ADDRESS", "dummy");
         log::info!("Using SQLite database engine");
+    } else if is_serve_mode {
+        // In serve mode with PostgreSQL, assume external database is configured
+        // Don't try to start local PostgreSQL
+        log::info!("Using external PostgreSQL database in serve mode");
+        // Ensure the environment variables are already set
+        if env::var("PG_DBNAME").is_err() || env::var("PG_USER").is_err() || 
+           env::var("PG_PASS").is_err() || env::var("PG_ADDRESS").is_err() {
+            panic!("PostgreSQL environment variables must be set in serve mode: PG_DBNAME, PG_USER, PG_PASS, PG_ADDRESS");
+        }
     } else {
-        // For PostgreSQL, do the full setup
+        // For local development with PostgreSQL, do the full setup
         setup_postgres(&user).await;
         configure_database_connection();
-        log::info!("Using PostgreSQL database engine");
+        log::info!("Using local PostgreSQL database");
     }
 
     let config = crate::sam::memory::Config::new();
