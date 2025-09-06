@@ -378,9 +378,10 @@ pub fn handle_with_session(
     }
 
     // Is Authenticated?
-    // Skip authentication check for setup pages during initial setup
+    // Skip authentication check for login page and setup pages during initial setup
     if request.url() != "/login.html" && 
-       !is_setup_url &&
+       request.url() != "/setup.html" &&
+       request.url() != "/setup" &&
        !current_session.authenticated {
         let response = Response::redirect_302("/login.html");
         return Ok(response);
