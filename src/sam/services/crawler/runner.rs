@@ -1203,6 +1203,9 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     let processed = processed.clone();
                     let total = total_domains;
                     async move {
+                        if idx == 0 {
+                            log::info!("Starting first DNS lookup for domain: {}", domain);
+                        }
                         let lookup_start = tokio::time::Instant::now();
                         let found = lookup_domain(&resolver, &domain, client_clone).await;
                         let lookup_duration = lookup_start.elapsed();
@@ -1235,9 +1238,10 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 .await;
             let dns_duration = dns_start.elapsed();
             log::info!(
-                "DNS+HTTP lookups for {} domains took {:?}",
+                "DNS+HTTP lookups completed: {} domains processed in {:?}, {} domains found",
                 domains.len(),
-                dns_duration
+                dns_duration,
+                found_domains.len()
             );
 
             for domain in found_domains {
