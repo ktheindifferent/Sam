@@ -1,31 +1,11 @@
 version: "3.9"
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: sam-postgres
-    environment:
-      POSTGRES_DB: sam_db
-      POSTGRES_USER: sam
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-sam_secure_password}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sam"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - sam-network
-
-  # Redis Cache
+  # Redis Cache (optional)
   redis:
     image: redis:7-alpine
     container_name: sam-redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_secure_password}
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     ports:
@@ -37,20 +17,19 @@ services:
       retries: 5
     networks:
       - sam-network
+    profiles:
+      - with-redis
 
-  # S.A.M. Application
+  # S.A.M. Application with SQLite (default)
   sam:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile
     container_name: sam-app
     environment:
-      DATABASE_URL: postgresql://sam:${DB_PASSWORD:-sam_secure_password}@postgres:5432/sam_db
-      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secure_password}@redis:6379
-      PG_DBNAME: sam_db
-      PG_USER: sam
-      PG_PASS: ${DB_PASSWORD:-sam_secure_password}
-      PG_ADDRESS: postgres
+      DATABASE_ENGINE: sqlite
+      SQLITE_PATH: /var/lib/sam/data/sam.db
+      REDIS_URL: ${REDIS_URL:-}
       RUST_LOG: ${RUST_LOG:-info}
       RUST_BACKTRACE: 1
       RUN_MIGRATIONS: "true"
@@ -64,11 +43,6 @@ services:
       - "8000:8000"
       - "8080:8080"
       - "8443:8443"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -96,6 +70,28 @@ services:
     restart: unless-stopped
     profiles:
       - production
+
+  # PostgreSQL Database (optional - use when you want to switch from SQLite)
+  postgres:
+    image: postgres:15-alpine
+    container_name: sam-postgres
+    environment:
+      POSTGRES_DB: sam_db
+      POSTGRES_USER: sam
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sam_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sam"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sam-network
+    profiles:
+      - with-postgres
 
   # Prometheus Monitoring (optional)
   prometheus:

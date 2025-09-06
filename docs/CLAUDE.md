@@ -32,52 +32,49 @@ S.A.M. is an open-source AI assistant platform built with Rust that combines hom
 
 ```
 /root/repo/
-├── src/
+├── src/                        # Rust source code
 │   ├── main.rs                 # Application entry point
 │   ├── sam.rs                   # Core SAM module
 │   ├── lib/                    # Library modules
 │   │   └── services/           # Platform-specific services
-│   ├── sam/
-│   │   ├── cli/                # Command-line interface
-│   │   ├── db/                 # Database abstraction layer
-│   │   │   ├── connection_pool.rs
-│   │   │   ├── database_engine.rs
-│   │   │   └── migrations/     # Database migrations
-│   │   ├── http/               # HTTP server and API
-│   │   │   ├── api.rs          # REST API endpoints
-│   │   │   ├── health.rs       # Health check endpoints
-│   │   │   └── rate_limiter.rs # Rate limiting middleware
-│   │   ├── jobs/               # Job queue system
-│   │   │   ├── queue.rs        # Job queue implementation
-│   │   │   ├── worker.rs       # Worker threads
-│   │   │   └── scheduler.rs    # Job scheduling
-│   │   ├── memory/             # Data models and caching
-│   │   │   ├── cache/          # Caching layer
-│   │   │   ├── config/         # Configuration management
-│   │   │   └── storage/        # File storage abstraction
-│   │   ├── security/           # Security modules
-│   │   │   ├── auth.rs         # Authentication
-│   │   │   ├── session.rs      # Session management
-│   │   │   └── input_validation.rs # Input sanitization
-│   │   ├── services/           # Core services
-│   │   │   ├── orchestrator.rs # Service orchestration
-│   │   │   ├── crawler/        # Web crawler with robots.txt
-│   │   │   ├── lifx/           # Smart lighting integration
-│   │   │   ├── media/          # Media center features
-│   │   │   ├── p2p/            # Peer-to-peer networking
-│   │   │   └── [30+ other services]
-│   │   ├── resource_management/ # Resource monitoring
-│   │   └── websocket/          # WebSocket handlers
-├── www/                        # Web frontend
-│   ├── assets/                 # Static assets
-│   └── dashboard.html          # Main dashboard
-├── tests/                      # Test suites
-│   ├── unit/                   # Unit tests
-│   ├── integration/            # Integration tests
-│   └── security/               # Security tests
-├── scripts/                    # Utility scripts
-├── cfg/                        # Configuration files
-└── data/                       # Data files and models
+│   └── sam/                    # Core SAM modules
+│       ├── cli/                # Command-line interface
+│       ├── db/                 # Database abstraction layer
+│       ├── http/               # HTTP server and API
+│       ├── jobs/               # Job queue system
+│       ├── memory/             # Data models and caching
+│       ├── security/           # Security modules
+│       ├── services/           # Core services (30+ services)
+│       ├── resource_management/ # Resource monitoring
+│       └── websocket/          # WebSocket handlers
+├── docs/                       # 📚 All documentation (organized by category)
+│   ├── api/                   # API documentation  
+│   ├── deployment/            # Deployment guides
+│   ├── development/           # Technical implementation docs
+│   ├── features/              # Feature descriptions
+│   ├── security/              # Security guides and fixes
+│   ├── CLAUDE.md              # This file
+│   ├── DIRECTORY_STRUCTURE.md # Detailed directory documentation
+│   └── [other documentation]
+├── deploy/                     # 🚢 Deployment configurations
+│   ├── docker-compose*.yml    # Docker Compose files
+│   ├── Dockerfile*            # Docker build files
+│   └── docker-entrypoint.sh   # Container entrypoint
+├── config/                     # ⚙️ Development configuration
+│   ├── .env.example           # Environment template
+│   └── [build configurations]
+├── scripts/                    # 🔧 Application scripts
+├── tools/                      # 🛠️ Development tools  
+├── tests/                      # 🧪 All test files and utilities
+│   ├── integration/           # Integration tests
+│   ├── fixtures/              # Test data
+│   └── [test files and utilities]
+├── www/                        # 🌐 Web frontend
+│   ├── assets/                # Static assets
+│   └── dashboard.html         # Main dashboard
+├── cfg/                        # Application configuration files
+├── data/                       # Data files and models
+└── packages/                   # Package definitions
 ```
 
 ## Key Components

@@ -1,0 +1,66 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker files
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+*.md
+docs/
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+
+# Node modules (if any)
+node_modules/
+npm-debug.log
+
+# Environment files
+.env*
+!.env.example
+
+# Test files
+tests/
+*.test.*
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Coverage reports
+coverage/
+*.coverage
+
+# Rust-specific ignores
+**/*.rs.bk
+.cargo/
+
+# Application-specific ignores
+sam.db*
+backups/
+uploads/
+
+# CapRover deployment files (keep captain-definition)
+!captain-definition

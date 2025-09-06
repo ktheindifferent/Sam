@@ -26,7 +26,7 @@ Media Center Features:
 
 **THIS SOFTWARE IS IN ACTIVE DEVELOPMENT AND NOT PRODUCTION READY**
 
-Before using S.A.M., please review the [SECURITY.md](SECURITY.md) file for important security considerations. Recent security fixes include:
+Before using S.A.M., please review the [SECURITY.md](docs/security/SECURITY.md) file for important security considerations. Recent security fixes include:
 
 - ✅ Fixed critical command injection vulnerabilities
 - ✅ Fixed SQL injection prevention
@@ -111,6 +111,304 @@ Create `/opt/sam/config.json` with your settings:
    ```bash
    cargo test
    ```
+
+## 🚢 CapRover Deployment
+
+CapRover is a Platform-as-a-Service (PaaS) solution that makes deploying applications easy. S.A.M. is optimized for CapRover deployment with built-in support for containerization and scalability.
+
+### Prerequisites for CapRover Deployment
+
+1. **CapRover Server** - Set up your CapRover instance following the [official documentation](https://caprover.com/docs/get-started.html)
+2. **CapRover CLI** - Install the CapRover command line tool:
+   ```bash
+   npm install -g caprover
+   ```
+3. **Git Repository** - Your S.A.M. code should be in a Git repository
+
+### Deployment Methods
+
+#### Method 1: Direct Git Deployment (Recommended)
+
+1. **Login to your CapRover instance**
+   ```bash
+   caprover login
+   ```
+
+2. **Create a new app in CapRover**
+   - Log into your CapRover web interface
+   - Go to "Apps" → "Create New App"
+   - Enter app name: `sam` (or your preferred name)
+   - Click "Create New App"
+
+3. **Configure environment variables**
+   In your CapRover app settings, add these environment variables:
+   ```bash
+   # Database Configuration
+   DATABASE_ENGINE=sqlite
+   SQLITE_DATABASE_PATH=/var/lib/sam/sam.db
+   
+   # Optional: Use PostgreSQL instead
+   # DATABASE_ENGINE=postgresql
+   # DATABASE_URL=postgresql://user:pass@hostname:5432/sam_db
+   
+   # Redis Configuration (optional)
+   # REDIS_URL=redis://your-redis-instance:6379
+   # REDIS_DISABLED=false
+   
+   # Application Configuration
+   PORT=8000
+   SAM_HOME=/app
+   SAM_DATA=/var/lib/sam
+   SAM_LOGS=/var/log/sam
+   RUST_LOG=info
+   RUST_BACKTRACE=1
+   
+   # Migration Settings
+   RUN_MIGRATIONS=true
+   ```
+
+4. **Deploy using Git**
+   ```bash
+   # In your S.A.M. project directory
+   caprover deploy --appName sam
+   ```
+
+5. **Enable HTTPS and configure domain**
+   - In CapRover web interface, go to your app
+   - Under "HTTP Settings": 
+     - Enable HTTPS
+     - Configure your domain (e.g., `sam.yourdomain.com`)
+     - Force HTTPS redirect
+
+#### Method 2: Dockerfile Deployment
+
+1. **Create your app in CapRover**
+2. **Use the "Deploy via Image Name" option**
+   - Build image locally: `docker build -t sam:latest .`
+   - Push to registry or use CapRover's built-in deployment
+
+#### Method 3: Upload tar file
+
+1. **Create deployment package**
+   ```bash
+   # Create a tar file excluding unnecessary files
+   tar --exclude='target' --exclude='.git' --exclude='node_modules' \
+       -czf sam-deployment.tar.gz .
+   ```
+
+2. **Upload via CapRover web interface**
+   - Go to your app in CapRover
+   - Use "Deploy via Tarball" option
+   - Upload `sam-deployment.tar.gz`
+
+### Post-Deployment Configuration
+
+#### Persistent Volumes
+
+Configure persistent volumes for data storage:
+
+1. In CapRover app settings, go to "App Configs"
+2. Add persistent directories:
+   ```
+   /var/lib/sam → sam-data
+   /var/log/sam → sam-logs
+   ```
+
+#### Database Setup
+
+**For SQLite (Default):**
+- No additional setup needed
+- Database will be created automatically on first run
+
+**For PostgreSQL:**
+1. Create a PostgreSQL app in CapRover or use external service
+2. Update the `DATABASE_URL` environment variable
+3. Enable `RUN_MIGRATIONS=true`
+
+#### Health Checks
+
+CapRover will automatically use the Docker HEALTHCHECK. S.A.M. provides these endpoints:
+- `GET /health/live` - Liveness probe
+- `GET /health/ready` - Readiness probe  
+- `GET /health` - Basic health check
+
+### Production Recommendations
+
+#### Security
+```bash
+# Environment variables for production
+RUST_LOG=warn
+RUST_BACKTRACE=0
+DATABASE_ENGINE=postgresql  # Recommended for production
+```
+
+#### Performance
+- **CPU**: Minimum 1 CPU, recommended 2+ CPUs
+- **RAM**: Minimum 1GB, recommended 2GB+ for AI features
+- **Storage**: At least 10GB for logs, database, and assets
+
+#### Monitoring
+Enable CapRover's built-in monitoring or integrate with external services:
+- **Metrics**: Prometheus endpoints available at `/metrics`
+- **Logs**: Structured logging with JSON format
+- **Health**: Built-in health check endpoints
+
+### Scaling
+
+#### Horizontal Scaling
+```bash
+# Scale to multiple instances
+caprover api --path "/api/v2/user/apps/data/sam" --method "POST" \
+  --data '{"instanceCount": 3}'
+```
+
+#### Load Balancing
+CapRover automatically handles load balancing between instances.
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Build Failures**
+   ```bash
+   # Check build logs
+   caprover logs --app sam --lines 100
+   
+   # Common solutions:
+   # - Increase build timeout in CapRover settings
+   # - Check Dockerfile syntax
+   # - Verify all required files are included
+   ```
+
+2. **Database Connection Issues**
+   ```bash
+   # Check environment variables
+   caprover api --path "/api/v2/user/apps/data/sam" --method "GET"
+   
+   # Test database connectivity
+   caprover exec --app sam --command "pg_isready -d $DATABASE_URL"
+   ```
+
+3. **Memory Issues**
+   ```bash
+   # Increase app memory limit in CapRover settings
+   # Monitor memory usage
+   caprover stats --app sam
+   ```
+
+#### Logs and Debugging
+```bash
+# View real-time logs
+caprover logs --app sam --follow
+
+# View recent logs
+caprover logs --app sam --lines 1000
+
+# Execute commands in container
+caprover exec --app sam --command "/bin/bash"
+```
+
+### Example Production Deployment Script
+
+```bash
+#!/bin/bash
+set -e
+
+APP_NAME="sam"
+DOMAIN="sam.yourdomain.com"
+
+echo "Deploying S.A.M. to CapRover..."
+
+# Login to CapRover
+caprover login
+
+# Deploy application
+caprover deploy --appName "$APP_NAME"
+
+# Wait for deployment
+echo "Waiting for deployment to complete..."
+sleep 30
+
+# Check health
+curl -f "https://$DOMAIN/health" || {
+    echo "Health check failed!"
+    caprover logs --app "$APP_NAME" --lines 50
+    exit 1
+}
+
+echo "✅ S.A.M. deployed successfully!"
+echo "🌐 Access your application at: https://$DOMAIN"
+```
+
+### Environment-Specific Configurations
+
+#### Development
+```bash
+RUST_LOG=debug
+RUST_BACKTRACE=full
+DATABASE_ENGINE=sqlite
+RUN_MIGRATIONS=true
+```
+
+#### Staging
+```bash
+RUST_LOG=info
+RUST_BACKTRACE=1
+DATABASE_ENGINE=postgresql
+RUN_MIGRATIONS=true
+```
+
+#### Production
+```bash
+RUST_LOG=warn
+RUST_BACKTRACE=0
+DATABASE_ENGINE=postgresql
+RUN_MIGRATIONS=false  # Run migrations manually
+```
+
+### Local CapRover Testing
+
+To test your CapRover deployment locally before deploying:
+
+```bash
+# Test the CapRover-optimized configuration locally
+docker-compose -f deploy/docker-compose.caprover.yml up
+
+# Include management tools (Redis Commander, pgAdmin)
+docker-compose -f deploy/docker-compose.caprover.yml --profile tools up
+
+# Test just the S.A.M. application
+docker-compose -f deploy/docker-compose.caprover.yml up sam
+```
+
+This will spin up S.A.M. with the same configuration and environment as CapRover deployment.
+
+For detailed CapRover documentation, visit: https://caprover.com/docs/
+
+## 📁 Project Structure
+
+This project follows an organized directory structure for better maintainability:
+
+```
+├── docs/                    # 📚 All documentation (organized by category)
+│   ├── api/                # API documentation  
+│   ├── deployment/         # Deployment guides
+│   ├── development/        # Technical implementation docs
+│   ├── features/           # Feature descriptions
+│   └── security/           # Security guides and fixes
+├── deploy/                 # 🚢 Deployment configurations
+│   ├── docker-compose*.yml # Docker Compose files
+│   ├── Dockerfile*         # Docker build files
+│   └── docker-entrypoint.sh
+├── config/                 # ⚙️ Development configuration
+├── scripts/                # 🔧 Application scripts
+├── tools/                  # 🛠️ Development tools
+├── tests/                  # 🧪 All test files and utilities
+├── src/                    # 💻 Rust source code
+└── www/                    # 🌐 Web frontend
+```
+
+For detailed information about the directory structure, see [docs/DIRECTORY_STRUCTURE.md](docs/DIRECTORY_STRUCTURE.md).
 
 ## 📋 TODO/Roadmap
 

@@ -1,0 +1,119 @@
+# Docker Compose file for testing CapRover deployment locally
+# This mimics the CapRover environment for local testing
+version: '3.8'
+
+services:
+  sam:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Database Configuration
+      DATABASE_ENGINE: sqlite
+      SQLITE_DATABASE_PATH: /var/lib/sam/sam.db
+      
+      # Application Configuration  
+      PORT: 8000
+      SAM_HOME: /app
+      SAM_DATA: /var/lib/sam
+      SAM_LOGS: /var/log/sam
+      RUST_LOG: info
+      RUST_BACKTRACE: 1
+      
+      # Migration Settings
+      RUN_MIGRATIONS: true
+      
+      # Redis Configuration (using local Redis service)
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - sam_data:/var/lib/sam
+      - sam_logs:/var/log/sam
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # PostgreSQL service (optional - for testing PostgreSQL deployment)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: sam_db
+      POSTGRES_USER: sam_user
+      POSTGRES_PASSWORD: sam_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sam_user -d sam_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis service 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Optional: Web-based Redis administration
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    profiles:
+      - tools
+
+  # Optional: Web-based PostgreSQL administration
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@sam.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "8082:80"
+    depends_on:
+      - postgres
+    profiles:
+      - tools
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  sam_data:
+    driver: local
+  sam_logs:
+    driver: local  
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  default:
+    name: sam_network
