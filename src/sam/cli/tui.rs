@@ -95,8 +95,8 @@ impl Default for TuiMode {
 pub async fn start_prompt() {
     log::info!("[sam cli] start_prompt() called");
     helpers::check_postgres_env();
-    // Initialize tui-logger (new crate)
-    tui_logger::init_logger(log::LevelFilter::Debug).unwrap();
+    // Initialize tui-logger (new crate) - only if not already initialized
+    let _ = tui_logger::init_logger(log::LevelFilter::Debug);
     tui_logger::set_default_level(log::LevelFilter::Debug);
 
     // Only set log file if /opt/sam exists
