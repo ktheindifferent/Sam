@@ -91,6 +91,7 @@ pub mod csrf;
 pub fn handle(request: &Request) -> Result<Response, Error> {
     // Asset Pre Router
     if request.url().contains("setup.html")
+        || request.url().contains("login.html")
         || request.url().contains(".webmanifest")
         || request.url().contains(".svg")
         || request.url().contains(".gif")
@@ -372,7 +373,8 @@ pub fn handle_with_session(
     let setup_urls = ["/setup.html", "/setup"];
     let is_setup_url = setup_urls.iter().any(|&url| request.url() == url);
     
-    if !is_setup_url && is_initial_setup {
+    // During initial setup, redirect to setup page UNLESS already on setup or login page
+    if !is_setup_url && is_initial_setup && request.url() != "/login.html" && request.url() != "/setup.html" {
         let response = Response::redirect_302("/setup.html");
         return Ok(response);
     }
