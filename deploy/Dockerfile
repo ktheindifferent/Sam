@@ -1,6 +1,6 @@
 # Multi-stage build optimized for CapRover deployment
 # Stage 1: Builder
-FROM rust:1.82-bookworm AS builder
+FROM rustlang/rust:nightly-bookworm AS builder
 
 # Install build dependencies including additional tools for SAM
 RUN apt-get update && apt-get install -y \
@@ -29,8 +29,8 @@ WORKDIR /usr/src/sam
 # Copy Cargo files for dependency caching
 COPY Cargo.toml Cargo.lock build.rs ./
 
-# Cache bust to force rebuild with Rust 1.82 for edition2024 support
-RUN echo "Cache bust: 2025-09-06-03:15"
+# Cache bust to force rebuild with Rust nightly for edition2024 support
+RUN echo "Cache bust: 2025-09-06-03:30"
 
 # Create dummy source structure for dependency compilation
 RUN mkdir -p src/bin benches && \
