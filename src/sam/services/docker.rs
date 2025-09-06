@@ -3,9 +3,18 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 use anyhow::{Result, Context};
+use super::environment::get_env_config;
 
 /// Install Docker if not present and ensure daemon is running.
 pub async fn install() {
+    let env_config = get_env_config();
+    
+    // Skip Docker management in CapRover mode
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - Docker management disabled");
+        return;
+    }
+    
     if !is_installed() {
         info!("Docker is not installed. Installing...");
         install_docker();
@@ -23,6 +32,14 @@ pub async fn install() {
 
 /// Start the Docker daemon/service.
 pub async fn start() {
+    let env_config = get_env_config();
+    
+    // Skip Docker management in CapRover mode
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - Docker management disabled");
+        return;
+    }
+    
     #[cfg(target_os = "macos")]
     {
         let output = Command::new("open").arg("-a").arg("Docker").output();
@@ -58,6 +75,14 @@ pub async fn start() {
 
 /// Stop the Docker daemon/service.
 pub async fn stop() {
+    let env_config = get_env_config();
+    
+    // Skip Docker management in CapRover mode
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - Docker management disabled");
+        return;
+    }
+    
     #[cfg(target_os = "macos")]
     {
         let output = Command::new("osascript")
@@ -191,6 +216,14 @@ pub async fn is_running_async() -> Result<bool> {
 }
 
 pub async fn ensure_running() -> Result<()> {
+    let env_config = get_env_config();
+    
+    // Skip Docker check in CapRover mode
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - skipping Docker check");
+        return Ok(());
+    }
+    
     if !is_running() {
         start().await;
         // Wait for Docker to fully start
@@ -209,6 +242,14 @@ pub async fn ensure_running() -> Result<()> {
 
 // Container management helpers for orchestrator
 pub async fn start_postgres() -> Result<()> {
+    let env_config = get_env_config();
+    
+    // Skip in CapRover mode - use external PostgreSQL
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - using external PostgreSQL");
+        return Ok(());
+    }
+    
     let output = tokio::process::Command::new("docker")
         .args(&[
             "run", "-d",
@@ -260,6 +301,14 @@ pub async fn stop_postgres() -> Result<()> {
 }
 
 pub async fn start_redis() -> Result<()> {
+    let env_config = get_env_config();
+    
+    // Skip in CapRover mode - use external Redis
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - using external Redis");
+        return Ok(());
+    }
+    
     let output = tokio::process::Command::new("docker")
         .args(&[
             "run", "-d",

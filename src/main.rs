@@ -86,15 +86,17 @@ async fn initialize_application() {
     setup_environment_variables();
     println!("DEBUG: After setup_environment_variables");
     
-    // Check if we're running in serve mode (for Docker/CapRover)
+    // Check if we're running in serve mode or CapRover environment
     let args: Vec<String> = env::args().collect();
     let is_serve_mode = args.len() > 1 && args[1] == "serve";
+    let is_caprover = env::var("CAPROVER").unwrap_or_default().to_lowercase() == "true";
     let database_engine = env::var("DATABASE_ENGINE").unwrap_or_else(|_| "postgres".to_string());
     
-    println!("DEBUG: Serve mode: {}, Database engine: {}", is_serve_mode, database_engine);
+    println!("DEBUG: Serve mode: {}, CapRover: {}, Database engine: {}", is_serve_mode, is_caprover, database_engine);
     
-    if is_serve_mode {
-        log::info!("Running in serve mode with database engine: {}", database_engine);
+    if is_serve_mode || is_caprover {
+        log::info!("Running in {} mode with database engine: {}", 
+                   if is_caprover { "CapRover" } else { "serve" }, database_engine);
     }
     
     // Handle database setup based on engine type and mode
@@ -108,15 +110,18 @@ async fn initialize_application() {
         env::set_var("PG_ADDRESS", "dummy");
         println!("DEBUG: Using SQLite database engine");
         log::info!("Using SQLite database engine");
-    } else if is_serve_mode {
-        // In serve mode with PostgreSQL, assume external database is configured
+    } else if is_serve_mode || is_caprover {
+        // In serve/CapRover mode with PostgreSQL, assume external database is configured
         // Don't try to start local PostgreSQL
-        println!("DEBUG: Using external PostgreSQL database in serve mode");
-        log::info!("Using external PostgreSQL database in serve mode");
+        println!("DEBUG: Using external PostgreSQL database in {}", 
+                 if is_caprover { "CapRover mode" } else { "serve mode" });
+        log::info!("Using external PostgreSQL database in {}", 
+                  if is_caprover { "CapRover mode" } else { "serve mode" });
         // Ensure the environment variables are already set
         if env::var("PG_DBNAME").is_err() || env::var("PG_USER").is_err() || 
            env::var("PG_PASS").is_err() || env::var("PG_ADDRESS").is_err() {
-            panic!("PostgreSQL environment variables must be set in serve mode: PG_DBNAME, PG_USER, PG_PASS, PG_ADDRESS");
+            panic!("PostgreSQL environment variables must be set in {}: PG_DBNAME, PG_USER, PG_PASS, PG_ADDRESS",
+                   if is_caprover { "CapRover mode" } else { "serve mode" });
         }
         println!("DEBUG: PostgreSQL env vars verified");
     } else {
@@ -132,10 +137,11 @@ async fn initialize_application() {
     config.init().await;
     println!("DEBUG: config.init() completed");
 
-    if is_serve_mode {
-        // In serve mode, just run the event loop (HTTP server is started by config.init())
-        println!("DEBUG: HTTP server should be started on port 8000");
-        log::info!("HTTP server started on port 8000");
+    if is_serve_mode || is_caprover {
+        // In serve/CapRover mode, just run the event loop (HTTP server is started by config.init())
+        let port = env::var("PORT").unwrap_or_else(|_| "8000".to_string());
+        println!("DEBUG: HTTP server should be started on port {}", port);
+        log::info!("HTTP server started on port {}", port);
         run_event_loop().await;
     } else {
         // In interactive mode, start the TUI

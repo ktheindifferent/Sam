@@ -18,6 +18,7 @@
 
 // Core infrastructure modules
 pub mod config;
+pub mod environment;
 pub mod errors;
 pub mod http_client;
 pub mod retry;

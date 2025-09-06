@@ -10,6 +10,7 @@ use anyhow::{Result, Context};
 use deadpool_redis::{Config, Runtime, Pool, redis::cmd};
 use super::cache::{HybridCache, CacheConfig};
 use super::error_handling::{CircuitBreaker, RetryConfig, retry_with_backoff, ServiceError};
+use super::environment::get_env_config;
 use thiserror::Error;
 
 /// Redis-specific error types for better error handling
@@ -56,6 +57,14 @@ fn get_circuit_breaker() -> Arc<CircuitBreaker> {
 /// Install and start Redis using Docker if not already running.
 /// This is intended to be called from setup/install.
 pub async fn install() {
+    let env_config = get_env_config();
+    
+    // Skip Docker operations in CapRover mode
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - using external Redis service");
+        return;
+    }
+    
     info!("Checking for running Redis Docker container...");
     if is_running().await {
         info!("Redis Docker container 'sam-redis' is already running.");
@@ -81,6 +90,14 @@ pub async fn install() {
 
 /// Start the Redis Docker container (if not running)
 pub async fn start() {
+    let env_config = get_env_config();
+    
+    // Skip Docker operations in CapRover mode
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - using external Redis service");
+        return;
+    }
+    
     if is_running().await {
         info!("Redis Docker container 'sam-redis' is already running.");
         return;
@@ -116,6 +133,14 @@ pub async fn start() {
 
 /// Stop the Redis Docker container (if running)
 pub async fn stop() {
+    let env_config = get_env_config();
+    
+    // Skip Docker operations in CapRover mode
+    if env_config.is_caprover {
+        info!("Running in CapRover mode - external Redis service not managed");
+        return;
+    }
+    
     if !is_running().await {
         info!("Redis Docker container 'sam-redis' is not running.");
         return;
@@ -164,6 +189,13 @@ static IS_RUNNING_CACHE: Lazy<Mutex<RunningCache>> =
     Lazy::new(|| Mutex::new(RunningCache { value: None }));
 
 pub async fn is_running() -> bool {
+    let env_config = get_env_config();
+    
+    // In CapRover mode, assume external Redis is always "running"
+    if env_config.is_caprover {
+        return env_config.should_use_redis();
+    }
+    
     let now = Instant::now();
     // Check cache before await
     {
@@ -353,8 +385,11 @@ pub async fn reset_pool() -> Result<()> {
 }
 
 async fn create_pool() -> Result<Pool> {
-    let redis_url = std::env::var("REDIS_URL")
-        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let env_config = get_env_config();
+    let redis_url = env_config.get_redis_url();
+    
+    info!("Creating Redis pool with URL: {}", 
+          if env_config.is_caprover { "[external Redis]" } else { &redis_url });
     
     let cfg = Config::from_url(redis_url);
     let pool = cfg.create_pool(Some(Runtime::Tokio1))

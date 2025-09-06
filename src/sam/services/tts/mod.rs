@@ -8,6 +8,7 @@
 // Licensed under GPLv3....see LICENSE file.
 
 pub mod enhanced;
+pub mod external;
 pub mod legacy;
 
 pub use enhanced::{TtsConfig, TtsService, TtsRequest, TtsResult, AudioFormat};

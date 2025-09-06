@@ -1,5 +1,6 @@
 //! Speech-to-Text services module
 
+pub mod external;
 pub mod whisper;
 pub mod whisper_enhanced;
 
