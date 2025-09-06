@@ -165,10 +165,7 @@ fn handle_crawler_service(request: &Request) -> Result<Response, crate::sam::htt
     
     if url.ends_with("/status") {
         // Get Crawler status
-        let rt = tokio::runtime::Handle::current();
-        let crawler_status = rt.block_on(async {
-            crate::sam::services::crawler::service_status().await
-        });
+        let crawler_status = crate::sam::services::crawler::service_status();
         
         let is_running = crawler_status.contains("running");
         
@@ -201,10 +198,7 @@ fn handle_crawler_service(request: &Request) -> Result<Response, crate::sam::htt
     
     if url.ends_with("/stop") && request.method() == "POST" {
         info!("Stopping Crawler service...");
-        let rt = tokio::runtime::Handle::current();
-        rt.block_on(async {
-            crate::sam::services::crawler::stop_service().await;
-        });
+        crate::sam::services::crawler::stop_service();
         return Ok(Response::json(&serde_json::json!({"status": "stopped"})));
     }
     
@@ -432,9 +426,7 @@ fn handle_all_services_status() -> Result<Response, crate::sam::http::Error> {
     });
     
     // Crawler
-    let crawler_status = rt.block_on(async {
-        crate::sam::services::crawler::service_status().await
-    });
+    let crawler_status = crate::sam::services::crawler::service_status();
     let crawler_running = crawler_status.contains("running");
     statuses.insert("crawler", ServiceStatus {
         running: crawler_running,
