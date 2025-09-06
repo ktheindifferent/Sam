@@ -625,9 +625,8 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             let redis = std::panic::catch_unwind(|| redis_status_result.to_string())
                 .unwrap_or_else(|_| "error".to_string());
 
-            let docker =
-                std::panic::catch_unwind(|| crate::sam::services::docker::status().to_string())
-                    .unwrap_or_else(|_| "error".to_string());
+            // Docker status - skip check to avoid blocking (2-second timeout)
+            let docker = "unknown".to_string();
 
             let sms = std::panic::catch_unwind(|| crate::sam::services::sms::status().to_string())
                 .unwrap_or_else(|_| "error".to_string());
