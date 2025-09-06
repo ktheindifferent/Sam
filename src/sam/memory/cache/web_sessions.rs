@@ -59,16 +59,24 @@ impl WebSessions {
         let mut client = Config::client()?;
 
         // Search for OID matches
+        // Note: Current query builder doesn't support OR conditions
+        // Check by oid first
         let mut pg_query = PostgresQueries::default();
         pg_query
             .queries
             .push(crate::sam::memory::PGCol::String(self.oid.clone()));
-        pg_query.query_columns.push("oid =".to_string());
-        pg_query
-            .queries
-            .push(crate::sam::memory::PGCol::String(self.sid.clone()));
-        pg_query.query_columns.push(" OR sid =".to_string());
-        let rows = Self::select(None, None, None, Some(pg_query))?;
+        pg_query.query_columns.push("oid".to_string());
+        let mut rows = Self::select(None, None, None, Some(pg_query))?;
+        
+        // If not found by oid, check by sid
+        if rows.is_empty() {
+            let mut pg_query_sid = PostgresQueries::default();
+            pg_query_sid
+                .queries
+                .push(crate::sam::memory::PGCol::String(self.sid.clone()));
+            pg_query_sid.query_columns.push("sid".to_string());
+            rows = Self::select(None, None, None, Some(pg_query_sid))?;
+        }
 
         if rows.is_empty() {
             client.execute("INSERT INTO cache_web_sessions (oid, sid, human_oid, ip_address, authenticated, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",

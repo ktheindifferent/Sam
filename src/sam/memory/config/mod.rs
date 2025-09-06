@@ -792,13 +792,23 @@ impl Config {
         if let Some(pg_query) = query.clone() {
             let mut counter = 1;
             for col in pg_query.query_columns {
+                // Clean up the column name (temporary fix for legacy code)
+                let col_cleaned = col.trim()
+                    .trim_start_matches("OR ")
+                    .trim_end_matches(" =")
+                    .trim_end_matches("=")
+                    .trim();
+                
                 // Validate each query column to prevent injection
-                Self::validate_sql_identifier(&col)?;
+                Self::validate_sql_identifier(&col_cleaned)?;
 
-                if counter == 1 {
-                    execquery = format!("{execquery} WHERE {col} ${counter}");
+                // Handle OR conditions (legacy support)
+                if col.trim().starts_with("OR ") {
+                    execquery = format!("{execquery} OR {col_cleaned} = ${counter}");
+                } else if counter == 1 {
+                    execquery = format!("{execquery} WHERE {col_cleaned} = ${counter}");
                 } else {
-                    execquery = format!("{execquery} AND {col} ${counter}");
+                    execquery = format!("{execquery} AND {col_cleaned} = ${counter}");
                 }
                 counter += 1;
             }
@@ -915,13 +925,23 @@ impl Config {
         if let Some(pg_query) = query.clone() {
             let mut counter = 1;
             for col in pg_query.query_columns.iter() {
-                // Validate each query column to prevent injection
-                Self::validate_sql_identifier(col)?;
+                // Clean up the column name (temporary fix for legacy code)
+                let col_cleaned = col.trim()
+                    .trim_start_matches("OR ")
+                    .trim_end_matches(" =")
+                    .trim_end_matches("=")
+                    .trim();
                 
-                if counter == 1 {
-                    execquery = format!("{execquery} WHERE {col} ${counter}");
+                // Validate each query column to prevent injection
+                Self::validate_sql_identifier(&col_cleaned)?;
+                
+                // Handle OR conditions (legacy support)
+                if col.trim().starts_with("OR ") {
+                    execquery = format!("{execquery} OR {col_cleaned} = ${counter}");
+                } else if counter == 1 {
+                    execquery = format!("{execquery} WHERE {col_cleaned} = ${counter}");
                 } else {
-                    execquery = format!("{execquery} AND {col} ${counter}");
+                    execquery = format!("{execquery} AND {col_cleaned} = ${counter}");
                 }
                 counter += 1;
             }
