@@ -310,6 +310,10 @@ pub fn handle_with_session(
         // TODO - Save Services
 
         // TODO - Authenticate
+        
+        // Redirect to login page after successful setup
+        let response = Response::redirect_302("/login.html");
+        return Ok(response);
     }
 
     // Secure authentication with password hashing and rate limiting
@@ -390,8 +394,10 @@ pub fn handle_with_session(
 
 
     
-    // During initial setup, redirect to setup page UNLESS already on setup or login page
-    if is_initial_setup && request.url() != "/setup.html" {
+    // During initial setup, redirect to setup page UNLESS already on setup-related URLs
+    if is_initial_setup && 
+       request.url() != "/setup.html" && 
+       request.url() != "/setup" {
         let response = Response::redirect_302("/setup.html");
         return Ok(response);
     }
