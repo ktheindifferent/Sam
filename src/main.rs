@@ -74,7 +74,14 @@ fn build_tokio_runtime() -> tokio::runtime::Runtime {
 /// Main application initialization logic
 async fn initialize_application() {
     // Initialize logging first
-    env_logger::init();
+    // Don't use env_logger if we're going to use TUI (it conflicts with tui_logger)
+    // Only initialize env_logger in serve mode
+    let args: Vec<String> = env::args().collect();
+    let is_serve_mode = args.len() > 1 && args[1] == "serve";
+    
+    if is_serve_mode {
+        env_logger::init();
+    }
     
     setup_panic_handler();
     ensure_manifest_dir();
@@ -86,9 +93,7 @@ async fn initialize_application() {
     setup_environment_variables();
     println!("DEBUG: After setup_environment_variables");
     
-    // Check if we're running in serve mode or CapRover environment
-    let args: Vec<String> = env::args().collect();
-    let is_serve_mode = args.len() > 1 && args[1] == "serve";
+    // Check if we're running in serve mode or CapRover environment (already checked above)
     let is_caprover = env::var("CAPROVER").unwrap_or_default().to_lowercase() == "true";
     let database_engine = env::var("DATABASE_ENGINE").unwrap_or_else(|_| "postgres".to_string());
     

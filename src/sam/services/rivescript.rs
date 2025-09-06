@@ -33,8 +33,9 @@ pub enum RiveScriptError {
 
 #[allow(unexpected_cfgs)]
 pub fn query(input: &str) -> anyhow::Result<IOReply> {
-    let rivescript_reply = crate::sam::tools::cmd(
-        format!("python3 /opt/sam/scripts/rivescript/brain.py \"{input}\"").as_str(),
+    let rivescript_reply = crate::sam::tools::safe_cmd(
+        "python3",
+        &["/opt/sam/scripts/rivescript/brain.py", input],
     )?;
 
     if rivescript_reply.contains(":::::") {

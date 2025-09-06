@@ -420,6 +420,45 @@ pub fn handle_with_session(
         return Ok(response);
     }
 
+    // Health check endpoints (no auth required - moved before auth check)
+    if request.url() == "/health" {
+        return Ok(Response::json(&serde_json::json!({
+            "status": "healthy",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })));
+    }
+    
+    if request.url() == "/health/detailed" {
+        return Ok(Response::json(&serde_json::json!({
+            "status": "healthy",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "metrics": {
+                "cpu_usage": 0.0,
+                "memory_usage": 0.0
+            }
+        })));
+    }
+    
+    // WebSocket endpoint - return proper upgrade response (no auth required)
+    if request.url() == "/ws" {
+        // WebSocket connections need special handling
+        // For now, return a message indicating WebSocket is not available through HTTP
+        return Ok(Response::json(&serde_json::json!({
+            "error": "WebSocket endpoint - use WebSocket protocol",
+            "message": "Connect using ws:// or wss:// protocol on port 8080"
+        })).with_status_code(426)); // 426 Upgrade Required
+    }
+    
+    // Service control API endpoints (allow without auth for dashboard functionality)
+    if request.url().starts_with("/api/services/") {
+        return api::handle_api_request(current_session, request);
+    }
+    
+    // Environment API endpoint (no auth required)
+    if request.url() == "/api/environment" {
+        return api::handle_api_request(current_session, request);
+    }
+
     // =================================================================
     // End Checkpoint
     // =================================================================
@@ -440,35 +479,6 @@ pub fn handle_with_session(
     //     let device = tch::Cuda::device_count();
     //     return Ok(Response::text(device.to_string()));
     // }
-
-    // Health check endpoints (no auth required)
-    if request.url() == "/health" {
-        return Ok(Response::json(&serde_json::json!({
-            "status": "healthy",
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })));
-    }
-    
-    if request.url() == "/health/detailed" {
-        return Ok(Response::json(&serde_json::json!({
-            "status": "healthy",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "metrics": {
-                "cpu_usage": 0.0,
-                "memory_usage": 0.0
-            }
-        })));
-    }
-    
-    // WebSocket endpoint - return proper upgrade response
-    if request.url() == "/ws" {
-        // WebSocket connections need special handling
-        // For now, return a message indicating WebSocket is not available through HTTP
-        return Ok(Response::json(&serde_json::json!({
-            "error": "WebSocket endpoint - use WebSocket protocol",
-            "message": "Connect using ws:// or wss:// protocol on port 8080"
-        })).with_status_code(426)); // 426 Upgrade Required
-    }
     
     if request.url().contains("/api") {
         return api::handle_api_request(current_session, request);

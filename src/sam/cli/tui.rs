@@ -612,9 +612,14 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
 
             // Service statuses
             let crawler = std::panic::catch_unwind(|| {
-                crate::sam::services::crawler::service_status().to_string()
+                let status = crate::sam::services::crawler::service_status();
+                log::debug!("Crawler service status: {}", status);
+                status.to_string()
             })
-            .unwrap_or_else(|_| "error".to_string());
+            .unwrap_or_else(|e| {
+                log::error!("Failed to get crawler status: {:?}", e);
+                "error".to_string()
+            });
 
             let redis_status_result = crate::sam::services::redis::status().await;
             let redis = std::panic::catch_unwind(|| redis_status_result.to_string())
@@ -675,19 +680,28 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            if let Ok(mut status) = service_status_clone.try_lock() {
-                status.crawler = crawler;
-                status.redis = redis;
-                status.docker = docker;
-                status.sms = sms;
-                status.postgres = postgres;
-                status.lifx = lifx;
-                status.http_server = http_server;
-                status.memory_usage = memory_usage;
-                status.cpu_usage = cpu_usage;
-                status.disk_usage = disk_usage;
-                status.update_count = count;
-                count += 1;
+            // Use lock with timeout to avoid deadlocks
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(100),
+                service_status_clone.lock()
+            ).await {
+                Ok(mut status) => {
+                    status.crawler = crawler;
+                    status.redis = redis;
+                    status.docker = docker;
+                    status.sms = sms;
+                    status.postgres = postgres;
+                    status.lifx = lifx;
+                    status.http_server = http_server;
+                    status.memory_usage = memory_usage;
+                    status.cpu_usage = cpu_usage;
+                    status.disk_usage = disk_usage;
+                    status.update_count = count;
+                    count += 1;
+                }
+                Err(_) => {
+                    log::debug!("Service status update timed out, will retry");
+                }
             }
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
@@ -775,13 +789,27 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     // Blinking cursor state
     let mut show_cursor = true;
     let mut cursor_tick: u8 = 0;
+    let mut last_known_tui_state = TuiState::default();
 
     loop {
-        // Fetch service status and TUI state for display (lock for shortest possible time)
-        let (status, current_tui_state) = {
-            let guard = service_status.lock().await;
-            let state_guard = tui_state.lock().await;
-            (guard.clone(), state_guard.clone())
+        // Fetch service status and TUI state for display with timeout to prevent deadlocks
+        let (status, current_tui_state) = match tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            async {
+                let guard = service_status.lock().await;
+                let state_guard = tui_state.lock().await;
+                (guard.clone(), state_guard.clone())
+            }
+        ).await {
+            Ok(result) => {
+                last_known_tui_state = result.1.clone();
+                result
+            },
+            Err(_) => {
+                log::debug!("Timeout fetching status for display, using defaults");
+                // Use default/previous values if timeout occurs
+                (ServiceStatus::default(), last_known_tui_state.clone())
+            }
         };
 
         // FIX: Acquire output_lines lock asynchronously and clone before draw
@@ -886,10 +914,11 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         }));
 
         if let Err(e) = draw_result {
-            let mut lines = output_lines.lock().await;
-            lines.push(format!("TUI draw panic: {e:?}"));
-            log::error!("TUI draw panic: {:?}", e);
-            break;
+            log::error!("TUI draw error (recovering): {:?}", e);
+            // Instead of breaking, try to recover by continuing
+            // Add a small delay to avoid rapid error loops
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            continue;
         }
 
         cursor_tick = cursor_tick.wrapping_add(1);

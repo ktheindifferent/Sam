@@ -5,6 +5,7 @@ let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let serviceStatuses = {};
 let startTime = Date.now();
+let heartbeatInterval = null;
 
 // Initialize WebSocket connection
 function initWebSocket() {
@@ -15,21 +16,25 @@ function initWebSocket() {
         return;
     }
     
-    // WebSocket runs on port 8080, not the same as HTTP
+    // WebSocket configuration
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const hostname = window.location.hostname;
-    // Use port 8080 for WebSocket, or same port if specified in env
-    const wsPort = window.location.port === '8080' ? window.location.port : '8080';
-    const wsUrl = `${protocol}//${hostname}:${wsPort}/ws`;
     
-    // For production, WebSocket might be on same port as HTTP
-    // Try same port first, then fall back to 8080
-    const primaryWsUrl = `${protocol}//${window.location.host}/ws`;
+    // In production, WebSocket might be proxied through the same port
+    // In development, use port 8080
+    let wsUrl;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        // Local development - use port 8080
+        wsUrl = `${protocol}//${hostname}:8080/ws`;
+    } else {
+        // Production - try same port first (assumes reverse proxy)
+        wsUrl = `${protocol}//${window.location.host}/ws`;
+    }
     
-    console.log('Attempting WebSocket connection to:', primaryWsUrl);
+    console.log('Attempting WebSocket connection to:', wsUrl);
     
     try {
-        ws = new WebSocket(primaryWsUrl);
+        ws = new WebSocket(wsUrl);
         
         ws.onopen = () => {
             console.log('WebSocket connected');
@@ -37,14 +42,18 @@ function initWebSocket() {
             updateConnectionStatus(true);
             addLog('WebSocket connection established', 'success');
             requestServiceStatus();
+            
+            // Start heartbeat to keep connection alive
+            startHeartbeat();
         };
         
         ws.onmessage = (event) => {
             try {
+                console.log('WebSocket message received:', event.data);
                 const data = JSON.parse(event.data);
                 handleWebSocketMessage(data);
             } catch (e) {
-                console.error('Failed to parse WebSocket message:', e);
+                console.error('Failed to parse WebSocket message:', e, 'Raw message:', event.data);
             }
         };
         
@@ -57,6 +66,7 @@ function initWebSocket() {
             console.log('WebSocket disconnected');
             updateConnectionStatus(false);
             addLog('WebSocket connection lost', 'warning');
+            stopHeartbeat();
             attemptReconnect();
         };
     } catch (error) {
@@ -69,11 +79,20 @@ function initWebSocket() {
 
 // Handle incoming WebSocket messages
 function handleWebSocketMessage(data) {
+    console.log('Handling WebSocket message type:', data.type, data);
+    
     if (data.type === 'service_status') {
-        updateServiceStatus(data.service, data.status);
+        // Convert WebSocket status format to UI format
+        const uiStatus = {
+            running: data.status.state === 'healthy' || data.status.state === 'running',
+            status_text: data.status.message || data.status.state,
+            ...data.status
+        };
+        updateServiceStatus(data.service, uiStatus);
     } else if (data.type === 'system_stats') {
         updateSystemStats(data.stats);
     } else if (data.type === 'command_response') {
+        console.log('Received command response:', data);
         handleCommandResponse(data);
     } else if (data.type === 'error') {
         addLog(data.message, 'error');
@@ -81,6 +100,31 @@ function handleWebSocketMessage(data) {
         addLog(data.activity.message, 'info');
     } else if (data.type === 'alert') {
         addLog(data.message, data.severity);
+    } else if (data.type === 'heartbeat_ack') {
+        console.log('Heartbeat acknowledged');
+    }
+}
+
+// Start heartbeat to keep connection alive
+function startHeartbeat() {
+    stopHeartbeat(); // Clear any existing interval
+    heartbeatInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const heartbeat = {
+                type: 'heartbeat',
+                timestamp: Date.now()
+            };
+            ws.send(JSON.stringify(heartbeat));
+            console.log('Sent heartbeat');
+        }
+    }, 30000); // Send heartbeat every 30 seconds
+}
+
+// Stop heartbeat
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
     }
 }
 
@@ -123,12 +167,14 @@ function requestServiceStatus() {
             channels: ['services', 'stats', 'alerts', 'activity'] 
         }));
         // Request current service statuses
-        ws.send(JSON.stringify({ 
+        const getServicesCmd = { 
             type: 'command', 
             id: generateCommandId(),
             command: 'get_services',
             args: {}
-        }));
+        };
+        console.log('Requesting service statuses:', getServicesCmd);
+        ws.send(JSON.stringify(getServicesCmd));
     } else {
         // Fall back to HTTP polling
         fetchServiceStatus();
@@ -142,18 +188,29 @@ function generateCommandId() {
 
 // Handle command responses from WebSocket
 function handleCommandResponse(data) {
+    console.log('Processing command response:', data);
+    
     if (data.success) {
         if (data.data) {
             // Handle service control responses
             if (data.data.message) {
                 showToast(data.data.message, 'success');
                 addLog(data.data.message, 'success');
+                // Request updated status after service control
+                setTimeout(() => requestServiceStatus(), 1000);
             }
-            // Handle service status response
-            if (typeof data.data === 'object' && !data.data.message) {
+            // Handle service status response (get_services command)
+            else if (typeof data.data === 'object') {
+                console.log('Received service statuses:', data.data);
                 for (const [service, status] of Object.entries(data.data)) {
-                    if (typeof status === 'object' && status.state) {
-                        updateServiceStatus(service, status);
+                    if (typeof status === 'object') {
+                        // Convert WebSocket status format to UI format
+                        const uiStatus = {
+                            running: status.state === 'healthy' || status.state === 'running',
+                            status_text: status.message || status.state,
+                            ...status
+                        };
+                        updateServiceStatus(service, uiStatus);
                     }
                 }
             }
@@ -256,10 +313,14 @@ async function fetchServiceStatus() {
 
 // Update service status in UI
 function updateServiceStatus(service, status) {
+    console.log(`Updating service ${service} status:`, status);
     serviceStatuses[service] = status;
     
     const card = document.getElementById(`${service}-card`);
-    if (!card) return;
+    if (!card) {
+        console.warn(`No card found for service: ${service}`);
+        return;
+    }
     
     const statusIndicator = document.getElementById(`${service}-status`);
     const statusText = document.getElementById(`${service}-status-text`);
@@ -332,12 +393,14 @@ async function startService(service) {
         // Use WebSocket if available
         if (ws && ws.readyState === WebSocket.OPEN) {
             const commandId = generateCommandId();
-            ws.send(JSON.stringify({
+            const command = {
                 type: 'command',
                 id: commandId,
                 command: 'start_service',
                 args: { service: service }
-            }));
+            };
+            console.log('Sending WebSocket command:', command);
+            ws.send(JSON.stringify(command));
             
             // Wait for response via WebSocket (handled by handleCommandResponse)
             showToast(`${service} start command sent`, 'info');
@@ -385,12 +448,14 @@ async function stopService(service) {
         // Use WebSocket if available
         if (ws && ws.readyState === WebSocket.OPEN) {
             const commandId = generateCommandId();
-            ws.send(JSON.stringify({
+            const command = {
                 type: 'command',
                 id: commandId,
                 command: 'stop_service',
                 args: { service: service }
-            }));
+            };
+            console.log('Sending WebSocket stop command:', command);
+            ws.send(JSON.stringify(command));
             
             // Wait for response via WebSocket (handled by handleCommandResponse)
             showToast(`${service} stop command sent`, 'info');
@@ -438,12 +503,14 @@ async function restartService(service) {
         // Use WebSocket if available
         if (ws && ws.readyState === WebSocket.OPEN) {
             const commandId = generateCommandId();
-            ws.send(JSON.stringify({
+            const command = {
                 type: 'command',
                 id: commandId,
                 command: 'restart_service',
                 args: { service: service }
-            }));
+            };
+            console.log('Sending WebSocket restart command:', command);
+            ws.send(JSON.stringify(command));
             
             // Wait for response via WebSocket (handled by handleCommandResponse)
             showToast(`${service} restart command sent`, 'info');

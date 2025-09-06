@@ -105,7 +105,7 @@ fn handle_redis_service(request: &Request) -> Result<Response, crate::sam::http:
     
     if url.ends_with("/status") {
         // Get Redis status
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         let is_running = rt.block_on(async {
             crate::sam::services::redis::is_running().await
         });
@@ -140,7 +140,7 @@ fn handle_redis_service(request: &Request) -> Result<Response, crate::sam::http:
     
     if url.ends_with("/start") && request.method() == "POST" {
         info!("Starting Redis service...");
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         rt.block_on(async {
             crate::sam::services::redis::start().await;
         });
@@ -149,7 +149,7 @@ fn handle_redis_service(request: &Request) -> Result<Response, crate::sam::http:
     
     if url.ends_with("/stop") && request.method() == "POST" {
         info!("Stopping Redis service...");
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         rt.block_on(async {
             crate::sam::services::redis::stop().await;
         });
@@ -189,7 +189,7 @@ fn handle_crawler_service(request: &Request) -> Result<Response, crate::sam::htt
     
     if url.ends_with("/start") && request.method() == "POST" {
         info!("Starting Crawler service...");
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         rt.block_on(async {
             crate::sam::services::crawler::start_service_async().await;
         });
@@ -243,7 +243,7 @@ fn handle_docker_service(request: &Request) -> Result<Response, crate::sam::http
         }
         
         info!("Starting Docker service...");
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         rt.block_on(async {
             crate::sam::services::docker::start().await;
         });
@@ -258,7 +258,7 @@ fn handle_docker_service(request: &Request) -> Result<Response, crate::sam::http
         }
         
         info!("Stopping Docker service...");
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         rt.block_on(async {
             crate::sam::services::docker::stop().await;
         });
@@ -291,7 +291,7 @@ fn handle_postgres_service(request: &Request) -> Result<Response, crate::sam::ht
         }
         
         // Check local PostgreSQL container
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         let is_running = rt.block_on(async {
             // Check if PostgreSQL container is running
             tokio::process::Command::new("docker")
@@ -319,7 +319,7 @@ fn handle_postgres_service(request: &Request) -> Result<Response, crate::sam::ht
         }
         
         info!("Starting PostgreSQL service...");
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         rt.block_on(async {
             if let Err(e) = crate::sam::services::docker::start_postgres().await {
                 error!("Failed to start PostgreSQL: {}", e);
@@ -336,7 +336,7 @@ fn handle_postgres_service(request: &Request) -> Result<Response, crate::sam::ht
         }
         
         info!("Stopping PostgreSQL service...");
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
         rt.block_on(async {
             if let Err(e) = crate::sam::services::docker::stop_postgres().await {
                 error!("Failed to stop PostgreSQL: {}", e);
@@ -413,7 +413,7 @@ fn handle_all_services_status() -> Result<Response, crate::sam::http::Error> {
     let mut statuses = HashMap::new();
     
     // Check each service
-    let rt = tokio::runtime::Handle::current();
+    let rt = tokio::runtime::Runtime::new().map_err(|e| crate::sam::http::Error::from(e.to_string()))?;
     
     // Redis
     let redis_running = rt.block_on(async {

@@ -65,7 +65,7 @@ pub use super::error::WsSecurityError;
 
 const MAX_MESSAGE_SIZE: usize = 64 * 1024; // 64KB
 const MAX_MESSAGES_PER_MINUTE: u32 = 100;
-const MAX_CONNECTIONS_PER_IP: usize = 5;
+const MAX_CONNECTIONS_PER_IP: usize = 20; // Increased for development
 const SESSION_TIMEOUT_SECONDS: u64 = 3600; // 1 hour
 const IDLE_TIMEOUT_SECONDS: u64 = 300; // 5 minutes
 const MESSAGE_QUEUE_SIZE: usize = 1000;
@@ -345,7 +345,23 @@ impl MessageValidator {
 
     pub fn validate_command(&self, command: &str, user_permissions: &[String]) -> Result<(), WsSecurityError> {
         // Define command permissions
-        let restricted_commands = vec!["restart_service", "stop_service", "modify_config"];
+        // For now, allow service control commands without special permissions
+        // This is for development/dashboard functionality
+        let allowed_without_auth = vec![
+            "get_stats",
+            "get_services", 
+            "get_network_stats",
+            "start_service",
+            "stop_service",
+            "restart_service"
+        ];
+        
+        if allowed_without_auth.contains(&command) {
+            return Ok(());
+        }
+        
+        // Other restricted commands still require permissions
+        let restricted_commands = vec!["modify_config", "delete_data"];
         
         if restricted_commands.contains(&command) {
             if !user_permissions.contains(&format!("command:{}", command)) {

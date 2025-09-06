@@ -101,6 +101,12 @@ impl NetworkMonitor {
 
     // Parse /proc/net/dev for network interface statistics
     pub async fn read_network_stats(&self) -> Result<HashMap<String, NetworkInterface>> {
+        // Check if we're on Linux with /proc/net/dev
+        if !std::path::Path::new("/proc/net/dev").exists() {
+            // Return empty stats for non-Linux systems
+            return Ok(HashMap::new());
+        }
+        
         let file = File::open("/proc/net/dev")
             .context("Failed to open /proc/net/dev")?;
         let reader = BufReader::new(file);

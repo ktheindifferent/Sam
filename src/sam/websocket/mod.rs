@@ -384,10 +384,12 @@ async fn handle_connection(
             msg = ws_receiver.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
+                        info!("WebSocket received message from {}: {}", client_id, text);
                         // Validate message
                         match security_limits.validate_message(&client_id, &text).await {
                             Ok(_) => {
                                 if let Ok(ws_msg) = serde_json::from_str::<WsMessage>(&text) {
+                                    info!("Parsed WebSocket message: {:?}", ws_msg);
                                     let result = handle_client_message(
                                         &client_id,
                                         ws_msg,
@@ -632,6 +634,7 @@ async fn handle_client_message(
         }
         
         WsMessage::Command { id, command, args } => {
+            info!("Processing command '{}' with id '{}' and args: {:?}", command, id, args);
             // Validate command permissions
             let session = security_limits.session_manager.validate_session(client_id).await
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
@@ -656,27 +659,37 @@ async fn handle_client_message(
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             } else {
                 // Process command and send response
+                info!("Executing command '{}' for client {}", command, client_id);
                 let response = process_command(&command, args).await;
                 
                 // Log command execution
+                let success = response.is_ok();
+                let response_data = response.unwrap_or_else(|e| {
+                    error!("Command '{}' failed: {}", command, e);
+                    serde_json::json!({ "error": e.to_string() })
+                });
+                
+                info!("Command '{}' result: success={}, data={:?}", command, success, response_data);
+                
                 audit_tx.send(AuditEvent {
                     timestamp: Utc::now(),
                     client_id: client_id.to_string(),
                     event_type: "command_executed".to_string(),
                     details: serde_json::json!({ 
                         "command": command, 
-                        "success": response.is_ok() 
+                        "success": success 
                     }),
                     severity: AuditSeverity::Info,
                 }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 
                 let msg = WsMessage::CommandResponse {
                     id,
-                    success: response.is_ok(),
-                    data: response.unwrap_or_else(|e| serde_json::json!({ "error": e.to_string() })),
+                    success,
+                    data: response_data,
                 };
                 let msg_json = serde_json::to_string(&msg)
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                info!("Sending command response: {}", msg_json);
                 ws_sender.send(Message::Text(msg_json)).await
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             }
@@ -726,6 +739,7 @@ async fn process_command(
     command: &str,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, BoxError> {
+    info!("process_command called with command: '{}', args: {:?}", command, args);
     match command {
         "get_stats" => {
             let stats = collect_system_stats().await?;
@@ -932,6 +946,7 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
     
     // Check Crawler
     let crawler_status = crate::sam::services::crawler::service_status();
+    info!("Crawler status check: {}", crawler_status);
     let crawler_state = if crawler_status.contains("running") {
         "healthy"
     } else {
