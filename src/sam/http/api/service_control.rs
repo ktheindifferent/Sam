@@ -171,7 +171,7 @@ fn handle_crawler_service(request: &Request) -> Result<Response, crate::sam::htt
         
         let status = ServiceStatus {
             running: is_running,
-            status_text: crawler_status.clone(),
+            status_text: crawler_status.to_string(),
             metrics: if is_running {
                 Some(ServiceMetrics {
                     pages_crawled: Some(0), // Would need actual crawler stats
@@ -430,7 +430,7 @@ fn handle_all_services_status() -> Result<Response, crate::sam::http::Error> {
     let crawler_running = crawler_status.contains("running");
     statuses.insert("crawler", ServiceStatus {
         running: crawler_running,
-        status_text: crawler_status,
+        status_text: crawler_status.to_string(),
         metrics: None,
     });
     
