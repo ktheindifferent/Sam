@@ -29,6 +29,9 @@ WORKDIR /usr/src/sam
 # Copy Cargo files for dependency caching
 COPY Cargo.toml Cargo.lock build.rs ./
 
+# Cache bust to force rebuild after installer binary addition
+RUN echo "Cache bust: 2025-09-06-02:23"
+
 # Create dummy source structure for dependency compilation
 RUN mkdir -p src/bin && \
     echo "fn main() {}" > src/main.rs && \
