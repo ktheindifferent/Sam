@@ -349,7 +349,7 @@ pub fn handle_with_session(
         pg_query
             .queries
             .push(crate::sam::memory::PGCol::String(input.email.to_lowercase()));
-        pg_query.query_columns.push("LOWER(email) =".to_string());
+        pg_query.query_columns.push("LOWER(email)".to_string());
 
         let humans = crate::sam::memory::Human::select(None, None, None, Some(pg_query))?;
 
@@ -403,8 +403,9 @@ pub fn handle_with_session(
     }
 
     // Is Authenticated?
-    // Skip authentication check for login page and setup pages during initial setup
+    // Skip authentication check for login page, auth endpoint, and setup pages
     if request.url() != "/login.html" && 
+       request.url() != "/auth" &&
        request.url() != "/setup.html" &&
        request.url() != "/setup" &&
        !current_session.authenticated {
