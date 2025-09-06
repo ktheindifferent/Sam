@@ -1,6 +1,7 @@
 use std::env;
-use log::{info, warn};
+use log::{info, warn, error};
 use anyhow::{Result, Context};
+use lazy_static::lazy_static;
 
 /// Environment configuration for CapRover and external services
 #[derive(Debug, Clone)]
@@ -109,21 +110,34 @@ impl EnvironmentConfig {
     }
 }
 
-/// Global environment configuration instance
-static mut ENV_CONFIG: Option<EnvironmentConfig> = None;
-static ENV_CONFIG_INIT: std::sync::Once = std::sync::Once::new();
+/// Global environment configuration instance using lazy_static for thread safety
 
-/// Get or initialize the environment configuration
+lazy_static! {
+    static ref ENV_CONFIG: EnvironmentConfig = {
+        match EnvironmentConfig::from_env() {
+            Ok(config) => config,
+            Err(e) => {
+                error!("Failed to initialize environment configuration: {}", e);
+                // Return a default configuration on error
+                EnvironmentConfig {
+                    is_caprover: false,
+                    redis_url: None,
+                    postgres_url: std::env::var("DATABASE_URL").ok(),
+                    tts_url: None,
+                    stt_url: None,
+                    use_docker: std::env::var("USE_DOCKER")
+                        .unwrap_or_else(|_| "true".to_string())
+                        .parse()
+                        .unwrap_or(true),
+                }
+            }
+        }
+    };
+}
+
+/// Get the environment configuration
 pub fn get_env_config() -> &'static EnvironmentConfig {
-    unsafe {
-        ENV_CONFIG_INIT.call_once(|| {
-            ENV_CONFIG = Some(
-                EnvironmentConfig::from_env()
-                    .expect("Failed to initialize environment configuration")
-            );
-        });
-        ENV_CONFIG.as_ref().unwrap()
-    }
+    &ENV_CONFIG
 }
 
 #[cfg(test)]
