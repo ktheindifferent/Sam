@@ -166,13 +166,15 @@ fn handle_crawler_service(request: &Request) -> Result<Response, crate::sam::htt
     if url.ends_with("/status") {
         // Get Crawler status
         let rt = tokio::runtime::Handle::current();
-        let is_running = rt.block_on(async {
-            crate::sam::services::crawler::is_running().await
+        let crawler_status = rt.block_on(async {
+            crate::sam::services::crawler::service_status().await
         });
+        
+        let is_running = crawler_status.contains("running");
         
         let status = ServiceStatus {
             running: is_running,
-            status_text: if is_running { "running" } else { "stopped" }.to_string(),
+            status_text: crawler_status.clone(),
             metrics: if is_running {
                 Some(ServiceMetrics {
                     pages_crawled: Some(0), // Would need actual crawler stats
@@ -192,9 +194,7 @@ fn handle_crawler_service(request: &Request) -> Result<Response, crate::sam::htt
         info!("Starting Crawler service...");
         let rt = tokio::runtime::Handle::current();
         rt.block_on(async {
-            if let Err(e) = crate::sam::services::crawler::start().await {
-                error!("Failed to start crawler: {}", e);
-            }
+            crate::sam::services::crawler::start_service_async().await;
         });
         return Ok(Response::json(&serde_json::json!({"status": "started"})));
     }
@@ -203,7 +203,7 @@ fn handle_crawler_service(request: &Request) -> Result<Response, crate::sam::htt
         info!("Stopping Crawler service...");
         let rt = tokio::runtime::Handle::current();
         rt.block_on(async {
-            crate::sam::services::crawler::stop().await;
+            crate::sam::services::crawler::stop_service().await;
         });
         return Ok(Response::json(&serde_json::json!({"status": "stopped"})));
     }
@@ -432,12 +432,13 @@ fn handle_all_services_status() -> Result<Response, crate::sam::http::Error> {
     });
     
     // Crawler
-    let crawler_running = rt.block_on(async {
-        crate::sam::services::crawler::is_running().await
+    let crawler_status = rt.block_on(async {
+        crate::sam::services::crawler::service_status().await
     });
+    let crawler_running = crawler_status.contains("running");
     statuses.insert("crawler", ServiceStatus {
         running: crawler_running,
-        status_text: if crawler_running { "running" } else { "stopped" }.to_string(),
+        status_text: crawler_status,
         metrics: None,
     });
     
