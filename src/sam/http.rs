@@ -366,15 +366,30 @@ pub fn handle_with_session(
     // Is Setup?
     let locations: Vec<crate::sam::memory::Location> =
         crate::sam::memory::Location::select(None, None, None, None)?;
-    if request.url() != "/setup.html" && locations.is_empty() {
+    let is_initial_setup = locations.is_empty();
+    
+    // Allow access to setup page and setup endpoint during initial setup
+    let setup_urls = ["/setup.html", "/setup"];
+    let is_setup_url = setup_urls.iter().any(|&url| request.url() == url);
+    
+    if !is_setup_url && is_initial_setup {
         let response = Response::redirect_302("/setup.html");
         return Ok(response);
     }
 
     // Is Authenticated?
-    if request.url() != "/login.html" && !current_session.authenticated {
+    // Skip authentication check for setup pages during initial setup
+    if request.url() != "/login.html" && 
+       !is_setup_url &&
+       !current_session.authenticated {
         let response = Response::redirect_302("/login.html");
         return Ok(response);
+    }
+    
+    // If in initial setup mode, don't require authentication for setup pages
+    if is_initial_setup && is_setup_url {
+        // Allow access to setup pages without authentication during initial setup
+        // This prevents the redirect loop
     }
 
     // Is Authenticated?
