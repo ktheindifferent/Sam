@@ -54,6 +54,7 @@ COPY cfg ./cfg/
 COPY data ./data/
 COPY scripts ./scripts/
 COPY packages ./packages/
+COPY www ./www/
 
 # Build the main application
 RUN cargo build --release --bin sam
