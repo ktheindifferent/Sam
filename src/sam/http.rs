@@ -344,7 +344,7 @@ pub fn handle_with_session(
 
         let mut editable_session = current_session.clone();
 
-        // Search for user by email using parameterized query
+        // Search for user by email using parameterized query (case-insensitive)
         let mut pg_query = crate::sam::memory::PostgresQueries::default();
         pg_query
             .queries

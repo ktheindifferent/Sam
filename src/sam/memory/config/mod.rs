@@ -799,16 +799,25 @@ impl Config {
                     .trim_end_matches("=")
                     .trim();
                 
-                // Validate each query column to prevent injection
-                Self::validate_sql_identifier(&col_cleaned)?;
+                // Special handling for SQL functions like LOWER()
+                let (column_expr, needs_validation) = if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
+                    // Extract the column name from LOWER(column)
+                    let inner = &col_cleaned[6..col_cleaned.len()-1];
+                    Self::validate_sql_identifier(inner)?;
+                    (format!("LOWER({})", inner), false)
+                } else {
+                    // Regular column name
+                    Self::validate_sql_identifier(&col_cleaned)?;
+                    (col_cleaned.to_string(), true)
+                };
 
                 // Handle OR conditions (legacy support)
                 if col.trim().starts_with("OR ") {
-                    execquery = format!("{execquery} OR {col_cleaned} = ${counter}");
+                    execquery = format!("{execquery} OR {} = ${counter}", column_expr);
                 } else if counter == 1 {
-                    execquery = format!("{execquery} WHERE {col_cleaned} = ${counter}");
+                    execquery = format!("{execquery} WHERE {} = ${counter}", column_expr);
                 } else {
-                    execquery = format!("{execquery} AND {col_cleaned} = ${counter}");
+                    execquery = format!("{execquery} AND {} = ${counter}", column_expr);
                 }
                 counter += 1;
             }
@@ -932,16 +941,25 @@ impl Config {
                     .trim_end_matches("=")
                     .trim();
                 
-                // Validate each query column to prevent injection
-                Self::validate_sql_identifier(&col_cleaned)?;
+                // Special handling for SQL functions like LOWER()
+                let (column_expr, needs_validation) = if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
+                    // Extract the column name from LOWER(column)
+                    let inner = &col_cleaned[6..col_cleaned.len()-1];
+                    Self::validate_sql_identifier(inner)?;
+                    (format!("LOWER({})", inner), false)
+                } else {
+                    // Regular column name
+                    Self::validate_sql_identifier(&col_cleaned)?;
+                    (col_cleaned.to_string(), true)
+                };
                 
                 // Handle OR conditions (legacy support)
                 if col.trim().starts_with("OR ") {
-                    execquery = format!("{execquery} OR {col_cleaned} = ${counter}");
+                    execquery = format!("{execquery} OR {} = ${counter}", column_expr);
                 } else if counter == 1 {
-                    execquery = format!("{execquery} WHERE {col_cleaned} = ${counter}");
+                    execquery = format!("{execquery} WHERE {} = ${counter}", column_expr);
                 } else {
-                    execquery = format!("{execquery} AND {col_cleaned} = ${counter}");
+                    execquery = format!("{execquery} AND {} = ${counter}", column_expr);
                 }
                 counter += 1;
             }
