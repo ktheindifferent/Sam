@@ -813,12 +813,26 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
         }
 
         // Find a pending job
-        let mut jobs = match CrawlJob::select_async(Some(5000), None, None, None).await {
-            Ok(jobs) => jobs
-                .into_iter()
-                .filter(|j| j.status == "pending")
-                .collect::<Vec<_>>(),
-            Err(_) => vec![],
+        log::debug!("Checking for pending crawl jobs...");
+        let mut jobs = match tokio::time::timeout(
+            Duration::from_secs(5),
+            CrawlJob::select_async(Some(5000), None, None, None)
+        ).await {
+            Ok(Ok(jobs)) => {
+                log::debug!("Found {} total crawl jobs", jobs.len());
+                jobs
+                    .into_iter()
+                    .filter(|j| j.status == "pending")
+                    .collect::<Vec<_>>()
+            },
+            Ok(Err(e)) => {
+                log::error!("Failed to query crawl jobs from database: {}", e);
+                vec![]
+            },
+            Err(_) => {
+                log::warn!("Database query timed out after 5 seconds, proceeding without jobs");
+                vec![]
+            },
         };
 
         jobs.shuffle(&mut rand::thread_rng());
