@@ -73,24 +73,32 @@ fn build_tokio_runtime() -> tokio::runtime::Runtime {
 
 /// Main application initialization logic
 async fn initialize_application() {
+    // Initialize logging first
+    env_logger::init();
+    
     setup_panic_handler();
     ensure_manifest_dir();
 
     let user = get_application_user();
     libsam::print_banner(user.clone());
 
+    println!("DEBUG: After banner, before setup_environment_variables");
     setup_environment_variables();
+    println!("DEBUG: After setup_environment_variables");
     
     // Check if we're running in serve mode (for Docker/CapRover)
     let args: Vec<String> = env::args().collect();
     let is_serve_mode = args.len() > 1 && args[1] == "serve";
     let database_engine = env::var("DATABASE_ENGINE").unwrap_or_else(|_| "postgres".to_string());
     
+    println!("DEBUG: Serve mode: {}, Database engine: {}", is_serve_mode, database_engine);
+    
     if is_serve_mode {
         log::info!("Running in serve mode with database engine: {}", database_engine);
     }
     
     // Handle database setup based on engine type and mode
+    println!("DEBUG: Starting database setup");
     if database_engine == "sqlite" {
         // For SQLite, we don't need PostgreSQL setup
         // Set dummy values for PostgreSQL config to prevent panics
@@ -98,16 +106,19 @@ async fn initialize_application() {
         env::set_var("PG_USER", "dummy");
         env::set_var("PG_PASS", "dummy");
         env::set_var("PG_ADDRESS", "dummy");
+        println!("DEBUG: Using SQLite database engine");
         log::info!("Using SQLite database engine");
     } else if is_serve_mode {
         // In serve mode with PostgreSQL, assume external database is configured
         // Don't try to start local PostgreSQL
+        println!("DEBUG: Using external PostgreSQL database in serve mode");
         log::info!("Using external PostgreSQL database in serve mode");
         // Ensure the environment variables are already set
         if env::var("PG_DBNAME").is_err() || env::var("PG_USER").is_err() || 
            env::var("PG_PASS").is_err() || env::var("PG_ADDRESS").is_err() {
             panic!("PostgreSQL environment variables must be set in serve mode: PG_DBNAME, PG_USER, PG_PASS, PG_ADDRESS");
         }
+        println!("DEBUG: PostgreSQL env vars verified");
     } else {
         // For local development with PostgreSQL, do the full setup
         setup_postgres(&user).await;
@@ -115,11 +126,15 @@ async fn initialize_application() {
         log::info!("Using local PostgreSQL database");
     }
 
+    println!("DEBUG: Creating Config");
     let config = crate::sam::memory::Config::new();
+    println!("DEBUG: Calling config.init()");
     config.init().await;
+    println!("DEBUG: config.init() completed");
 
     if is_serve_mode {
         // In serve mode, just run the event loop (HTTP server is started by config.init())
+        println!("DEBUG: HTTP server should be started on port 8000");
         log::info!("HTTP server started on port 8000");
         run_event_loop().await;
     } else {
