@@ -1313,16 +1313,24 @@ async fn lookup_domain(
     domain: &str,
     client: std::sync::Arc<reqwest::Client>,
 ) -> bool {
+    log::debug!("lookup_domain: Starting lookup for domain: {}", domain);
+    
     // Check cache first
     {
         let cache = DNS_LOOKUP_CACHE.lock().await;
         if let Some(found) = cache.get(domain) {
+            log::debug!("lookup_domain: Cache hit for {}: {}", domain, found);
             return *found;
         }
     }
+    log::debug!("lookup_domain: Cache miss for {}, doing DNS lookup", domain);
+    
     // Not in cache, do DNS lookup
     let mut found = false;
     for attempt in 0..3 {
+        log::debug!("lookup_domain: DNS lookup attempt {} for {}", attempt + 1, domain);
+        let dns_start = tokio::time::Instant::now();
+        
         let result = match tokio::time::timeout(
             Duration::from_secs(3), // Reduced for faster processing
             resolver.lookup_ip(domain),
@@ -1330,6 +1338,7 @@ async fn lookup_domain(
         .await
         {
             Ok(Ok(lookup)) if lookup.iter().next().is_some() => {
+                log::debug!("lookup_domain: DNS resolved {} in {:?}", domain, dns_start.elapsed());
                 // DNS exists, now check HTTP/HTTPS HEAD
                 let http_url = format!("http://{domain}/");
                 let https_url = format!("https://{domain}/");
@@ -1370,12 +1379,16 @@ async fn lookup_domain(
 
                 false
             }
-            Ok(_) | Err(_) => {
-                log::warn!(
-                    "DNS lookup timed out or failed (attempt {}): {}",
-                    attempt + 1,
-                    domain
-                );
+            Ok(Ok(_)) => {
+                log::debug!("lookup_domain: DNS resolved but no IPs found for {} in {:?}", domain, dns_start.elapsed());
+                false
+            }
+            Ok(Err(e)) => {
+                log::debug!("lookup_domain: DNS lookup error for {} in {:?}: {}", domain, dns_start.elapsed(), e);
+                false
+            }
+            Err(_) => {
+                log::warn!("lookup_domain: DNS lookup timeout (3s) for {} on attempt {}", domain, attempt + 1);
                 false
             }
         };
@@ -1390,6 +1403,7 @@ async fn lookup_domain(
         let mut cache = DNS_LOOKUP_CACHE.lock().await;
         cache.insert(domain.to_string(), found);
     }
+    log::debug!("lookup_domain: Final result for {}: found={}", domain, found);
     found
 }
 
