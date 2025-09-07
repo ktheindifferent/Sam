@@ -1558,7 +1558,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 0,
             )])));
 
-            let concurrency = (num_cpus::get() * 2).max(8).min(32); // Better concurrency with limits
+            let concurrency = num_cpus::get() * 2;
             log::info!("Starting crawl loop with concurrency={}, max_depth={}", concurrency, max_depth);
             
             let mut iteration = 0;
