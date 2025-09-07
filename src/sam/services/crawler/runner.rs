@@ -846,6 +846,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 tls_dns_name: None,
                 trust_negative_responses: true,
                 bind_addr: None,
+                tls_config: None,
             });
         } else {
             log::warn!("Failed to parse Atlas DNS address, using default resolver");
@@ -859,6 +860,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             tls_dns_name: None,
             trust_negative_responses: true,
             bind_addr: None,
+            tls_config: None,
         });
         
         TokioAsyncResolver::tokio(config, ResolverOpts::default())
