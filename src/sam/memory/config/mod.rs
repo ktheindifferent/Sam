@@ -328,6 +328,11 @@ impl Config {
                 crate::sam::services::crawler::CrawledPage::migrations(),
             ),
             (
+                crate::sam::services::crawler::CrawledContent::sql_table_name(),
+                crate::sam::services::crawler::CrawledContent::sql_build_statement(),
+                crate::sam::services::crawler::CrawledContent::migrations(),
+            ),
+            (
                 crate::sam::memory::cache::WebCrawl::sql_table_name(),
                 crate::sam::memory::cache::WebCrawl::sql_build_statement(),
                 crate::sam::memory::cache::WebCrawl::migrations(),
@@ -359,6 +364,21 @@ impl Config {
             }
             if table_name == crate::sam::services::crawler::CrawledPage::sql_table_name() {
                 for idx_sql in crate::sam::services::crawler::CrawledPage::sql_indexes() {
+                    match current_client.batch_execute(idx_sql).await {
+                        Ok(_) => {
+                            log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql)
+                        }
+                        Err(e) => log::debug!(
+                            "POSTGRES: Failed to create index for '{}': {:?} ({})",
+                            table_name,
+                            idx_sql,
+                            e
+                        ),
+                    }
+                }
+            }
+            if table_name == crate::sam::services::crawler::CrawledContent::sql_table_name() {
+                for idx_sql in crate::sam::services::crawler::CrawledContent::sql_indexes() {
                     match current_client.batch_execute(idx_sql).await {
                         Ok(_) => {
                             log::info!("POSTGRES: Created index for '{}': {}", table_name, idx_sql)

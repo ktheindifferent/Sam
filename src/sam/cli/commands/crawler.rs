@@ -4,30 +4,36 @@ use tokio::sync::Mutex;
 pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match cmd {
         "crawler start" => {
-            crate::sam::services::crawler::start_service_async().await;
+            // Spawn the crawler start in a separate task to avoid blocking the TUI
+            let output_lines_clone = output_lines.clone();
+            tokio::spawn(async move {
+                crate::sam::services::crawler::start_service_async().await;
+                let mut out = output_lines_clone.lock().await;
+                out.push("Crawler service started.".to_string());
+            });
+            
+            // Immediately show feedback to the user
             let mut out = output_lines.lock().await;
-            out.push("Crawler service started.".to_string());
+            out.push("Starting crawler service...".to_string());
         }
         "crawler stop" => {
-            crate::sam::cli::spinner::run_with_spinner(
-                output_lines,
-                "Stopping crawler service...",
-                |lines, _| lines.push("Crawler service stopped.".to_string()),
-                || async {
-                    crate::sam::services::crawler::stop_service();
-                    "done".to_string()
-                },
-            )
-            .await;
+            // Spawn the stop operation in a separate task
+            let output_lines_clone = output_lines.clone();
+            tokio::spawn(async move {
+                crate::sam::services::crawler::stop_service();
+                let mut out = output_lines_clone.lock().await;
+                out.push("Crawler service stopped.".to_string());
+            });
+            
+            // Immediately show feedback
+            let mut out = output_lines.lock().await;
+            out.push("Stopping crawler service...".to_string());
         }
         "crawler status" => {
-            crate::sam::cli::spinner::run_with_spinner(
-                output_lines,
-                "Checking crawler service status...",
-                |lines, status| lines.push(format!("Crawler service status: {status}")),
-                || async { crate::sam::services::crawler::service_status().to_string() },
-            )
-            .await;
+            // Get status without blocking
+            let status = crate::sam::services::crawler::service_status();
+            let mut out = output_lines.lock().await;
+            out.push(format!("Crawler service status: {}", status));
         }
         _ => {
             let mut out = output_lines.lock().await;

@@ -3,7 +3,7 @@
 //! This module provides enhanced storage capabilities for crawled page content
 //! with hash-based deduplication and compression.
 
-use anyhow::{Result, Context};
+use anyhow::{Result};
 use sha2::{Sha256, Digest};
 use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
@@ -144,8 +144,13 @@ impl CrawledContent {
     }
     
     /// SQL table name
-    pub fn sql_table_name() -> &'static str {
-        "crawled_content"
+    pub fn sql_table_name() -> String {
+        "crawled_content".to_string()
+    }
+    
+    /// SQL migrations
+    pub fn migrations() -> Vec<&'static str> {
+        vec![]
     }
     
     /// SQL table creation statement
