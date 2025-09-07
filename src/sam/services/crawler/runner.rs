@@ -825,10 +825,10 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     // let prefixes = COMMON_PREFIXES.clone();
     // let words = COMMON_WORDS.clone();
 
-    // DNS resolver setup - use Atlas DNS if available
+    // DNS resolver setup - use system default for now
     log::info!("run_crawler_service: Setting up DNS resolver");
     
-    let resolver = if std::env::var("ATLAS_DNS_SERVER").is_ok() || std::env::var("CAPROVER").is_ok() {
+    let resolver = if false && (std::env::var("ATLAS_DNS_SERVER").is_ok() || std::env::var("CAPROVER").is_ok()) {
         // Use Atlas DNS server
         let atlas_addr = std::env::var("ATLAS_DNS_SERVER")
             .unwrap_or_else(|_| {
@@ -1407,12 +1407,13 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             for url in &urls_to_crawl {
                 log::info!("Testing simple HTTP GET for URL: {}", url);
                 
-                // First test DNS resolution
+                // Skip DNS resolution test for now - it's hanging
+                /*
                 if let Ok(parsed_url) = url::Url::parse(url) {
                     if let Some(host) = parsed_url.host_str() {
                         log::info!("Testing DNS resolution for host: {}", host);
                         match tokio::time::timeout(
-                            Duration::from_secs(2),
+                            Duration::from_millis(500),  // Very short timeout
                             resolver.lookup_ip(host)
                         ).await {
                             Ok(Ok(lookup)) => {
@@ -1428,6 +1429,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                         }
                     }
                 }
+                */
                 
                 // Now try HTTP GET
                 match tokio::time::timeout(
