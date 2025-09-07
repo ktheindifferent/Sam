@@ -705,7 +705,11 @@ pub fn start_service() {
 
 /// Wrapper for run_crawler_service to simplify spawning
 async fn run_crawler_wrapper() {
-    log::info!("Crawler wrapper started");
+    log::info!("Crawler wrapper started - entry point");
+    
+    // Add a small delay to ensure logging works
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    log::info!("Crawler wrapper - after initial sleep");
     
     match run_crawler_service().await {
         Ok(_) => {
@@ -740,17 +744,69 @@ pub async fn start_service_async() {
     log::info!("Crawler service starting...");
     CRAWLER_RUNNING.store(true, Ordering::SeqCst);
     
-    log::info!("About to spawn crawler task");
+    // Try running directly first to bypass spawn issues
+    log::info!("Running crawler directly without spawn");
     
-    // Test if spawning works
-    tokio::spawn(async {
-        log::info!("Test spawn successful!");
-    });
+    // Use tokio::spawn but immediately await it
+    let result = tokio::spawn(async {
+        log::info!("Inside spawn block - starting");
+        
+        // Try a very simple test first
+        let test_url = "http://127.0.0.1:8000";
+        log::info!("Testing basic connectivity to {}", test_url);
+        
+        // Use blocking thread for network operations to bypass async issues
+        let blocking_result = tokio::task::spawn_blocking(move || {
+            log::info!("In blocking thread - testing connection");
+            
+            // Try raw TCP connection
+            match std::net::TcpStream::connect_timeout(
+                &"127.0.0.1:8000".parse::<std::net::SocketAddr>().unwrap_or_else(|_| {
+                    log::error!("Failed to parse socket address");
+                    "127.0.0.1:8000".parse().unwrap()
+                }),
+                std::time::Duration::from_secs(5)
+            ) {
+                Ok(stream) => {
+                    log::info!("✓ Blocking TCP connection successful to 127.0.0.1:8000");
+                    drop(stream);
+                    true
+                }
+                Err(e) => {
+                    log::error!("✗ Blocking TCP connection failed: {}", e);
+                    false
+                }
+            }
+        }).await;
+        
+        match blocking_result {
+            Ok(success) => {
+                if success {
+                    log::info!("Connection test passed, starting crawler");
+                    // Now try the actual crawler
+                    match run_crawler_service().await {
+                        Ok(_) => log::info!("Crawler service completed"),
+                        Err(e) => log::error!("Crawler service error: {:?}", e),
+                    }
+                } else {
+                    log::error!("Connection test failed, not starting crawler");
+                }
+            }
+            Err(e) => {
+                log::error!("Blocking task join error: {}", e);
+            }
+        }
+        
+        log::info!("Spawn block completed");
+    }).await;
     
-    // Try spawning with a static async block
-    tokio::spawn(run_crawler_wrapper());
+    match result {
+        Ok(_) => log::info!("Spawn completed successfully"),
+        Err(e) => log::error!("Spawn join error: {}", e),
+    }
     
-    log::info!("Crawler task spawn completed");
+    // Keep the service marked as running
+    log::info!("Crawler service spawn sequence completed");
 }
 
 /// Stops the crawler service and sets the running flag to false.
@@ -902,6 +958,90 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     // Track when we last saved DNS cache
     let mut last_dns_save = std::time::Instant::now();
 
+    // Test mode - bypass database and just try to crawl external sites
+    let test_mode = true;
+    
+    if test_mode {
+        log::info!("TEST MODE: Bypassing database, testing direct crawl");
+        
+        // Test multiple URLs since DNS/HTTP work at OS level
+        let test_urls = vec![
+            "http://www.google.com",
+            "http://example.com",
+            "http://127.0.0.1:8000",
+        ];
+        
+        for url in test_urls {
+            log::info!("TEST: Trying to fetch {}", url);
+            
+            // Try with a fresh simple client
+            let simple_client = match reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build() {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("TEST: Failed to build simple client: {}", e);
+                    continue;
+                }
+            };
+            
+            match simple_client.get(url).send().await {
+                Ok(response) => {
+                    log::info!("TEST: ✓ SUCCESS fetching {}! Status: {}", url, response.status());
+                    match response.text().await {
+                        Ok(text) => log::info!("TEST: Response body length: {} bytes", text.len()),
+                        Err(e) => log::error!("TEST: Failed to read response body: {}", e),
+                    }
+                }
+                Err(e) => {
+                    log::error!("TEST: ✗ FAILED to fetch {}: {}", url, e);
+                    
+                    // Try DNS resolution separately
+                    if let Ok(parsed_url) = Url::parse(url) {
+                        if let Some(host) = parsed_url.host_str() {
+                            log::info!("TEST: Trying DNS resolution for {}", host);
+                            match resolver.lookup_ip(host).await {
+                                Ok(lookup) => {
+                                    let ips: Vec<_> = lookup.iter().collect();
+                                    log::info!("TEST: DNS resolved {} to: {:?}", host, ips);
+                                }
+                                Err(e) => {
+                                    log::error!("TEST: DNS resolution failed for {}: {}", host, e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Also test with curl via shell to confirm OS-level works
+        log::info!("TEST: Running curl to verify OS-level connectivity");
+        match tokio::process::Command::new("curl")
+            .arg("-s")
+            .arg("-o")
+            .arg("/dev/null")
+            .arg("-w")
+            .arg("%{http_code}")
+            .arg("http://www.google.com")
+            .output()
+            .await {
+            Ok(output) => {
+                let status = String::from_utf8_lossy(&output.stdout);
+                log::info!("TEST: curl returned status code: {}", status);
+            }
+            Err(e) => {
+                log::error!("TEST: Failed to run curl: {}", e);
+            }
+        }
+        
+        // Sleep and return to avoid the main loop
+        log::info!("TEST MODE: Complete. Sleeping for 5 seconds then exiting");
+        sleep(Duration::from_secs(5)).await;
+        CRAWLER_RUNNING.store(false, Ordering::SeqCst);
+        return Ok(());
+    }
+    
     loop {
         log::debug!("run_crawler_service: Main loop iteration");
         if !CRAWLER_RUNNING.load(Ordering::SeqCst) {
