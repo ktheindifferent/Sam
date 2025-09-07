@@ -689,7 +689,19 @@ pub async fn crawl_url(
     url: String,
     client: std::sync::Arc<reqwest::Client>,
 ) -> crate::sam::memory::Result<Vec<CrawledPage>> {
-    crawl_url_boxed(job_oid, url, 0, client).await
+    // Add a timeout to prevent hanging
+    match tokio::time::timeout(
+        Duration::from_secs(30),
+        crawl_url_boxed(job_oid, url.clone(), 0, client)
+    ).await {
+        Ok(result) => result,
+        Err(_) => {
+            log::error!("Timeout crawling URL after 30s: {}", url);
+            Err(crate::sam::memory::Error::Other(
+                format!("Timeout crawling URL: {}", url)
+            ).into())
+        }
+    }
 }
 
 /// Start the crawler service synchronously
@@ -1156,23 +1168,47 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                         0
                     }
                 };
-            let _ = job.save_async().await;
+            // Try to save job status, but don't block on it
+            match tokio::time::timeout(Duration::from_secs(2), job.save_async()).await {
+                Ok(Ok(_)) => log::debug!("Job status saved to database"),
+                Ok(Err(e)) => log::warn!("Failed to save job status: {}", e),
+                Err(_) => log::warn!("Timeout saving job status, continuing anyway"),
+            }
 
             // Crawl start_url and discovered links (BFS, depth 2)
             let max_depth = 10;
             // Initialize visited set with URLs from all CrawlJob entries in Postgres
             let mut visited_urls = HashSet::new();
-            if let Ok(crawled_pages) = CrawledPage::select_async(None, None, None, None).await {
-                for page in crawled_pages {
-                    visited_urls.insert(page.url);
+            
+            log::info!("Loading existing crawled pages from database...");
+            match tokio::time::timeout(
+                Duration::from_secs(3),
+                CrawledPage::select_async(None, None, None, None)
+            ).await {
+                Ok(Ok(crawled_pages)) => {
+                    log::info!("Loaded {} existing crawled pages", crawled_pages.len());
+                    for page in crawled_pages {
+                        visited_urls.insert(page.url);
+                    }
                 }
+                Ok(Err(e)) => log::warn!("Failed to load crawled pages: {}, starting fresh", e),
+                Err(_) => log::warn!("Timeout loading crawled pages, starting fresh"),
             }
 
             let mut job_urls = HashSet::new();
-            if let Ok(all_jobs) = CrawlJob::select_async(None, None, None, None).await {
-                for job in all_jobs {
-                    job_urls.insert(job.start_url);
+            log::info!("Loading existing jobs from database...");
+            match tokio::time::timeout(
+                Duration::from_secs(3),
+                CrawlJob::select_async(None, None, None, None)
+            ).await {
+                Ok(Ok(all_jobs)) => {
+                    log::info!("Loaded {} existing jobs", all_jobs.len());
+                    for job in all_jobs {
+                        job_urls.insert(job.start_url);
+                    }
                 }
+                Ok(Err(e)) => log::warn!("Failed to load jobs: {}, continuing", e),
+                Err(_) => log::warn!("Timeout loading jobs, continuing"),
             }
 
             let visited = Arc::new(tokio::sync::Mutex::new(visited_urls));
@@ -1183,10 +1219,19 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             )])));
 
             let concurrency = (num_cpus::get() * 2).max(8).min(32); // Better concurrency with limits
+            log::info!("Starting crawl loop with concurrency={}, max_depth={}", concurrency, max_depth);
+            
+            let mut iteration = 0;
             loop {
+                iteration += 1;
+                log::debug!("Crawl iteration {}", iteration);
+                
                 // Collect all URLs at the current minimum depth
-                let (batch, _current_depth) = {
+                let (batch, current_depth) = {
                     let mut q = queue.lock().await;
+                    let queue_size = q.len();
+                    log::debug!("Queue has {} URLs", queue_size);
+                    
                     let mut batch = Vec::new();
                     let mut min_depth: Option<usize> = None;
                     // Find the minimum depth in the queue
@@ -1198,8 +1243,18 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     }
                     let min_depth = match min_depth {
                         Some(d) => d,
-                        None => break,
+                        None => {
+                            log::info!("Queue is empty, finishing crawl");
+                            break;
+                        }
                     };
+                    
+                    // Check depth limit
+                    if min_depth >= max_depth {
+                        log::info!("Reached max depth {}, stopping crawl", max_depth);
+                        break;
+                    }
+                    
                     // Drain all URLs at this depth
                     let mut i = 0;
                     while i < q.len() {
@@ -1210,9 +1265,11 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                             i += 1;
                         }
                     }
+                    log::info!("Processing {} URLs at depth {}", batch.len(), min_depth);
                     (batch, min_depth)
                 };
                 if batch.is_empty() {
+                    log::info!("No URLs to process, exiting crawl loop");
                     break;
                 }
                 // Mark all as visited
@@ -1224,21 +1281,34 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 }
 
                 // Crawl all URLs at this depth concurrently
+                log::info!("Starting concurrent crawl of {} URLs", batch.len());
                 use futures::stream;
                 let results = stream::iter(batch.into_iter())
                     .map(|(url, depth)| {
                         let job_oid = job_oid.clone();
-
                         let client = client.clone();
 
                         async move {
-                            // Crawl the URL
-                            (url.clone(), depth, crawl_url(job_oid, url, client).await)
+                            log::debug!("Crawling URL: {}", url);
+                            let start = tokio::time::Instant::now();
+                            let result = crawl_url(job_oid.clone(), url.clone(), client).await;
+                            let elapsed = start.elapsed();
+                            
+                            match &result {
+                                Ok(pages) => log::info!("✓ Crawled {} in {:.2}s, found {} pages", 
+                                    url, elapsed.as_secs_f32(), pages.len()),
+                                Err(e) => log::warn!("✗ Failed to crawl {} in {:.2}s: {}", 
+                                    url, elapsed.as_secs_f32(), e),
+                            }
+                            
+                            (url, depth, result)
                         }
                     })
                     .buffer_unordered(concurrency)
                     .collect::<Vec<_>>()
                     .await;
+                
+                log::info!("Completed crawling batch, processing {} results", results.len());
 
                 // Process results
                 let mut new_links = Vec::new();
