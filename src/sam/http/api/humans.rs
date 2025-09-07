@@ -9,7 +9,7 @@
 
 use rouille::Request;
 use rouille::Response;
-use super::validation::{validate_id_param, validate_query_params, sanitize_output_json, error_response};
+use super::validation::{validate_id_param, validate_query_params, sanitize_output_json};
 
 pub fn handle(
     _current_session: crate::sam::memory::cache::WebSessions,

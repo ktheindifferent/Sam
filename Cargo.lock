@@ -765,8 +765,14 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
 dependencies = [
- "bit-vec",
+ "bit-vec 0.8.0",
 ]
+
+[[package]]
+name = "bit-vec"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2c54ff287cfc0a34f38a6b832ea1bd8e448a330b3e40a50859e6488bee07f22"
 
 [[package]]
 name = "bit-vec"
@@ -824,6 +830,17 @@ dependencies = [
  "futures-io",
  "futures-lite 2.6.1",
  "piper",
+]
+
+[[package]]
+name = "bloomfilter"
+version = "1.0.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c541c70a910b485670304fd420f0eab8f7bde68439db6a8d98819c3d2774d7e2"
+dependencies = [
+ "bit-vec 0.7.0",
+ "getrandom 0.2.16",
+ "siphasher 1.0.1",
 ]
 
 [[package]]
@@ -3187,6 +3204,15 @@ name = "hound"
 version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
+
+[[package]]
+name = "html-escape"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d1ad449764d627e22bfd7cd5e8868264fc9236e07c752972b4080cd351cb476"
+dependencies = [
+ "utf8-width",
+]
 
 [[package]]
 name = "html5ever"
@@ -5837,7 +5863,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fcdab19deb5195a31cf7726a210015ff1496ba1464fd42cb4f537b8b01b471f"
 dependencies = [
  "bit-set",
- "bit-vec",
+ "bit-vec 0.8.0",
  "bitflags 2.9.1",
  "lazy_static",
  "num-traits",
@@ -5910,6 +5936,15 @@ name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
+name = "quick-xml"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1004a344b30a54e2ee58d66a71b32d2db2feb0a31f9a2d302bf0536f15de2a33"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "quickcheck"
@@ -6860,6 +6895,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "base64 0.22.1",
+ "bloomfilter",
  "bollard",
  "chrono",
  "colored 3.0.0",
@@ -6883,7 +6919,9 @@ dependencies = [
  "get_if_addrs",
  "git2",
  "hex",
+ "hmac 0.12.1",
  "hound",
+ "html-escape",
  "invidious",
  "jsonwebtoken",
  "lazy_static",
@@ -6921,6 +6959,7 @@ dependencies = [
  "postgres-types 0.2.9",
  "prometheus",
  "proptest",
+ "quick-xml",
  "quickcheck",
  "quickcheck_macros",
  "rand 0.8.5",
@@ -9039,6 +9078,12 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+
+[[package]]
+name = "utf8-width"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86bd8d4e895da8537e5315b8254664e6b769c4ff3db18321b297a1e7004392e3"
 
 [[package]]
 name = "utf8_iter"

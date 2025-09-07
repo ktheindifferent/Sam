@@ -69,6 +69,10 @@ url = "2.5.4"
 
 deadpool-redis = { version = "0.22", features = ["script"] }
 lru = "0.12"
+bloomfilter = "1.0"
+html-escape = "0.2"
+quick-xml = "0.31"
+hmac = "0.12"
 ratatui = "0.29"
 num = "0.4"
 num-bigint = "0.4"

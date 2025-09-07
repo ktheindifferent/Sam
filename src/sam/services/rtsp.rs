@@ -8,7 +8,7 @@
 // Licensed under GPLv3....see LICENSE file.
 
 use std::path::Path;
-use std::thread;
+// use std::thread;
 use std::sync::atomic::Ordering;
 use tokio::sync::mpsc;
 use crate::sam::services::thread_manager::{self, ThreadConfig};
@@ -17,7 +17,7 @@ use crate::sam::services::thread_manager::{self, ThreadConfig};
 use crate::sam::services::rtsp_dl_simple::{Alert, start_deep_learning_processor};
 use crate::sam::services::rtsp_recording::{
     RecordingManager, RecordingConfig, RecordingTrigger, VideoEncoding, 
-    VideoCodec, AudioCodec, Resolution, PlaybackService, create_recording_tables
+    VideoCodec, AudioCodec, Resolution, create_recording_tables
 };
 
 pub fn init() {

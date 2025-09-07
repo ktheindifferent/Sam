@@ -112,7 +112,6 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
     {
         // Special handling for .mp4 files to support HTTP Range requests (Safari compatibility)
         if request.url().contains(".mp4") {
-            use rouille::ResponseBody;
             use std::borrow::Cow;
             use std::fs::File;
             use std::io::{Read, Seek, SeekFrom};
