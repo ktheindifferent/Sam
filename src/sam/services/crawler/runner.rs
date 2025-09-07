@@ -714,18 +714,21 @@ pub fn start_service() {
 /// # Async
 /// This function is async and should be awaited.
 pub async fn start_service_async() {
-    static STARTED: std::sync::Once = std::sync::Once::new();
-    STARTED.call_once(|| {
-        log::info!("Crawler service starting...");
-        CRAWLER_RUNNING.store(true, Ordering::SeqCst);
-
-        tokio::spawn(async {
-            if let Err(e) = run_crawler_service().await {
-                log::error!("Error in crawler service: {}", e);
-            }
-        });
-    });
+    // Check if already running
+    if CRAWLER_RUNNING.load(Ordering::SeqCst) {
+        log::info!("Crawler service already running");
+        return;
+    }
+    
+    log::info!("Crawler service starting...");
     CRAWLER_RUNNING.store(true, Ordering::SeqCst);
+
+    tokio::spawn(async {
+        if let Err(e) = run_crawler_service().await {
+            log::error!("Error in crawler service: {}", e);
+            CRAWLER_RUNNING.store(false, Ordering::SeqCst);
+        }
+    });
 }
 
 /// Stops the crawler service and sets the running flag to false.
@@ -779,6 +782,8 @@ pub fn service_status() -> &'static str {
 /// # Async
 /// This function is async and should be awaited.
 pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
+    log::info!("run_crawler_service: Starting crawler service loop");
+    
     let client = Arc::new(REQWEST_CLIENT.clone());
     let all_crawled_pages = Arc::new(tokio::sync::Mutex::new(Vec::new()));
     // Set up logging
@@ -790,19 +795,25 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     // let words = COMMON_WORDS.clone();
 
     // DNS resolver setup
+    log::info!("run_crawler_service: Setting up DNS resolver");
     let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
     // Load DNS cache from redis or file
+    log::info!("run_crawler_service: Loading DNS cache");
     load_dns_cache(true).await;
+    log::info!("run_crawler_service: DNS cache loaded");
 
     // Track when we last saved DNS cache
     let mut last_dns_save = std::time::Instant::now();
 
     loop {
+        log::debug!("run_crawler_service: Main loop iteration");
         if !CRAWLER_RUNNING.load(Ordering::SeqCst) {
+            log::debug!("run_crawler_service: Crawler not running, sleeping");
             sleep(Duration::from_secs(1)).await;
             continue;
         }
+        log::debug!("run_crawler_service: Crawler is running, proceeding");
 
         // Periodically save DNS cache (every 5 minutes)
         if last_dns_save.elapsed() > Duration::from_secs(300) {
