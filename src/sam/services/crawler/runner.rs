@@ -1414,22 +1414,21 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 }
             };
             
-            // First test raw TCP connectivity
-            log::info!("Testing TCP connection to 127.0.0.1:8000");
-            match tokio::time::timeout(
-                Duration::from_secs(2),
-                tokio::net::TcpStream::connect("127.0.0.1:8000")
-            ).await {
-                Ok(Ok(_)) => {
-                    log::info!("TCP connection successful to 127.0.0.1:8000");
+            // Test with blocking TCP to bypass async issues
+            log::info!("Testing blocking TCP connection to 127.0.0.1:8000");
+            match std::net::TcpStream::connect_timeout(
+                &"127.0.0.1:8000".parse::<std::net::SocketAddr>().unwrap(),
+                Duration::from_secs(2)
+            ) {
+                Ok(_) => {
+                    log::info!("Blocking TCP connection successful to 127.0.0.1:8000");
                 }
-                Ok(Err(e)) => {
-                    log::warn!("TCP connection failed: {}", e);
-                }
-                Err(_) => {
-                    log::warn!("TCP connection timeout after 2 seconds");
+                Err(e) => {
+                    log::warn!("Blocking TCP connection failed: {}", e);
                 }
             }
+            
+            log::info!("TCP test completed, moving to HTTP tests");
             
             for url in &urls_to_crawl {
                 log::info!("Testing simple HTTP GET for URL: {}", url);
