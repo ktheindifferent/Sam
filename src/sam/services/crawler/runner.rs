@@ -834,9 +834,9 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             .unwrap_or_else(|_| {
                 if std::env::var("CAPROVER").is_ok() {
                     // For CapRover, we need to resolve the service name first or use IP directly
-                    "127.0.0.1:53".to_string()  // Use localhost for now in CapRover
+                    "172.16.0.15:53".to_string()  // Use localhost for now in CapRover
                 } else {
-                    "127.0.0.1:53".to_string()  // Local Atlas
+                    "172.16.0.15:53".to_string()  // Local Atlas
                 }
             });
         
@@ -853,7 +853,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             if parts.len() == 2 {
                 if let Ok(port) = parts[1].parse::<u16>() {
                     // For now, use localhost with the specified port
-                    Some(std::net::SocketAddr::from(([127, 0, 0, 1], port)))
+                    Some(std::net::SocketAddr::from(([172, 16, 0, 15], port)))
                 } else {
                     None
                 }
