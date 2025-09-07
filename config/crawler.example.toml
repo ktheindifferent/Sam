@@ -1,0 +1,139 @@
+# SAM Crawler Configuration File (TOML)
+# Copy this file to crawler.toml and adjust settings as needed
+
+[general]
+max_depth = 10
+max_pages = 10000
+concurrency = 10
+request_timeout = "30s"
+follow_redirects = true
+max_redirects = 5
+respect_robots_txt = true
+default_user_agent = "Mozilla/5.0 (compatible; SAMBot/1.0)"
+extract_sitemaps = true
+detect_feeds = true
+allowed_schemes = ["http", "https"]
+dns_resolver = "8.8.8.8:53"
+
+[rate_limiting]
+default_delay = "1s"
+min_delay = "100ms"
+max_delay = "60s"
+requests_per_second = 10.0
+burst_size = 5
+adaptive = true
+respect_crawl_delay = true
+respect_retry_after = true
+
+[circuit_breaker]
+failure_threshold = 5
+initial_backoff = "60s"
+max_backoff = "3600s"
+open_duration = "300s"
+half_open_success_threshold = 3
+
+[memory]
+bloom_filter_size = 1000000
+bloom_filter_fp_rate = 0.01
+lru_cache_size = 10000
+max_queue_size = 100000
+enable_redis_spillover = false
+
+[storage]
+store_content = true
+compress_content = true
+deduplicate = true
+extract_pdf_text = true
+extract_image_metadata = true
+max_content_size_mb = 50
+stored_content_types = [
+    "text/html",
+    "text/plain",
+    "application/json",
+    "application/xml",
+    "application/pdf"
+]
+
+[javascript]
+enabled = false
+engine = "chrome"
+headless = true
+timeout = "30s"
+wait_for_network_idle = true
+max_browsers = 3
+viewport_width = 1920
+viewport_height = 1080
+blocked_resources = ["image", "font", "media"]
+custom_scripts = []
+enable_cache = false
+enable_cookies = true
+
+[user_agents]
+rotation_strategy = "random"
+custom_agents = []
+enable_desktop = true
+enable_mobile = false
+enable_bots = false
+
+[database]
+url = "postgresql://sam:sam@localhost/sam"
+max_connections = 20
+connection_timeout = "5s"
+
+[redis]
+url = "redis://localhost:6379"
+max_connections = 10
+enable_job_queue = true
+enable_dns_cache = true
+enable_url_tracking = false
+
+[webhooks]
+enabled = false
+endpoints = []
+events = ["start", "complete", "fail"]
+include_stats = true
+retry_attempts = 3
+
+[patterns]
+include_patterns = []
+exclude_patterns = [
+    ".*\\.pdf$",
+    ".*/print/.*"
+]
+include_extensions = ["html", "htm", "php", "asp", "aspx", "jsp"]
+exclude_extensions = ["exe", "zip", "rar"]
+max_pagination_depth = 20
+detect_infinite_patterns = true
+calendar_threshold = 10
+
+# Domain-specific configurations
+[domains."example.com"]
+rate_limit = "2s"
+max_depth = 5
+user_agent = "CustomBot/1.0"
+enable_javascript = true
+
+[domains."example.com".headers]
+X-Custom-Header = "value"
+
+[domains."example.com".auth]
+auth_type = "basic"
+username = "user"
+password = "pass"
+
+[domains."api.example.com"]
+rate_limit = "100ms"
+
+[domains."api.example.com".auth]
+auth_type = "bearer"
+token = "your-api-token"
+
+[domains."app.example.com"]
+enable_javascript = true
+
+[domains."app.example.com".auth]
+auth_type = "cookie"
+
+[domains."app.example.com".auth.cookies]
+session_id = "abc123"
+auth_token = "xyz789"

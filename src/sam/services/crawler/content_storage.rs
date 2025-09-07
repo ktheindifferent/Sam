@@ -86,8 +86,18 @@ impl CrawledContent {
                         // Replace with placeholder
                         "[data-truncated]"
                     } else {
-                        // Truncate but keep some context
-                        &token[..MAX_TOKEN_LENGTH.min(token.len())]
+                        // Truncate but keep some context, ensuring we don't split UTF-8 characters
+                        // Find the last valid character boundary before or at MAX_TOKEN_LENGTH
+                        let mut boundary = MAX_TOKEN_LENGTH.min(token.len());
+                        while boundary > 0 && !token.is_char_boundary(boundary) {
+                            boundary -= 1;
+                        }
+                        if boundary > 0 {
+                            &token[..boundary]
+                        } else {
+                            // If we can't find a valid boundary, just use placeholder
+                            "[data-truncated]"
+                        }
                     }
                 } else {
                     token
@@ -456,5 +466,30 @@ mod tests {
         
         let spanish = "El rápido zorro marrón salta sobre el perro perezoso";
         assert_eq!(CrawledContent::detect_language(spanish), Some("es".to_string()));
+    }
+    
+    #[test]
+    fn test_clean_content_with_unicode() {
+        // Test case that was causing the panic - string with zero-width joiners
+        let problematic_content = "normal_text style=\"display:none\">\u{200b}\u{200b}\u{200b}\u{200b}\u{200c}\u{feff}\u{200d}\u{feff}\u{200b}\u{200d}".repeat(300);
+        
+        // This should not panic
+        let cleaned = CrawledContent::clean_content_for_indexing(&problematic_content);
+        
+        // The result should be truncated safely at a character boundary
+        assert!(cleaned.len() > 0);
+        // Verify the string is valid UTF-8 (this would panic if it wasn't)
+        assert!(cleaned.is_char_boundary(cleaned.len()));
+        
+        // Test with emojis and other multi-byte characters
+        let emoji_content = "Test 😀🎉🌟".repeat(500);
+        let cleaned_emoji = CrawledContent::clean_content_for_indexing(&emoji_content);
+        assert!(cleaned_emoji.is_char_boundary(cleaned_emoji.len()));
+        
+        // Test with mixed content
+        let mixed = format!("data:image/png;base64,{} normal_text \u{200d}\u{200b}", "A".repeat(3000));
+        let cleaned_mixed = CrawledContent::clean_content_for_indexing(&mixed);
+        assert!(cleaned_mixed.contains("[data-truncated]"));
+        assert!(cleaned_mixed.contains("normal_text"));
     }
 }

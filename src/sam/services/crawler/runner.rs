@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use futures::StreamExt;
-use log::info;
+use log::{info, warn};
 use once_cell::sync::Lazy;
 use rand::distributions::Alphanumeric;
 use rand::rngs::SmallRng;
@@ -384,9 +384,12 @@ async fn crawl_url_inner(
     // Extract domain from URL for various checks
     let domain = parsed_url.host_str().unwrap_or_default().to_string();
 
+    // Get the user agent for this URL (for consistency)
+    let user_agent = super::user_agents::get_user_agent_for_url(&url).await;
+    
     // Check if URL was previously rejected (optimization to avoid repeated checks)
     // Only check if database is available
-    match super::CrawlRejected::is_rejected(&url, super::robots::DEFAULT_USER_AGENT).await {
+    match super::CrawlRejected::is_rejected(&url, &user_agent).await {
         Ok(Some(previous_rejection)) => {
             log::debug!("URL previously rejected ({} times): {} - reason: {:?}", 
                        previous_rejection.rejection_count, url, previous_rejection.reason);
@@ -423,7 +426,7 @@ async fn crawl_url_inner(
         let mut rejection = super::CrawlRejected::robots_blocked(
             url.clone(),
             Some("Disallowed by robots.txt".to_string()), // TODO: Get specific rule if available
-            super::robots::DEFAULT_USER_AGENT.to_string(),
+            user_agent.clone(),
             Some(job_oid.clone()),
         );
         
@@ -446,7 +449,7 @@ async fn crawl_url_inner(
         let mut rejection = super::CrawlRejected::new(
             url.clone(),
             super::RejectionReason::CircuitBreaker,
-            super::robots::DEFAULT_USER_AGENT.to_string(),
+            user_agent.clone(),
             Some(job_oid.clone()),
         );
         
@@ -496,12 +499,42 @@ async fn crawl_url_inner(
     // }
 
     let mut page = create_crawled_page(&job_oid, &url);
-    let (file_mime, mut mime_tokens) = process_mime_type(&url, &mut page)?;
+    let (file_mime, mut mime_tokens) = process_mime_type(&url, &mut page).await?;
+
+    // Use the user agent we already fetched
+    log::debug!("Using user agent for {}: {}", url, user_agent);
+    
+    // Check if domain has authentication configured
+    let config = super::config::get_config().await;
+    let auth_method = if let Some(domain_config) = config.domains.get(&domain) {
+        if let Some(auth_config) = &domain_config.auth {
+            super::auth::auth_from_config(auth_config)
+        } else {
+            super::auth::AuthMethod::None
+        }
+    } else {
+        super::auth::AuthMethod::None
+    };
 
     let mut resp = None;
     let mut last_err = None;
     for attempt in 0..3 {
-        match tokio::time::timeout(Duration::from_secs(60), client.get(&url).send()).await {
+        let mut headers = reqwest::header::HeaderMap::new();
+        
+        // Apply authentication if configured
+        if let Err(e) = super::auth::apply_auth_to_request(&mut headers, &domain, &auth_method).await {
+            log::warn!("Failed to apply authentication for {}: {}", domain, e);
+        }
+        
+        let mut request = client.get(&url)
+            .header("User-Agent", &user_agent);
+        
+        // Add auth headers
+        for (name, value) in headers.iter() {
+            request = request.header(name, value);
+        }
+        
+        match tokio::time::timeout(Duration::from_secs(60), request.send()).await {
             Ok(Ok(r)) => {
                 resp = Some(r);
                 break;
@@ -544,29 +577,170 @@ async fn crawl_url_inner(
                 let url_clone = url.clone();
                 let headers_clone = headers.clone();
                 let mime_from_header = extract_mime_from_headers(&headers_clone);
-                // Await the response text here, outside spawn_blocking
-                let html = match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => {
-                        log::warn!("Failed to get text for {}: {}", url, e);
-                        String::new()
+                
+                // Detect content type from headers
+                let content_type_str = headers.get("content-type")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("text/html");
+                
+                // Get response body based on content type
+                let (mut html, raw_bytes) = if content_type_str.starts_with("image/") || 
+                                              content_type_str.starts_with("application/pdf") ||
+                                              content_type_str.starts_with("application/octet-stream") {
+                    // For binary content, get bytes
+                    match resp.bytes().await {
+                        Ok(bytes) => {
+                            log::debug!("Got {} bytes of binary content for {}", bytes.len(), url);
+                            (String::new(), Some(bytes.to_vec()))
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to get bytes for {}: {}", url, e);
+                            (String::new(), None)
+                        }
+                    }
+                } else {
+                    // For text content (including JS/CSS), get text
+                    match resp.text().await {
+                        Ok(text) => {
+                            // For JS/CSS, we might want to extract useful information
+                            if content_type_str.contains("javascript") || content_type_str.contains("css") {
+                                log::debug!("Got {} characters of {} content for {}", 
+                                    text.len(), 
+                                    if content_type_str.contains("javascript") { "JavaScript" } else { "CSS" },
+                                    url);
+                            }
+                            (text, None)
+                        },
+                        Err(e) => {
+                            log::warn!("Failed to get text for {}: {}", url, e);
+                            (String::new(), None)
+                        }
                     }
                 };
                 
-                // Save the full content to CrawledContent for deduplication and full-text search
-                if !html.is_empty() {
+                // Check if the page needs JavaScript rendering
+                // (e.g., minimal HTML, SPA indicators, or specific domains)
+                let needs_js = super::js_renderer::is_js_rendering_available().await && {
+                    // Check for SPA indicators
+                    let is_spa = html.len() < 5000 && // Small initial HTML
+                        (html.contains("window.__INITIAL_STATE__") ||
+                         html.contains("window.__PRELOADED_STATE__") ||
+                         html.contains("React.createElement") ||
+                         html.contains("angular.module") ||
+                         html.contains("new Vue") ||
+                         html.contains("_app") ||
+                         html.contains("__NEXT_DATA__"));
+                    
+                    // Check for specific domains known to be SPAs
+                    let spa_domain = url.contains("twitter.com") ||
+                        url.contains("facebook.com") ||
+                        url.contains("instagram.com") ||
+                        url.contains("linkedin.com") ||
+                        url.contains("github.com");
+                    
+                    is_spa || spa_domain
+                };
+                
+                if needs_js {
+                    log::info!("Page appears to be an SPA, attempting JavaScript rendering for: {}", url);
+                    match super::js_renderer::render_with_javascript(&url).await {
+                        Ok(render_result) => {
+                            log::info!("Successfully rendered with JavaScript: {} ({}ms, {} links found)", 
+                                url, render_result.render_time.as_millis(), render_result.links.len());
+                            
+                            // Use the rendered HTML
+                            html = render_result.html;
+                            
+                            // Log any detected frameworks
+                            if !render_result.frameworks.is_empty() {
+                                log::debug!("Detected frameworks: {:?}", render_result.frameworks);
+                            }
+                            
+                            // Log any JavaScript errors
+                            if !render_result.js_errors.is_empty() {
+                                log::debug!("JavaScript errors encountered: {:?}", render_result.js_errors);
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("JavaScript rendering failed for {}: {}, using original HTML", url, e);
+                            // Continue with original HTML
+                        }
+                    }
+                }
+                
+                let content_type = super::content_types::ContentType::from_mime(content_type_str);
+                
+                // Process content based on type - use raw bytes if available, otherwise HTML
+                let content_bytes = if let Some(bytes) = &raw_bytes {
+                    bytes.as_slice()
+                } else {
+                    html.as_bytes()
+                };
+                
+                let processed_content = match super::content_types::ContentProcessor::process(
+                    content_bytes,
+                    &content_type,
+                    &url
+                ).await {
+                    Ok(content) => content,
+                    Err(e) => {
+                        log::warn!("Failed to process content for {}: {}", url, e);
+                        // Create basic extracted content
+                        super::content_types::ExtractedContent {
+                            content_type: content_type.clone(),
+                            text: Some(html.clone()),
+                            metadata: std::collections::HashMap::new(),
+                            links: Vec::new(),
+                            size_bytes: html.len(),
+                            hash: String::new(),
+                            thumbnail: None,
+                        }
+                    }
+                };
+                
+                // Save the processed content to CrawledContent
+                // For images and binary content, we might not have text but still want to save metadata
+                let should_save = processed_content.text.is_some() || 
+                                 matches!(content_type, super::content_types::ContentType::Image(_) | 
+                                                       super::content_types::ContentType::Pdf);
+                
+                if should_save {
+                    // Use extracted text or metadata for searchable content
+                    let searchable_text = if let Some(text) = &processed_content.text {
+                        text.clone()
+                    } else if matches!(content_type, super::content_types::ContentType::Image(_)) {
+                        format!("Image: {} Size: {} bytes", url, processed_content.size_bytes)
+                    } else {
+                        String::new()
+                    };
+                    
+                    // Store original content - for binary, store the raw bytes
+                    let original_content = if raw_bytes.is_some() {
+                        // For binary content, we could store a reference or skip storing
+                        None // Don't store large binary data in text fields
+                    } else {
+                        Some(html.as_str())
+                    };
+                    
                     let content_storage = super::CrawledContent::new(
                         url.clone(),
-                        &html,  // content_text
-                        Some(&html),  // content_html for compressed storage
+                        &searchable_text,
+                        original_content,
                         status
                     );
                     
-                    // Extract title and description from HTML
+                    // Extract title and description from HTML (if HTML)
                     let mut content_with_metadata = content_storage;
-                    content_with_metadata.title = super::CrawledContent::extract_title(&html);
-                    content_with_metadata.description = super::CrawledContent::extract_description(&html);
-                    content_with_metadata.language = super::CrawledContent::detect_language(&html);
+                    if !html.is_empty() {
+                        content_with_metadata.title = super::CrawledContent::extract_title(&html);
+                        content_with_metadata.description = super::CrawledContent::extract_description(&html);
+                        content_with_metadata.language = super::CrawledContent::detect_language(&html);
+                    } else {
+                        // For non-HTML content, use metadata from processed content
+                        content_with_metadata.title = processed_content.metadata.get("title")
+                            .map(|s| s.to_string());
+                        content_with_metadata.description = Some(format!("{:?} - {} bytes", content_type, processed_content.size_bytes));
+                    }
                     content_with_metadata.content_type = mime_from_header.clone();
                     
                     // Convert headers to JSON
@@ -596,6 +770,11 @@ async fn crawl_url_inner(
                 // Instead of spawn_blocking, do parsing directly (async context)
                 let mut tokens = Vec::new();
                 let mut links = Vec::new();
+                
+                // Add links from processed content (for PDFs, XML, JSON, etc.)
+                if !processed_content.links.is_empty() {
+                    links.extend(processed_content.links.clone());
+                }
 
                 // Prefer MIME type from header, then file extension, then default
                 if let Some(mimeh) = mime_from_header {
@@ -616,7 +795,8 @@ async fn crawl_url_inner(
                     .any(|m| m.starts_with("text/") || m.starts_with("application/"))
                     || doc_exts.iter().any(|ext| url.ends_with(ext));
 
-                if is_document && mime_tokens.iter().any(|m| m.starts_with("text/html")) {
+                // Extract links for HTML documents, or if we have links from processed content
+                if (is_document && mime_tokens.iter().any(|m| m.starts_with("text/html"))) || !processed_content.links.is_empty() {
                     let document = scraper::Html::parse_document(&html);
 
                     let contains_replacement_char = html.contains('�')
@@ -925,6 +1105,20 @@ pub async fn start_service_async() {
 pub fn stop_service() {
     info!("Crawler service stopping...");
     CRAWLER_RUNNING.store(false, Ordering::SeqCst);
+    
+    // Shutdown JavaScript renderer if running
+    let rt = tokio::runtime::Runtime::new();
+    if let Ok(runtime) = rt {
+        runtime.block_on(async {
+            if super::js_renderer::is_js_rendering_available().await {
+                match super::js_renderer::shutdown_js_renderer().await {
+                    Ok(_) => info!("JavaScript renderer shut down successfully"),
+                    Err(e) => warn!("Failed to shutdown JavaScript renderer: {}", e),
+                }
+            }
+        });
+    }
+    
     info!("Crawler service stopped.");
 }
 
@@ -970,6 +1164,20 @@ pub fn service_status() -> &'static str {
 pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     log::info!("run_crawler_service: Starting crawler service loop");
     
+    // Load configuration
+    log::info!("run_crawler_service: Loading crawler configuration");
+    match super::config::CrawlerConfig::load() {
+        Ok(config) => {
+            log::info!("run_crawler_service: Configuration loaded successfully");
+            if let Err(e) = super::config::set_config(config).await {
+                log::warn!("run_crawler_service: Failed to apply configuration: {}", e);
+            }
+        }
+        Err(e) => {
+            log::warn!("run_crawler_service: Failed to load configuration: {}, using defaults", e);
+        }
+    }
+    
     // Initialize database pool for the crawler
     log::info!("run_crawler_service: Initializing database connection pool");
     match super::initialize_db_pool().await {
@@ -990,6 +1198,31 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
         }
     };
     log::info!("run_crawler_service: HTTP client created");
+    
+    // Initialize JavaScript renderer for SPA support (optional)
+    log::info!("run_crawler_service: Initializing JavaScript renderer");
+    let js_config = super::js_renderer::JsRendererConfig {
+        headless: true,
+        max_browsers: 2, // Keep it low to save resources
+        timeout: std::time::Duration::from_secs(30),
+        wait_for_network_idle: true,
+        viewport_width: 1920,
+        viewport_height: 1080,
+        blocked_resources: vec![
+            super::js_renderer::ResourceType::Image,
+            super::js_renderer::ResourceType::Font,
+            super::js_renderer::ResourceType::Media,
+        ],
+        ..Default::default()
+    };
+    
+    match super::js_renderer::initialize_js_renderer(js_config).await {
+        Ok(_) => log::info!("run_crawler_service: JavaScript renderer initialized successfully"),
+        Err(e) => {
+            log::warn!("run_crawler_service: Failed to initialize JavaScript renderer: {}", e);
+            log::warn!("run_crawler_service: Continuing without JavaScript rendering support");
+        }
+    }
     
     let all_crawled_pages = Arc::new(tokio::sync::Mutex::new(Vec::new()));
     // Set up logging
@@ -2281,7 +2514,7 @@ fn create_crawled_page(job_oid: &str, url: &str) -> CrawledPage {
 }
 
 /// Processes MIME type for the URL
-fn process_mime_type(
+async fn process_mime_type(
     url: &str,
     page: &mut CrawledPage,
 ) -> crate::sam::memory::Result<(Option<&'static str>, Vec<String>)> {
@@ -2295,11 +2528,57 @@ fn process_mime_type(
     };
 
     if let Some(mime) = file_mime {
-        if mime.starts_with("text/") {
+        // Check if this is a supported content type
+        let is_supported = mime.starts_with("text/") ||
+                          mime.starts_with("image/") ||
+                          mime.starts_with("application/json") ||
+                          mime.starts_with("application/xml") ||
+                          mime.starts_with("application/pdf") ||
+                          mime.starts_with("application/javascript") ||
+                          mime.starts_with("text/javascript") ||
+                          mime.starts_with("text/css") ||
+                          mime.starts_with("application/x-javascript") ||
+                          mime == "application/octet-stream"; // Generic binary, let content-type detection handle it
+        
+        if is_supported {
             mime_tokens.push(mime.to_string());
+            log::debug!("Processing URL with MIME type: {}", mime);
         } else {
-            page.tokens = vec![mime.to_string()];
-            return Err(crate::sam::memory::Error::Other("Non-text MIME type".to_string()).into());
+            // For other MIME types, check if they're explicitly blocked
+            // Common blocked types (large media files)
+            let blocked_types = ["video/", "audio/", "application/zip", "application/x-rar", "application/x-tar"];
+            let is_blocked = blocked_types.iter().any(|bt| mime.starts_with(bt));
+            
+            if is_blocked {
+                log::debug!("Skipping URL with blocked MIME type: {}", mime);
+                page.tokens = vec![mime.to_string()];
+                
+                // Store in CrawlRejected table for analysis
+                let mut rejection = super::CrawlRejected {
+                    id: 0, // Will be set by database
+                    url: url.to_string(),
+                    domain: url.split('/').nth(2).unwrap_or("").to_string(),
+                    path: url.to_string(),
+                    reason: super::RejectionReason::UnsupportedContentType,
+                    robots_rule: None,
+                    user_agent: "".to_string(), // Will be set later if available
+                    crawl_job_oid: None,
+                    rejected_at: chrono::Utc::now().timestamp(),
+                    retry_after: None,
+                    rejection_count: 1,
+                };
+                
+                // Try to save rejection (don't fail if database is unavailable)
+                if let Err(e) = rejection.save().await {
+                    log::debug!("Failed to save rejection record: {}", e);
+                }
+                
+                return Err(crate::sam::memory::Error::Other(format!("Blocked MIME type: {}", mime)).into());
+            }
+            
+            // Otherwise, allow it through and let content processor handle it
+            log::debug!("Allowing URL with MIME type: {}", mime);
+            mime_tokens.push(mime.to_string());
         }
     }
 

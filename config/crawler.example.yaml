@@ -1,0 +1,165 @@
+# SAM Crawler Configuration File (YAML)
+# Copy this file to crawler.yaml and adjust settings as needed
+
+# General crawler settings
+general:
+  max_depth: 10                    # Maximum crawl depth
+  max_pages: 10000                 # Maximum pages per job
+  concurrency: 10                  # Number of concurrent crawlers
+  request_timeout: 30s             # Request timeout
+  follow_redirects: true           # Follow HTTP redirects
+  max_redirects: 5                 # Maximum redirects to follow
+  respect_robots_txt: true         # Respect robots.txt
+  default_user_agent: "Mozilla/5.0 (compatible; SAMBot/1.0)"
+  extract_sitemaps: true           # Extract and parse sitemaps
+  detect_feeds: true               # Detect RSS/Atom feeds
+  allowed_schemes:                 # Allowed URL schemes
+    - http
+    - https
+  dns_resolver: "8.8.8.8:53"      # DNS resolver to use
+
+# Rate limiting configuration
+rate_limiting:
+  default_delay: 1s                # Default delay between requests
+  min_delay: 100ms                 # Minimum delay
+  max_delay: 60s                   # Maximum delay
+  requests_per_second: 10.0        # RPS limit
+  burst_size: 5                    # Burst size for rate limiting
+  adaptive: true                   # Use adaptive rate limiting
+  respect_crawl_delay: true        # Respect robots.txt Crawl-Delay
+  respect_retry_after: true        # Respect Retry-After headers
+
+# Circuit breaker configuration
+circuit_breaker:
+  failure_threshold: 5             # Failures to open circuit
+  initial_backoff: 60s             # Initial backoff
+  max_backoff: 3600s               # Maximum backoff (1 hour)
+  open_duration: 300s              # Duration in open state
+  half_open_success_threshold: 3   # Successes to close circuit
+
+# Memory optimization settings
+memory:
+  bloom_filter_size: 1000000       # Bloom filter size
+  bloom_filter_fp_rate: 0.01       # False positive rate
+  lru_cache_size: 10000            # LRU cache size
+  max_queue_size: 100000           # Maximum queue size
+  enable_redis_spillover: false    # Use Redis for overflow
+
+# Content storage settings
+storage:
+  store_content: true              # Store page content
+  compress_content: true           # Compress stored content
+  deduplicate: true                # Deduplicate content
+  extract_pdf_text: true           # Extract text from PDFs
+  extract_image_metadata: true     # Extract image metadata
+  max_content_size_mb: 50          # Max content size in MB
+  stored_content_types:            # Content types to store
+    - text/html
+    - text/plain
+    - application/json
+    - application/xml
+    - application/pdf
+
+# JavaScript rendering (disabled by default)
+javascript:
+  enabled: false                   # Enable JS rendering
+  engine: chrome                   # Browser engine
+  headless: true                   # Run headless
+  timeout: 30s                     # Page load timeout
+  wait_for_network_idle: true     # Wait for network idle
+  max_browsers: 3                  # Max concurrent browsers
+  viewport_width: 1920             # Viewport width
+  viewport_height: 1080            # Viewport height
+  blocked_resources:               # Resources to block
+    - image
+    - font
+    - media
+  custom_scripts: []               # Custom JS to execute
+  enable_cache: false              # Enable browser cache
+  enable_cookies: true             # Enable cookies
+
+# User agent configuration
+user_agents:
+  rotation_strategy: random        # Rotation strategy
+  custom_agents: []                # Custom user agents
+  enable_desktop: true             # Use desktop agents
+  enable_mobile: false             # Use mobile agents
+  enable_bots: false               # Use bot agents
+
+# Database configuration
+database:
+  url: "${DATABASE_URL:-postgresql://sam:sam@localhost/sam}"
+  max_connections: 20              # Max connections
+  connection_timeout: 5s           # Connection timeout
+
+# Redis configuration
+redis:
+  url: "${REDIS_URL:-redis://localhost:6379}"
+  max_connections: 10              # Max connections
+  enable_job_queue: true           # Use for job queue
+  enable_dns_cache: true           # Use for DNS cache
+  enable_url_tracking: false       # Use for URL tracking
+
+# Webhook configuration
+webhooks:
+  enabled: false                   # Enable webhooks
+  endpoints: []                    # Webhook endpoints
+  events:                          # Events to send
+    - start
+    - complete
+    - fail
+  include_stats: true              # Include statistics
+  retry_attempts: 3                # Retry attempts
+  hmac_secret: null                # HMAC signing secret
+
+# URL pattern configuration
+patterns:
+  include_patterns: []             # URL patterns to include
+  exclude_patterns:                # URL patterns to exclude
+    - ".*\\.pdf$"                 # Exclude PDFs (example)
+    - ".*/print/.*"               # Exclude print pages
+  include_extensions:              # File extensions to include
+    - html
+    - htm
+    - php
+    - asp
+    - aspx
+    - jsp
+  exclude_extensions:              # File extensions to exclude
+    - exe
+    - zip
+    - rar
+  max_pagination_depth: 20         # Max pagination depth
+  detect_infinite_patterns: true   # Detect infinite patterns
+  calendar_threshold: 10           # Calendar pattern threshold
+
+# Domain-specific configurations
+domains:
+  # Example domain configuration
+  example.com:
+    rate_limit: 2s                 # Custom rate limit
+    max_depth: 5                   # Custom max depth
+    user_agent: "CustomBot/1.0"    # Custom user agent
+    enable_javascript: true        # Enable JS for this domain
+    headers:                       # Custom headers
+      X-Custom-Header: "value"
+    auth:                          # Authentication
+      auth_type: basic
+      username: "user"
+      password: "pass"
+  
+  # Another example with bearer token
+  api.example.com:
+    rate_limit: 100ms              # Faster for APIs
+    auth:
+      auth_type: bearer
+      token: "${API_TOKEN}"        # From environment
+  
+  # Example with cookies
+  app.example.com:
+    enable_javascript: true
+    auth:
+      auth_type: cookie
+      cookies:
+        session_id: "abc123"
+        auth_token: "xyz789"

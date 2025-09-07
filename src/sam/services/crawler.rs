@@ -6,8 +6,12 @@ use deadpool_postgres::{Config, Manager, ManagerConfig, Pool, RecyclingMethod, R
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+pub mod auth;
 pub mod circuit_breaker;
+pub mod config;
 pub mod content_storage;
+pub mod content_types;
+pub mod data_export;
 pub mod enhanced;
 pub mod feed_parser;
 pub mod job;
@@ -23,7 +27,12 @@ pub mod robots;
 pub mod runner;
 pub mod sitemap;
 pub mod url_patterns;
+pub mod user_agents;
 pub mod webhooks;
+pub mod js_renderer;
+
+#[cfg(test)]
+mod test_suite;
 
 pub use job::CrawlJob;
 pub use job_config::{CrawlJobConfig, ConfigurableCrawlJob};
