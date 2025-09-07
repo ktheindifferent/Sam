@@ -1403,7 +1403,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             
             // Actually crawl the URLs since database isn't working
             log::info!("Starting to crawl {} URLs directly", urls.len());
-            let urls_to_crawl = urls.iter().take(5).cloned().collect::<Vec<_>>(); // Start with just 5
+            let urls_to_crawl = urls.iter().take(3).cloned().collect::<Vec<_>>(); // Start with just 3 to test
             
             for url in &urls_to_crawl {
                 log::info!("Crawling URL: {}", url);
@@ -1414,8 +1414,12 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     .map(char::from)
                     .collect::<String>());
                     
-                match crawl_url(temp_job_id, url.clone(), client.clone()).await {
-                    Ok(pages) => {
+                // Add timeout to prevent hanging
+                match tokio::time::timeout(
+                    Duration::from_secs(10),
+                    crawl_url(temp_job_id, url.clone(), client.clone())
+                ).await {
+                    Ok(Ok(pages)) => {
                         log::info!("Successfully crawled {}: {} pages found", url, pages.len());
                         for page in pages.iter().take(1) { // Just log the first page
                             log::info!("  - URL: {}, Tokens: {}, Links: {}", 
@@ -1424,8 +1428,11 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                 page.links.len());
                         }
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         log::warn!("Failed to crawl {}: {}", url, e);
+                    }
+                    Err(_) => {
+                        log::warn!("Timeout crawling {} after 10 seconds", url);
                     }
                 }
                 
