@@ -1218,15 +1218,17 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             
             // Add base domains
             for domain in &base_domains {
-                if domain.starts_with("localhost") {
-                    // For localhost, use HTTP not HTTPS
+                if domain.starts_with("localhost") || domain.starts_with("127.") {
+                    // For localhost and local IPs, use HTTP not HTTPS
                     urls_to_try.push(format!("http://{}/", domain));
                 } else {
                     urls_to_try.push(format!("https://{}/", domain));
                     
-                    // Add some subdomain variations for external domains
-                    for subdomain in &subdomains[..2] { // Just www and api
-                        urls_to_try.push(format!("https://{}.{}/", subdomain, domain));
+                    // Add some subdomain variations for external domains (not for IPs)
+                    if !domain.chars().next().unwrap_or('x').is_numeric() {
+                        for subdomain in &subdomains[..2] { // Just www and api
+                            urls_to_try.push(format!("https://{}.{}/", subdomain, domain));
+                        }
                     }
                 }
             }
