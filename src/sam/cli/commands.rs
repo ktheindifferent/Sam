@@ -1,5 +1,6 @@
 pub mod cd;
 pub mod crawler;
+pub mod crawler_stats;
 pub mod darknet;
 pub mod docker;
 pub mod help;

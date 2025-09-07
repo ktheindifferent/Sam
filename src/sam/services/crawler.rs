@@ -18,6 +18,7 @@ pub mod metrics;
 pub mod page;
 pub mod prometheus_metrics;
 pub mod rate_limiter;
+pub mod rejected;
 pub mod robots;
 pub mod runner;
 pub mod sitemap;
@@ -30,6 +31,7 @@ pub use job_queue::{PersistentJobQueue, QueuedJob, JobStatus, QueueStats, Distri
 pub use memory_optimized::{OptimizedUrlTracker, BoundedUrlQueue, MemoryConfig};
 pub use content_storage::{CrawledContent, DeduplicationStats};
 pub use page::CrawledPage;
+pub use rejected::{CrawlRejected, RejectionReason};
 pub use rate_limiter::{AdaptiveRateLimiter, RateLimitConfig, DomainStats, init_rate_limiter, get_rate_limiter};
 pub use runner::{crawl_url, service_status, start_service, start_service_async, stop_service};
 pub use robots::{is_url_allowed, DEFAULT_USER_AGENT};

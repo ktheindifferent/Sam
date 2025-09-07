@@ -384,10 +384,43 @@ async fn crawl_url_inner(
     // Extract domain from URL for various checks
     let domain = parsed_url.host_str().unwrap_or_default().to_string();
 
+    // Check if URL was previously rejected (optimization to avoid repeated checks)
+    if let Ok(Some(previous_rejection)) = super::CrawlRejected::is_rejected(&url, super::robots::DEFAULT_USER_AGENT).await {
+        log::debug!("URL previously rejected ({} times): {} - reason: {:?}", 
+                   previous_rejection.rejection_count, url, previous_rejection.reason);
+        
+        // For robots.txt rejections, we still need to check as rules may have changed
+        // For other rejections, we can skip if they're recent (within last hour)
+        let one_hour_ago = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64 - 3600;
+            
+        if previous_rejection.reason != super::RejectionReason::RobotsTxt 
+            && previous_rejection.rejected_at > one_hour_ago {
+            return Err(crate::sam::memory::Error::Other(
+                format!("URL previously rejected: {:?}", previous_rejection.reason),
+            ).into());
+        }
+    }
+
     // Check robots.txt compliance
     if !super::robots::is_url_allowed(&url).await {
         log::info!("URL blocked by robots.txt: {}", url);
         super::metrics::record_robots_block(&domain, &url).await;
+        
+        // Record the rejection to database for analysis and to avoid repeated checks
+        let mut rejection = super::CrawlRejected::robots_blocked(
+            url.clone(),
+            Some("Disallowed by robots.txt".to_string()), // TODO: Get specific rule if available
+            super::robots::DEFAULT_USER_AGENT.to_string(),
+            Some(job_oid.clone()),
+        );
+        
+        if let Err(e) = rejection.save().await {
+            log::warn!("Failed to save robots.txt rejection record: {}", e);
+        }
+        
         return Err(crate::sam::memory::Error::Other(
             "URL blocked by robots.txt".to_string(),
         )
@@ -398,6 +431,19 @@ async fn crawl_url_inner(
     if !super::circuit_breaker::is_domain_allowed(&domain).await {
         log::info!("Domain blocked by circuit breaker: {}", domain);
         super::metrics::record_circuit_breaker_block(&domain).await;
+        
+        // Record circuit breaker rejection
+        let mut rejection = super::CrawlRejected::new(
+            url.clone(),
+            super::RejectionReason::CircuitBreaker,
+            super::robots::DEFAULT_USER_AGENT.to_string(),
+            Some(job_oid.clone()),
+        );
+        
+        if let Err(e) = rejection.save().await {
+            log::warn!("Failed to save circuit breaker rejection record: {}", e);
+        }
+        
         return Err(crate::sam::memory::Error::Other(
             "Domain blocked by circuit breaker".to_string(),
         )
@@ -496,6 +542,46 @@ async fn crawl_url_inner(
                         String::new()
                     }
                 };
+                
+                // Save the full content to CrawledContent for deduplication and full-text search
+                if !html.is_empty() {
+                    let content_storage = super::CrawledContent::new(
+                        url.clone(),
+                        &html,  // content_text
+                        Some(&html),  // content_html for compressed storage
+                        status
+                    );
+                    
+                    // Extract title and description from HTML
+                    let mut content_with_metadata = content_storage;
+                    content_with_metadata.title = super::CrawledContent::extract_title(&html);
+                    content_with_metadata.description = super::CrawledContent::extract_description(&html);
+                    content_with_metadata.language = super::CrawledContent::detect_language(&html);
+                    content_with_metadata.content_type = mime_from_header.clone();
+                    
+                    // Convert headers to JSON
+                    let headers_json = serde_json::json!({
+                        "headers": headers.iter()
+                            .map(|(k, v)| (k.as_str(), v.to_str().unwrap_or("")))
+                            .collect::<Vec<_>>()
+                    });
+                    content_with_metadata.headers = headers_json;
+                    
+                    // Save content asynchronously (don't block on it)
+                    match content_with_metadata.save().await {
+                        Ok(was_new) => {
+                            if was_new {
+                                log::debug!("Saved new content for URL: {}", url);
+                            } else {
+                                log::debug!("Content already exists (deduplicated) for URL: {}", url);
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to save CrawledContent for {}: {}", url, e);
+                        }
+                    }
+                }
+                
                 // Pass headers and html into the closure
                 // Instead of spawn_blocking, do parsing directly (async context)
                 let mut tokens = Vec::new();
