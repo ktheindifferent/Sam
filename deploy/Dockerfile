@@ -41,7 +41,8 @@ RUN mkdir -p src/bin src/lib benches && \
     mkdir -p src/sam && \
     echo "pub fn placeholder() {}" > src/sam/mod.rs && \
     echo "pub fn placeholder() {}" > src/lib/mod.rs && \
-    echo "fn main() {}" > benches/service_benchmarks.rs
+    echo "fn main() {}" > benches/service_benchmarks.rs && \
+    echo "fn main() {}" > benches/crawler_bench.rs
 
 # Build dependencies only
 RUN cargo build --release && \
