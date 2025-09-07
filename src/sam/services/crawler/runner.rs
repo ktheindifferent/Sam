@@ -1406,33 +1406,37 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             let urls_to_crawl = urls.iter().take(3).cloned().collect::<Vec<_>>(); // Start with just 3 to test
             
             for url in &urls_to_crawl {
-                log::info!("Crawling URL: {}", url);
-                // Generate a temporary job ID for crawling
-                let temp_job_id = format!("temp_{}", thread_rng()
-                    .sample_iter(&Alphanumeric)
-                    .take(10)
-                    .map(char::from)
-                    .collect::<String>());
-                    
-                // Add timeout to prevent hanging
+                log::info!("Testing simple HTTP GET for URL: {}", url);
+                
+                // Just do a simple HTTP GET instead of complex crawl_url
                 match tokio::time::timeout(
-                    Duration::from_secs(10),
-                    crawl_url(temp_job_id, url.clone(), client.clone())
+                    Duration::from_secs(5),
+                    client.get(url).send()
                 ).await {
-                    Ok(Ok(pages)) => {
-                        log::info!("Successfully crawled {}: {} pages found", url, pages.len());
-                        for page in pages.iter().take(1) { // Just log the first page
-                            log::info!("  - URL: {}, Tokens: {}, Links: {}", 
-                                page.url,
-                                page.tokens.len(),
-                                page.links.len());
+                    Ok(Ok(response)) => {
+                        let status = response.status();
+                        let content_length = response.content_length().unwrap_or(0);
+                        log::info!("Successfully fetched {}: status={}, content_length={}", 
+                            url, status, content_length);
+                        
+                        // Try to get the body
+                        match tokio::time::timeout(Duration::from_secs(5), response.text()).await {
+                            Ok(Ok(body)) => {
+                                log::info!("  Body received: {} bytes", body.len());
+                            }
+                            Ok(Err(e)) => {
+                                log::warn!("  Failed to read body: {}", e);
+                            }
+                            Err(_) => {
+                                log::warn!("  Timeout reading body");
+                            }
                         }
                     }
                     Ok(Err(e)) => {
-                        log::warn!("Failed to crawl {}: {}", url, e);
+                        log::warn!("Failed to fetch {}: {}", url, e);
                     }
                     Err(_) => {
-                        log::warn!("Timeout crawling {} after 10 seconds", url);
+                        log::warn!("Timeout fetching {} after 5 seconds", url);
                     }
                 }
                 
