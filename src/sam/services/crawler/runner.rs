@@ -385,22 +385,32 @@ async fn crawl_url_inner(
     let domain = parsed_url.host_str().unwrap_or_default().to_string();
 
     // Check if URL was previously rejected (optimization to avoid repeated checks)
-    if let Ok(Some(previous_rejection)) = super::CrawlRejected::is_rejected(&url, super::robots::DEFAULT_USER_AGENT).await {
-        log::debug!("URL previously rejected ({} times): {} - reason: {:?}", 
-                   previous_rejection.rejection_count, url, previous_rejection.reason);
-        
-        // For robots.txt rejections, we still need to check as rules may have changed
-        // For other rejections, we can skip if they're recent (within last hour)
-        let one_hour_ago = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64 - 3600;
+    // Only check if database is available
+    match super::CrawlRejected::is_rejected(&url, super::robots::DEFAULT_USER_AGENT).await {
+        Ok(Some(previous_rejection)) => {
+            log::debug!("URL previously rejected ({} times): {} - reason: {:?}", 
+                       previous_rejection.rejection_count, url, previous_rejection.reason);
             
-        if previous_rejection.reason != super::RejectionReason::RobotsTxt 
-            && previous_rejection.rejected_at > one_hour_ago {
-            return Err(crate::sam::memory::Error::Other(
-                format!("URL previously rejected: {:?}", previous_rejection.reason),
-            ).into());
+            // For robots.txt rejections, we still need to check as rules may have changed
+            // For other rejections, we can skip if they're recent (within last hour)
+            let one_hour_ago = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64 - 3600;
+                
+            if previous_rejection.reason != super::RejectionReason::RobotsTxt 
+                && previous_rejection.rejected_at > one_hour_ago {
+                return Err(crate::sam::memory::Error::Other(
+                    format!("URL previously rejected: {:?}", previous_rejection.reason),
+                ).into());
+            }
+        }
+        Ok(None) => {
+            // URL not previously rejected
+        }
+        Err(e) => {
+            // Database not available, continue without check
+            log::debug!("Could not check rejection history (database unavailable): {}", e);
         }
     }
 
@@ -959,6 +969,17 @@ pub fn service_status() -> &'static str {
 /// This function is async and should be awaited.
 pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     log::info!("run_crawler_service: Starting crawler service loop");
+    
+    // Initialize database pool for the crawler
+    log::info!("run_crawler_service: Initializing database connection pool");
+    match super::initialize_db_pool().await {
+        Ok(_) => log::info!("run_crawler_service: Database pool initialized successfully"),
+        Err(e) => {
+            log::error!("run_crawler_service: Failed to initialize database pool: {}", e);
+            // Continue anyway - some operations may work without database
+            log::warn!("run_crawler_service: Continuing without database - some features will be limited");
+        }
+    }
     
     log::info!("run_crawler_service: Creating HTTP client");
     let client = match std::panic::catch_unwind(|| Arc::new(REQWEST_CLIENT.clone())) {
