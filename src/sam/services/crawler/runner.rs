@@ -1205,12 +1205,10 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             // No jobs: scan common URLs and/or use DNS queries to find domains
             info!("No pending crawl jobs found. Crawling common URLs.");
             
-            // Test with localhost first, then external domains
+            // Test with only localhost first to verify HTTP client works
             let base_domains = vec![
                 "localhost:8000",  // Test with our own HTTP server
-                "google.com",
-                "github.com", 
-                "wikipedia.org"
+                "127.0.0.1:8000",  // Also test with IP
             ];
             
             // Common subdomains to try
@@ -1457,6 +1455,14 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                     }
                     Ok(Err(e)) => {
                         log::warn!("Failed to fetch {}: {}", url, e);
+                        // Log error details
+                        log::warn!("  Full error: {:?}", e);
+                        if e.is_connect() {
+                            log::warn!("  This is a connection error");
+                        }
+                        if e.is_timeout() {
+                            log::warn!("  This is a timeout error");
+                        }
                     }
                     Err(_) => {
                         log::warn!("Timeout fetching {} after 5 seconds", url);
