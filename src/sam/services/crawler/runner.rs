@@ -1205,10 +1205,9 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             // No jobs: scan common URLs and/or use DNS queries to find domains
             info!("No pending crawl jobs found. Crawling common URLs.");
             
-            // Test with only localhost first to verify HTTP client works
+            // Test with only IP address to avoid DNS completely
             let base_domains = vec![
-                "localhost:8000",  // Test with our own HTTP server
-                "127.0.0.1:8000",  // Also test with IP
+                "127.0.0.1:8000",  // Test with IP only - no DNS needed
             ];
             
             // Common subdomains to try
@@ -1404,6 +1403,17 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             log::info!("Starting to crawl {} URLs directly", urls.len());
             let urls_to_crawl = urls.iter().take(3).cloned().collect::<Vec<_>>(); // Start with just 3 to test
             
+            // Create a simple HTTP client for testing
+            let simple_client = match reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .build() {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("Failed to create simple HTTP client: {}", e);
+                    client.as_ref().clone()
+                }
+            };
+            
             for url in &urls_to_crawl {
                 log::info!("Testing simple HTTP GET for URL: {}", url);
                 
@@ -1431,10 +1441,10 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 }
                 */
                 
-                // Now try HTTP GET
+                // Now try HTTP GET with simple client
                 match tokio::time::timeout(
                     Duration::from_secs(5),
-                    client.get(url).send()
+                    simple_client.get(url).send()
                 ).await {
                     Ok(Ok(response)) => {
                         let status = response.status();
