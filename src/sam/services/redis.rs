@@ -12,6 +12,7 @@ use super::cache::{HybridCache, CacheConfig};
 use super::error_handling::{CircuitBreaker, RetryConfig, retry_with_backoff, ServiceError};
 use super::environment::get_env_config;
 use thiserror::Error;
+use crate::sam::monitoring::{report_service_error, add_breadcrumb};
 
 /// Redis-specific error types for better error handling
 #[derive(Error, Debug)]
@@ -76,11 +77,15 @@ pub async fn install() {
     match pull {
         Ok(status) if status.status.success() => info!("Redis Docker image pulled successfully."),
         Ok(status) => {
-            error!("Failed to pull Redis image, exit code: {:?}", status);
+            let err = RedisError::DockerError(format!("Failed to pull Redis image, exit code: {:?}", status));
+            error!("{}", err);
+            report_service_error("redis", &err, None);
             return;
         }
         Err(e) => {
-            error!("Failed to pull Redis image: {}", e);
+            let err = RedisError::DockerError(format!("Failed to pull Redis image: {}", e));
+            error!("{}", err);
+            report_service_error("redis", &err, None);
             return;
         }
     }
@@ -122,12 +127,20 @@ pub async fn start() {
             info!("Redis Docker container started as 'sam-redis'.");
             // Optionally log container id: String::from_utf8_lossy(&output.stdout)
         }
-        Ok(output) => error!(
-            "Failed to start Redis container, exit code: {}. Stderr: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        ),
-        Err(e) => error!("Failed to start Redis container: {}", e),
+        Ok(output) => {
+            let err = RedisError::DockerError(format!(
+                "Failed to start Redis container, exit code: {}. Stderr: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+            error!("{}", err);
+            report_service_error("redis", &err, None);
+        },
+        Err(e) => {
+            let err = RedisError::DockerError(format!("Failed to start Redis container: {}", e));
+            error!("{}", err);
+            report_service_error("redis", &err, None);
+        },
     }
 }
 
@@ -150,11 +163,19 @@ pub async fn stop() {
 
     match stop {
         Ok(status) if status.status.success() => info!("Redis Docker container stopped."),
-        Ok(status) => error!(
-            "Failed to stop Redis container, exit code: {}",
-            status.status
-        ),
-        Err(e) => error!("Failed to stop Redis container: {}", e),
+        Ok(status) => {
+            let err = RedisError::DockerError(format!(
+                "Failed to stop Redis container, exit code: {}",
+                status.status
+            ));
+            error!("{}", err);
+            report_service_error("redis", &err, None);
+        },
+        Err(e) => {
+            let err = RedisError::DockerError(format!("Failed to stop Redis container: {}", e));
+            error!("{}", err);
+            report_service_error("redis", &err, None);
+        },
     }
     // Optionally remove the container after stopping
     let rm = Command::new("docker").args(["rm", "sam-redis"]).output();
@@ -202,7 +223,9 @@ pub async fn is_running() -> bool {
         let cache = match IS_RUNNING_CACHE.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                error!("Failed to acquire lock for IS_RUNNING_CACHE: poisoned");
+                let err = RedisError::LockError("Failed to acquire lock for IS_RUNNING_CACHE: poisoned".to_string());
+                error!("{}", err);
+                report_service_error("redis", &err, None);
                 poisoned.into_inner()
             }
         };
@@ -260,7 +283,9 @@ pub async fn is_installed() -> bool {
         let cache = match IS_INSTALLED_CACHE.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                error!("Failed to acquire lock for IS_INSTALLED_CACHE: poisoned");
+                let err = RedisError::LockError("Failed to acquire lock for IS_INSTALLED_CACHE: poisoned".to_string());
+                error!("{}", err);
+                report_service_error("redis", &err, None);
                 poisoned.into_inner()
             }
         };
@@ -312,7 +337,9 @@ pub async fn connect() -> Result<Pool> {
     circuit_breaker.call(|| async {
         connect_with_retry().await
     }).await.map_err(|e| {
-        error!("Redis connection failed through circuit breaker: {}", e);
+        let err = RedisError::ServiceUnavailable(format!("Redis connection failed through circuit breaker: {}", e));
+        error!("{}", err);
+        report_service_error("redis", &err, None);
         anyhow::anyhow!("Redis connection unavailable: {}", e)
     })
 }
@@ -432,9 +459,11 @@ pub async fn health_check() -> Result<()> {
                 debug!("Redis health check passed");
                 Ok(())
             } else {
-                Err(RedisError::ServiceUnavailable(
+                let err = RedisError::ServiceUnavailable(
                     format!("Unexpected Redis PING response: {}", pong)
-                ).into())
+                );
+                report_service_error("redis_health_check", &err, None);
+                Err(err.into())
             }
         },
         retry_config,
@@ -572,7 +601,12 @@ mod tests {
     // Helper function for handling JoinSet errors with proper error propagation
     fn handle_task_result<T>(result: Result<T, tokio::task::JoinError>, task_name: &str) -> Result<T> {
         result.map_err(|e| {
-            error!("Task '{}' failed with JoinError: {}. This usually indicates a panic in the spawned task.", task_name, e);
+            let err = RedisError::TaskError {
+                task_name: task_name.to_string(),
+                error: format!("JoinError: {}. This usually indicates a panic in the spawned task.", e),
+            };
+            error!("{}", err);
+            report_service_error("redis", &err, None);
             
             // Check if it was a panic
             if e.is_panic() {

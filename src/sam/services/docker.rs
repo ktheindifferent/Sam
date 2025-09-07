@@ -4,6 +4,8 @@ use std::thread;
 use std::time::Duration;
 use anyhow::{Result, Context};
 use super::environment::get_env_config;
+use crate::sam::monitoring::{report_service_error, add_breadcrumb};
+use std::collections::BTreeMap;
 
 /// Install Docker if not present and ensure daemon is running.
 pub async fn install() {
@@ -45,7 +47,11 @@ pub async fn start() {
         let output = Command::new("open").arg("-a").arg("Docker").output();
         match output {
             Ok(o) if o.status.success() => info!("Started Docker Desktop."),
-            _ => error!("Failed to start Docker Desktop. Please start it manually."),
+            _ => {
+                let err = anyhow::anyhow!("Failed to start Docker Desktop. Please start it manually.");
+                error!("{}", err);
+                report_service_error("docker", &err, None);
+            }
         }
     }
     #[cfg(target_os = "linux")]
@@ -55,7 +61,11 @@ pub async fn start() {
             .output();
         match output {
             Ok(o) if o.status.success() => info!("Started Docker daemon."),
-            _ => error!("Failed to start Docker daemon. Please start it manually."),
+            _ => {
+                let err = anyhow::anyhow!("Failed to start Docker daemon. Please start it manually.");
+                error!("{}", err);
+                report_service_error("docker", &err, None);
+            }
         }
     }
     #[cfg(target_os = "windows")]
@@ -68,7 +78,11 @@ pub async fn start() {
             .output();
         match output {
             Ok(o) if o.status.success() => info!("Started Docker Desktop."),
-            _ => error!("Failed to start Docker Desktop. Please start it manually."),
+            _ => {
+                let err = anyhow::anyhow!("Failed to start Docker Desktop. Please start it manually.");
+                error!("{}", err);
+                report_service_error("docker", &err, None);
+            }
         }
     }
 }

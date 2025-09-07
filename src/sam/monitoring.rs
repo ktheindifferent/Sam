@@ -40,7 +40,7 @@ pub fn init_sentry() -> sentry::ClientInitGuard {
 }
 
 /// Report a service error to Sentry with context
-pub fn report_service_error(service: &str, error: &dyn std::error::Error, context: Option<BTreeMap<String, String>>) {
+pub fn report_service_error(service: &str, error: &dyn std::fmt::Display, context: Option<BTreeMap<String, String>>) {
     let mut event = Event {
         message: Some(format!("Service error in {}: {}", service, error)),
         level: Level::Error,
@@ -58,7 +58,7 @@ pub fn report_service_error(service: &str, error: &dyn std::error::Error, contex
 }
 
 /// Report a critical system error
-pub fn report_critical_error(error: &dyn std::error::Error, component: &str) {
+pub fn report_critical_error(error: &dyn std::fmt::Display, component: &str) {
     sentry::capture_event(Event {
         message: Some(format!("Critical error in {}: {}", component, error)),
         level: Level::Fatal,

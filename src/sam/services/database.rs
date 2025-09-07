@@ -3,6 +3,8 @@ use log::{info, warn, error};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use crate::sam::db::database_engine::{DatabaseEngine, DatabasePool, Value, Row};
+use crate::sam::monitoring::{report_service_error, add_breadcrumb};
+use std::collections::BTreeMap;
 
 static DB_POOL: OnceLock<Arc<DatabasePool>> = OnceLock::new();
 
@@ -228,6 +230,7 @@ async fn initialize_postgres_schema(pool: Arc<DatabasePool>) -> Result<()> {
 pub async fn execute_query(query: &str, params: Vec<Value>) -> Result<Vec<Row>> {
     let pool = connect().await?;
     let start = std::time::Instant::now();
+    let params_count = params.len();
     
     let result = tokio::time::timeout(
         Duration::from_secs(30),
@@ -242,6 +245,11 @@ pub async fn execute_query(query: &str, params: Vec<Value>) -> Result<Vec<Row>> 
         }
         Err(e) => {
             error!("Query failed: {}", e);
+            // Report database query errors to Sentry
+            let mut context = BTreeMap::new();
+            context.insert("query".to_string(), query.to_string());
+            context.insert("params_count".to_string(), params_count.to_string());
+            report_service_error("database", &e, Some(context));
             Err(e).context("Failed to execute query")
         }
     }
@@ -250,6 +258,7 @@ pub async fn execute_query(query: &str, params: Vec<Value>) -> Result<Vec<Row>> 
 pub async fn execute_statement(query: &str, params: Vec<Value>) -> Result<u64> {
     let pool = connect().await?;
     let start = std::time::Instant::now();
+    let params_count = params.len();
     
     let result = tokio::time::timeout(
         Duration::from_secs(30),
@@ -264,6 +273,11 @@ pub async fn execute_statement(query: &str, params: Vec<Value>) -> Result<u64> {
         }
         Err(e) => {
             error!("Statement failed: {}", e);
+            // Report database statement errors to Sentry
+            let mut context = BTreeMap::new();
+            context.insert("statement".to_string(), query.to_string());
+            context.insert("params_count".to_string(), params_count.to_string());
+            report_service_error("database", &e, Some(context));
             Err(e).context("Failed to execute statement")
         }
     }

@@ -320,6 +320,8 @@ async fn handle_connection(
         Ok(session) => session,
         Err(e) => {
             error!("Connection validation failed for {}: {}", addr, e);
+            // Report connection validation errors to Sentry
+            crate::sam::monitoring::report_service_error("websocket", &e, None);
             audit_tx.send(AuditEvent {
                 timestamp: Utc::now(),
                 client_id: client_id.clone(),
@@ -401,6 +403,8 @@ async fn handle_connection(
                                     
                                     if let Err(e) = result {
                                         let error_str = e.to_string();
+                                        // Report message handling errors to Sentry
+                                        crate::sam::monitoring::report_service_error("websocket", &e, None);
                                         drop(e); // Ensure error is dropped before await
                                         error!("Error handling message from {}: {}", client_id, error_str);
                                         let error_msg = WsMessage::Error {

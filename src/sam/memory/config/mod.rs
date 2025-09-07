@@ -75,6 +75,8 @@ impl Config {
                     Ok(request) => request,
                     Err(err) => {
                         log::error!("HTTP_ERROR: {}", err);
+                        // Report HTTP errors to Sentry
+                        crate::sam::monitoring::report_service_error("http_server", &err, None);
                         Response::empty_404()
                     }
                 }

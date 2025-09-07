@@ -7,6 +7,8 @@ use std::env;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
+use crate::sam::monitoring::{report_service_error, add_breadcrumb};
+use std::collections::BTreeMap;
 
 static POOL: OnceLock<Arc<Pool>> = OnceLock::new();
 static POOL_METRICS: OnceLock<Arc<RwLock<PoolMetrics>>> = OnceLock::new();
@@ -233,7 +235,9 @@ pub async fn health_check() -> Result<()> {
         
         Ok(())
     } else {
-        Err(anyhow::anyhow!("PostgreSQL health check failed"))
+        let err = anyhow::anyhow!("PostgreSQL health check failed: no results returned");
+        report_service_error("postgres_health_check", &err, None);
+        Err(err)
     }
 }
 
