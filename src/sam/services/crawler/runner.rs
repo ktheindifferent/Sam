@@ -837,7 +837,8 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
         let atlas_addr = std::env::var("ATLAS_DNS_SERVER")
             .unwrap_or_else(|_| {
                 if std::env::var("CAPROVER").is_ok() {
-                    "srv-captain--atlas:53".to_string()  // CapRover service discovery
+                    // For CapRover, we need to resolve the service name first or use IP directly
+                    "127.0.0.1:53".to_string()  // Use localhost for now in CapRover
                 } else {
                     "127.0.0.1:53".to_string()  // Local Atlas
                 }
@@ -847,8 +848,27 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
         
         let mut config = ResolverConfig::new();
         
-        // Parse address
-        if let Ok(socket_addr) = atlas_addr.parse::<std::net::SocketAddr>() {
+        // Parse address - handle both IP:port and hostname:port formats
+        let socket_addr = if let Ok(addr) = atlas_addr.parse::<std::net::SocketAddr>() {
+            Some(addr)
+        } else if atlas_addr.contains(':') {
+            // Try to parse as hostname:port
+            let parts: Vec<&str> = atlas_addr.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                if let Ok(port) = parts[1].parse::<u16>() {
+                    // For now, use localhost with the specified port
+                    Some(std::net::SocketAddr::from(([127, 0, 0, 1], port)))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        if let Some(socket_addr) = socket_addr {
             config.add_name_server(trust_dns_resolver::config::NameServerConfig {
                 socket_addr,
                 protocol: trust_dns_resolver::config::Protocol::Udp,
@@ -1384,7 +1404,40 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             let mut urls: Vec<String> = urls_to_try.into_iter().collect();
 
             urls.shuffle(&mut rng);
+            
+            // Actually crawl the URLs since database isn't working
+            log::info!("Starting to crawl {} URLs directly", urls.len());
+            let urls_to_crawl = urls.iter().take(5).cloned().collect::<Vec<_>>(); // Start with just 5
+            
+            for url in &urls_to_crawl {
+                log::info!("Crawling URL: {}", url);
+                // Generate a temporary job ID for crawling
+                let temp_job_id = format!("temp_{}", thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(10)
+                    .map(char::from)
+                    .collect::<String>());
+                    
+                match crawl_url(temp_job_id, url.clone(), client.clone()).await {
+                    Ok(pages) => {
+                        log::info!("Successfully crawled {}: {} pages found", url, pages.len());
+                        for page in pages.iter().take(1) { // Just log the first page
+                            log::info!("  - URL: {}, Tokens: {}, Links: {}", 
+                                page.url,
+                                page.tokens.len(),
+                                page.links.len());
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to crawl {}: {}", url, e);
+                    }
+                }
+                
+                // Small delay between crawls
+                sleep(Duration::from_millis(500)).await;
+            }
 
+            // Still try to create jobs for tracking (even if saves fail)
             for url in &urls {
                 let job_create_start = tokio::time::Instant::now();
                 let oid: String = thread_rng()
