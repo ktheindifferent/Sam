@@ -959,7 +959,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     let mut last_dns_save = std::time::Instant::now();
 
     // Test mode - bypass database and just try to crawl external sites
-    let test_mode = true;
+    let test_mode = false;
     
     if test_mode {
         log::info!("TEST MODE: Bypassing database, testing direct crawl");
@@ -1082,6 +1082,64 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             },
         };
 
+        // If no jobs found, create some initial ones
+        if jobs.is_empty() {
+            log::info!("No pending jobs found, generating initial URLs to crawl");
+            
+            // Mix of popular sites and some randomness
+            let base_domains = vec![
+                "example.com",
+                "wikipedia.org", 
+                "github.com",
+                "stackoverflow.com",
+                "reddit.com",
+                "news.ycombinator.com",
+                "techcrunch.com",
+                "medium.com",
+                "dev.to",
+                "hackernews.com",
+            ];
+            
+            // Pick 3 random domains to crawl
+            let selected: Vec<_> = {
+                let mut rng = rand::thread_rng();
+                base_domains.choose_multiple(&mut rng, 3).cloned().collect()
+            };
+            
+            for domain in selected {
+                let url = format!("https://{}/", domain);
+                log::info!("Creating new crawl job for: {}", url);
+                
+                let oid: String = rand::thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(15)
+                    .map(char::from)
+                    .collect();
+                    
+                let mut job = CrawlJob::new();
+                job.oid = oid;
+                job.start_url = url;
+                job.status = "pending".to_string();
+                job.created_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                job.updated_at = job.created_at;
+                
+                // Try to save the job, but continue even if it fails
+                match job.save_async().await {
+                    Ok(_) => {
+                        log::info!("Created crawl job: {}", job.oid);
+                        jobs.push(job);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to save crawl job to database: {}, using in-memory", e);
+                        jobs.push(job);
+                    }
+                }
+            }
+        }
+        
         jobs.shuffle(&mut rand::thread_rng());
         jobs.truncate(1);
 
@@ -1345,9 +1403,12 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             // No jobs: scan common URLs and/or use DNS queries to find domains
             info!("No pending crawl jobs found. Crawling common URLs.");
             
-            // Test with only IP address to avoid DNS completely
+            // Mix of interesting domains to crawl
             let base_domains = vec![
-                "127.0.0.1:8000",  // Test with IP only - no DNS needed
+                "example.com",
+                "wikipedia.org",
+                "github.com",
+                "stackoverflow.com",
             ];
             
             // Common subdomains to try
