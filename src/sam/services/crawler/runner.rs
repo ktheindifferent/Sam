@@ -820,9 +820,52 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     // let prefixes = COMMON_PREFIXES.clone();
     // let words = COMMON_WORDS.clone();
 
-    // DNS resolver setup
+    // DNS resolver setup - use Atlas DNS if available
     log::info!("run_crawler_service: Setting up DNS resolver");
-    let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+    
+    let resolver = if std::env::var("ATLAS_DNS_SERVER").is_ok() || std::env::var("CAPROVER").is_ok() {
+        // Use Atlas DNS server
+        let atlas_addr = std::env::var("ATLAS_DNS_SERVER")
+            .unwrap_or_else(|_| {
+                if std::env::var("CAPROVER").is_ok() {
+                    "srv-captain--atlas:53".to_string()  // CapRover service discovery
+                } else {
+                    "127.0.0.1:53".to_string()  // Local Atlas
+                }
+            });
+        
+        log::info!("Using Atlas DNS server at: {}", atlas_addr);
+        
+        let mut config = ResolverConfig::new();
+        
+        // Parse address
+        if let Ok(socket_addr) = atlas_addr.parse::<std::net::SocketAddr>() {
+            config.add_name_server(trust_dns_resolver::config::NameServerConfig {
+                socket_addr,
+                protocol: trust_dns_resolver::config::Protocol::Udp,
+                tls_dns_name: None,
+                trust_negative_responses: true,
+                bind_addr: None,
+            });
+        } else {
+            log::warn!("Failed to parse Atlas DNS address, using default resolver");
+            config = ResolverConfig::default();
+        }
+        
+        // Add fallback DNS servers
+        config.add_name_server(trust_dns_resolver::config::NameServerConfig {
+            socket_addr: "8.8.8.8:53".parse().unwrap(),
+            protocol: trust_dns_resolver::config::Protocol::Udp,
+            tls_dns_name: None,
+            trust_negative_responses: true,
+            bind_addr: None,
+        });
+        
+        TokioAsyncResolver::tokio(config, ResolverOpts::default())
+    } else {
+        log::info!("Using default system DNS resolver");
+        TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+    };
 
     // Load DNS cache from redis or file
     log::info!("run_crawler_service: Loading DNS cache");
@@ -1134,7 +1177,35 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
         } else {
             // No jobs: scan common URLs and/or use DNS queries to find domains
             info!("No pending crawl jobs found. Crawling common URLs.");
-            let mut urls_to_try: Vec<String> = COMMON_URLS.iter().map(|s| s.to_string()).collect();
+            
+            // Mix of real domains and some controlled variations
+            let base_domains = vec![
+                "google.com",
+                "github.com", 
+                "wikipedia.org",
+                "stackoverflow.com",
+                "youtube.com",
+                "reddit.com",
+                "news.ycombinator.com",
+                "medium.com",
+                "dev.to",
+                "rust-lang.org"
+            ];
+            
+            // Common subdomains to try
+            let subdomains = vec!["www", "api", "blog", "docs", "help"];
+            
+            let mut urls_to_try: Vec<String> = Vec::new();
+            
+            // Add base domains
+            for domain in &base_domains {
+                urls_to_try.push(format!("https://{}/", domain));
+                
+                // Add some subdomain variations
+                for subdomain in &subdomains[..2] { // Just www and api
+                    urls_to_try.push(format!("https://{}.{}/", subdomain, domain));
+                }
+            }
 
             // Load retry URLs from the retry file and remove the file after loading
             let retry_path = "/opt/sam/tmp/crawl_retry.dmp";
@@ -1155,6 +1226,10 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 });
             }
 
+            // Skip random domain generation - it creates nonsense domains that hang DNS
+            let urls_found: Vec<String> = Vec::new();
+            
+            /* Commented out random domain generation
             // Metrics: log time to generate domain list
             let domain_gen_start = tokio::time::Instant::now();
 
@@ -1285,7 +1360,9 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 urls_found.push(format!("https://{domain}/"));
                 urls_found.push(format!("http://{domain}/"));
             }
-            urls_to_try.extend(urls_found);
+            End of commented out domain generation */
+            
+            // urls_to_try.extend(urls_found);  // Don't add the random domains
             urls_to_try.sort();
             urls_to_try.dedup();
 
