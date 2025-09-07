@@ -730,8 +730,15 @@ pub async fn start_service_async() {
         log::info!("Test spawn successful!");
     });
     
-    let handle = tokio::spawn(async {
-        log::info!("Crawler task spawned, about to run crawler service");
+    let handle = tokio::spawn(async move {
+        log::info!("Crawler task spawned, starting");
+        
+        // Try a minimal test first
+        log::info!("Testing async operations in spawned task");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        log::info!("Async sleep successful");
+        
+        log::info!("Calling run_crawler_service");
         
         match run_crawler_service().await {
             Ok(_) => {
