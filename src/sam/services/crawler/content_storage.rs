@@ -41,7 +41,10 @@ impl CrawledContent {
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
         
-        // Calculate content hash for deduplication
+        // Clean content for text indexing - remove extremely long tokens that cause PostgreSQL warnings
+        let cleaned_content = Self::clean_content_for_indexing(content);
+        
+        // Calculate content hash for deduplication (use original content for hash)
         let mut hasher = Sha256::new();
         hasher.update(content.as_bytes());
         let content_hash = format!("{:x}", hasher.finalize());
@@ -55,7 +58,7 @@ impl CrawledContent {
             content_hash,
             title: None,
             description: None,
-            content_text: content.to_string(),
+            content_text: cleaned_content,
             content_html,
             headers: serde_json::json!({}),
             status_code: status_code as i16,
@@ -65,6 +68,33 @@ impl CrawledContent {
             crawled_at: now,
             updated_at: now,
         }
+    }
+    
+    /// Clean content for text indexing by removing extremely long tokens
+    /// PostgreSQL's tsvector has a limit of 2047 bytes per lexeme
+    fn clean_content_for_indexing(content: &str) -> String {
+        const MAX_TOKEN_LENGTH: usize = 2000; // Leave some margin below PostgreSQL's limit
+        
+        // Split content into tokens and truncate overly long ones
+        content.split_whitespace()
+            .map(|token| {
+                if token.len() > MAX_TOKEN_LENGTH {
+                    // Check if it looks like base64, a data URL, or similar
+                    if token.starts_with("data:") || 
+                       token.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=') &&
+                       token.len() > 100 {
+                        // Replace with placeholder
+                        "[data-truncated]"
+                    } else {
+                        // Truncate but keep some context
+                        &token[..MAX_TOKEN_LENGTH.min(token.len())]
+                    }
+                } else {
+                    token
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
     
     /// Compress content using gzip
