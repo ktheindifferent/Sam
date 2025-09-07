@@ -722,7 +722,14 @@ pub async fn start_service_async() {
     
     log::info!("Crawler service starting...");
     CRAWLER_RUNNING.store(true, Ordering::SeqCst);
-
+    
+    log::info!("About to spawn crawler task");
+    
+    // Test if spawning works
+    tokio::spawn(async {
+        log::info!("Test spawn successful!");
+    });
+    
     let handle = tokio::spawn(async {
         log::info!("Crawler task spawned, about to run crawler service");
         
@@ -738,6 +745,8 @@ pub async fn start_service_async() {
         
         log::info!("Crawler task finished");
     });
+    
+    log::info!("Crawler task spawn completed, handle created");
     
     // Check if spawn failed immediately
     tokio::spawn(async move {
