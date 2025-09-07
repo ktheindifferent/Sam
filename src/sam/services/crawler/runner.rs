@@ -1414,6 +1414,23 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 }
             };
             
+            // First test raw TCP connectivity
+            log::info!("Testing TCP connection to 127.0.0.1:8000");
+            match tokio::time::timeout(
+                Duration::from_secs(2),
+                tokio::net::TcpStream::connect("127.0.0.1:8000")
+            ).await {
+                Ok(Ok(_)) => {
+                    log::info!("TCP connection successful to 127.0.0.1:8000");
+                }
+                Ok(Err(e)) => {
+                    log::warn!("TCP connection failed: {}", e);
+                }
+                Err(_) => {
+                    log::warn!("TCP connection timeout after 2 seconds");
+                }
+            }
+            
             for url in &urls_to_crawl {
                 log::info!("Testing simple HTTP GET for URL: {}", url);
                 
@@ -1442,9 +1459,13 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 */
                 
                 // Now try HTTP GET with simple client
+                log::info!("About to send HTTP request to {}", url);
+                let request_future = simple_client.get(url).send();
+                log::info!("Request future created, awaiting with timeout...");
+                
                 match tokio::time::timeout(
-                    Duration::from_secs(5),
-                    simple_client.get(url).send()
+                    Duration::from_secs(3),
+                    request_future
                 ).await {
                     Ok(Ok(response)) => {
                         let status = response.status();
