@@ -723,10 +723,27 @@ pub async fn start_service_async() {
     log::info!("Crawler service starting...");
     CRAWLER_RUNNING.store(true, Ordering::SeqCst);
 
-    tokio::spawn(async {
-        if let Err(e) = run_crawler_service().await {
-            log::error!("Error in crawler service: {}", e);
-            CRAWLER_RUNNING.store(false, Ordering::SeqCst);
+    let handle = tokio::spawn(async {
+        log::info!("Crawler task spawned, about to run crawler service");
+        
+        match run_crawler_service().await {
+            Ok(_) => {
+                log::info!("Crawler service completed normally");
+            }
+            Err(e) => {
+                log::error!("Error in crawler service: {:?}", e);
+                CRAWLER_RUNNING.store(false, Ordering::SeqCst);
+            }
+        }
+        
+        log::info!("Crawler task finished");
+    });
+    
+    // Check if spawn failed immediately
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if handle.is_finished() {
+            log::error!("Crawler task died immediately after spawning!");
         }
     });
 }
@@ -784,7 +801,16 @@ pub fn service_status() -> &'static str {
 pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
     log::info!("run_crawler_service: Starting crawler service loop");
     
-    let client = Arc::new(REQWEST_CLIENT.clone());
+    log::info!("run_crawler_service: Creating HTTP client");
+    let client = match std::panic::catch_unwind(|| Arc::new(REQWEST_CLIENT.clone())) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("Failed to create HTTP client: {:?}", e);
+            return Err(anyhow::anyhow!("Failed to create HTTP client").into());
+        }
+    };
+    log::info!("run_crawler_service: HTTP client created");
+    
     let all_crawled_pages = Arc::new(tokio::sync::Mutex::new(Vec::new()));
     // Set up logging
     // log::set_max_level(LevelFilter::Info);
