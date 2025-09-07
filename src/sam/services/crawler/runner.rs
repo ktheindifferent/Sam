@@ -1205,18 +1205,12 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             // No jobs: scan common URLs and/or use DNS queries to find domains
             info!("No pending crawl jobs found. Crawling common URLs.");
             
-            // Mix of real domains and some controlled variations
+            // Test with localhost first, then external domains
             let base_domains = vec![
+                "localhost:8000",  // Test with our own HTTP server
                 "google.com",
                 "github.com", 
-                "wikipedia.org",
-                "stackoverflow.com",
-                "youtube.com",
-                "reddit.com",
-                "news.ycombinator.com",
-                "medium.com",
-                "dev.to",
-                "rust-lang.org"
+                "wikipedia.org"
             ];
             
             // Common subdomains to try
@@ -1226,11 +1220,16 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             
             // Add base domains
             for domain in &base_domains {
-                urls_to_try.push(format!("https://{}/", domain));
-                
-                // Add some subdomain variations
-                for subdomain in &subdomains[..2] { // Just www and api
-                    urls_to_try.push(format!("https://{}.{}/", subdomain, domain));
+                if domain.starts_with("localhost") {
+                    // For localhost, use HTTP not HTTPS
+                    urls_to_try.push(format!("http://{}/", domain));
+                } else {
+                    urls_to_try.push(format!("https://{}/", domain));
+                    
+                    // Add some subdomain variations for external domains
+                    for subdomain in &subdomains[..2] { // Just www and api
+                        urls_to_try.push(format!("https://{}.{}/", subdomain, domain));
+                    }
                 }
             }
 
@@ -1408,7 +1407,29 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             for url in &urls_to_crawl {
                 log::info!("Testing simple HTTP GET for URL: {}", url);
                 
-                // Just do a simple HTTP GET instead of complex crawl_url
+                // First test DNS resolution
+                if let Ok(parsed_url) = url::Url::parse(url) {
+                    if let Some(host) = parsed_url.host_str() {
+                        log::info!("Testing DNS resolution for host: {}", host);
+                        match tokio::time::timeout(
+                            Duration::from_secs(2),
+                            resolver.lookup_ip(host)
+                        ).await {
+                            Ok(Ok(lookup)) => {
+                                let ips: Vec<_> = lookup.iter().collect();
+                                log::info!("DNS resolved {} to {} IPs: {:?}", host, ips.len(), ips);
+                            }
+                            Ok(Err(e)) => {
+                                log::warn!("DNS resolution failed for {}: {}", host, e);
+                            }
+                            Err(_) => {
+                                log::warn!("DNS resolution timeout for {}", host);
+                            }
+                        }
+                    }
+                }
+                
+                // Now try HTTP GET
                 match tokio::time::timeout(
                     Duration::from_secs(5),
                     client.get(url).send()
