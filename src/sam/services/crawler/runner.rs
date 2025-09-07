@@ -703,6 +703,23 @@ pub fn start_service() {
     });
 }
 
+/// Wrapper for run_crawler_service to simplify spawning
+async fn run_crawler_wrapper() {
+    log::info!("Crawler wrapper started");
+    
+    match run_crawler_service().await {
+        Ok(_) => {
+            log::info!("Crawler service completed normally");
+        }
+        Err(e) => {
+            log::error!("Error in crawler service: {:?}", e);
+            CRAWLER_RUNNING.store(false, Ordering::SeqCst);
+        }
+    }
+    
+    log::info!("Crawler wrapper finished");
+}
+
 /// Starts the crawler service asynchronously, spawning worker tasks for each CPU core.
 ///
 /// # Behavior
@@ -730,38 +747,10 @@ pub async fn start_service_async() {
         log::info!("Test spawn successful!");
     });
     
-    let handle = tokio::spawn(async move {
-        log::info!("Crawler task spawned, starting");
-        
-        // Try a minimal test first
-        log::info!("Testing async operations in spawned task");
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        log::info!("Async sleep successful");
-        
-        log::info!("Calling run_crawler_service");
-        
-        match run_crawler_service().await {
-            Ok(_) => {
-                log::info!("Crawler service completed normally");
-            }
-            Err(e) => {
-                log::error!("Error in crawler service: {:?}", e);
-                CRAWLER_RUNNING.store(false, Ordering::SeqCst);
-            }
-        }
-        
-        log::info!("Crawler task finished");
-    });
+    // Try spawning with a static async block
+    tokio::spawn(run_crawler_wrapper());
     
-    log::info!("Crawler task spawn completed, handle created");
-    
-    // Check if spawn failed immediately
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        if handle.is_finished() {
-            log::error!("Crawler task died immediately after spawning!");
-        }
-    });
+    log::info!("Crawler task spawn completed");
 }
 
 /// Stops the crawler service and sets the running flag to false.
