@@ -1309,90 +1309,6 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
 
     // Track when we last saved DNS cache
     let mut last_dns_save = std::time::Instant::now();
-
-    // Test mode - bypass database and just try to crawl external sites
-    let test_mode = false;
-    
-    if test_mode {
-        log::info!("TEST MODE: Bypassing database, testing direct crawl");
-        
-        // Test multiple URLs since DNS/HTTP work at OS level
-        let test_urls = vec![
-            "http://www.google.com",
-            "http://example.com",
-            "http://127.0.0.1:8000",
-        ];
-        
-        for url in test_urls {
-            log::info!("TEST: Trying to fetch {}", url);
-            
-            // Try with a fresh simple client
-            let simple_client = match reqwest::Client::builder()
-                .timeout(Duration::from_secs(10))
-                .build() {
-                Ok(c) => c,
-                Err(e) => {
-                    log::error!("TEST: Failed to build simple client: {}", e);
-                    continue;
-                }
-            };
-            
-            match simple_client.get(url).send().await {
-                Ok(response) => {
-                    log::info!("TEST: ✓ SUCCESS fetching {}! Status: {}", url, response.status());
-                    match response.text().await {
-                        Ok(text) => log::info!("TEST: Response body length: {} bytes", text.len()),
-                        Err(e) => log::error!("TEST: Failed to read response body: {}", e),
-                    }
-                }
-                Err(e) => {
-                    log::error!("TEST: ✗ FAILED to fetch {}: {}", url, e);
-                    
-                    // Try DNS resolution separately
-                    if let Ok(parsed_url) = Url::parse(url) {
-                        if let Some(host) = parsed_url.host_str() {
-                            log::info!("TEST: Trying DNS resolution for {}", host);
-                            match resolver.lookup_ip(host).await {
-                                Ok(lookup) => {
-                                    let ips: Vec<_> = lookup.iter().collect();
-                                    log::info!("TEST: DNS resolved {} to: {:?}", host, ips);
-                                }
-                                Err(e) => {
-                                    log::error!("TEST: DNS resolution failed for {}: {}", host, e);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Also test with curl via shell to confirm OS-level works
-        log::info!("TEST: Running curl to verify OS-level connectivity");
-        match tokio::process::Command::new("curl")
-            .arg("-s")
-            .arg("-o")
-            .arg("/dev/null")
-            .arg("-w")
-            .arg("%{http_code}")
-            .arg("http://www.google.com")
-            .output()
-            .await {
-            Ok(output) => {
-                let status = String::from_utf8_lossy(&output.stdout);
-                log::info!("TEST: curl returned status code: {}", status);
-            }
-            Err(e) => {
-                log::error!("TEST: Failed to run curl: {}", e);
-            }
-        }
-        
-        // Sleep and return to avoid the main loop
-        log::info!("TEST MODE: Complete. Sleeping for 5 seconds then exiting");
-        sleep(Duration::from_secs(5)).await;
-        CRAWLER_RUNNING.store(false, Ordering::SeqCst);
-        return Ok(());
-    }
     
     loop {
         log::debug!("run_crawler_service: Main loop iteration");
@@ -1824,36 +1740,8 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
         } else {
             // No jobs: scan common URLs and/or use DNS queries to find domains
             info!("No pending crawl jobs found. Crawling common URLs.");
+            let mut urls_to_try: Vec<String> = COMMON_URLS.iter().map(|s| s.to_string()).collect();
             
-            // Mix of interesting domains to crawl
-            let base_domains = vec![
-                "example.com",
-                "wikipedia.org",
-                "github.com",
-                "stackoverflow.com",
-            ];
-            
-            // Common subdomains to try
-            let subdomains = vec!["www", "api", "blog", "docs", "help"];
-            
-            let mut urls_to_try: Vec<String> = Vec::new();
-            
-            // Add base domains
-            for domain in &base_domains {
-                if domain.starts_with("localhost") || domain.starts_with("127.") {
-                    // For localhost and local IPs, use HTTP not HTTPS
-                    urls_to_try.push(format!("http://{}/", domain));
-                } else {
-                    urls_to_try.push(format!("https://{}/", domain));
-                    
-                    // Add some subdomain variations for external domains (not for IPs)
-                    if !domain.chars().next().unwrap_or('x').is_numeric() {
-                        for subdomain in &subdomains[..2] { // Just www and api
-                            urls_to_try.push(format!("https://{}.{}/", subdomain, domain));
-                        }
-                    }
-                }
-            }
 
             // Load retry URLs from the retry file and remove the file after loading
             let retry_path = "/opt/sam/tmp/crawl_retry.dmp";
@@ -1874,9 +1762,6 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 });
             }
 
-            // Skip random domain generation - it creates nonsense domains that hang DNS
-            let urls_found: Vec<String> = Vec::new();
-            
             // Metrics: log time to generate domain list
             let domain_gen_start = tokio::time::Instant::now();
 
@@ -1939,7 +1824,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             domains.dedup();
             domains.shuffle(&mut rng);
 
-            let max_domains = 50; // Reduced from 1000 for faster processing
+            let max_domains = 1000;
             let domains = &domains[..std::cmp::min(domains.len(), max_domains)];
 
             let mut urls_found = Vec::new();
@@ -2007,9 +1892,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 urls_found.push(format!("https://{domain}/"));
                 urls_found.push(format!("http://{domain}/"));
             }
-
-            
-            // urls_to_try.extend(urls_found);  // Don't add the random domains
+            urls_to_try.extend(urls_found);
             urls_to_try.sort();
             urls_to_try.dedup();
 
@@ -2023,8 +1906,6 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             
             // Actually crawl the URLs since database isn't working
             log::info!("Starting to crawl {} URLs directly", urls.len());
-            let urls_to_crawl = urls.iter().take(1000).cloned().collect::<Vec<_>>(); // Start with just 3 to test
-            
             // Still try to create jobs for tracking (even if saves fail)
             for url in &urls {
                 let job_create_start = tokio::time::Instant::now();
