@@ -73,6 +73,9 @@ fn build_tokio_runtime() -> tokio::runtime::Runtime {
 
 /// Main application initialization logic
 async fn initialize_application() {
+    // Initialize Sentry for error tracking and monitoring
+    let _sentry_guard = sam::monitoring::init_sentry();
+    
     // Initialize logging first
     // Don't use env_logger if we're going to use TUI (it conflicts with tui_logger)
     // Only initialize env_logger in serve mode
@@ -157,9 +160,21 @@ async fn initialize_application() {
 
 /// Sets up the panic handler for the application
 fn setup_panic_handler() {
-    std::panic::set_hook(Box::new(|info| {
+    // First set up Sentry's panic handler
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
         // Log panic information
         log::error!("Application panic occurred: {}", info);
+        
+        // Report to Sentry
+        sentry::capture_event(sentry::protocol::Event {
+            message: Some(info.to_string()),
+            level: sentry::Level::Fatal,
+            ..Default::default()
+        });
+        
+        // Call the default panic handler (which includes Sentry's own handling)
+        default_panic(info);
         
         // Try to perform cleanup without creating a new runtime
         // Use Handle::try_current() to check if we're in a runtime context

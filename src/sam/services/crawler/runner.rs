@@ -1558,7 +1558,19 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 0,
             )])));
 
-            let concurrency = num_cpus::get() * 2;
+            let concurrency = std::env::var("SAM_WORKER_THREADS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| {
+                let cores = num_cpus::get();
+                if cores >= 32 {
+                    cores * 2  // High-core systems: 2x multiplier (96 for you)
+                } else if cores >= 16 {
+                    (cores as f64 * 1.5) as usize  // Mid-range: 1.5x multiplier
+                } else {
+                    cores + 4  // Low-core: cores + 4
+                }
+            });
             log::info!("Starting crawl loop with concurrency={}, max_depth={}", concurrency, max_depth);
             
             let mut iteration = 0;
@@ -1865,7 +1877,6 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             // Skip random domain generation - it creates nonsense domains that hang DNS
             let urls_found: Vec<String> = Vec::new();
             
-            /* Commented out random domain generation
             // Metrics: log time to generate domain list
             let domain_gen_start = tokio::time::Instant::now();
 
@@ -1887,7 +1898,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             let mut sampled_words = words.clone();
             sampled_words.shuffle(&mut rng);
             // Use rayon's par_iter to efficiently take the first 1,000 elements in parallel
-            let sampled_words: Vec<_> = sampled_words.par_iter().take(5).cloned().collect(); // Reduced for faster startup
+            let sampled_words: Vec<_> = sampled_words.par_iter().take(1000).cloned().collect(); // Reduced for faster startup
 
             let domain_gen_duration = domain_gen_start.elapsed();
             log::info!("Domain generation took {:?}", domain_gen_duration);
@@ -1996,7 +2007,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                 urls_found.push(format!("https://{domain}/"));
                 urls_found.push(format!("http://{domain}/"));
             }
-            End of commented out domain generation */
+
             
             // urls_to_try.extend(urls_found);  // Don't add the random domains
             urls_to_try.sort();
@@ -2012,110 +2023,8 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
             
             // Actually crawl the URLs since database isn't working
             log::info!("Starting to crawl {} URLs directly", urls.len());
-            let urls_to_crawl = urls.iter().take(3).cloned().collect::<Vec<_>>(); // Start with just 3 to test
+            let urls_to_crawl = urls.iter().take(1000).cloned().collect::<Vec<_>>(); // Start with just 3 to test
             
-            // Create a simple HTTP client for testing
-            let simple_client = match reqwest::Client::builder()
-                .timeout(Duration::from_secs(5))
-                .build() {
-                Ok(c) => c,
-                Err(e) => {
-                    log::error!("Failed to create simple HTTP client: {}", e);
-                    client.as_ref().clone()
-                }
-            };
-            
-            // Test with blocking TCP to bypass async issues
-            log::info!("Testing blocking TCP connection to 127.0.0.1:8000");
-            match std::net::TcpStream::connect_timeout(
-                &"127.0.0.1:8000".parse::<std::net::SocketAddr>().unwrap(),
-                Duration::from_secs(2)
-            ) {
-                Ok(_) => {
-                    log::info!("Blocking TCP connection successful to 127.0.0.1:8000");
-                }
-                Err(e) => {
-                    log::warn!("Blocking TCP connection failed: {}", e);
-                }
-            }
-            
-            log::info!("TCP test completed, moving to HTTP tests");
-            
-            for url in &urls_to_crawl {
-                log::info!("Testing simple HTTP GET for URL: {}", url);
-                
-                // Skip DNS resolution test for now - it's hanging
-                /*
-                if let Ok(parsed_url) = url::Url::parse(url) {
-                    if let Some(host) = parsed_url.host_str() {
-                        log::info!("Testing DNS resolution for host: {}", host);
-                        match tokio::time::timeout(
-                            Duration::from_millis(500),  // Very short timeout
-                            resolver.lookup_ip(host)
-                        ).await {
-                            Ok(Ok(lookup)) => {
-                                let ips: Vec<_> = lookup.iter().collect();
-                                log::info!("DNS resolved {} to {} IPs: {:?}", host, ips.len(), ips);
-                            }
-                            Ok(Err(e)) => {
-                                log::warn!("DNS resolution failed for {}: {}", host, e);
-                            }
-                            Err(_) => {
-                                log::warn!("DNS resolution timeout for {}", host);
-                            }
-                        }
-                    }
-                }
-                */
-                
-                // Now try HTTP GET with simple client
-                log::info!("About to send HTTP request to {}", url);
-                let request_future = simple_client.get(url).send();
-                log::info!("Request future created, awaiting with timeout...");
-                
-                match tokio::time::timeout(
-                    Duration::from_secs(3),
-                    request_future
-                ).await {
-                    Ok(Ok(response)) => {
-                        let status = response.status();
-                        let content_length = response.content_length().unwrap_or(0);
-                        log::info!("Successfully fetched {}: status={}, content_length={}", 
-                            url, status, content_length);
-                        
-                        // Try to get the body
-                        match tokio::time::timeout(Duration::from_secs(5), response.text()).await {
-                            Ok(Ok(body)) => {
-                                log::info!("  Body received: {} bytes", body.len());
-                            }
-                            Ok(Err(e)) => {
-                                log::warn!("  Failed to read body: {}", e);
-                            }
-                            Err(_) => {
-                                log::warn!("  Timeout reading body");
-                            }
-                        }
-                    }
-                    Ok(Err(e)) => {
-                        log::warn!("Failed to fetch {}: {}", url, e);
-                        // Log error details
-                        log::warn!("  Full error: {:?}", e);
-                        if e.is_connect() {
-                            log::warn!("  This is a connection error");
-                        }
-                        if e.is_timeout() {
-                            log::warn!("  This is a timeout error");
-                        }
-                    }
-                    Err(_) => {
-                        log::warn!("Timeout fetching {} after 5 seconds", url);
-                    }
-                }
-                
-                // Small delay between crawls
-                sleep(Duration::from_millis(500)).await;
-            }
-
             // Still try to create jobs for tracking (even if saves fail)
             for url in &urls {
                 let job_create_start = tokio::time::Instant::now();

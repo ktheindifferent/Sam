@@ -131,6 +131,7 @@ rusqlite = { version = "0.32", features = ["bundled", "chrono", "serde_json", "b
 diesel = { version = "2.2", features = ["sqlite", "postgres", "chrono", "serde_json"] }
 jsonwebtoken = "9.3"
 ssh2 = "0.9"
+sentry = "0.34"
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]

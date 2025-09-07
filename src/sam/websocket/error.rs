@@ -114,12 +114,33 @@ impl WebSocketError {
     /// Log error and return a default value
     pub fn log_and_default<T: Default>(self) -> T {
         log::error!("WebSocket error (using default): {}", self);
+        
+        // Report critical WebSocket errors to Sentry
+        match &self {
+            WebSocketError::Security(_) | 
+            WebSocketError::Unexpected(_) |
+            WebSocketError::Configuration(_) => {
+                sentry::capture_error(&self);
+            }
+            _ => {}
+        }
+        
         T::default()
     }
     
     /// Log error and continue operation
     pub fn log_and_continue(self) {
         log::error!("WebSocket error (continuing): {}", self);
+        
+        // Report critical errors to Sentry
+        match &self {
+            WebSocketError::Security(_) | 
+            WebSocketError::Unexpected(_) |
+            WebSocketError::Configuration(_) => {
+                sentry::capture_error(&self);
+            }
+            _ => {}
+        }
     }
 }
 

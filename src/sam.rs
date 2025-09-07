@@ -12,6 +12,7 @@ pub mod db;
 pub mod http;
 pub mod jobs;
 pub mod memory;
+pub mod monitoring;
 pub mod network_config;
 pub mod network_monitor;
 pub mod resource_management;
