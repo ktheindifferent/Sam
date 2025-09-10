@@ -909,6 +909,14 @@ impl Config {
                     PGCol::String(y) => y as &(dyn postgres::types::ToSql + Sync),
                     PGCol::Number(y) => y as &(dyn postgres::types::ToSql + Sync),
                     PGCol::Boolean(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::BigNumber(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Timestamp(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Json(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::ByteArray(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Array(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Null => &None::<i32> as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Float(y) => y as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Double(y) => y as &(dyn postgres::types::ToSql + Sync),
                 })
                 .collect();
 
@@ -1048,6 +1056,14 @@ impl Config {
                     PGCol::String(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
                     PGCol::Number(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
                     PGCol::Boolean(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::BigNumber(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::Timestamp(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::Json(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::ByteArray(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::Null => &None::<i32> as &(dyn postgres::types::ToSql + Sync),
+                    PGCol::Float(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::Double(y) => y as &(dyn tokio_postgres::types::ToSql + Sync),
+                    PGCol::Array(y) => y as &(dyn postgres::types::ToSql + Sync),
                 })
                 .collect();
 

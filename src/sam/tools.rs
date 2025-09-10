@@ -395,6 +395,34 @@ pub fn find_opencl_lib(start_dirs: &[&str]) -> Option<String> {
     None
 }
 
+pub fn get_cpu_usage() -> Result<f32> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'")
+        .output()?;
+
+    if output.status.success() {
+        let cpu_usage = String::from_utf8_lossy(&output.stdout);
+        return Ok(cpu_usage.trim().parse::<f32>()?);
+    }
+
+    Err(anyhow::anyhow!("Failed to get CPU usage"))
+}
+
+pub fn get_memory_usage() -> Result<f32> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg("free | grep Mem | awk '{print $3/$2 * 100.0}'")
+        .output()?;
+
+    if output.status.success() {
+        let mem_usage = String::from_utf8_lossy(&output.stdout);
+        return Ok(mem_usage.trim().parse::<f32>()?);
+    }
+
+    Err(anyhow::anyhow!("Failed to get memory usage"))
+}
+
 /// Extracts a ZIP file to the specified directory.
 pub fn extract_zip(zip_path: &str, extract_path: &str) -> Result<()> {
     let file = fs::File::open(zip_path)?;

@@ -1,12 +1,11 @@
 // Enhanced Error Handling Module for SAM Services
 // Provides comprehensive error handling utilities, retry logic, and circuit breaker patterns
 
-use std::fmt::{self, Display};
 use std::time::Duration;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use thiserror::Error;
-use anyhow::{Result, Context};
+use anyhow::Result;
 use log::{error, warn, info, debug};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
@@ -381,14 +380,21 @@ mod tests {
     
     #[tokio::test]
     async fn test_retry_with_backoff_success() {
-        let mut attempt = 0;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        
+        let attempt = Arc::new(AtomicU32::new(0));
+        let attempt_clone = attempt.clone();
+        
         let result = retry_with_backoff(
-            || async {
-                attempt += 1;
-                if attempt < 3 {
-                    Err(anyhow::anyhow!("Temporary failure"))
-                } else {
-                    Ok("Success")
+            move || {
+                let attempt = attempt_clone.clone();
+                async move {
+                    let current_attempt = attempt.fetch_add(1, Ordering::SeqCst) + 1;
+                    if current_attempt < 3 {
+                        Err(anyhow::anyhow!("Temporary failure"))
+                    } else {
+                        Ok("Success")
+                    }
                 }
             },
             RetryConfig::default(),
@@ -404,11 +410,11 @@ mod tests {
         let cb = CircuitBreaker::new("test".to_string(), 2, 2, Duration::from_secs(1));
         
         // First failure
-        let _ = cb.call(|| async { Err(anyhow::anyhow!("Error")) }).await;
+        let _: Result<()> = cb.call(|| async { Err(anyhow::anyhow!("Error")) }).await;
         assert_eq!(cb.get_state().await, CircuitState::Closed);
         
         // Second failure - should open
-        let _ = cb.call(|| async { Err(anyhow::anyhow!("Error")) }).await;
+        let _: Result<()> = cb.call(|| async { Err(anyhow::anyhow!("Error")) }).await;
         
         match cb.get_state().await {
             CircuitState::Open { .. } => {}

@@ -143,7 +143,15 @@ pub struct PostgresQueries {
 pub enum PGCol {
     String(String),
     Number(i32),
+    BigNumber(i64),
+    Timestamp(i64),
+    Json(serde_json::Value),
+    Array(Vec<serde_json::Value>),
     Boolean(bool),
+    ByteArray(Vec<u8>),
+    Null,
+    Float(f32),
+    Double(f64),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

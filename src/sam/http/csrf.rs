@@ -65,6 +65,7 @@ fn validate_token_for_session(token: &str, session_id: &str) -> bool {
     // The session module already has CSRF token support
     // We would typically check:
     // 1. Token exists in session store
+    
     // 2. Token hasn't expired
     // 3. Token matches the session
     

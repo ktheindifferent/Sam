@@ -17,8 +17,8 @@ mod error;
 mod tests;
 
 use crate::sam::network_monitor::NetworkMonitor;
-use security::{WebSocketLimits, WebSocketSecurityConfig, WsSecurityError, MessagePriority, SessionInfo};
-use error::{WebSocketError, safe_ops};
+use security::{WebSocketLimits, WebSocketSecurityConfig, WsSecurityError, SessionInfo};
+use error::{safe_ops};
 
 // Type alias for Send + Sync errors
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -1072,107 +1072,5 @@ pub async fn stop_server() -> Result<(), BoxError> {
     // For now, this is a no-op since we don't store server handles
     // In a full implementation, you'd store the server handle and call shutdown
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_message_serialization() {
-        let msg = WsMessage::Ping { timestamp: 1234567890 };
-        let json = serde_json::to_string(&msg).expect("Should serialize test message");
-        assert!(json.contains("ping"));
-        assert!(json.contains("1234567890"));
-    }
-
-    #[test]
-    fn test_service_status() {
-        let status = ServiceStatus {
-            state: "healthy".to_string(),
-            message: Some("Service is running".to_string()),
-            progress: Some(75),
-            last_check: Utc::now(),
-        };
-        
-        let json = serde_json::to_string(&status).expect("Should serialize test status");
-        assert!(json.contains("healthy"));
-        assert!(json.contains("Service is running"));
-        assert!(json.contains("75"));
-    }
-
-    #[tokio::test]
-    async fn test_ws_server_creation() {
-        let server = WsServer::new();
-        assert_eq!(server.client_count().await, 0);
-    }
-    
-    #[tokio::test]
-    async fn test_ws_server_with_custom_config() {
-        let config = WebSocketSecurityConfig {
-            max_message_size: 1024,
-            max_messages_per_minute: 10,
-            max_connections_per_ip: 2,
-            ..Default::default()
-        };
-        let server = WsServer::with_config(config);
-        assert_eq!(server.client_count().await, 0);
-    }
-
-    #[test]
-    fn test_alert_severity() {
-        let alert = WsMessage::Alert {
-            message: "Test alert".to_string(),
-            severity: AlertSeverity::Warning,
-        };
-        
-        let json = serde_json::to_string(&alert).expect("Should serialize test alert");
-        assert!(json.contains("alert"));
-        assert!(json.contains("warning"));
-    }
-    
-    #[test]
-    fn test_authentication_messages() {
-        let auth_msg = WsMessage::Authenticate {
-            token: "test_token".to_string(),
-        };
-        let json = serde_json::to_string(&auth_msg).expect("Should serialize auth message");
-        assert!(json.contains("authenticate"));
-        assert!(json.contains("test_token"));
-        
-        let auth_success = WsMessage::AuthenticationSuccess {
-            permissions: vec!["read".to_string(), "write".to_string()],
-        };
-        let json = serde_json::to_string(&auth_success).expect("Should serialize auth success");
-        assert!(json.contains("authentication_success"));
-        assert!(json.contains("read"));
-    }
-    
-    #[test]
-    fn test_heartbeat_messages() {
-        let heartbeat = WsMessage::Heartbeat { timestamp: 1234567890 };
-        let json = serde_json::to_string(&heartbeat).expect("Should serialize heartbeat");
-        assert!(json.contains("heartbeat"));
-        assert!(json.contains("1234567890"));
-        
-        let ack = WsMessage::HeartbeatAck { timestamp: 1234567890 };
-        let json = serde_json::to_string(&ack).expect("Should serialize heartbeat ack");
-        assert!(json.contains("heartbeat_ack"));
-    }
-    
-    #[test]
-    fn test_audit_event_serialization() {
-        let event = AuditEvent {
-            timestamp: Utc::now(),
-            client_id: "test_client".to_string(),
-            event_type: "test_event".to_string(),
-            details: serde_json::json!({ "test": "data" }),
-            severity: AuditSeverity::Info,
-        };
-        
-        let json = serde_json::to_string(&event).expect("Should serialize audit event");
-        assert!(json.contains("test_client"));
-        assert!(json.contains("test_event"));
-    }
 }
 

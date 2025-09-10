@@ -52,6 +52,8 @@ pub mod openai;
 pub mod orchestrator;
 pub mod osf;
 pub mod restart;
+#[cfg(test)]
+pub mod restart_test;
 pub mod p2p;
 pub mod password_manager;
 pub mod pg;

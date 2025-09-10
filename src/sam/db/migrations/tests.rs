@@ -32,8 +32,8 @@ mod tests {
             }
             
             // Validate version is numeric to prevent SQL injection in tests
-            if !self.version.chars().all(|c| c.is_ascii_digit()) {
-                return Err(anyhow::anyhow!("Invalid version format: must be numeric"));
+            if self.version <= 0 {
+                return Err(anyhow::anyhow!("Invalid version: must be a positive integer"));
             }
             
             tx.execute(
@@ -45,9 +45,9 @@ mod tests {
         }
         
         async fn down(&self, tx: &Transaction<'_>) -> Result<()> {
-            // Validate version is numeric to prevent SQL injection in tests
-            if !self.version.chars().all(|c| c.is_ascii_digit()) {
-                return Err(anyhow::anyhow!("Invalid version format: must be numeric"));
+            // Validate version is positive to prevent invalid operations
+            if self.version <= 0 {
+                return Err(anyhow::anyhow!("Invalid version: must be a positive integer"));
             }
             
             tx.execute(

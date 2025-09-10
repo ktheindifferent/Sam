@@ -47,7 +47,7 @@ static REQWEST_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync:
         .user_agent(super::robots::DEFAULT_USER_AGENT) // Use the centralized User-Agent
         .redirect(reqwest::redirect::Policy::limited(5))
         .timeout(Duration::from_secs(30))
-        .pool_max_idle_per_host(8)
+        .pool_max_idle_per_host(num_cpus::get())
         .pool_idle_timeout(Some(Duration::from_secs(15)))
         .danger_accept_invalid_certs(false) // Enable proper certificate validation
         .build()

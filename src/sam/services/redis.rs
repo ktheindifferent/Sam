@@ -9,10 +9,10 @@ use std::time::Instant;
 use anyhow::{Result, Context};
 use deadpool_redis::{Config, Runtime, Pool, redis::cmd};
 use super::cache::{HybridCache, CacheConfig};
-use super::error_handling::{CircuitBreaker, RetryConfig, retry_with_backoff, ServiceError};
+use super::error_handling::{CircuitBreaker, RetryConfig, retry_with_backoff};
 use super::environment::get_env_config;
 use thiserror::Error;
-use crate::sam::monitoring::{report_service_error, add_breadcrumb};
+use crate::sam::monitoring::report_service_error;
 
 /// Redis-specific error types for better error handling
 #[derive(Error, Debug)]
@@ -350,16 +350,18 @@ async fn connect_with_retry() -> Result<Pool> {
     let pool_holder = POOL.get_or_init(|| Arc::new(RwLock::new(None)));
     
     // Check if pool already exists
-    {
+    let existing_pool = {
         let pool_guard = pool_holder.read()
             .map_err(|e| RedisError::LockError(format!("Failed to acquire read lock: {}", e)))?;
-        if let Some(ref pool) = *pool_guard {
-            // Validate the existing pool is still healthy
-            if validate_pool(pool).await.is_ok() {
-                return Ok(pool.clone());
-            } else {
-                warn!("Existing pool is unhealthy, will create new one");
-            }
+        pool_guard.clone()
+    };
+    
+    if let Some(ref pool) = existing_pool {
+        // Validate the existing pool is still healthy
+        if validate_pool(pool).await.is_ok() {
+            return Ok(pool.clone());
+        } else {
+            warn!("Existing pool is unhealthy, will create new one");
         }
     }
     
@@ -522,7 +524,6 @@ pub async fn create_cache_with_config(config: CacheConfig) -> Result<HybridCache
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use tokio::task::JoinSet;
     use std::future::Future;
     use tokio::time::{timeout, Duration};

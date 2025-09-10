@@ -285,7 +285,7 @@ impl<F: FnOnce()> Drop for ScopeGuard<F> {
 #[macro_export]
 macro_rules! scope_guard {
     ($cleanup:expr) => {
-        $crate::resource_management::cleanup::ScopeGuard::new(|| $cleanup)
+        $crate::sam::resource_management::cleanup::ScopeGuard::new(|| $cleanup)
     };
 }
 

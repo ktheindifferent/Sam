@@ -7,20 +7,15 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
-// www.rs is for external network communications to the home
+// http.rs is for external network communications to the home
 // runs on port :8000
-
-// TODO:
-// 1. Authentication api and sessions support (DONE)
-// 2. Build Human/Location/Pet/Service/Thing/User management API's
-// 3. Sam web console app (DONE)
-// 4. User management api
 
 // use tch::{Device};
 
 // use error_chain::error_chain;
 use anyhow::Result;
 use thiserror::Error;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rouille::post_input;
 use rouille::session;
@@ -182,6 +177,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
             // If file not found or error, fall through to match_assets
         }
 
+        // (CORS) Security for debug mode
         #[cfg(debug_assertions)]
         {
             let xresponse = rouille::match_assets(request, "./www/");
@@ -193,6 +189,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
             }
         }
 
+        // (CORS) Security for production mode
         #[cfg(not(debug_assertions))]
         {
             // Try /app/www first (Docker/CapRover path)
@@ -215,12 +212,20 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
         }
     }
 
-    // TODO: Limit by tiimestamp field
-    let sessions = crate::sam::memory::cache::WebSessions::select(None, None, None, None)?;
+    // Limit by timestamp field to 24 hours ago to improve query performance
+    let mut right_now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_secs() as i64;
+    let mut pg_query = crate::sam::memory::PostgresQueries::default();
+    pg_query.queries.push(crate::sam::memory::PGCol::Timestamp(right_now - 86400)); // 24 hours ago
+    pg_query.query_columns.push("timestamp <".to_string());
 
-    // Use proper session timeout (24 hours)
-    const SESSION_DURATION: u64 = 86400; // 24 hours in seconds
-    
+    // Fetch sessions
+    let sessions = crate::sam::memory::cache::WebSessions::select(None, None, None, Some(pg_query))?;
+
+    // 24 hours limit
+    const SESSION_DURATION: u64 = 86400;
     Ok(session::session(
         request,
         "SID",
@@ -428,12 +433,15 @@ pub fn handle_with_session(
     }
     
     if request.url() == "/health/detailed" {
+        let cpu_usage = crate::sam::tools::get_cpu_usage().unwrap_or(0.0);
+        let memory_usage = crate::sam::tools::get_memory_usage().unwrap_or(0.0);
+        
         return Ok(Response::json(&serde_json::json!({
             "status": "healthy",
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "metrics": {
-                "cpu_usage": 0.0,
-                "memory_usage": 0.0
+                "cpu_usage": cpu_usage,
+                "memory_usage": memory_usage
             }
         })));
     }
@@ -527,21 +535,3 @@ pub fn handle_with_session(
     let response = Response::redirect_302("/index.html");
     Ok(response)
 }
-
-// use std::fs::File;
-
-// use std::io::Write;
-
-// pub fn install() -> std::io::Result<()> {
-//     let data = include_bytes!("../../packages/www.zip");
-//     let mut pos = 0;
-//     let mut buffer = File::create("/opt/sam/www.zip")?;
-//     while pos < data.len() {
-//         let bytes_written = buffer.write(&data[pos..])?;
-//         pos += bytes_written;
-//     }
-
-//     let _ = crate::sam::tools::extract_zip("/opt/sam/www.zip", "/opt/sam/");
-
-//     Ok(())
-// }

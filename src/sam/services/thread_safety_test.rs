@@ -81,9 +81,11 @@ mod tests {
         
         manager.shutdown();
         
-        if let Ok(data) = manager.data.lock() {
+        // Clone the Arc to avoid borrowing through a temporary deref of Arc<TestManager>
+        let data_arc = manager.data.clone();
+        if let Ok(data) = data_arc.lock() {
             assert_eq!(data.len(), 5);
             println!("Concurrent access test passed!");
-        }
+        };
     }
 }

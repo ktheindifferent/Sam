@@ -2,19 +2,20 @@
 // Adds missing backup execution, restore functionality, and verification
 
 use super::backup::*;
-use super::error_handling::{retry_with_backoff, RetryConfig, ServiceError};
+use super::error_handling::ServiceError;
 use super::monitoring::{MetricsCollector, HealthCheckable, HealthCheck, HealthStatus};
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tar::{Builder, Archive};
 use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
 use flate2::Compression;
 use sha2::{Sha256, Digest};
-use log::{info, error, debug, warn};
+use log::{info, error, warn};
 use std::sync::Arc;
+use hex;
+use nanoid;
 use tokio::sync::{RwLock, Semaphore};
 use anyhow::{Result, Context};
 use chrono::{DateTime, Utc, Duration as ChronoDuration};
@@ -38,7 +39,7 @@ pub struct BackupMetadata {
     pub restore_points: Vec<RestorePoint>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum BackupType {
     Full,
     Incremental,
@@ -351,7 +352,7 @@ impl BackupService {
         
         let mut total_size = 0u64;
         let mut file_count = 0usize;
-        let mut hasher = Sha256::new();
+        let mut hasher = Sha256::default();
         
         for include_path in &target.include_paths {
             if include_path.is_file() {
@@ -428,7 +429,7 @@ impl BackupService {
         
         let mut total_size = 0u64;
         let mut file_count = 0usize;
-        let mut hasher = Sha256::new();
+        let mut hasher = Sha256::default();
         
         for include_path in &target.include_paths {
             self.backup_changed_files(include_path, &target_backup_dir, since, &mut total_size, &mut file_count, &mut hasher).await?;
@@ -506,7 +507,7 @@ impl BackupService {
         Ok(())
     }
     
-    async fn compress_backup(&self, backup_dir: &Path, backup_id: &str) -> Result<(PathBuf, Option<CompressionInfo>)> {
+    async fn compress_backup(&self, backup_dir: &Path, _backup_id: &str) -> Result<(PathBuf, Option<CompressionInfo>)> {
         let archive_path = backup_dir.with_extension("tar.gz");
         let tar_gz = std::fs::File::create(&archive_path)?;
         let encoder = GzEncoder::new(tar_gz, Compression::new(self.config.compression.level));
@@ -532,7 +533,7 @@ impl BackupService {
         Ok((archive_path, Some(compression_info)))
     }
     
-    async fn decompress_backup(&self, archive_path: &Path, backup_id: &str) -> Result<PathBuf> {
+    async fn decompress_backup(&self, archive_path: &Path, _backup_id: &str) -> Result<PathBuf> {
         let extract_dir = archive_path.with_extension("");
         fs::create_dir_all(&extract_dir).await?;
         
@@ -546,7 +547,7 @@ impl BackupService {
     }
     
     async fn calculate_checksum(&self, path: &Path) -> Result<String> {
-        let mut hasher = Sha256::new();
+        let mut hasher = Sha256::default();
         
         if path.is_file() {
             let content = fs::read(path).await?;
@@ -686,50 +687,61 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
     
-    #[tokio::test]
-    async fn test_backup_and_restore() {
-        let temp_dir = TempDir::new().expect("Failed to create temporary directory for tests");
-        let backup_dir = TempDir::new().expect("Failed to create backup directory for tests");
-        let restore_dir = TempDir::new().expect("Failed to create restore directory for tests");
-        
-        // Create test files
-        let test_file = temp_dir.path().join("test.txt");
-        fs::write(&test_file, "test content").await.expect("Failed to write test file");
-        
-        // Configure backup
-        let mut config = BackupConfig::default();
-        config.base_path = backup_dir.path().to_path_buf();
-        config.targets = vec![BackupTarget {
-            name: "test_target".to_string(),
-            target_type: BackupTargetType::FileSystem,
-            include_paths: vec![test_file.clone()],
-            exclude_patterns: vec![],
-        }];
-        
-        let service = BackupService::new(config);
-        
-        // Execute backup
-        let metadata = service.execute_full_backup().await.expect("Failed to execute backup");
-        assert_eq!(metadata.backup_type, BackupType::Full);
-        
-        // Verify backup
-        service.verify_backup(&metadata).await.expect("Failed to verify backup");
-        
-        // Restore backup
-        service.restore_backup(&metadata.id, restore_dir.path()).await.expect("Failed to restore backup");
-        
-        // Verify restored file
-        let restored_file = restore_dir.path().join("test_target").join("test.txt");
-        assert!(restored_file.exists());
-        
-        let content = fs::read_to_string(restored_file).await.expect("Failed to read restored file");
-        assert_eq!(content, "test content");
+        #[tokio::test]
+        async fn test_backup_and_restore() {
+            let temp_dir = TempDir::new().expect("Failed to create temporary directory for tests");
+            let backup_dir = TempDir::new().expect("Failed to create backup directory for tests");
+            let restore_dir = TempDir::new().expect("Failed to create restore directory for tests");
+            
+            // Create test files
+            let test_file = temp_dir.path().join("test.txt");
+            fs::write(&test_file, "test content").await.expect("Failed to write test file");
+            
+            // Configure backup
+            let mut config = BackupConfig::default();
+            config.base_path = backup_dir.path().to_path_buf();
+            config.targets = vec![BackupTarget {
+                name: "test_target".to_string(),
+                target_type: BackupTargetType::FileSystem,
+                include_paths: vec![test_file.clone()],
+                exclude_patterns: vec![],
+            }];
+            
+            let service = BackupService::new(config);
+            
+            // Execute backup
+            let metadata = service.execute_full_backup().await.expect("Failed to execute backup");
+            assert_eq!(metadata.backup_type, BackupType::Full);
+            
+            // Verify backup
+            service.verify_backup(&metadata).await.expect("Failed to verify backup");
+            
+            // Restore backup
+            service.restore_backup(&metadata.id, restore_dir.path()).await.expect("Failed to restore backup");
+            
+            // Verify restored file
+            let restored_file = restore_dir.path().join("test_target").join("test.txt");
+            assert!(restored_file.exists());
+            
+            let content = fs::read_to_string(restored_file).await.expect("Failed to read restored file");
+            assert_eq!(content, "test content");
+        }
     }
     
-    // ==================== Encryption Methods ====================
+    // Add required imports for encryption
+    use aes_gcm::{
+        aead::{Aead, KeyInit, OsRng, rand_core::RngCore},
+        Aes256Gcm, Key, Nonce
+    };
+    use base64::engine::general_purpose;
+    use base64::Engine;
     
-    /// Encrypt a file using AES-256-GCM
-    async fn encrypt_file(&self, file_path: &Path, backup_id: &str) -> Result<PathBuf> {
+    impl BackupService {
+        // ==================== Encryption Methods ====================
+        
+        /// Encrypt a file using AES-256-GCM
+        #[allow(dead_code)]
+        async fn encrypt_file(&self, file_path: &Path, _backup_id: &str) -> Result<PathBuf> {
         let key = self.get_or_create_encryption_key().await?;
         let cipher = Aes256Gcm::new(&key);
         
@@ -737,7 +749,9 @@ mod tests {
         let plaintext = fs::read(file_path).await?;
         
         // Generate a random nonce
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
         
         // Encrypt the data
         let ciphertext = cipher.encrypt(&nonce, plaintext.as_ref())
@@ -761,7 +775,8 @@ mod tests {
     }
     
     /// Decrypt a file using AES-256-GCM
-    async fn decrypt_file(&self, file_path: &Path, backup_id: &str) -> Result<PathBuf> {
+    #[allow(dead_code)]
+    async fn decrypt_file(&self, file_path: &Path, _backup_id: &str) -> Result<PathBuf> {
         let key = self.get_or_create_encryption_key().await?;
         let cipher = Aes256Gcm::new(&key);
         
@@ -791,6 +806,7 @@ mod tests {
     }
     
     /// Get or create the encryption key
+    #[allow(dead_code)]
     async fn get_or_create_encryption_key(&self) -> Result<Key<Aes256Gcm>> {
         // Try to get key from environment variable
         if let Ok(key_str) = std::env::var("BACKUP_ENCRYPTION_KEY") {
@@ -848,14 +864,15 @@ mod tests {
     }
     
     /// Get a key identifier for metadata
+    #[allow(dead_code)]
     fn get_key_id(&self) -> String {
         // Generate a key ID based on the key's hash
         // This allows tracking which key was used without exposing the key
         if let Ok(key) = std::env::var("BACKUP_ENCRYPTION_KEY") {
-            let mut hasher = Sha256::new();
+            let mut hasher = Sha256::default();
             hasher.update(key.as_bytes());
             let hash = hasher.finalize();
-            format!("{:x}", &hash[..8])
+            hex::encode(&hash[..8])
         } else {
             "default".to_string()
         }
