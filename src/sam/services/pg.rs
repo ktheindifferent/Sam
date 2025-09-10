@@ -398,7 +398,7 @@ pub async fn get_pool_status() -> Result<String> {
 }
 
 pub async fn reset_pool() -> Result<()> {
-    if let Some(pool) = POOL.get() {
+    if let Some(_pool) = POOL.get() {
         // This doesn't actually reset the OnceLock, but we can close all connections
         // and the pool will recreate them as needed
         info!("Resetting connection pool");

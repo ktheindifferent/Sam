@@ -1,6 +1,4 @@
 //! Simplified crawler module for benchmarks
-
-use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 

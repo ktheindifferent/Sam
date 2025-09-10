@@ -78,7 +78,7 @@ async fn show_domain_rejections(domain: &str, output_lines: &Arc<Mutex<Vec<Strin
                 out.push(format!("   Count: {} times", rejection.rejection_count));
                 
                 // Format timestamp
-                let dt = chrono::NaiveDateTime::from_timestamp_opt(rejection.rejected_at, 0)
+                let dt = chrono::DateTime::from_timestamp(rejection.rejected_at, 0)
                     .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                     .unwrap_or_else(|| "unknown".to_string());
                 out.push(format!("   Last rejected: {}", dt));
