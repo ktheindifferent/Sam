@@ -4,7 +4,6 @@ use tokio::io::AsyncWriteExt;
 use anyhow::{Result, Context};
 use log::{debug, warn};
 use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
 
 /// Temporary file with automatic cleanup on drop
 pub struct TempFile {

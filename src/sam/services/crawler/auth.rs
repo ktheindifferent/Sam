@@ -479,7 +479,7 @@ mod tests {
             password: "pass".to_string(),
         };
         
-        let mut headers = HeaderMap::new();
+        let headers = HeaderMap::new();
         let manager = AuthManager::new();
         
         // Would need async test context

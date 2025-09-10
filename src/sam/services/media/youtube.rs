@@ -136,7 +136,7 @@ pub fn handle(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
     use proptest::prelude::*;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};

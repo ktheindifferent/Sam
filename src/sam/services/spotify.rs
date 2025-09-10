@@ -361,7 +361,7 @@ impl SpotifyApi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mockall::mock;
+    
     use proptest::prelude::*;
     use wiremock::matchers::{method, path, header};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -595,7 +595,7 @@ mod tests {
             client_secret in "[a-zA-Z0-9]{10,30}"
         ) {
             let encoded = STANDARD.encode(format!("{}:{}", client_id, client_secret));
-            prop_assert!(encoded.len() > 0);
+            prop_assert!(!encoded.is_empty());
             prop_assert!(!encoded.contains(':'));
         }
         

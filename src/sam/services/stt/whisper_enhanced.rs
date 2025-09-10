@@ -339,6 +339,12 @@ impl WhisperService {
     }
 }
 
+/// Initialize the Whisper STT service
+pub async fn initialize() -> anyhow::Result<()> {
+    log::info!("Whisper STT service initialized");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,10 +372,4 @@ mod tests {
         assert_eq!(segment.text, deserialized.text);
         assert_eq!(segment.start_time, deserialized.start_time);
     }
-}
-
-/// Initialize the Whisper STT service
-pub async fn initialize() -> anyhow::Result<()> {
-    log::info!("Whisper STT service initialized");
-    Ok(())
 }

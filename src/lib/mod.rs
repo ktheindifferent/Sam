@@ -15,6 +15,8 @@ pub mod services;
 
 // pub use self::cmd_async;
 
+// pub use self::cmd_async;
+
 pub const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn print_banner(user: String) {

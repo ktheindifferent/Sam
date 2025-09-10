@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 
 // Deep Learning Detection Results
@@ -62,6 +62,12 @@ impl MotionDetector {
 
 pub struct FaceRecognizer {
     face_embeddings: HashMap<String, Vec<f32>>,
+}
+
+impl Default for FaceRecognizer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FaceRecognizer {
@@ -147,7 +153,7 @@ impl AlertManager {
         let now = SystemTime::now();
         
         let should_send = {
-            let mut last_times = self.last_alert_times.lock().unwrap();
+            let last_times = self.last_alert_times.lock().unwrap();
             if let Some(last_time) = last_times.get(&alert_key) {
                 now.duration_since(*last_time).unwrap_or(Duration::ZERO) >= self.cooldown_duration
             } else {
@@ -344,6 +350,12 @@ pub struct Observation {
     pub observation_objects: Vec<ObservationObjects>,
     pub observation_notes: Vec<String>,
     pub deep_vision_json: Option<String>,
+}
+
+impl Default for Observation {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Observation {

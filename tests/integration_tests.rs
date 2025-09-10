@@ -8,7 +8,7 @@ use tokio::time::timeout;
 #[tokio::test]
 async fn test_binary_help_command() {
     let output = Command::new("cargo")
-        .args(&["run", "--", "--help"])
+        .args(["run", "--", "--help"])
         .output()
         .expect("Failed to execute sam binary");
 
@@ -61,7 +61,7 @@ async fn test_binary_version_or_status() {
 async fn test_binary_compilation() {
     // Test that the binary compiles without errors
     let output = Command::new("cargo")
-        .args(&["build", "--bin", "sam"])
+        .args(["build", "--bin", "sam"])
         .output()
         .expect("Failed to build sam binary");
 
@@ -77,7 +77,7 @@ async fn test_binary_compilation() {
 fn test_lib_compilation() {
     // Test that libsam compiles without errors
     let output = Command::new("cargo")
-        .args(&["build", "--lib"])
+        .args(["build", "--lib"])
         .output()
         .expect("Failed to build libsam");
 
@@ -94,7 +94,7 @@ async fn test_basic_binary_execution() {
     // Test that the binary can at least start and exit gracefully
     let result = timeout(Duration::from_secs(5), async {
         Command::new("cargo")
-            .args(&["run", "--", "--help"])
+            .args(["run", "--", "--help"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

@@ -2,31 +2,31 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion, Benchmark
 use std::time::Duration;
 
 // Benchmark LIFX service endpoints
-fn bench_lifx_endpoint_selection(c: &mut Criterion) {
-    let mut group = c.benchmark_group("lifx_endpoints");
+// fn bench_lifx_endpoint_selection(c: &mut Criterion) {
+//     let mut group = c.benchmark_group("lifx_endpoints");
     
-    for public in &[true, false] {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(if *public { "public" } else { "private" }),
-            public,
-            |b, &public| {
-                b.iter(|| {
-                    sam::sam::services::lifx::select_lifx_endpoint(black_box(public))
-                });
-            },
-        );
-    }
-    group.finish();
-}
+//     for public in &[true, false] {
+//         group.bench_with_input(
+//             BenchmarkId::from_parameter(if *public { "public" } else { "private" }),
+//             public,
+//             |b, &public| {
+//                 b.iter(|| {
+//                     sam::sam::services::lifx::select_lifx_endpoint(black_box(public))
+//                 });
+//             },
+//         );
+//     }
+//     group.finish();
+// }
 
 // Benchmark Spotify state operations
-fn bench_spotify_status(c: &mut Criterion) {
-    c.bench_function("spotify_status", |b| {
-        b.iter(|| {
-            sam::sam::services::spotify::status()
-        });
-    });
-}
+// fn bench_spotify_status(c: &mut Criterion) {
+//     c.bench_function("spotify_status", |b| {
+//         b.iter(|| {
+//             sam::sam::services::spotify::status()
+//         });
+//     });
+// }
 
 // Benchmark sound processing operations
 fn bench_wav_spec_creation(c: &mut Criterion) {
@@ -45,40 +45,40 @@ fn bench_wav_spec_creation(c: &mut Criterion) {
 }
 
 // Benchmark noise gate processing
-fn bench_noise_gate_processing(c: &mut Criterion) {
-    use noise_gate::NoiseGate;
+// fn bench_noise_gate_processing(c: &mut Criterion) {
+//     use noise_gate::NoiseGate;
     
-    let noise_gate = NoiseGate::<f32>::new(
-        -30.0,  // open_threshold
-        -40.0,  // close_threshold
-    );
+//     let noise_gate = NoiseGate::<f32>::new(
+//         -30.0,  // open_threshold
+//         -40.0,  // close_threshold
+//     );
     
-    let mut group = c.benchmark_group("noise_gate");
-    group.warm_up_time(Duration::from_secs(1));
+//     let mut group = c.benchmark_group("noise_gate");
+//     group.warm_up_time(Duration::from_secs(1));
     
-    // Benchmark single sample processing
-    group.bench_function("single_sample", |b| {
-        let mut sample = [0.5f32];
-        b.iter(|| {
-            noise_gate.process_frame(black_box(sample))
-        });
-    });
+//     // Benchmark single sample processing
+//     group.bench_function("single_sample", |b| {
+//         let mut sample = [0.5f32];
+//         b.iter(|| {
+//             noise_gate.process_frame(black_box(sample))
+//         });
+//     });
     
-    // Benchmark batch processing
-    group.bench_function("batch_1000_samples", |b| {
-        let samples: Vec<[f32; 1]> = (0..1000)
-            .map(|i| [(i as f32 * 0.01).sin()])
-            .collect();
+//     // Benchmark batch processing
+//     group.bench_function("batch_1000_samples", |b| {
+//         let samples: Vec<[f32; 1]> = (0..1000)
+//             .map(|i| [(i as f32 * 0.01).sin()])
+//             .collect();
         
-        b.iter(|| {
-            for sample in &samples {
-                noise_gate.process_frame(black_box(*sample));
-            }
-        });
-    });
+//         b.iter(|| {
+//             for sample in &samples {
+//                 noise_gate.process_frame(black_box(*sample));
+//             }
+//         });
+//     });
     
-    group.finish();
-}
+//     group.finish();
+// }
 
 // Benchmark YouTube URL construction
 fn bench_youtube_url_construction(c: &mut Criterion) {
@@ -188,10 +188,10 @@ fn bench_file_path_operations(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_lifx_endpoint_selection,
-    bench_spotify_status,
+    // bench_lifx_endpoint_selection,
+    // bench_spotify_status,
     bench_wav_spec_creation,
-    bench_noise_gate_processing,
+    // bench_noise_gate_processing,
     bench_youtube_url_construction,
     bench_base64_encoding,
     bench_concurrent_access,

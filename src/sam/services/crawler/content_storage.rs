@@ -475,7 +475,7 @@ mod tests {
         let cleaned = CrawledContent::clean_content_for_indexing(&problematic_content);
         
         // The result should be truncated safely at a character boundary
-        assert!(cleaned.len() > 0);
+        assert!(!cleaned.is_empty());
         // Verify the string is valid UTF-8 (this would panic if it wasn't)
         assert!(cleaned.is_char_boundary(cleaned.len()));
         

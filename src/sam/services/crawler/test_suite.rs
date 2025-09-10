@@ -360,7 +360,7 @@ mod tests {
             
             // Try to decompress
             if let Some(decompressed) = content.decompress_html() {
-                assert!(decompressed.len() > 0);
+                assert!(!decompressed.is_empty());
             } else {
                 // If compression is not working, that's also fine for the test
                 assert!(true);

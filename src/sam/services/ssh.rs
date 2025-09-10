@@ -358,7 +358,7 @@ impl SshManager {
                 is_directory: stat.is_dir(),
                 is_file: stat.is_file(),
                 permissions: stat.perm.unwrap_or(0),
-                modified: stat.mtime.map(|t| t),
+                modified: stat.mtime,
             });
         }
         

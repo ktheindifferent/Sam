@@ -12,6 +12,8 @@ pub mod emulators;
 pub mod package_managers;
 pub mod vcpkg;
 pub mod rtsp_dl_test;
+pub mod crawler_simple;
+pub use crawler_simple as crawler;
 #[cfg(test)]
 pub use rtsp_dl_test as rtsp_dl;
 #[cfg(test)]

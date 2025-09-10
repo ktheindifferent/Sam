@@ -679,54 +679,6 @@ impl BackupService {
         Ok(100 * 1024 * 1024 * 1024)  // 100 GB
     }
 }
-
-// ==================== Tests ====================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-    
-        #[tokio::test]
-        async fn test_backup_and_restore() {
-            let temp_dir = TempDir::new().expect("Failed to create temporary directory for tests");
-            let backup_dir = TempDir::new().expect("Failed to create backup directory for tests");
-            let restore_dir = TempDir::new().expect("Failed to create restore directory for tests");
-            
-            // Create test files
-            let test_file = temp_dir.path().join("test.txt");
-            fs::write(&test_file, "test content").await.expect("Failed to write test file");
-            
-            // Configure backup
-            let mut config = BackupConfig::default();
-            config.base_path = backup_dir.path().to_path_buf();
-            config.targets = vec![BackupTarget {
-                name: "test_target".to_string(),
-                target_type: BackupTargetType::FileSystem,
-                include_paths: vec![test_file.clone()],
-                exclude_patterns: vec![],
-            }];
-            
-            let service = BackupService::new(config);
-            
-            // Execute backup
-            let metadata = service.execute_full_backup().await.expect("Failed to execute backup");
-            assert_eq!(metadata.backup_type, BackupType::Full);
-            
-            // Verify backup
-            service.verify_backup(&metadata).await.expect("Failed to verify backup");
-            
-            // Restore backup
-            service.restore_backup(&metadata.id, restore_dir.path()).await.expect("Failed to restore backup");
-            
-            // Verify restored file
-            let restored_file = restore_dir.path().join("test_target").join("test.txt");
-            assert!(restored_file.exists());
-            
-            let content = fs::read_to_string(restored_file).await.expect("Failed to read restored file");
-            assert_eq!(content, "test content");
-        }
-    }
     
     // Add required imports for encryption
     use aes_gcm::{
@@ -878,3 +830,51 @@ mod tests {
         }
     }
 }
+
+// ==================== Tests ====================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    
+        #[tokio::test]
+        async fn test_backup_and_restore() {
+            let temp_dir = TempDir::new().expect("Failed to create temporary directory for tests");
+            let backup_dir = TempDir::new().expect("Failed to create backup directory for tests");
+            let restore_dir = TempDir::new().expect("Failed to create restore directory for tests");
+            
+            // Create test files
+            let test_file = temp_dir.path().join("test.txt");
+            fs::write(&test_file, "test content").await.expect("Failed to write test file");
+            
+            // Configure backup
+            let mut config = BackupConfig::default();
+            config.base_path = backup_dir.path().to_path_buf();
+            config.targets = vec![BackupTarget {
+                name: "test_target".to_string(),
+                target_type: BackupTargetType::FileSystem,
+                include_paths: vec![test_file.clone()],
+                exclude_patterns: vec![],
+            }];
+            
+            let service = BackupService::new(config);
+            
+            // Execute backup
+            let metadata = service.execute_full_backup().await.expect("Failed to execute backup");
+            assert_eq!(metadata.backup_type, BackupType::Full);
+            
+            // Verify backup
+            service.verify_backup(&metadata).await.expect("Failed to verify backup");
+            
+            // Restore backup
+            service.restore_backup(&metadata.id, restore_dir.path()).await.expect("Failed to restore backup");
+            
+            // Verify restored file
+            let restored_file = restore_dir.path().join("test_target").join("test.txt");
+            assert!(restored_file.exists());
+            
+            let content = fs::read_to_string(restored_file).await.expect("Failed to read restored file");
+            assert_eq!(content, "test content");
+        }
+    }

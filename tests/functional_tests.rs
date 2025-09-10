@@ -12,7 +12,7 @@ mod libsam_tests {
     fn test_libsam_services_module_exists() {
         // Test that we can reference libsam services
         let output = Command::new("cargo")
-            .args(&["doc", "--lib", "--no-deps"])
+            .args(["doc", "--lib", "--no-deps"])
             .output()
             .expect("Failed to generate docs");
 
@@ -43,7 +43,7 @@ mod libsam_tests {
             let output = Command::new("cargo")
                 .args(&args)
                 .output()
-                .expect(&format!("Failed to build {}", name));
+                .unwrap_or_else(|_| panic!("Failed to build {}", name));
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -63,7 +63,7 @@ mod performance_tests {
         let start = Instant::now();
         
         let output = Command::new("cargo")
-            .args(&["check", "--lib"])
+            .args(["check", "--lib"])
             .output()
             .expect("Failed to check lib");
 
@@ -81,7 +81,7 @@ mod performance_tests {
         let start = Instant::now();
         
         let output = Command::new("cargo")
-            .args(&["build", "--bin", "sam"])
+            .args(["build", "--bin", "sam"])
             .output()
             .expect("Failed to build binary");
 
@@ -106,7 +106,7 @@ mod system_tests {
     fn test_dependencies_resolve() {
         // Test that all dependencies can be resolved and fetched
         let output = Command::new("cargo")
-            .args(&["fetch"])
+            .args(["fetch"])
             .output()
             .expect("Failed to fetch dependencies");
 
@@ -117,7 +117,7 @@ mod system_tests {
     fn test_no_conflicting_dependencies() {
         // Test for dependency conflicts
         let output = Command::new("cargo")
-            .args(&["tree"])
+            .args(["tree"])
             .output()
             .expect("Failed to generate dependency tree");
 
@@ -132,7 +132,7 @@ mod system_tests {
     fn test_clippy_basic_passes() {
         // Run basic clippy checks
         let output = Command::new("cargo")
-            .args(&["clippy", "--", "-D", "warnings"])
+            .args(["clippy", "--", "-D", "warnings"])
             .output();
 
         match output {
@@ -155,7 +155,7 @@ mod system_tests {
     fn test_format_check() {
         // Check if code is formatted
         let output = Command::new("cargo")
-            .args(&["fmt", "--check"])
+            .args(["fmt", "--check"])
             .output();
 
         match output {
@@ -181,7 +181,7 @@ fn test_overall_project_health() {
     // Test 1: Does the library compile?
     max_score += 1;
     let lib_result = Command::new("cargo")
-        .args(&["build", "--lib"])
+        .args(["build", "--lib"])
         .output()
         .expect("Failed to test lib compilation");
     
@@ -195,7 +195,7 @@ fn test_overall_project_health() {
     // Test 2: Does the binary compile?
     max_score += 1;
     let bin_result = Command::new("cargo")
-        .args(&["build", "--bin", "sam"])
+        .args(["build", "--bin", "sam"])
         .output()
         .expect("Failed to test binary compilation");
     
@@ -209,7 +209,7 @@ fn test_overall_project_health() {
     // Test 3: Can we generate documentation?
     max_score += 1;
     let doc_result = Command::new("cargo")
-        .args(&["doc", "--no-deps", "--lib"])
+        .args(["doc", "--no-deps", "--lib"])
         .output()
         .expect("Failed to test doc generation");
         

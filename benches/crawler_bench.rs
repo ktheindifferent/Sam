@@ -1,7 +1,7 @@
 //! Performance benchmarks for the crawler components
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use sam::sam::services::crawler;
+use libsam::services::crawler;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
@@ -23,15 +23,18 @@ fn benchmark_url_normalization(c: &mut Criterion) {
 }
 
 fn benchmark_content_hashing(c: &mut Criterion) {
+    let long_content = "Very long content that repeats. ".repeat(100);
+    let extremely_long_content = "Extremely long content with lots of text. ".repeat(1000);
+    
     let contents = vec![
         "Short content",
         "Medium length content that is a bit longer than the short one but not too long",
-        &"Very long content that repeats. ".repeat(100),
-        &"Extremely long content with lots of text. ".repeat(1000),
+        &long_content,
+        &extremely_long_content,
     ];
 
     let mut group = c.benchmark_group("content_hashing");
-    for (i, content) in contents.iter().enumerate() {
+    for (_i, content) in contents.iter().enumerate() {
         group.bench_with_input(
             BenchmarkId::from_parameter(content.len()),
             content,
@@ -51,13 +54,10 @@ fn benchmark_bloom_filter(c: &mut Criterion) {
             BenchmarkId::from_parameter(size),
             size,
             |b, &size| {
-                let config = crawler::memory_optimized::MemoryConfig {
-                    bloom_filter_size: size,
-                    bloom_filter_fp_rate: 0.01,
-                    lru_cache_size: 1000,
-                    max_queue_size: 10000,
-                    enable_redis_spillover: false,
-                };
+            let config = crawler::memory_optimized::MemoryConfig {
+                max_urls: size,
+                cleanup_threshold: 0.8,
+            };
                 
                 let mut tracker = crawler::memory_optimized::OptimizedUrlTracker::new(config);
                 
@@ -95,6 +95,8 @@ fn benchmark_pattern_detection(c: &mut Criterion) {
 }
 
 fn benchmark_html_parsing(c: &mut Criterion) {
+    let complex_html = format!(r#"<html><body>{}</body></html>"#, 
+                               "<a href='/link'>Link</a>".repeat(100));
     let html_samples = vec![
         r#"<html><head><title>Simple</title></head><body>Content</body></html>"#,
         r#"<html>
@@ -108,8 +110,7 @@ fn benchmark_html_parsing(c: &mut Criterion) {
                 <a href="/link3">Link 3</a>
             </body>
         </html>"#,
-        &format!(r#"<html><body>{}</body></html>"#, 
-                 "<a href='/link'>Link</a>".repeat(100)),
+        &complex_html,
     ];
 
     let mut group = c.benchmark_group("html_parsing");
@@ -129,22 +130,22 @@ fn benchmark_html_parsing(c: &mut Criterion) {
 }
 
 fn benchmark_compression(c: &mut Criterion) {
-    let mut group = c.benchmark_group("compression");
-    
+    let medium_text = "Medium text content. ".repeat(50);
+    let large_text = "Large text content with lots of repetition. ".repeat(500);
     let texts = vec![
         ("small", "Small text content"),
-        ("medium", &"Medium text content. ".repeat(50)),
-        ("large", &"Large text content with lots of repetition. ".repeat(500)),
+        ("medium", &medium_text),
+        ("large", &large_text),
     ];
 
+    let mut group = c.benchmark_group("compression");
     for (name, text) in texts {
         group.bench_with_input(
             BenchmarkId::from_parameter(name),
             text,
             |b, text| {
                 b.iter(|| {
-                    let compressed = crawler::CrawledContent::compress_content(black_box(text))
-                        .unwrap();
+                    let compressed = crawler::CrawledContent::compress_content(black_box(text));
                     crawler::CrawledContent::decompress_content(black_box(&compressed))
                         .unwrap();
                 })
@@ -161,10 +162,8 @@ fn benchmark_circuit_breaker(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let config = crawler::circuit_breaker::CircuitBreakerConfig {
                 failure_threshold: 5,
-                initial_backoff: Duration::from_millis(10),
-                max_backoff: Duration::from_secs(1),
-                open_duration: Duration::from_millis(50),
-                half_open_success_threshold: 3,
+                timeout_seconds: 60,
+                recovery_timeout_seconds: 30,
             };
             
             let breaker = crawler::circuit_breaker::CircuitBreaker::with_config(config);
@@ -189,14 +188,9 @@ fn benchmark_rate_limiter(c: &mut Criterion) {
     c.bench_function("rate_limiter_operations", |b| {
         b.to_async(&rt).iter(|| async {
             let config = crawler::rate_limiter::RateLimitConfig {
-                default_delay: Duration::from_micros(100),
-                min_delay: Duration::from_micros(50),
-                max_delay: Duration::from_millis(10),
-                requests_per_second: 1000.0,
+                requests_per_second: 1000,
                 burst_size: 10,
-                adaptive: true,
-                respect_crawl_delay: true,
-                respect_retry_after: true,
+                adaptive_threshold: 0.8,
             };
             
             let limiter = crawler::rate_limiter::AdaptiveRateLimiter::with_config(config);
@@ -206,7 +200,6 @@ fn benchmark_rate_limiter(c: &mut Criterion) {
                 limiter.can_crawl_domain(black_box(&domain)).await;
                 limiter.record_request(
                     black_box(&domain),
-                    200,
                     Duration::from_millis(10)
                 ).await;
             }
@@ -235,7 +228,7 @@ fn benchmark_user_agent_rotation(c: &mut Criterion) {
                     
                     for i in 0..20 {
                         let url = format!("https://example{}.com/page", i % 5);
-                        rotator.get_user_agent(black_box(&url)).await;
+                        rotator.get_user_agent(black_box(&url));
                     }
                 })
             },

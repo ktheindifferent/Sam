@@ -5,7 +5,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 
 // Deep Learning Detection Results
@@ -145,7 +145,7 @@ impl AlertManager {
         let now = SystemTime::now();
         
         let should_send = {
-            let mut last_times = self.last_alert_times.lock().unwrap();
+            let last_times = self.last_alert_times.lock().unwrap();
             if let Some(last_time) = last_times.get(&alert_key) {
                 now.duration_since(*last_time).unwrap_or(Duration::ZERO) >= self.cooldown_duration
             } else {

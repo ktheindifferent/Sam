@@ -910,7 +910,7 @@ mod tests {
             // Spec should be valid
             prop_assert!(spec.channels > 0);
             prop_assert!(spec.sample_rate > 0);
-            prop_assert!(vec![8, 16, 24, 32].contains(&spec.bits_per_sample));
+            prop_assert!([8, 16, 24, 32].contains(&spec.bits_per_sample));
         }
         
         #[test]

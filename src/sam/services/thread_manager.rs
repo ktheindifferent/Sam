@@ -1099,7 +1099,7 @@ mod miri_tests;
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::Ordering;
     
     #[test]
     fn test_spawn_and_stop() {

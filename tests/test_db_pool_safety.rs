@@ -3,6 +3,32 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+fn main() {
+    println!("Database Pool Thread Safety Test");
+    println!("=================================");
+    println!();
+    println!("Key improvements implemented:");
+    println!("1. Replaced 'static mut POOL' with 'static POOL: OnceLock<Arc<Pool>>'");
+    println!("2. Added connection pool monitoring with PoolMetrics");
+    println!("3. Implemented retry logic with exponential backoff");
+    println!("4. Added connection timeouts (5s for getting connection, 30s for queries)");
+    println!("5. Implemented health checks with 30-second intervals");
+    println!("6. Fixed N+1 query pattern in observation.rs by batch loading humans");
+    println!("7. Added batch query functions for optimized database access");
+    println!();
+    println!("Thread safety guarantees:");
+    println!("- OnceLock ensures single initialization even with concurrent access");
+    println!("- Arc<Pool> provides safe shared ownership across threads");
+    println!("- RwLock<PoolMetrics> allows concurrent reads with exclusive writes");
+    println!("- No more unsafe blocks or potential race conditions");
+    println!();
+    println!("Performance optimizations:");
+    println!("- Batch loading reduces database round trips");
+    println!("- Connection pooling with configurable size (32 connections)");
+    println!("- Query result caching capability");
+    println!("- Metrics tracking for monitoring performance");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,30 +88,4 @@ mod tests {
         
         println!("Pool initialization race test passed - no unsafe access detected");
     }
-}
-
-fn main() {
-    println!("Database Pool Thread Safety Test");
-    println!("=================================");
-    println!();
-    println!("Key improvements implemented:");
-    println!("1. Replaced 'static mut POOL' with 'static POOL: OnceLock<Arc<Pool>>'");
-    println!("2. Added connection pool monitoring with PoolMetrics");
-    println!("3. Implemented retry logic with exponential backoff");
-    println!("4. Added connection timeouts (5s for getting connection, 30s for queries)");
-    println!("5. Implemented health checks with 30-second intervals");
-    println!("6. Fixed N+1 query pattern in observation.rs by batch loading humans");
-    println!("7. Added batch query functions for optimized database access");
-    println!();
-    println!("Thread safety guarantees:");
-    println!("- OnceLock ensures single initialization even with concurrent access");
-    println!("- Arc<Pool> provides safe shared ownership across threads");
-    println!("- RwLock<PoolMetrics> allows concurrent reads with exclusive writes");
-    println!("- No more unsafe blocks or potential race conditions");
-    println!();
-    println!("Performance optimizations:");
-    println!("- Batch loading reduces database round trips");
-    println!("- Connection pooling with configurable size (32 connections)");
-    println!("- Query result caching capability");
-    println!("- Metrics tracking for monitoring performance");
 }

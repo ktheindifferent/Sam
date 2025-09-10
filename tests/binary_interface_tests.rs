@@ -1,15 +1,14 @@
 // Comprehensive binary interface tests for SAM
 // Tests the actual CLI commands and functionality without internal dependencies
 
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::Duration;
 use std::fs;
-use tempfile::TempDir;
 
 #[test]
 fn test_cargo_check_passes() {
     let output = Command::new("cargo")
-        .args(&["check"])
+        .args(["check"])
         .output()
         .expect("Failed to run cargo check");
 
@@ -22,7 +21,7 @@ fn test_cargo_check_passes() {
 #[test]
 fn test_cargo_build_binary() {
     let output = Command::new("cargo")
-        .args(&["build", "--bin", "sam", "--release"])
+        .args(["build", "--bin", "sam", "--release"])
         .output()
         .expect("Failed to build sam binary");
 
@@ -39,7 +38,7 @@ fn test_cargo_build_binary() {
 #[test]
 fn test_cargo_build_library() {
     let output = Command::new("cargo")
-        .args(&["build", "--lib"])
+        .args(["build", "--lib"])
         .output()
         .expect("Failed to build libsam");
 
@@ -53,7 +52,7 @@ fn test_cargo_build_library() {
 fn test_binary_exists_and_executable() {
     // First build the binary
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "sam"])
+        .args(["build", "--bin", "sam"])
         .output()
         .expect("Failed to build binary");
 
@@ -107,7 +106,7 @@ mod config_tests {
 
 #[cfg(test)]
 mod service_tests {
-    use super::*;
+    
 
     #[test]
     fn test_basic_service_structure() {
@@ -150,7 +149,7 @@ mod integration_tests {
         let start = Instant::now();
         
         let output = Command::new("cargo")
-            .args(&["check", "--all-targets"])
+            .args(["check", "--all-targets"])
             .output()
             .expect("Failed to run cargo check");
 
@@ -169,7 +168,7 @@ mod integration_tests {
     #[test]
     fn test_no_critical_warnings() {
         let output = Command::new("cargo")
-            .args(&["check"])
+            .args(["check"])
             .output()
             .expect("Failed to run cargo check");
 
