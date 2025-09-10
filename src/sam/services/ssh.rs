@@ -1,7 +1,7 @@
-use ssh2::{Session, Channel, Sftp};
+use ssh2::Session;
 use std::net::{TcpStream, SocketAddr};
 use std::path::{Path, PathBuf};
-use std::io::{Read, Write, BufReader, BufRead};
+use std::io::{Read, Write, BufReader};
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use log::{info, error, debug, warn};
@@ -358,7 +358,7 @@ impl SshManager {
                 is_directory: stat.is_dir(),
                 is_file: stat.is_file(),
                 permissions: stat.perm.unwrap_or(0),
-                modified: stat.mtime.map(|t| t as u64),
+                modified: stat.mtime.map(|t| t),
             });
         }
         
@@ -393,7 +393,7 @@ impl SshManager {
     pub async fn disconnect(&self, connection_id: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut connections = self.connections.write().await;
         
-        if let Some(mut connection) = connections.remove(connection_id) {
+        if let Some(connection) = connections.remove(connection_id) {
             connection.session.disconnect(None, "User disconnect", None)?;
             info!("Disconnected from SSH host: {}", connection_id);
             Ok(())
@@ -406,7 +406,7 @@ impl SshManager {
     pub async fn disconnect_all(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut connections = self.connections.write().await;
         
-        for (id, mut connection) in connections.drain() {
+        for (id, connection) in connections.drain() {
             if let Err(e) = connection.session.disconnect(None, "Shutdown", None) {
                 warn!("Error disconnecting from {}: {}", id, e);
             }
@@ -478,6 +478,12 @@ pub struct SshCommandBuilder {
     commands: Vec<String>,
     environment: HashMap<String, String>,
     working_directory: Option<String>,
+}
+
+impl Default for SshCommandBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SshCommandBuilder {

@@ -7,12 +7,12 @@ use std::env;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-use crate::sam::monitoring::{report_service_error, add_breadcrumb};
-use std::collections::BTreeMap;
+use crate::sam::monitoring::report_service_error;
 
 static POOL: OnceLock<Arc<Pool>> = OnceLock::new();
 static POOL_METRICS: OnceLock<Arc<RwLock<PoolMetrics>>> = OnceLock::new();
 
+#[derive(Default)]
 pub struct PoolMetrics {
     pub total_connections: u64,
     pub failed_connections: u64,
@@ -22,18 +22,6 @@ pub struct PoolMetrics {
     pub last_health_check: Option<std::time::Instant>,
 }
 
-impl Default for PoolMetrics {
-    fn default() -> Self {
-        Self {
-            total_connections: 0,
-            failed_connections: 0,
-            successful_queries: 0,
-            failed_queries: 0,
-            connection_wait_time_ms: Vec::new(),
-            last_health_check: None,
-        }
-    }
-}
 
 pub async fn connect() -> Result<Arc<Pool>> {
     // Try to get existing pool first
@@ -99,7 +87,7 @@ async fn perform_health_check_if_needed(pool: &Arc<Pool>) -> Result<()> {
     if let Some(metrics) = POOL_METRICS.get() {
         let should_check = {
             let metrics = metrics.read().await;
-            metrics.last_health_check.map_or(true, |last| {
+            metrics.last_health_check.is_none_or(|last| {
                 last.elapsed() > Duration::from_secs(30)
             })
         };

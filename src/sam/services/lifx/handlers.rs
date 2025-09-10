@@ -1,6 +1,5 @@
 use super::bulb::BulbInfo;
 use super::protocol::ProtocolHandler;
-use super::traits::ColorCommand;
 use colors_transform::{Color as TransformColor, Rgb as TransformRgb};
 use lifx_rs::lan::{PowerLevel, HSBK};
 use palette::{FromColor, Hsv};
@@ -8,7 +7,6 @@ use rouille::{post_input, try_or_400, Request, Response};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::UdpSocket;
-use std::sync::Mutex;
 
 #[derive(Debug, Deserialize)]
 pub struct StateInput {
@@ -151,7 +149,7 @@ impl HttpHandlers {
             }
 
             if let Some(brightness) = input.brightness {
-                let mut current_color = bulb.lifx_color.as_ref().map(|c| HSBK {
+                let current_color = bulb.lifx_color.as_ref().map(|c| HSBK {
                     hue: c.hue,
                     saturation: c.saturation,
                     brightness: (brightness * 65535.0) as u16,
@@ -192,10 +190,10 @@ impl HttpHandlers {
     }
 
     fn parse_color_command(&self, color_str: &str, bulb: &BulbInfo, duration: u32) -> Option<HSBK> {
-        let mut kelvin = bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(6500);
-        let mut brightness = bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535);
-        let mut saturation = bulb.lifx_color.as_ref().map(|c| c.saturation).unwrap_or(0);
-        let mut hue = bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0);
+        let kelvin = bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(6500);
+        let brightness = bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535);
+        let saturation = bulb.lifx_color.as_ref().map(|c| c.saturation).unwrap_or(0);
+        let hue = bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0);
 
         if color_str.contains("white") {
             return Some(HSBK {
@@ -346,9 +344,9 @@ impl HttpHandlers {
         if color_str.contains("#") {
             if let Some(hex) = self.extract_value(color_str, "#") {
                 if let Ok(rgb) = TransformRgb::from_hex_str(&format!("#{}", hex)) {
-                    let r = rgb.get_red() as f32;
-                    let g = rgb.get_green() as f32;
-                    let b = rgb.get_blue() as f32;
+                    let r = rgb.get_red();
+                    let g = rgb.get_green();
+                    let b = rgb.get_blue();
                     let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(r, g, b);
                     let hsv = Hsv::from_color(rgb);
                     return Some(HSBK {

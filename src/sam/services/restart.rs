@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, oneshot, Mutex};
-use tokio::time::{sleep, timeout};
-use log::{info, warn, error, debug};
+use tokio::sync::Mutex;
+use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
-use anyhow::{Result, Context};
+use anyhow::Result;
 use async_trait::async_trait;
 use thiserror::Error;
 
@@ -19,7 +18,7 @@ pub enum RestartError {
     RestartFailed(String),
 }
 
-use super::orchestrator::{ServiceName, ServiceStatus, ServiceHealth};
+use super::orchestrator::ServiceName;
 
 /// Restart strategy for a service
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -184,6 +183,12 @@ pub struct RestartManager {
     circuit_states: Arc<RwLock<HashMap<ServiceName, CircuitState>>>,
     restart_locks: Arc<Mutex<HashMap<ServiceName, Arc<Mutex<()>>>>>,
     notifiers: Arc<RwLock<Vec<Arc<dyn RestartNotifier>>>>,
+}
+
+impl Default for RestartManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RestartManager {

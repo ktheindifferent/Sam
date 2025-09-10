@@ -38,7 +38,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 out.push("Usage: llama v2 <prompt>".to_string());
             } else {
                 crate::sam::cli::spinner::run_with_spinner(
-                    &output_lines,
+                    output_lines,
                     "Querying llama v2...",
                     |lines, result| lines.push(format!("llama v2: {}", result)),
                     move || {
@@ -59,7 +59,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 out.push("Usage: llama v2-tiny <prompt>".to_string());
             } else {
                 crate::sam::cli::spinner::run_with_spinner(
-                    &output_lines,
+                    output_lines,
                     "Querying llama v2-tiny...",
                     |lines, result| lines.push(format!("llama v2-tiny: {}", result)),
                     move || {
@@ -84,7 +84,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 out.push("Usage: llama <model_path> <prompt>".to_string());
             } else {
                 crate::sam::cli::spinner::run_with_spinner(
-                    &output_lines,
+                    output_lines,
                     &format!("Querying llama model {}...", model_path_str),
                     |lines, result| lines.push(format!("llama: {}", result)),
                     move || {

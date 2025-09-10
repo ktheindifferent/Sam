@@ -1,10 +1,10 @@
-use deadpool_postgres::{Config, Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use tokio_postgres::{NoTls, Row};
 use std::time::Duration;
 use std::sync::Arc;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use log::{info, error, debug};
+use log::{info, error};
 
 /// Global database connection pool
 static DB_POOL: Lazy<Arc<DbPool>> = Lazy::new(|| {
@@ -52,6 +52,12 @@ pub struct DbPool {
     config: PoolConfig,
 }
 
+impl Default for DbPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DbPool {
     /// Create a new database pool (uninitialized)
     pub fn new() -> Self {
@@ -64,7 +70,7 @@ impl DbPool {
     /// Initialize the connection pool with custom configuration
     pub async fn init_with_config(config: PoolConfig) -> Result<(), Box<dyn std::error::Error>> {
         let pool = DB_POOL.clone();
-        let mut pool_mut = pool.as_ref();
+        let pool_mut = pool.as_ref();
         
         // Create deadpool configuration
         let mut cfg = Config::new();

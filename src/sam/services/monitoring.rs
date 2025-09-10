@@ -4,10 +4,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
-use log::{info, warn, error, debug};
-use anyhow::{Result, Context};
+use log::{info, warn, error};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 
 // ==================== Metrics Types ====================
@@ -418,6 +418,12 @@ pub struct AlertManager {
 #[async_trait::async_trait]
 pub trait AlertHandler {
     async fn handle(&self, alert: &Alert) -> Result<()>;
+}
+
+impl Default for AlertManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AlertManager {

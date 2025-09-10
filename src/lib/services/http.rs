@@ -1,4 +1,3 @@
-use std::fs::File;
 
 use std::io::Write;
 use tokio::fs::File as TokioFile;
@@ -15,7 +14,7 @@ pub async fn install() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    let _ = crate::extract_zip_async("/opt/sam/www.zip", "/opt/sam/").await?;
+    crate::extract_zip_async("/opt/sam/www.zip", "/opt/sam/").await?;
 
     Ok(())
 }

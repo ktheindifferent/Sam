@@ -1,6 +1,3 @@
-use std::env;
-use std::path::PathBuf;
-use tokio::fs;
 use log;
 
 
@@ -16,7 +13,7 @@ pub async fn set_path() -> Result<(), anyhow::Error> {
 }
 
 pub async fn install() -> Result<(), anyhow::Error> {
-    let _ = set_path().await?;
+    set_path().await?;
     let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
     log::info!("Checking for Chocolatey at {}", choco_path);
     let choco_exists = tokio::fs::metadata(choco_path).await.is_ok();
@@ -58,7 +55,7 @@ pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> 
     let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
     let mut args = vec!["install".to_string()];
     for pkg in &packages {
-        args.push(format!("{}", pkg));
+        args.push(pkg.to_string());
     }
     args.push("--yes".to_string()); // Automatically confirm installation
     args.push("--no-progress".to_string()); // Suppress progress output

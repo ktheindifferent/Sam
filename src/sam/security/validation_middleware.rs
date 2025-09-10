@@ -33,6 +33,12 @@ pub struct ValidationErrors {
     pub errors: HashMap<String, Vec<String>>,
 }
 
+impl Default for ValidationErrors {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ValidationErrors {
     pub fn new() -> Self {
         ValidationErrors {
@@ -43,7 +49,7 @@ impl ValidationErrors {
     pub fn add_error(&mut self, field: &str, message: &str) {
         self.errors
             .entry(field.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(message.to_string());
     }
 

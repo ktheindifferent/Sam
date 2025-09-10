@@ -323,6 +323,12 @@ pub struct ConfigBuilder {
     monitoring: Option<MonitoringConfig>,
 }
 
+impl Default for ConfigBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConfigBuilder {
     pub fn new() -> Self {
         Self {

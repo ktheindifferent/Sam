@@ -2,7 +2,6 @@ use anyhow::{Result, Context};
 use async_trait::async_trait;
 use deadpool_postgres::{Pool, Transaction};
 use std::sync::Arc;
-use tokio_postgres::Row;
 use log::{info, warn, error};
 use chrono::{DateTime, Utc};
 use std::collections::HashSet;

@@ -4,7 +4,7 @@
 //! about crawler events like job completion, failures, and milestones.
 
 use anyhow::{Result, Context};
-use reqwest::{Client, StatusCode};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;

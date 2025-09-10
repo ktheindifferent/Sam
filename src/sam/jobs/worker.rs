@@ -1,15 +1,14 @@
 use anyhow::{Result, Context};
-use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tokio::sync::{RwLock, Mutex, mpsc, oneshot};
+use tokio::sync::{RwLock, Mutex, oneshot};
 use tokio::time::{timeout, sleep};
 use super::handler::JobHandler;
 use super::queue::JobQueue;
-use super::types::{Job, JobResult, JobError, Priority};
+use super::types::{JobResult, JobError, Priority};
 use super::monitoring::JobMonitor;
 use super::dead_letter::DeadLetterQueue;
 

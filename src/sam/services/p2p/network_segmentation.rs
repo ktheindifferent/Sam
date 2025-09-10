@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::{RwLock, Semaphore};
 use serde::{Deserialize, Serialize};
-use log::{info, warn, error, debug};
+use log::{info, warn, debug};
 
 /// Different types of network channels for data segregation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -231,6 +231,12 @@ struct QueuedMessage {
     priority: Priority,
     data: Vec<u8>,
     timestamp: SystemTime,
+}
+
+impl Default for NetworkSegmentation {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NetworkSegmentation {

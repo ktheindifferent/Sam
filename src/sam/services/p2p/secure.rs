@@ -237,7 +237,7 @@ impl SecureP2P {
         
         // Sign the handshake data
         let mut data_to_sign = Vec::new();
-        data_to_sign.extend_from_slice(&self.identity.peer_id.0.as_bytes());
+        data_to_sign.extend_from_slice(self.identity.peer_id.0.as_bytes());
         data_to_sign.extend_from_slice(&ephemeral_public_key);
         data_to_sign.extend_from_slice(&timestamp.to_be_bytes());
         data_to_sign.extend_from_slice(&nonce);
@@ -322,8 +322,8 @@ impl SecureP2P {
         
         // Sign the encrypted message
         let mut data_to_sign = Vec::new();
-        data_to_sign.extend_from_slice(&self.identity.peer_id.0.as_bytes());
-        data_to_sign.extend_from_slice(&peer_id.as_bytes());
+        data_to_sign.extend_from_slice(self.identity.peer_id.0.as_bytes());
+        data_to_sign.extend_from_slice(peer_id.as_bytes());
         data_to_sign.extend_from_slice(&nonce);
         data_to_sign.extend_from_slice(&ciphertext);
         
@@ -353,8 +353,8 @@ impl SecureP2P {
         
         // Verify signature
         let mut data_to_verify = Vec::new();
-        data_to_verify.extend_from_slice(&encrypted_msg.sender_id.0.as_bytes());
-        data_to_verify.extend_from_slice(&encrypted_msg.recipient_id.0.as_bytes());
+        data_to_verify.extend_from_slice(encrypted_msg.sender_id.0.as_bytes());
+        data_to_verify.extend_from_slice(encrypted_msg.recipient_id.0.as_bytes());
         data_to_verify.extend_from_slice(&encrypted_msg.nonce);
         data_to_verify.extend_from_slice(&encrypted_msg.ciphertext);
         

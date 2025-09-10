@@ -165,18 +165,15 @@ impl CircuitBreaker {
     {
         // Check if circuit is open
         let state = self.state.read().await.clone();
-        match state {
-            CircuitState::Open { opened_at } => {
-                if Utc::now().signed_duration_since(opened_at).to_std().expect("Duration should be valid") >= self.timeout {
-                    // Transition to half-open
-                    *self.state.write().await = CircuitState::HalfOpen;
-                    *self.success_count.write().await = 0;
-                    info!("Circuit breaker '{}' transitioning to half-open", self.name);
-                } else {
-                    return Err(ServiceError::CircuitBreakerOpen(self.name.clone()).into());
-                }
+        if let CircuitState::Open { opened_at } = state {
+            if Utc::now().signed_duration_since(opened_at).to_std().expect("Duration should be valid") >= self.timeout {
+                // Transition to half-open
+                *self.state.write().await = CircuitState::HalfOpen;
+                *self.success_count.write().await = 0;
+                info!("Circuit breaker '{}' transitioning to half-open", self.name);
+            } else {
+                return Err(ServiceError::CircuitBreakerOpen(self.name.clone()).into());
             }
-            _ => {}
         }
         
         // Execute operation
@@ -287,6 +284,12 @@ impl RateLimiter {
 
 pub struct ErrorHandler {
     handlers: HashMap<String, Box<dyn Fn(&dyn std::error::Error) + Send + Sync>>,
+}
+
+impl Default for ErrorHandler {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ErrorHandler {

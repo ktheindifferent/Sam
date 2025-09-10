@@ -1,5 +1,5 @@
 use anyhow::{Result, Context};
-use crate::sam::services::cache::{HybridCache, CacheConfig};
+use crate::sam::services::cache::HybridCache;
 use crate::sam::services::redis;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;

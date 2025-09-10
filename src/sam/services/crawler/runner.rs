@@ -34,7 +34,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::{sleep, Duration};
 use trust_dns_resolver::config::*;
 use trust_dns_resolver::TokioAsyncResolver;
-use url::ParseError;
 
 use crate::sam::services::crawler::job::CrawlJob;
 use crate::sam::services::crawler::page::CrawledPage;
@@ -561,8 +560,7 @@ async fn crawl_url_inner(
         None => Err(crate::sam::memory::Error::Other(format!(
             "Request failed after retries: {}",
             last_err.unwrap_or_else(|| "unknown".to_string())
-        ))
-        .into()),
+        ))),
     };
 
     let mut all_pages = Vec::new();
@@ -1194,7 +1192,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
         Ok(c) => c,
         Err(e) => {
             log::error!("Failed to create HTTP client: {:?}", e);
-            return Err(anyhow::anyhow!("Failed to create HTTP client").into());
+            return Err(anyhow::anyhow!("Failed to create HTTP client"));
         }
     };
     log::info!("run_crawler_service: HTTP client created");
@@ -1613,7 +1611,7 @@ pub async fn run_crawler_service() -> crate::sam::memory::Result<()> {
                                             });
                                             {
                                                 let mut batch = JOB_BATCH.lock().await;
-                                                let mut cache_job =
+                                                let cache_job =
                                                     crate::sam::memory::cache::WebCrawl::new(
                                                         link.clone(),
                                                     );

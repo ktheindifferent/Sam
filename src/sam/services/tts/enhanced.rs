@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -64,18 +64,15 @@ pub struct TtsRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum AudioFormat {
+    #[default]
     Wav,
     Mp3,
     Ogg,
     Flac,
 }
 
-impl Default for AudioFormat {
-    fn default() -> Self {
-        AudioFormat::Wav
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TtsResult {
@@ -477,7 +474,7 @@ impl TtsService {
                 {
                     use std::process::Command;
                     let output = Command::new("say")
-                        .args(&["-v", "?"])
+                        .args(["-v", "?"])
                         .output()
                         .map_err(|e| crate::sam::services::Error::from(format!("Failed to list voices: {}", e)))?;
                     

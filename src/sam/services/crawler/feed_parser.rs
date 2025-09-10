@@ -3,7 +3,7 @@
 //! This module provides functionality to detect, parse, and extract URLs
 //! from RSS and Atom feeds for improved crawl coverage.
 
-use anyhow::{Result, Context};
+use anyhow::Result;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use chrono::{DateTime, Utc};

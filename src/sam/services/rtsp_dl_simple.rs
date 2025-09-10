@@ -1,7 +1,7 @@
 // RTSP Deep Learning Module (Simplified version without OpenCV)
 // Provides computer vision and deep learning capabilities for RTSP streams
 
-use crate::sam::memory::{Observation, ObservationType, ObservationObjects};
+use crate::sam::memory::{Observation, ObservationType};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -72,7 +72,7 @@ impl MotionDetector {
         
         // Use FFmpeg to extract a single frame
         let output = Command::new("ffmpeg")
-            .args(&[
+            .args([
                 "-rtsp_transport", "tcp",
                 "-i", rtsp_url,
                 "-frames:v", "1",
@@ -92,7 +92,7 @@ impl MotionDetector {
             if last_path.exists() && frame_path.exists() {
                 // Use FFmpeg to calculate scene change
                 let scene_output = Command::new("ffmpeg")
-                    .args(&[
+                    .args([
                         "-i", last_path.to_str().unwrap(),
                         "-i", frame_path.to_str().unwrap(),
                         "-filter_complex", "psnr",
@@ -127,6 +127,12 @@ pub struct YoloDetector {
     confidence_threshold: f32,
 }
 
+impl Default for YoloDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl YoloDetector {
     pub fn new() -> Self {
         Self {
@@ -145,6 +151,12 @@ impl YoloDetector {
 // Face Recognition placeholder
 pub struct FaceRecognizer {
     known_faces: HashMap<String, Vec<f32>>,
+}
+
+impl Default for FaceRecognizer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FaceRecognizer {

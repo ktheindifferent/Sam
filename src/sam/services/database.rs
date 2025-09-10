@@ -1,9 +1,9 @@
 use anyhow::{Result, Context};
-use log::{info, warn, error};
+use log::{info, error};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use crate::sam::db::database_engine::{DatabaseEngine, DatabasePool, Value, Row};
-use crate::sam::monitoring::{report_service_error, add_breadcrumb};
+use crate::sam::monitoring::report_service_error;
 use std::collections::BTreeMap;
 
 static DB_POOL: OnceLock<Arc<DatabasePool>> = OnceLock::new();
@@ -301,7 +301,7 @@ pub async fn cleanup_old_sessions() -> Result<u64> {
 
 pub async fn cleanup_old_health_records(days: i32) -> Result<u64> {
     // Validate input to prevent negative or excessively large values
-    if days < 0 || days > 3650 {  // Max 10 years
+    if !(0..=3650).contains(&days) {  // Max 10 years
         return Err(anyhow::anyhow!("Invalid days parameter: must be between 0 and 3650"));
     }
     

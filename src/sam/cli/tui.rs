@@ -61,7 +61,9 @@ struct ServiceStatus {
 
 // Navigation state for TUI
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 enum TuiMode {
+    #[default]
     Command,    // Default command input mode
     Services,   // Service management view
     Logs,       // Log viewer mode
@@ -82,11 +84,6 @@ struct TuiState {
     selected_table: usize,
 }
 
-impl Default for TuiMode {
-    fn default() -> Self {
-        TuiMode::Command
-    }
-}
 
 /// Starts the interactive command prompt
 ///
@@ -257,15 +254,13 @@ fn render_services_mode(
         .split(area);
 
     // Service list
-    let services = vec![
-        ("Crawler", &status.crawler),
+    let services = [("Crawler", &status.crawler),
         ("Redis", &status.redis),
         ("Docker", &status.docker),
         ("SMS", &status.sms),
         ("PostgreSQL", &status.postgres),
         ("LIFX", &status.lifx),
-        ("HTTP Server", &status.http_server),
-    ];
+        ("HTTP Server", &status.http_server)];
 
     let service_items: Vec<ListItem> = services
         .iter()
@@ -1160,8 +1155,8 @@ where
                         let n = c.encode_utf8(&mut buf).len();
                         send_input(&buf[..n]);
                     }
-                    KeyCode::Enter => send_input(&[b'\n']),
-                    KeyCode::Tab => send_input(&[b'\t']),
+                    KeyCode::Enter => send_input(b"\n"),
+                    KeyCode::Tab => send_input(b"\t"),
                     KeyCode::Backspace => send_input(&[8]),
                     KeyCode::Esc => send_input(&[27]),
                     _ => {}

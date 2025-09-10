@@ -1,19 +1,17 @@
-use std::sync::{Arc, Mutex, RwLock, LockResult, PoisonError, Condvar};
+use std::sync::{Arc, Mutex, RwLock, Condvar};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use std::collections::{HashMap, VecDeque};
 use std::panic::{self, UnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Sender, Receiver, TryRecvError};
+use std::sync::mpsc::{self, Sender, Receiver};
 use tracing::{error, warn, info, debug};
 use prometheus::{IntGauge, IntCounter, Histogram, register_int_gauge, register_int_counter, register_histogram};
 use lazy_static::lazy_static;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
-use anyhow::{Result, Context};
+use anyhow::Result;
 use thiserror::Error;
-use crossbeam_channel::{bounded, unbounded, Select};
-use parking_lot::FairMutex;
 
 #[derive(Error, Debug)]
 pub enum ThreadManagerError {
@@ -412,7 +410,7 @@ impl ThreadPoolManager {
     fn scale_down(&self) {
         let mut workers = self.worker_threads.lock().unwrap();
         if let Some(pos) = workers.iter().position(|w| w.status == WorkerStatus::Idle) {
-            if let Some(mut worker) = workers.get_mut(pos) {
+            if let Some(worker) = workers.get_mut(pos) {
                 worker.status = WorkerStatus::Terminating;
                 self.total_threads.fetch_sub(1, Ordering::Relaxed);
                 info!("Scaled down, {} threads remaining", self.total_threads.load(Ordering::Relaxed));

@@ -1,9 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use anyhow::{Result, Context};
-use log::{debug, warn, error};
+use log::{debug, warn};
 use std::ops::{Deref, DerefMut};
 
 /// Temporary file with automatic cleanup on drop
@@ -165,6 +164,12 @@ impl<T> DerefMut for CleanupGuard<T> {
 /// Resource cleanup manager for batch operations
 pub struct ResourceCleanup {
     resources: Vec<Box<dyn CleanupTask>>,
+}
+
+impl Default for ResourceCleanup {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourceCleanup {

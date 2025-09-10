@@ -1,17 +1,31 @@
 // RTSP Deep Learning Module
 // Provides computer vision and deep learning capabilities for RTSP streams
 
-use crate::sam::memory::{Observation, ObservationType, ObservationObjects, DeepVisionResult};
-use crate::sam::services::errors::ServiceError;
+use crate::sam::memory::{Observation, ObservationType, ObservationObjects};
+// use crate::sam::services::errors::CommonError;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio::task;
+
+#[cfg(feature = "opencv")]
+use std::process::{Command, Stdio};
+
+// Mock types for testing when OpenCV is not available
+#[cfg(not(feature = "opencv"))]
+pub struct MockMat;
+
+#[cfg(not(feature = "opencv"))]
+pub struct MockRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
 
 // Deep Learning Detection Results
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +62,7 @@ pub struct FaceDetection {
 }
 
 // Motion Detection State
+#[cfg(feature = "opencv")]
 #[derive(Clone)]
 pub struct MotionDetector {
     background_subtractor: Arc<Mutex<core::Ptr<opencv::video::BackgroundSubtractorMOG2>>>,
@@ -55,7 +70,15 @@ pub struct MotionDetector {
     min_area: f32,
 }
 
+#[cfg(not(feature = "opencv"))]
+#[derive(Clone)]
+pub struct MotionDetector {
+    motion_threshold: f32,
+    min_area: f32,
+}
+
 impl MotionDetector {
+    #[cfg(feature = "opencv")]
     pub fn new(motion_threshold: f32, min_area: f32) -> Result<Self> {
         let bg_subtractor = opencv::video::create_background_subtractor_mog2(500, 16.0, true)?;
         Ok(Self {
@@ -65,6 +88,15 @@ impl MotionDetector {
         })
     }
 
+    #[cfg(not(feature = "opencv"))]
+    pub fn new(motion_threshold: f32, min_area: f32) -> Result<Self> {
+        Ok(Self {
+            motion_threshold,
+            min_area,
+        })
+    }
+
+    #[cfg(feature = "opencv")]
     pub fn detect_motion(&self, frame: &core::Mat) -> Result<(bool, Vec<core::Rect>)> {
         let mut fg_mask = core::Mat::default();
         let mut bg_sub = self.background_subtractor.lock().unwrap();
@@ -97,11 +129,25 @@ impl MotionDetector {
         
         Ok((motion_detected, motion_areas))
     }
+
+    #[cfg(not(feature = "opencv"))]
+    pub fn detect_motion(&self, _frame: &MockMat) -> Result<(bool, Vec<MockRect>)> {
+        // Mock implementation for testing
+        Ok((false, Vec::new()))
+    }
 }
 
 // Object Detection with YOLO
+#[cfg(feature = "opencv")]
 pub struct YoloDetector {
     net: opencv::dnn::Net,
+    classes: Vec<String>,
+    confidence_threshold: f32,
+    nms_threshold: f32,
+}
+
+#[cfg(not(feature = "opencv"))]
+pub struct YoloDetector {
     classes: Vec<String>,
     confidence_threshold: f32,
     nms_threshold: f32,
@@ -227,18 +273,32 @@ impl YoloDetector {
 }
 
 // Face Detection and Recognition
+#[cfg(feature = "opencv")]
 pub struct FaceRecognizer {
     face_cascade: objdetect::CascadeClassifier,
     face_embeddings: HashMap<String, Vec<f32>>,
 }
 
+#[cfg(not(feature = "opencv"))]
+pub struct FaceRecognizer {
+    face_embeddings: HashMap<String, Vec<f32>>,
+}
+
 impl FaceRecognizer {
+    #[cfg(feature = "opencv")]
     pub fn new() -> Result<Self> {
         let cascade_path = "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml";
         let face_cascade = objdetect::CascadeClassifier::new(cascade_path)?;
         
         Ok(Self {
             face_cascade,
+            face_embeddings: HashMap::new(),
+        })
+    }
+
+    #[cfg(not(feature = "opencv"))]
+    pub fn new() -> Result<Self> {
+        Ok(Self {
             face_embeddings: HashMap::new(),
         })
     }

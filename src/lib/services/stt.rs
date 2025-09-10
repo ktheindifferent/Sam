@@ -98,7 +98,7 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> io::Resu
         }
     }
 
-    let _build = ensure_whisper_binary_with_output(output_lines).await?;
+    ensure_whisper_binary_with_output(output_lines).await?;
 
     #[cfg(not(target_os="windows"))]
     {

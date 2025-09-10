@@ -1,5 +1,4 @@
-use std::collections::HashSet;
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -158,7 +157,7 @@ impl EnhancedCrawler {
             has_x_frame_options: response.headers().contains_key("x-frame-options"),
             has_x_content_type_options: response.headers().contains_key("x-content-type-options"),
             has_x_xss_protection: response.headers().contains_key("x-xss-protection"),
-            security_score: calculate_security_score(&response.headers()),
+            security_score: calculate_security_score(response.headers()),
         };
         
         // Get HTML content

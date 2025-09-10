@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, oneshot, Mutex};
-use tokio::time::{sleep, interval, timeout};
-use futures::future::join_all;
+use tokio::sync::{mpsc, Mutex};
+use tokio::time::{sleep, interval};
 use log::{info, warn, error, debug};
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
 
-use super::restart::{RestartManager, RestartConfig, RestartStrategy, RestartEvent};
+use super::restart::{RestartManager, RestartConfig, RestartStrategy};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ServiceName {
@@ -136,6 +135,12 @@ pub struct ServiceOrchestrator {
     shutdown_tx: Option<mpsc::Sender<()>>,
     restart_manager: Arc<RestartManager>,
     restart_tasks: Arc<Mutex<HashMap<ServiceName, tokio::task::JoinHandle<()>>>>,
+}
+
+impl Default for ServiceOrchestrator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ServiceOrchestrator {

@@ -1,6 +1,4 @@
 use tokio::process::Command;
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
-use std::path::Path;
 
 /// Asynchronously installs a single package using MacPorts.
 /// Returns Ok(()) if the package is installed successfully, otherwise returns an error.

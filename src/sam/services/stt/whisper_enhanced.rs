@@ -107,7 +107,7 @@ impl WhisperEngine {
             crate::sam::services::Error::from(format!("Failed to create state: {}", e))
         })?;
 
-        let mut params = self.create_params();
+        let params = self.create_params();
         
         state.full(params, audio_data).map_err(|e| {
             crate::sam::services::Error::from(format!("Failed to run model: {}", e))
@@ -257,7 +257,7 @@ impl WhisperEngine {
         use std::process::Command;
         
         let status = Command::new("ffmpeg")
-            .args(&[
+            .args([
                 "-i", input_path.to_str().unwrap(),
                 "-ar", "16000",
                 "-ac", "1",

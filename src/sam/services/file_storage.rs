@@ -6,7 +6,7 @@ use uuid::Uuid;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use sha2::{Sha256, Digest};
-use log::{info, error, debug, warn};
+use log::info;
 use async_trait::async_trait;
 
 /// File metadata structure
@@ -381,20 +381,14 @@ impl FileStorageService {
         
         // Add permissions
         for user in share_with {
-            if permissions.contains(&"read".to_string()) {
-                if !metadata.permissions.read.contains(&user) {
-                    metadata.permissions.read.push(user.clone());
-                }
+            if permissions.contains(&"read".to_string()) && !metadata.permissions.read.contains(&user) {
+                metadata.permissions.read.push(user.clone());
             }
-            if permissions.contains(&"write".to_string()) {
-                if !metadata.permissions.write.contains(&user) {
-                    metadata.permissions.write.push(user.clone());
-                }
+            if permissions.contains(&"write".to_string()) && !metadata.permissions.write.contains(&user) {
+                metadata.permissions.write.push(user.clone());
             }
-            if permissions.contains(&"delete".to_string()) {
-                if !metadata.permissions.delete.contains(&user) {
-                    metadata.permissions.delete.push(user.clone());
-                }
+            if permissions.contains(&"delete".to_string()) && !metadata.permissions.delete.contains(&user) {
+                metadata.permissions.delete.push(user.clone());
             }
         }
         
@@ -464,7 +458,7 @@ impl FileStorageService {
         }
         
         // Don't compress already compressed formats
-        let compressed_extensions = vec!["zip", "gz", "bz2", "xz", "7z", "rar", "jpg", "jpeg", "png", "mp4", "mp3"];
+        let compressed_extensions = ["zip", "gz", "bz2", "xz", "7z", "rar", "jpg", "jpeg", "png", "mp4", "mp3"];
         let extension = Path::new(filename)
             .extension()
             .and_then(|e| e.to_str())
@@ -530,7 +524,7 @@ impl FileStorageService {
     }
     
     fn is_image(&self, filename: &str) -> bool {
-        let image_extensions = vec!["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"];
+        let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"];
         let extension = Path::new(filename)
             .extension()
             .and_then(|e| e.to_str())

@@ -167,12 +167,10 @@ impl CrawledContent {
         let text_lower = text.to_lowercase();
         let words: Vec<&str> = text_lower.split_whitespace().collect();
         
-        let mut scores = vec![
-            ("en", english_words.iter().filter(|&&w| words.contains(&w)).count()),
+        let mut scores = [("en", english_words.iter().filter(|&&w| words.contains(&w)).count()),
             ("es", spanish_words.iter().filter(|&&w| words.contains(&w)).count()),
             ("fr", french_words.iter().filter(|&&w| words.contains(&w)).count()),
-            ("de", german_words.iter().filter(|&&w| words.contains(&w)).count()),
-        ];
+            ("de", german_words.iter().filter(|&&w| words.contains(&w)).count())];
         
         scores.sort_by_key(|&(_, score)| std::cmp::Reverse(score));
         

@@ -4,7 +4,7 @@ use base64::Engine;
 use log::info;
 use once_cell::sync::Lazy;
 use reqwest::Client;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;

@@ -62,17 +62,17 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(
     if !scripts_dir.exists() {
         let mut git_cmd = Command::new("git");
         git_cmd.arg("clone").arg(repo_url).arg(&scripts_dir);
-        run_command_stream_lines(git_cmd, output_lines.clone(), "git").await?;
+        run_command_stream_lines(git_cmd, output_lines, "git").await?;
     }
 
     // Build with CMake
     let mut cmake_cmd = Command::new("cmake");
     cmake_cmd.arg("-DLLAMA_CURL=OFF").arg("-DGGML_CCACHE=OFF").arg(".").current_dir(&scripts_dir);
-    run_command_stream_lines(cmake_cmd, output_lines.clone(), "cmake").await?;
+    run_command_stream_lines(cmake_cmd, output_lines, "cmake").await?;
 
     let mut build_cmd = Command::new("cmake");
     build_cmd.arg("--build").arg(".").current_dir(&scripts_dir);
-    run_command_stream_lines(build_cmd, output_lines.clone(), "cmake-build").await?;
+    run_command_stream_lines(build_cmd, output_lines, "cmake-build").await?;
 
     // Ensure /opt/sam/bin exists
     if !bin_dir.exists() {

@@ -1,9 +1,8 @@
-use futures_util::{pin_mut, stream::StreamExt};
-use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use futures_util::stream::StreamExt;
+use mdns_sd::{ServiceDaemon, ServiceInfo};
 use once_cell::sync::Lazy;
 use rand::{distributions::Alphanumeric, Rng};
 use std::sync::Arc;
-use tokio::sync::Mutex as StdMutex;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
@@ -33,6 +32,12 @@ pub struct MDns {
     pub secret_key: String,
 }
 
+impl Default for MDns {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MDns {
     pub fn new() -> Self {
         Self {
@@ -45,7 +50,7 @@ impl MDns {
         &self,
         output_lines: Arc<Mutex<Vec<String>>>,
     ) -> Result<(), anyhow::Error> {
-        use mdns::{Error as MdnsError, RecordKind};
+        use mdns::RecordKind;
         log::info!(
             "[mDNS] Starting discovery for service: {} (mdns crate)",
             SERVICE_NAME
@@ -195,7 +200,7 @@ pub async fn start_discovery(output_lines: Arc<Mutex<Vec<String>>>) {
     let discover_handle = tokio::spawn({
         async move {
             let output_lines = output_lines.clone();
-            let _ = MDns::new()
+            MDns::new()
                 .discover_with_output(output_lines)
                 .await
                 .unwrap_or_else(|e| {

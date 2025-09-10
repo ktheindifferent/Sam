@@ -49,7 +49,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use std::net::IpAddr;
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
@@ -57,10 +57,10 @@ use log::{warn, error, info, debug};
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use once_cell::sync::Lazy;
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation, TokenData, errors::ErrorKind};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation, errors::ErrorKind};
 
 // Import error module for safe operations
-use super::error::{WebSocketError, safe_ops};
+use super::error::safe_ops;
 pub use super::error::WsSecurityError;
 
 const MAX_MESSAGE_SIZE: usize = 64 * 1024; // 64KB
@@ -347,28 +347,24 @@ impl MessageValidator {
         // Define command permissions
         // For now, allow service control commands without special permissions
         // This is for development/dashboard functionality
-        let allowed_without_auth = vec![
-            "get_stats",
+        let allowed_without_auth = ["get_stats",
             "get_services", 
             "get_network_stats",
             "start_service",
             "stop_service",
-            "restart_service"
-        ];
+            "restart_service"];
         
         if allowed_without_auth.contains(&command) {
             return Ok(());
         }
         
         // Other restricted commands still require permissions
-        let restricted_commands = vec!["modify_config", "delete_data"];
+        let restricted_commands = ["modify_config", "delete_data"];
         
-        if restricted_commands.contains(&command) {
-            if !user_permissions.contains(&format!("command:{}", command)) {
-                return Err(WsSecurityError::UnauthorizedAction(
-                    format!("Insufficient permissions for command: {}", command)
-                ));
-            }
+        if restricted_commands.contains(&command) && !user_permissions.contains(&format!("command:{}", command)) {
+            return Err(WsSecurityError::UnauthorizedAction(
+                format!("Insufficient permissions for command: {}", command)
+            ));
         }
 
         Ok(())

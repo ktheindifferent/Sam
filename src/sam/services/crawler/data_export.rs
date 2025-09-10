@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use log::{info, warn, error};
+use log::info;
 
 /// Supported export formats
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -342,14 +342,14 @@ impl DataExporter {
         let mut wtr = csv::Writer::from_writer(vec![]);
         
         // Write headers
-        wtr.write_record(&[
+        wtr.write_record([
             "url", "domain", "title", "description", "status_code",
             "content_type", "content_length", "language", "crawled_at",
         ])?;
         
         // Write data
         for page in &data.pages {
-            wtr.write_record(&[
+            wtr.write_record([
                 &page.url,
                 &page.domain,
                 page.title.as_deref().unwrap_or(""),
@@ -513,7 +513,7 @@ impl DataExporter {
         let compressed = Self::compress_data(data)?;
         
         // Add .gz extension if not present
-        let path = if path.extension().map_or(false, |e| e == "gz") {
+        let path = if path.extension().is_some_and(|e| e == "gz") {
             path.to_path_buf()
         } else {
             path.with_extension(format!("{}.gz", 

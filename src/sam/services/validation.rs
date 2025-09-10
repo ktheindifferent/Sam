@@ -1,6 +1,5 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use url::Url;
 
@@ -23,6 +22,12 @@ impl ValidationError {
 
 pub struct ValidationResult {
     errors: Vec<ValidationError>,
+}
+
+impl Default for ValidationResult {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ValidationResult {
@@ -71,7 +76,7 @@ impl Validator {
     }
 
     pub fn required(mut self) -> Self {
-        if self.value.as_ref().map_or(true, |v| v.trim().is_empty()) {
+        if self.value.as_ref().is_none_or(|v| v.trim().is_empty()) {
             self.errors.push(ValidationError::new(
                 &self.field_name,
                 format!("{} is required", self.field_name),
@@ -272,6 +277,12 @@ impl Validator {
 
 pub struct ConfigValidator {
     errors: Vec<ValidationError>,
+}
+
+impl Default for ConfigValidator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConfigValidator {

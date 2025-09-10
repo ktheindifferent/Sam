@@ -105,6 +105,12 @@ pub struct ServiceRegistry {
     services: Vec<Arc<dyn Service>>,
 }
 
+impl Default for ServiceRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ServiceRegistry {
     pub fn new() -> Self {
         Self {

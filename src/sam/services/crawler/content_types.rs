@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use std::collections::HashMap;
-use log::{debug, info, warn};
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
 /// Supported content types and their metadata

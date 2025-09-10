@@ -12,6 +12,7 @@ use anyhow::{Result, Context};
 /// Main crawler configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct CrawlerConfig {
     /// General crawler settings
     pub general: GeneralConfig,
@@ -559,24 +560,6 @@ fn default_included_extensions() -> Vec<String> {
 fn default_max_pagination() -> usize { 20 }
 fn default_calendar_threshold() -> usize { 10 }
 
-impl Default for CrawlerConfig {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            rate_limiting: RateLimitingConfig::default(),
-            circuit_breaker: CircuitBreakerConfig::default(),
-            memory: MemoryConfig::default(),
-            storage: StorageConfig::default(),
-            javascript: JavaScriptConfig::default(),
-            user_agents: UserAgentConfig::default(),
-            database: DatabaseConfig::default(),
-            redis: RedisConfig::default(),
-            webhooks: WebhookConfig::default(),
-            patterns: PatternConfig::default(),
-            domains: HashMap::new(),
-        }
-    }
-}
 
 impl Default for GeneralConfig {
     fn default() -> Self {
@@ -705,7 +688,7 @@ impl CrawlerConfig {
     }
     
     /// Merge with another config (other takes precedence)
-    pub fn merge(mut self, other: Self) -> Self {
+    pub fn merge(self, other: Self) -> Self {
         // This is simplified - in production you'd want proper merging logic
         other
     }

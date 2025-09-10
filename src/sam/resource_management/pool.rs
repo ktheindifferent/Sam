@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, Semaphore, Mutex};
 use tokio::time::{interval, timeout};
 use anyhow::{Result, Context};
-use log::{debug, warn, error, info};
+use log::{debug, warn, info};
 use std::collections::VecDeque;
 use async_trait::async_trait;
 

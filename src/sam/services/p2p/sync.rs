@@ -10,9 +10,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{RwLock, Mutex};
+use tokio::sync::RwLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use log::{info, warn, error, debug};
+use log::{warn, error, debug};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {

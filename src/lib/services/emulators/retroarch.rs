@@ -1,4 +1,3 @@
-use std::process::Stdio;
 use tokio::process::Command;
 
 /// Installs RetroArch using the appropriate package manager for the current OS.

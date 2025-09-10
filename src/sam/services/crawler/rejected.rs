@@ -8,7 +8,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use log::{debug, info, warn};
+use log::{debug, info};
 
 /// Reasons why a URL was rejected from crawling
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

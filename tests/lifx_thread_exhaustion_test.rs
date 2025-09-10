@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod lifx_thread_exhaustion_tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::thread;
     use std::time::Duration;

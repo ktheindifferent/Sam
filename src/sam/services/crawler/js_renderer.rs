@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use tokio::sync::{RwLock, Semaphore};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use log::{info, warn, error, debug};
+use log::{info, error, debug};
 use url::Url;
 use once_cell::sync::Lazy;
 

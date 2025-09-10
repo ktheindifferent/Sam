@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 // matter pair 192.168.86.163:5540 33134851532 100 300 0.0.0.0:5555
 pub async fn handle_matter(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
-    let mut parts = cmd.trim().split_whitespace();
+    let mut parts = cmd.split_whitespace();
     parts.next(); // skip 'matter'
     match parts.next() {
         Some("pair") => {

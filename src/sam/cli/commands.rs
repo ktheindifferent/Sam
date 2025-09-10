@@ -30,9 +30,9 @@ pub async fn handle_ssh(
 ) {
     use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
     use std::io::Read;
-    use std::process::Stdio;
-    use std::sync::mpsc::channel;
-    use std::thread;
+    
+    
+    
 
     let ssh_args = cmd.trim_start_matches("ssh ").trim();
     let pty_system = NativePtySystem::default();
@@ -119,7 +119,7 @@ async fn handle_service_commands(cmd: &str, ctx: &mut CommandContext<'_>) {
     } else if is_pg_command(cmd) {
         pg::handle_pg(cmd, ctx.output_lines).await;
     } else if is_migrate_command(cmd) {
-        let args = cmd.trim_start_matches("migrate").trim().split_whitespace()
+        let args = cmd.trim_start_matches("migrate").split_whitespace()
             .map(String::from).collect();
         migrate::handle_migrate(args, ctx.output_lines).await;
     } else if is_docker_command(cmd) {

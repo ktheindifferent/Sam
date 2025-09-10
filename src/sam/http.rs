@@ -213,7 +213,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
     }
 
     // Limit by timestamp field to 24 hours ago to improve query performance
-    let mut right_now = SystemTime::now()
+    let right_now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_secs() as i64;

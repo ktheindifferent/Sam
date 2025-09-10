@@ -38,6 +38,12 @@ pub struct HttpClientBuilder {
     config: HttpClientConfig,
 }
 
+impl Default for HttpClientBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HttpClientBuilder {
     pub fn new() -> Self {
         Self {

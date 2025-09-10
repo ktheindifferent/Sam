@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use log::{info, error, debug, warn};
-use once_cell::sync::OnceCell;
 
 mod security;
 mod error;
@@ -146,6 +145,12 @@ enum AuditSeverity {
     Warning,
     Error,
     Critical,
+}
+
+impl Default for WsServer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WsServer {
@@ -371,7 +376,7 @@ async fn handle_connection(
         activity: ActivityItem {
             id: Uuid::new_v4().to_string(),
             timestamp: Utc::now(),
-            message: format!("Connected to S.A.M. WebSocket server"),
+            message: "Connected to S.A.M. WebSocket server".to_string(),
             activity_type: "system".to_string(),
             metadata: None,
         },
@@ -1046,6 +1051,12 @@ fn log_audit_event(event: AuditEvent) {
 /// Simple WebSocket server placeholder
 pub struct WebSocketServer;
 
+impl Default for WebSocketServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WebSocketServer {
     pub fn new() -> Self {
         Self
@@ -1063,7 +1074,7 @@ static WEBSOCKET_SERVER: once_cell::sync::OnceCell<WebSocketServer> = once_cell:
 
 /// Start the websocket server
 pub async fn start_server() -> Result<(), BoxError> {
-    let server = WEBSOCKET_SERVER.get_or_init(|| WebSocketServer::new());
+    let server = WEBSOCKET_SERVER.get_or_init(WebSocketServer::new);
     server.start("0.0.0.0:8080").await
 }
 

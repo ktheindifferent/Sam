@@ -1,4 +1,4 @@
-use reqwest::{Client, Error, Response};
+use reqwest::{Client, Error};
 use serde::{Deserialize, Serialize};
 
 pub struct GitHubClient {

@@ -1,5 +1,5 @@
 use std::path::Path;
-use git2::{Repository, Error, Oid, Commit};
+use git2::{Repository, Error, Commit};
 
 pub struct GitRepo {
     repo: Repository,

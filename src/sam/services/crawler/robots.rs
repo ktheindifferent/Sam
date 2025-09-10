@@ -91,7 +91,7 @@ impl RobotsRules {
 
     /// Get the crawl delay if specified
     pub fn get_crawl_delay(&self) -> Option<Duration> {
-        self.crawl_delay.map(|seconds| Duration::from_secs_f64(seconds))
+        self.crawl_delay.map(Duration::from_secs_f64)
     }
 
     /// Get sitemap URLs from robots.txt

@@ -4,8 +4,7 @@ use std::thread;
 use std::time::Duration;
 use anyhow::{Result, Context};
 use super::environment::get_env_config;
-use crate::sam::monitoring::{report_service_error, add_breadcrumb};
-use std::collections::BTreeMap;
+use crate::sam::monitoring::report_service_error;
 
 /// Install Docker if not present and ensure daemon is running.
 pub async fn install() {
@@ -224,7 +223,7 @@ fn install_docker() {
 
 // Async versions for orchestrator compatibility
 pub async fn is_running_async() -> Result<bool> {
-    tokio::task::spawn_blocking(|| is_running())
+    tokio::task::spawn_blocking(is_running)
         .await
         .context("Failed to check Docker status")
 }
@@ -265,7 +264,7 @@ pub async fn start_postgres() -> Result<()> {
     }
     
     let output = tokio::process::Command::new("docker")
-        .args(&[
+        .args([
             "run", "-d",
             "--name", "sam-postgres",
             "-e", "POSTGRES_PASSWORD=sampassword",
@@ -281,7 +280,7 @@ pub async fn start_postgres() -> Result<()> {
     if !output.status.success() {
         // Check if container already exists
         let check = tokio::process::Command::new("docker")
-            .args(&["start", "sam-postgres"])
+            .args(["start", "sam-postgres"])
             .output()
             .await;
         
@@ -300,7 +299,7 @@ pub async fn start_postgres() -> Result<()> {
 
 pub async fn stop_postgres() -> Result<()> {
     let output = tokio::process::Command::new("docker")
-        .args(&["stop", "sam-postgres"])
+        .args(["stop", "sam-postgres"])
         .output()
         .await
         .context("Failed to stop PostgreSQL container")?;
@@ -324,7 +323,7 @@ pub async fn start_redis() -> Result<()> {
     }
     
     let output = tokio::process::Command::new("docker")
-        .args(&[
+        .args([
             "run", "-d",
             "--name", "sam-redis",
             "-p", "6379:6379",
@@ -338,7 +337,7 @@ pub async fn start_redis() -> Result<()> {
     if !output.status.success() {
         // Check if container already exists
         let check = tokio::process::Command::new("docker")
-            .args(&["start", "sam-redis"])
+            .args(["start", "sam-redis"])
             .output()
             .await;
         
@@ -357,7 +356,7 @@ pub async fn start_redis() -> Result<()> {
 
 pub async fn stop_redis() -> Result<()> {
     let output = tokio::process::Command::new("docker")
-        .args(&["stop", "sam-redis"])
+        .args(["stop", "sam-redis"])
         .output()
         .await
         .context("Failed to stop Redis container")?;
@@ -377,7 +376,7 @@ pub async fn cleanup_containers() -> Result<()> {
     
     for container in containers {
         let _ = tokio::process::Command::new("docker")
-            .args(&["rm", "-f", container])
+            .args(["rm", "-f", container])
             .output()
             .await;
     }

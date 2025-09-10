@@ -1,6 +1,6 @@
 use rouille::{Request, Response};
 use serde::{Deserialize, Serialize};
-use log::{info, error, warn};
+use log::{info, error};
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -11,6 +11,7 @@ pub struct ServiceStatus {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ServiceMetrics {
     pub connections: Option<u32>,
     pub memory: Option<u64>,
@@ -295,7 +296,7 @@ fn handle_postgres_service(request: &Request) -> Result<Response, crate::sam::ht
         let is_running = rt.block_on(async {
             // Check if PostgreSQL container is running
             tokio::process::Command::new("docker")
-                .args(&["ps", "--filter", "name=sam-postgres", "--format", "{{.Names}}"])
+                .args(["ps", "--filter", "name=sam-postgres", "--format", "{{.Names}}"])
                 .output()
                 .await
                 .map(|output| String::from_utf8_lossy(&output.stdout).contains("sam-postgres"))
@@ -452,21 +453,3 @@ fn handle_all_services_status() -> Result<Response, crate::sam::http::Error> {
     Ok(Response::json(&statuses))
 }
 
-impl Default for ServiceMetrics {
-    fn default() -> Self {
-        Self {
-            connections: None,
-            memory: None,
-            keys: None,
-            pages_crawled: None,
-            queue_size: None,
-            last_run: None,
-            containers: None,
-            images: None,
-            version: None,
-            db_size: None,
-            sessions: None,
-            messages_per_sec: None,
-        }
-    }
-}

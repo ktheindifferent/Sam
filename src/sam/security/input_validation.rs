@@ -56,28 +56,28 @@ pub fn validate_url(url_str: &str) -> Result<Url, String> {
     
     // Only allow http and https
     if !["http", "https"].contains(&url.scheme()) {
-        return Err(format!("Only HTTP/HTTPS URLs are allowed"));
+        return Err("Only HTTP/HTTPS URLs are allowed".to_string());
     }
     
     // Check for localhost and private IPs
     if let Some(host) = url.host_str() {
         // Block localhost variations
         if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" {
-            return Err(format!("Access to localhost is not allowed"));
+            return Err("Access to localhost is not allowed".to_string());
         }
         
         // Check for private IP ranges
         if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
             for (range_start, prefix_len) in PRIVATE_IP_RANGES.iter() {
                 if is_in_subnet(&ip, range_start, *prefix_len) {
-                    return Err(format!("Access to private IP ranges is not allowed"));
+                    return Err("Access to private IP ranges is not allowed".to_string());
                 }
             }
         }
         
         // Block metadata endpoints (AWS, GCP, Azure)
         if host == "169.254.169.254" || host.contains("metadata") {
-            return Err(format!("Access to metadata endpoints is not allowed"));
+            return Err("Access to metadata endpoints is not allowed".to_string());
         }
     }
     

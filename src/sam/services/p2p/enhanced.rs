@@ -9,24 +9,20 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock, Mutex};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use ring::signature::{self, Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
+use ring::signature::{self, Ed25519KeyPair, KeyPair};
 use ring::rand::SystemRandom;
 use sha2::{Sha256, Digest};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use log::{info, warn, error, debug};
-use aes_gcm::{Aes256Gcm, Key, Nonce};
-use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
-use flate2::write::GzEncoder;
-use flate2::read::GzDecoder;
-use flate2::Compression;
+use aes_gcm::aead::{Aead, AeadCore, KeyInit};
 use std::io::{Read, Write};
 
-use super::secure::{SecureP2P, PeerIdentity, EncryptedMessage, TrustLevel};
+use super::secure::{SecureP2P, PeerIdentity, TrustLevel};
 
 // Type alias for Send + Sync errors
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -317,7 +313,7 @@ impl P2PNode {
                 message
             };
             
-            self.send_message(&mut *stream, &message).await?;
+            self.send_message(&mut stream, &message).await?;
             Ok(())
         } else {
             Err(format!("Peer {} not connected", peer_id).into())
@@ -329,7 +325,7 @@ impl P2PNode {
         
         for (peer_id, connection) in connections.iter() {
             let mut stream = connection.lock().await;
-            if let Err(e) = self.send_message(&mut *stream, &message).await {
+            if let Err(e) = self.send_message(&mut stream, &message).await {
                 warn!("Failed to send to peer {}: {}", peer_id, e);
             }
         }
@@ -405,7 +401,7 @@ impl P2PNode {
             if let Some(connection) = connections.get(&peer_id) {
                 let mut stream = connection.lock().await;
                 
-                match self.receive_message(&mut *stream).await {
+                match self.receive_message(&mut stream).await {
                     Ok(message) => {
                         if let Err(e) = self.process_message(message, peer_id.clone()).await {
                             error!("Error processing message from {}: {}", peer_id, e);
@@ -787,7 +783,7 @@ impl P2PNode {
     }
     
     fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, BoxError> {
-        use aes_gcm::{Aes256Gcm, Key, Nonce};
+        use aes_gcm::{Aes256Gcm, Key};
         use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
         
         // Derive key from keypair (simplified - should use proper key exchange)

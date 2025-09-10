@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::sam::services::stt::whisper_enhanced::{WhisperConfig, WhisperService, WhisperResult};
-use crate::sam::services::tts::enhanced::{TtsConfig, TtsService, TtsRequest, TtsResult, AudioFormat};
+use crate::sam::services::tts::enhanced::{TtsConfig, TtsService, TtsRequest, AudioFormat};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceConfig {
@@ -302,6 +302,12 @@ impl VoiceAssistant {
 
 pub struct VoiceService {
     assistant: Arc<Mutex<Option<VoiceAssistant>>>,
+}
+
+impl Default for VoiceService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VoiceService {

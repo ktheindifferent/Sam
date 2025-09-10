@@ -130,7 +130,7 @@ impl ApiServer {
                         Response::text("Bulk state changes not yet implemented")
                     } else if request.url().contains("/state") {
                         let sock = discovery.get_socket();
-                        handlers.handle_set_state(&request, &bulbs, selector, sock)
+                        handlers.handle_set_state(request, &bulbs, selector, sock)
                     } else if request.url().contains("/v1/lights/") {
                         handlers.handle_list_lights(&bulbs, selector)
                     } else {

@@ -13,9 +13,9 @@ use std::fs::{self, File};
 use std::io::{Read, Write, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{RwLock, Mutex};
+use tokio::sync::RwLock;
 use sha2::{Sha256, Digest};
-use log::{info, warn, error, debug};
+use log::info;
 
 const DEFAULT_CHUNK_SIZE: usize = 64 * 1024; // 64KB
 const MAX_CONCURRENT_TRANSFERS: usize = 10;
@@ -490,7 +490,7 @@ impl FileTransferManager {
         let index = self.file_index.read().await;
         let query_lower = query.to_lowercase();
         
-        let mut files: Vec<FileMetadata> = index.values()
+        let files: Vec<FileMetadata> = index.values()
             .filter(|f| {
                 let name_matches = f.name.to_lowercase().contains(&query_lower);
                 let type_matches = file_type.as_ref()

@@ -102,7 +102,7 @@ impl PersistentJobQueue {
             .context("Failed to serialize job")?;
         
         // Add to Redis sorted set with priority as score (higher priority = lower score)
-        conn.zadd(REDIS_JOB_QUEUE_KEY, serialized, -queued_job.priority)
+        conn.zadd::<_, _, _, ()>(REDIS_JOB_QUEUE_KEY, serialized, -queued_job.priority)
             .await
             .context("Failed to add job to Redis queue")?;
         
@@ -142,7 +142,7 @@ impl PersistentJobQueue {
                 // Add to active jobs set
                 let serialized = serde_json::to_string(&job)
                     .context("Failed to serialize active job")?;
-                conn.hset(REDIS_ACTIVE_JOBS_KEY, &job.job.oid, serialized)
+                conn.hset::<_, _, _, ()>(REDIS_ACTIVE_JOBS_KEY, &job.job.oid, serialized)
                     .await
                     .context("Failed to add job to active set")?;
                 
@@ -160,7 +160,7 @@ impl PersistentJobQueue {
             .context("Failed to get Redis connection")?;
         
         // Remove from active jobs
-        conn.hdel(REDIS_ACTIVE_JOBS_KEY, job_oid)
+        conn.hdel::<_, _, ()>(REDIS_ACTIVE_JOBS_KEY, job_oid)
             .await
             .context("Failed to remove job from active set")?;
         
@@ -209,7 +209,7 @@ impl PersistentJobQueue {
                     .context("Failed to serialize retry job")?;
                 
                 // Add to retry queue with retry time as score
-                conn.zadd(REDIS_RETRY_QUEUE_KEY, serialized, retry_at as f64)
+                conn.zadd::<_, _, _, ()>(REDIS_RETRY_QUEUE_KEY, serialized, retry_at as f64)
                     .await
                     .context("Failed to add job to retry queue")?;
                 
@@ -232,7 +232,7 @@ impl PersistentJobQueue {
                 let serialized = serde_json::to_string(&job)
                     .context("Failed to serialize failed job")?;
                 
-                conn.hset(REDIS_FAILED_JOBS_KEY, job_oid, serialized)
+                conn.hset::<_, _, _, ()>(REDIS_FAILED_JOBS_KEY, job_oid, serialized)
                     .await
                     .context("Failed to add job to failed set")?;
                 
@@ -241,7 +241,7 @@ impl PersistentJobQueue {
             }
             
             // Remove from active jobs
-            conn.hdel(REDIS_ACTIVE_JOBS_KEY, job_oid)
+            conn.hdel::<_, _, ()>(REDIS_ACTIVE_JOBS_KEY, job_oid)
                 .await
                 .context("Failed to remove job from active set")?;
         }
@@ -271,7 +271,7 @@ impl PersistentJobQueue {
                 .context("Failed to deserialize retry job")?;
             
             // Remove from retry queue
-            conn.zrem(REDIS_RETRY_QUEUE_KEY, &job_str)
+            conn.zrem::<_, _, ()>(REDIS_RETRY_QUEUE_KEY, &job_str)
                 .await
                 .context("Failed to remove job from retry queue")?;
             
@@ -351,7 +351,7 @@ impl PersistentJobQueue {
         let mut conn = self.pool.get().await
             .context("Failed to get Redis connection")?;
         
-        conn.del(vec![
+        conn.del::<_, ()>(vec![
             REDIS_JOB_QUEUE_KEY,
             REDIS_ACTIVE_JOBS_KEY,
             REDIS_FAILED_JOBS_KEY,

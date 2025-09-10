@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use sam::sam::services::thread_manager::{
+use sam::services::thread_manager::{
     self, ThreadConfig, ThreadPriority, ThreadPoolConfig, ThreadPoolStats,
     submit_task, submit_task_with_priority, get_pool_stats, spawn_pooled,
     configure_thread_pool, shutdown_thread_pool

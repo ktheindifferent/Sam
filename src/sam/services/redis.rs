@@ -375,7 +375,7 @@ async fn connect_with_retry() -> Result<Pool> {
     };
     
     let pool = retry_with_backoff(
-        || create_pool(),
+        create_pool,
         retry_config,
         "redis_pool_creation"
     ).await?;

@@ -9,7 +9,7 @@ use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
 use flate2::Compression;
 use sha2::{Sha256, Digest};
-use log::{info, error, debug, warn};
+use log::{info, error};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -236,7 +236,7 @@ impl BackupService {
         let mut total_files = 0u64;
         
         for target in &self.config.targets {
-            match self.backup_target(&target, &backup_path).await {
+            match self.backup_target(target, &backup_path).await {
                 Ok((size, files)) => {
                     total_size += size;
                     total_files += files;
@@ -456,7 +456,7 @@ impl BackupService {
         
         // Execute pg_dump
         let output = Command::new("pg_dump")
-            .args(&[
+            .args([
                 "-h", "localhost",
                 "-U", "sam",
                 "-d", "sam_db",
@@ -507,7 +507,7 @@ impl BackupService {
         
         // Execute redis-cli BGSAVE
         Command::new("redis-cli")
-            .args(&["BGSAVE"])
+            .args(["BGSAVE"])
             .output()?;
         
         // Wait for save to complete
@@ -564,8 +564,8 @@ impl BackupService {
         dest: &Path,
         exclude_patterns: &[String],
     ) -> Result<(u64, u64), BackupError> {
-        let mut total_size = 0u64;
-        let mut file_count = 0u64;
+        let total_size = 0u64;
+        let file_count = 0u64;
         
         // Recursive copy implementation would go here
         // This is a simplified version

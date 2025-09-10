@@ -3,7 +3,6 @@
 //! Provides comprehensive error types for WebSocket operations with proper
 //! error propagation and graceful fallback mechanisms.
 
-use std::fmt;
 use std::net::AddrParseError;
 use thiserror::Error;
 

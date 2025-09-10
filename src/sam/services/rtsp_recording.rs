@@ -3,7 +3,7 @@
 
 // use crate::sam::memory::{Thing, PostgresQueries, PGCol};
 // use crate::sam::services::error_handling::ServiceError;
-use anyhow::{Result, Context};
+use anyhow::Result;
 use chrono::{DateTime, Utc, Duration as ChronoDuration, Datelike};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::{SystemTime, Duration};
 // use tokio::sync::mpsc;
 use tokio::task;
 use tokio::time;
@@ -286,10 +286,8 @@ impl RecordingManager {
         
         for (thing_oid, config) in configs {
             for trigger in &config.triggers {
-                if self.should_trigger(trigger).await? {
-                    if !self.is_recording(&thing_oid) {
-                        self.start_recording(thing_oid.clone(), trigger.clone()).await?;
-                    }
+                if self.should_trigger(trigger).await? && !self.is_recording(&thing_oid) {
+                    self.start_recording(thing_oid.clone(), trigger.clone()).await?;
                 }
             }
         }
@@ -421,7 +419,7 @@ impl RecordingManager {
         let thumbnail_path = session.file_path.with_extension("jpg");
         
         let output = Command::new("ffmpeg")
-            .args(&[
+            .args([
                 "-i", &session.file_path.to_string_lossy(),
                 "-ss", "00:00:01",
                 "-vframes", "1",
@@ -482,7 +480,7 @@ impl RecordingManager {
                 );
                 
                 Command::new("aws")
-                    .args(&["s3", "cp", &session.file_path.to_string_lossy(), &s3_path])
+                    .args(["s3", "cp", &session.file_path.to_string_lossy(), &s3_path])
                     .output()?;
             }
             StorageType::FTP => {
@@ -511,7 +509,7 @@ impl RecordingManager {
                 );
                 
                 Command::new("curl")
-                    .args(&[
+                    .args([
                         "-T", &session.file_path.to_string_lossy(),
                         "-u", &format!("{}:{}", 
                             storage.username.as_deref().unwrap_or(""),
@@ -706,7 +704,7 @@ impl MetadataStore {
             // In practice, you'd need to properly handle the dynamic parameters
             let rows = client.query(&query, &[])?;
             
-            let mut sessions = Vec::new();
+            let sessions = Vec::new();
             for row in rows {
                 // Parse row into RecordingSession
                 // This is simplified - you'd need proper parsing
@@ -778,7 +776,7 @@ impl PlaybackService {
 
     async fn generate_hls_stream(&self, input: &Path, output: &Path) -> Result<()> {
         let output = Command::new("ffmpeg")
-            .args(&[
+            .args([
                 "-i", &input.to_string_lossy(),
                 "-c:v", "copy",
                 "-c:a", "copy",

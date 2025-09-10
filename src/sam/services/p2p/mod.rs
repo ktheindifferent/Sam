@@ -16,7 +16,7 @@ pub mod network_segmentation;
 use crate::sam::services::crawler::page::CrawledPage;
 use log::{error, info};
 use once_cell::sync::Lazy;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};

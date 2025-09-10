@@ -14,8 +14,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 use reqwest::Url;
 use scraper::{Html, Selector};
-use log::{debug, warn, error};
-use serde::Deserialize;
+use log::{debug, warn};
 
 use super::robots::DEFAULT_USER_AGENT;
 
@@ -281,7 +280,7 @@ pub async fn extract_urls_from_sitemaps(domain: &str) -> HashSet<String> {
             Ok(entries) => {
                 for entry in entries {
                     // Validate URL before adding
-                    if let Ok(_) = Url::parse(&entry.url) {
+                    if Url::parse(&entry.url).is_ok() {
                         all_urls.insert(entry.url);
                     }
                 }

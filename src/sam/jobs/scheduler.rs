@@ -1,13 +1,13 @@
 use anyhow::{Result, Context};
 use chrono::{DateTime, Utc, Datelike, Timelike};
 use deadpool_redis::Pool;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, Mutex};
-use tokio::time::{interval, sleep};
+use tokio::time::interval;
 use super::queue::JobQueue;
-use super::types::{Job, Priority};
+use super::types::Job;
 
 pub struct JobScheduler {
     redis_pool: Pool,
@@ -264,7 +264,7 @@ impl CronSchedule {
                     .with_nanosecond(0)?;
                 
                 if next <= after {
-                    next = next + chrono::Duration::days(1);
+                    next += chrono::Duration::days(1);
                 }
                 
                 Some(next)
@@ -278,7 +278,7 @@ impl CronSchedule {
                 
                 // Find the next occurrence of the specified weekday
                 while next.weekday() != day.to_chrono() || next <= after {
-                    next = next + chrono::Duration::days(1);
+                    next += chrono::Duration::days(1);
                 }
                 
                 Some(next)

@@ -10,8 +10,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: Implement password migration once modules are properly structured
     // let humans = Human::select(None, None, None, None)?;
     
-    let mut migrated_count = 0;
-    let mut error_count = 0;
+    let migrated_count = 0;
+    let error_count = 0;
     
     // TODO: Fix once modules are properly structured
     /*

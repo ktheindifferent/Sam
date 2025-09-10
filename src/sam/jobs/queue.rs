@@ -1,10 +1,9 @@
 use anyhow::{Result, Context};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use deadpool_redis::{redis::cmd, Pool};
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use serde_json;
-use std::time::Duration;
-use super::types::{Job, JobStatus, Priority, JobError};
+use super::types::{Job, JobStatus, Priority};
 
 const JOBS_KEY_PREFIX: &str = "jobs:";
 const SCHEDULED_JOBS_KEY: &str = "jobs:scheduled";
@@ -158,7 +157,7 @@ impl JobQueue {
         cmd("SET")
             .arg(&job_key)
             .arg(&job_json)
-            .query_async(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .context("Failed to update completed job")?;
         
@@ -195,7 +194,7 @@ impl JobQueue {
         cmd("SET")
             .arg(&job_key)
             .arg(&job_json)
-            .query_async(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .context("Failed to update failed job")?;
         
@@ -239,7 +238,7 @@ impl JobQueue {
         cmd("SET")
             .arg(&job_key)
             .arg(&job_json)
-            .query_async(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .context("Failed to update retrying job")?;
         
@@ -318,7 +317,7 @@ impl JobQueue {
                 cmd("SET")
                     .arg(&job_key)
                     .arg(&updated_json)
-                    .query_async(&mut conn)
+                    .query_async::<()>(&mut conn)
                     .await
                     .context("Failed to update cancelled job")?;
                 

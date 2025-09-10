@@ -100,6 +100,12 @@ pub struct CircuitBreaker {
     domain_stats: Arc<RwLock<HashMap<String, DomainStats>>>,
 }
 
+impl Default for CircuitBreaker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CircuitBreaker {
     /// Create a new circuit breaker with default configuration
     pub fn new() -> Self {

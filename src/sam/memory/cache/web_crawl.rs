@@ -1,11 +1,6 @@
 use crate::sam::memory::Result;
 use crate::sam::memory::{Config, PostgresQueries};
-use rand::distributions::Alphanumeric;
-use rand::thread_rng;
-use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -70,7 +65,7 @@ impl WebCrawl {
             return Ok(Vec::new());
         }
 
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
 
         // Collect all URLs for batch checking
         let urls: Vec<String> = objects.iter().map(|o| o.url.clone()).collect();
@@ -120,7 +115,7 @@ impl WebCrawl {
     }
 
     pub async fn save_async(object: Self) -> Result<Self> {
-        let mut client = Config::client_async().await?;
+        let client = Config::client_async().await?;
         let mut pg_query = PostgresQueries::default();
         pg_query
             .queries

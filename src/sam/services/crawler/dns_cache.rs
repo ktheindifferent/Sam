@@ -44,7 +44,7 @@ impl DnsCache {
             ResolverOpts::default(),
         );
 
-        let mut cache = Self {
+        let cache = Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
             resolver: Arc::new(resolver),
             last_persist: Arc::new(RwLock::new(Instant::now())),
@@ -181,10 +181,10 @@ impl DnsCache {
         
         if let Some(pool) = &self.redis_pool {
             // Save to Redis
-            self.save_to_redis(pool, &*cache).await?;
+            self.save_to_redis(pool, &cache).await?;
         } else {
             // Save to file
-            self.save_to_file(&*cache).await?;
+            self.save_to_file(&cache).await?;
         }
 
         info!("DNS cache persisted ({} entries)", cache.len());
@@ -201,7 +201,7 @@ impl DnsCache {
         
         let mut conn = pool.get().await?;
         let cache_json = serde_json::to_string(cache)?;
-        conn.set_ex("sam:dns_cache", cache_json, 3600).await?;
+        conn.set_ex::<_, _, ()>("sam:dns_cache", cache_json, 3600).await?;
         
         Ok(())
     }
@@ -259,7 +259,7 @@ impl DnsCache {
     async fn load_from_file(&self) -> Result<HashMap<String, DnsCacheEntry>, Box<dyn std::error::Error>> {
         let cache_file = "/tmp/sam_crawler/dns_cache.json";
         
-        if !tokio::fs::metadata(cache_file).await.is_ok() {
+        if tokio::fs::metadata(cache_file).await.is_err() {
             return Ok(HashMap::new());
         }
 

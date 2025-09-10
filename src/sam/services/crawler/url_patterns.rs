@@ -3,7 +3,7 @@
 //! This module detects and handles potentially infinite URL patterns
 //! such as calendars, pagination, and dynamically generated URLs.
 
-use anyhow::{Result, Context};
+use anyhow::Result;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use url::Url;

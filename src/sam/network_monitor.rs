@@ -71,6 +71,12 @@ pub struct NetworkMonitor {
     update_interval: Duration,
 }
 
+impl Default for NetworkMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NetworkMonitor {
     pub fn new() -> Self {
         let config = NetworkMonitorConfig::default();

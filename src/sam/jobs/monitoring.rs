@@ -3,12 +3,11 @@ use chrono::{DateTime, Utc};
 use deadpool_redis::{redis::cmd, Pool};
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{RwLock, Mutex};
 use tokio::time::interval;
-use super::types::{JobStatus, Priority};
+use super::types::Priority;
 
 const METRICS_KEY_PREFIX: &str = "jobs:metrics:";
 const STATS_KEY: &str = "jobs:stats";

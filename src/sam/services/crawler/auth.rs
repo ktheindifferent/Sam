@@ -101,6 +101,12 @@ pub struct AuthManager {
     client: reqwest::Client,
 }
 
+impl Default for AuthManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuthManager {
     /// Create a new authentication manager
     pub fn new() -> Self {
@@ -291,7 +297,7 @@ impl AuthManager {
         
         let scopes = token_response.scope
             .map(|s| s.split_whitespace().map(String::from).collect())
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
         
         Ok(OAuthToken {
             access_token: token_response.access_token,

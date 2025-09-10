@@ -124,13 +124,13 @@ impl SessionManager {
         let value = serde_json::to_string(&session)?;
         
         // Set with expiration
-        conn.set_ex(key, value, session_ttl as u64).await?;
+        conn.set_ex::<_, _, ()>(key, value, session_ttl as u64).await?;
         
         // If authenticated, track user sessions
         if let Some(user_id) = &session.user_id {
             let user_sessions_key = format!("user_sessions:{}", user_id);
-            conn.sadd(&user_sessions_key, &session.id).await?;
-            conn.expire(&user_sessions_key, session_ttl as i64).await?;
+            conn.sadd::<_, _, ()>(&user_sessions_key, &session.id).await?;
+            conn.expire::<_, ()>(&user_sessions_key, session_ttl).await?;
             
             // TODO: Enforce max sessions per user when lifetime issues are resolved
         }
@@ -177,13 +177,13 @@ impl SessionManager {
             if let Ok(session) = serde_json::from_str::<Session>(&json) {
                 if let Some(user_id) = session.user_id {
                     let user_sessions_key = format!("user_sessions:{}", user_id);
-                    conn.srem(&user_sessions_key, &session_id).await?;
+                    conn.srem::<_, _, ()>(&user_sessions_key, session_id).await?;
                 }
             }
         }
         
         // Delete the session
-        conn.del(&key).await?;
+        conn.del::<_, ()>(&key).await?;
         Ok(())
     }
     

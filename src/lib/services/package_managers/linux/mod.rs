@@ -3,8 +3,6 @@ pub mod dnf;
 pub mod pacman;
 pub mod yum;
 pub mod zypper;
-use tokio::process::Command;
-use std::process::Stdio;
 
 /// Enum representing supported Linux package managers.
 #[derive(Debug, Clone, Copy)]

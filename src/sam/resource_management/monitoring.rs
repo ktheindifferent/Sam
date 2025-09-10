@@ -1,10 +1,9 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::interval;
 use serde::{Deserialize, Serialize};
-use log::{debug, warn, error, info};
-use std::collections::HashMap;
+use log::info;
 use chrono::{DateTime, Utc};
 
 /// Resource monitor for tracking system resources
@@ -260,6 +259,12 @@ pub enum ResourceType {
     Network,
     Connections,
     Requests,
+}
+
+impl Default for ResourceMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourceMonitor {

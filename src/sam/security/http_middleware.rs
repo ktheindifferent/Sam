@@ -247,7 +247,7 @@ impl HttpSecurityMiddleware {
             let pool = self.redis_pool.as_ref().unwrap();
             let mut conn = pool.get().await.map_err(|e| format!("Redis error: {}", e))?;
             let key = format!("blocked:{}", ip);
-            conn.set_ex(key, "1", self.rate_limit_config.block_duration)
+            conn.set_ex::<_, _, ()>(key, "1", self.rate_limit_config.block_duration)
                 .await
                 .map_err(|e| format!("Redis error: {}", e))?;
         }

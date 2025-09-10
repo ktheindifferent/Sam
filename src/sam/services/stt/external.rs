@@ -1,6 +1,6 @@
 use anyhow::{Result, Context};
 use serde::{Deserialize, Serialize};
-use log::{info, warn, error};
+use log::{info, warn};
 use reqwest;
 use std::time::Duration;
 use super::STTPrediction;

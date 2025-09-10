@@ -7,7 +7,6 @@ use chrono::{DateTime, Utc};
 use ring::pbkdf2;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
 use std::collections::HashMap;
 
 /// Password entry in the vault
@@ -211,7 +210,7 @@ impl PasswordVault {
                 entry.title.to_lowercase().contains(&query_lower) ||
                 entry.tags.iter().any(|tag| tag.to_lowercase().contains(&query_lower)) ||
                 entry.username.to_lowercase().contains(&query_lower) ||
-                entry.url.as_ref().map_or(false, |url| url.to_lowercase().contains(&query_lower))
+                entry.url.as_ref().is_some_and(|url| url.to_lowercase().contains(&query_lower))
             })
             .collect()
     }
@@ -243,7 +242,7 @@ impl PasswordVault {
             // Check for duplicates
             if let Ok(password) = decrypt_password(&entry.encrypted_password, &key) {
                 password_map.entry(password)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(id.clone());
             }
         }

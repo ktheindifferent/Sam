@@ -867,7 +867,7 @@ impl Config {
                     (format!("LOWER({})", inner), false)
                 } else {
                     // Regular column name
-                    Self::validate_sql_identifier(&col_cleaned)?;
+                    Self::validate_sql_identifier(col_cleaned)?;
                     (col_cleaned.to_string(), true)
                 };
 
@@ -1017,7 +1017,7 @@ impl Config {
                     (format!("LOWER({})", inner), false)
                 } else {
                     // Regular column name
-                    Self::validate_sql_identifier(&col_cleaned)?;
+                    Self::validate_sql_identifier(col_cleaned)?;
                     (col_cleaned.to_string(), true)
                 };
                 

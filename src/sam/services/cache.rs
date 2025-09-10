@@ -14,7 +14,6 @@ use lru::LruCache;
 use tokio::sync::Mutex;
 use std::future::Future;
 use std::fmt::Debug;
-use std::hash::Hash;
 use futures::StreamExt;
 
 const DEFAULT_CACHE_TTL: u64 = 600; // 10 minutes
@@ -295,7 +294,7 @@ impl HybridCache {
         let mut conn = self.redis_pool.get().await
             .context("Failed to get Redis connection")?;
         
-        conn.set_ex(key, value, ttl).await
+        conn.set_ex::<_, _, ()>(key, value, ttl).await
             .context("Failed to set in Redis")?;
         
         timer.observe_duration();
@@ -561,9 +560,9 @@ impl HybridCache {
         
         CacheStats {
             memory_cache_size: memory_size,
-            redis_pool_size: pool_status.size as usize,
-            redis_pool_available: pool_status.available as usize,
-            redis_pool_waiting: pool_status.waiting as usize,
+            redis_pool_size: pool_status.size,
+            redis_pool_available: pool_status.available,
+            redis_pool_waiting: pool_status.waiting,
         }
     }
 }

@@ -11,7 +11,7 @@ use prometheus::{
 use lazy_static::lazy_static;
 use std::time::Duration;
 use anyhow::Result;
-use log::{debug, error};
+use log::debug;
 
 lazy_static! {
     /// Total number of URLs crawled

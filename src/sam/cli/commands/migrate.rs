@@ -1,10 +1,10 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use colored::Colorize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub async fn handle_migrate(args: Vec<String>, _output_lines: &Arc<Mutex<Vec<String>>>) {
-    let subcommand = args.get(0).map(|s| s.as_str()).unwrap_or("status");
+    let subcommand = args.first().map(|s| s.as_str()).unwrap_or("status");
     
     match subcommand {
         "up" => run_migrations().await,

@@ -4,7 +4,6 @@
 //! to help avoid detection and blocking by websites.
 
 use rand::seq::SliceRandom;
-use rand::Rng;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;

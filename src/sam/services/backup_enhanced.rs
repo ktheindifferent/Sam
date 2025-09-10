@@ -125,7 +125,7 @@ impl BackupService {
         for target in &self.config.targets {
             let _permit = self.semaphore.acquire().await?;
             
-            let target_info = self.backup_target(&target, &backup_dir).await?;
+            let target_info = self.backup_target(target, &backup_dir).await?;
             total_size += target_info.size_bytes;
             backup_targets.push(target_info);
             
@@ -198,7 +198,7 @@ impl BackupService {
         // Process only changed files
         for target in &self.config.targets {
             let target_info = self.backup_incremental_target(
-                &target,
+                target,
                 &backup_dir,
                 &parent_metadata.timestamp
             ).await?;
@@ -754,7 +754,7 @@ mod tests {
         let nonce = Nonce::from_slice(&nonce_bytes);
         
         // Encrypt the data
-        let ciphertext = cipher.encrypt(&nonce, plaintext.as_ref())
+        let ciphertext = cipher.encrypt(nonce, plaintext.as_ref())
             .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
         
         // Create encrypted file path
@@ -762,7 +762,7 @@ mod tests {
         
         // Write encrypted data with nonce prepended
         let mut encrypted_data = Vec::new();
-        encrypted_data.extend_from_slice(&nonce);
+        encrypted_data.extend_from_slice(nonce);
         encrypted_data.extend_from_slice(&ciphertext);
         
         fs::write(&encrypted_path, encrypted_data).await?;

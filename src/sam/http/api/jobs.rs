@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use log::{error, info};
 use std::sync::Arc;
-use crate::sam::jobs::{Job, JobSystem, JobStats, Priority, JobType};
+use crate::sam::jobs::{Job, JobSystem, Priority};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateJobRequest {

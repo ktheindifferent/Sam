@@ -2,22 +2,19 @@ use anyhow::{Result, Context};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
-use log::{info, warn, error};
+use log::info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum DatabaseEngine {
+    #[default]
     SQLite,
     PostgreSQL,
     MySQL,
     MariaDB,
 }
 
-impl Default for DatabaseEngine {
-    fn default() -> Self {
-        DatabaseEngine::SQLite
-    }
-}
 
 impl DatabaseEngine {
     pub fn from_env() -> Self {
@@ -302,7 +299,7 @@ impl DatabasePool {
     }
 }
 
-use rusqlite::{Connection as RusqliteConnection, Transaction as RusqliteTransaction};
+use rusqlite::Connection as RusqliteConnection;
 use tokio::sync::Mutex;
 
 pub struct SqliteConnection {

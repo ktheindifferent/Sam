@@ -25,7 +25,7 @@ impl MatterDeviceController {
         local_address: &str,
     ) -> Result<Thing> {
         let cert_path = "/opt/sam/keys/matter/";
-        let code = onboarding::decode_manual_pairing_code(&pin).unwrap();
+        let code = onboarding::decode_manual_pairing_code(pin).unwrap();
         let device_id = 300;
         let cm: Arc<dyn certmanager::CertManager> = match FileCertManager::load(cert_path) {
             Ok(cm) => cm,
@@ -49,7 +49,7 @@ impl MatterDeviceController {
         log::info!("Using fabric ID: {}", DEFAULT_FABRIC);
         log::info!("Using controller ID: {}", 100);
 
-        let mut con = controller
+        let con = controller
             .commission(&connection, code.passcode, device_id, 100)
             .await?;
         // You may want to read device info here (e.g., product name, type)
@@ -69,8 +69,7 @@ impl MatterDeviceController {
         let cert_path = "/opt/sam/keys/matter/";
         let controller_id = 100; // Default controller ID
         let device_id = thing
-            .online_identifiers
-            .get(0)
+            .online_identifiers.first()
             .ok_or_else(|| anyhow::anyhow!("No device_id found"))?
             .parse::<u64>()?;
         let device_address = &thing.ip_address;
@@ -95,8 +94,7 @@ impl MatterDeviceController {
         let cert_path = "/opt/sam/keys/matter/";
         let controller_id = 100; // Default controller ID
         let device_id = thing
-            .online_identifiers
-            .get(0)
+            .online_identifiers.first()
             .ok_or_else(|| anyhow::anyhow!("No device_id found"))?
             .parse::<u64>()?;
         let device_address = &thing.ip_address;
@@ -197,7 +195,7 @@ pub fn handle(request: &rouille::Request) -> rouille::Response {
                         .into_iter()
                         .map(|d| CommissionableDevice {
                             name: d.name.unwrap_or_default(),
-                            ip: d.ips.get(0).map(|ip| ip.to_string()).unwrap_or_default(),
+                            ip: d.ips.first().map(|ip| ip.to_string()).unwrap_or_default(),
                             port: d.port.unwrap_or(0),
                             discriminator: d.discriminator.and_then(|s| s.parse().ok()),
                             vendor_id: d.vendor_id.and_then(|s| s.parse().ok()),
@@ -211,7 +209,7 @@ pub fn handle(request: &rouille::Request) -> rouille::Response {
             }
         }
         "/api/things/matter/pair" if request.method() == "POST" => {
-            if let Some(input) = json_input::<PairRequest>(request).ok() {
+            if let Ok(input) = json_input::<PairRequest>(request) {
                 let local_address = input
                     .local_address
                     .unwrap_or_else(|| DEFAULT_LOCAL_ADDRESS.to_string());
@@ -230,7 +228,7 @@ pub fn handle(request: &rouille::Request) -> rouille::Response {
             }
         }
         "/api/things/matter/power" if request.method() == "POST" => {
-            if let Some(input) = json_input::<OnOffRequest>(request).ok() {
+            if let Ok(input) = json_input::<OnOffRequest>(request) {
                 // You need to load Thing from your storage by thing_id
                 match Thing::load_by_id(&input.thing_id) {
                     Ok(thing) => {
@@ -256,7 +254,7 @@ pub fn handle(request: &rouille::Request) -> rouille::Response {
             }
         }
         "/api/things/matter/level" if request.method() == "POST" => {
-            if let Some(input) = json_input::<LevelRequest>(request).ok() {
+            if let Ok(input) = json_input::<LevelRequest>(request) {
                 match Thing::load_by_id(&input.thing_id) {
                     Ok(thing) => {
                         let local_address = input

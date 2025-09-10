@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, Semaphore};
 use tokio::time::timeout;
-use anyhow::{Result, Context};
-use log::{debug, warn, info};
+use anyhow::Result;
+use log::{debug, warn};
 use std::collections::HashMap;
 
 /// Resource limits enforcement

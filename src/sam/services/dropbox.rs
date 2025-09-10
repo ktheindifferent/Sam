@@ -638,7 +638,7 @@ struct DirectoryIterator<'a, T: UserAuthClient> {
     cursor: Option<String>,
 }
 
-impl<'a, T: UserAuthClient> Iterator for DirectoryIterator<'a, T> {
+impl<T: UserAuthClient> Iterator for DirectoryIterator<'_, T> {
     type Item = dropbox_sdk::Result<Result<files::Metadata, files::ListFolderContinueError>>;
 
     fn next(&mut self) -> Option<Self::Item> {

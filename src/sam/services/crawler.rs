@@ -2,7 +2,7 @@
 // TODO: Use redis for dns cache if available
 
 use once_cell::sync::Lazy;
-use deadpool_postgres::{Config, Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

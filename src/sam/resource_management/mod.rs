@@ -22,6 +22,7 @@ pub use monitoring::{ResourceMonitor, ResourceMetrics};
 
 /// Resource management configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Default)]
 pub struct ResourceConfig {
     /// File upload limits
     pub file_limits: FileLimits,
@@ -35,17 +36,6 @@ pub struct ResourceConfig {
     pub memory_limits: MemoryLimits,
 }
 
-impl Default for ResourceConfig {
-    fn default() -> Self {
-        ResourceConfig {
-            file_limits: FileLimits::default(),
-            request_limits: RequestLimits::default(),
-            pool_config: PoolConfig::default(),
-            cleanup_config: CleanupConfig::default(),
-            memory_limits: MemoryLimits::default(),
-        }
-    }
-}
 
 /// File upload limits configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -279,12 +269,10 @@ impl ResourceManager {
         }
         
         // Check file extension
-        if !self.config.file_limits.allowed_extensions.is_empty() {
-            if !self.config.file_limits.allowed_extensions.contains(&file_extension.to_string()) {
-                return Ok(UploadPermission::Denied {
-                    reason: format!("File extension {} is not allowed", file_extension),
-                });
-            }
+        if !self.config.file_limits.allowed_extensions.is_empty() && !self.config.file_limits.allowed_extensions.contains(&file_extension.to_string()) {
+            return Ok(UploadPermission::Denied {
+                reason: format!("File extension {} is not allowed", file_extension),
+            });
         }
         
         if self.config.file_limits.blocked_extensions.contains(&file_extension.to_string()) {
@@ -335,7 +323,7 @@ impl ResourceManager {
         
         // Virus scan if enabled
         if self.config.file_limits.enable_virus_scan {
-            if let Err(e) = scan_file(&temp_file.path()).await {
+            if let Err(e) = scan_file(temp_file.path()).await {
                 warn!("Virus scan failed for file {}: {}", file_name, e);
                 return Err(anyhow::anyhow!("File failed virus scan"));
             }

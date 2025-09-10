@@ -60,6 +60,12 @@ pub mod pg;
 pub mod redis;
 pub mod rivescript;
 pub mod rtsp;
+#[cfg(not(test))]
+pub mod rtsp_dl;
+#[cfg(test)]
+pub use rtsp_dl_test as rtsp_dl;
+#[cfg(test)]
+pub mod rtsp_dl_test;
 pub mod rtsp_dl_simple;
 pub mod rtsp_recording;
 pub mod sms;

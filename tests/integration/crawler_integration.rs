@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod crawler_integration_tests {
-    use crate::sam::services::crawler::{CrawlJob, CrawledPage, crawl_url, start_service_async, stop_service};
+    use super::sam::services::crawler::{CrawlJob, CrawledPage, crawl_url, start_service_async, stop_service};
     use std::collections::HashMap;
     use tokio::test;
     use wiremock::{MockServer, Mock, ResponseTemplate};
@@ -52,14 +52,14 @@ mod crawler_integration_tests {
         assert!(start_result.is_ok() || start_result.is_err()); // Handle already running
         
         // Check service status
-        let status = crate::sam::services::crawler::service_status();
+        let status = sam::services::crawler::service_status();
         assert!(status == "running" || status == "stopped");
         
         // Test service stop
         stop_service().await;
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         
-        let status_after = crate::sam::services::crawler::service_status();
+        let status_after = sam::services::crawler::service_status();
         assert_eq!(status_after, "stopped");
     }
 
@@ -200,7 +200,7 @@ mod crawler_integration_tests {
 
     #[test]
     async fn test_job_persistence() {
-        if !crate::sam::services::pg::is_running().await {
+        if !sam::services::pg::is_running().await {
             return; // Skip if database not available
         }
 
@@ -222,12 +222,12 @@ mod crawler_integration_tests {
         
         // First lookup (cache miss)
         let start = std::time::Instant::now();
-        let result1 = crate::sam::services::crawler::runner::dns_lookup(domain).await;
+        let result1 = sam::services::crawler::runner::dns_lookup(domain).await;
         let first_duration = start.elapsed();
         
         // Second lookup (cache hit)
         let start = std::time::Instant::now();
-        let result2 = crate::sam::services::crawler::runner::dns_lookup(domain).await;
+        let result2 = sam::services::crawler::runner::dns_lookup(domain).await;
         let second_duration = start.elapsed();
         
         assert_eq!(result1, result2);
