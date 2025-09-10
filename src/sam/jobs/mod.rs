@@ -14,6 +14,8 @@ pub use types::{Job, JobResult, JobStatus, Priority, JobError, JobType};
 pub use monitoring::JobMonitor;
 pub use dead_letter::DeadLetterQueue;
 
+// JobSystem and JobStats are defined below
+
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

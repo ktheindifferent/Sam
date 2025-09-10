@@ -154,6 +154,7 @@ pub struct YoloDetector {
 }
 
 impl YoloDetector {
+    #[cfg(feature = "opencv")]
     pub fn new(config_path: &str, weights_path: &str, names_path: &str) -> Result<Self> {
         // Load YOLO model
         let net = opencv::dnn::read_net_from_darknet(config_path, weights_path)?;
@@ -172,6 +173,22 @@ impl YoloDetector {
         })
     }
 
+    #[cfg(not(feature = "opencv"))]
+    pub fn new(_config_path: &str, _weights_path: &str, names_path: &str) -> Result<Self> {
+        // Load class names
+        let classes = std::fs::read_to_string(names_path)?
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
+        
+        Ok(Self {
+            classes,
+            confidence_threshold: 0.5,
+            nms_threshold: 0.4,
+        })
+    }
+
+    #[cfg(feature = "opencv")]
     pub fn detect(&mut self, frame: &core::Mat) -> Result<Vec<Detection>> {
         // Create blob from image
         let blob = opencv::dnn::blob_from_image(
@@ -270,6 +287,12 @@ impl YoloDetector {
         
         Ok(final_detections)
     }
+
+    #[cfg(not(feature = "opencv"))]
+    pub fn detect(&mut self, _frame: &[u8]) -> Result<Vec<Detection>> {
+        // Stub implementation when opencv is not available
+        Ok(vec![])
+    }
 }
 
 // Face Detection and Recognition
@@ -303,6 +326,7 @@ impl FaceRecognizer {
         })
     }
 
+    #[cfg(feature = "opencv")]
     pub fn detect_faces(&mut self, frame: &core::Mat) -> Result<Vec<FaceDetection>> {
         let mut gray = core::Mat::default();
         imgproc::cvt_color(frame, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
@@ -335,6 +359,12 @@ impl FaceRecognizer {
         }
         
         Ok(face_detections)
+    }
+
+    #[cfg(not(feature = "opencv"))]
+    pub fn detect_faces(&mut self, _frame: &[u8]) -> Result<Vec<FaceDetection>> {
+        // Stub implementation when opencv is not available
+        Ok(vec![])
     }
 
     pub fn add_known_face(&mut self, name: String, encoding: Vec<f32>) {
@@ -383,6 +413,7 @@ impl AnomalyDetector {
         }
     }
 
+    #[cfg(feature = "opencv")]
     pub fn detect_anomaly(&mut self, frame: &core::Mat, motion_level: f32) -> Result<f32> {
         let stats = self.calculate_frame_statistics(frame, motion_level)?;
         
@@ -411,6 +442,7 @@ impl AnomalyDetector {
         }
     }
 
+    #[cfg(feature = "opencv")]
     fn calculate_frame_statistics(&self, frame: &core::Mat, motion_level: f32) -> Result<FrameStatistics> {
         let mut gray = core::Mat::default();
         imgproc::cvt_color(frame, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
@@ -434,6 +466,16 @@ impl AnomalyDetector {
             mean_intensity,
             std_deviation,
             edge_density,
+            motion_level,
+        })
+    }
+
+    #[cfg(not(feature = "opencv"))]
+    fn calculate_frame_statistics(&self, _frame: &[u8], motion_level: f32) -> Result<FrameStatistics> {
+        Ok(FrameStatistics {
+            mean_intensity: 128.0,  // Default gray value
+            std_deviation: 0.0,
+            edge_density: 0.0,
             motion_level,
         })
     }
@@ -568,6 +610,7 @@ impl RtspStreamProcessor {
         })
     }
 
+    #[cfg(feature = "opencv")]
     pub async fn process_stream(&mut self) -> Result<()> {
         let mut cap = videoio::VideoCapture::new(&self.rtsp_url, videoio::CAP_ANY)?;
         
@@ -710,6 +753,9 @@ impl RtspStreamProcessor {
             ObservationType::UNKNOWN
         };
         
+        // Clone detections before moving them
+        let detections_clone = detections.clone();
+        
         // Add detected objects
         for detection in detections {
             observation.observation_objects.push(ObservationObjects {
@@ -735,7 +781,7 @@ impl RtspStreamProcessor {
         // Store deep vision results
         observation.deep_vision_json = Some(serde_json::json!({
             "motion_detected": motion_detected,
-            "detections": detections,
+            "detections": detections_clone,
             "faces": faces,
             "anomaly_score": anomaly_score,
         }).to_string());
@@ -758,6 +804,15 @@ fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {
         .map(|(x, y)| (x - y).powi(2))
         .sum::<f32>()
         .sqrt()
+}
+
+impl RtspStreamProcessor {
+    #[cfg(not(feature = "opencv"))]
+    pub async fn process_stream(&mut self) -> Result<()> {
+        // Stub implementation when opencv is not available
+        log::info!("OpenCV not available - RTSP processing disabled");
+        Ok(())
+    }
 }
 
 // Public API for starting DL processing

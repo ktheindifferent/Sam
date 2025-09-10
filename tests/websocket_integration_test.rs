@@ -209,8 +209,8 @@ async fn test_message_validation_with_authentication() {
     let result = limits.validate_message("client123", injection_message).await;
     assert!(result.is_err(), "Injection attempt should be blocked");
     
-    // Test oversized message
-    let large_message = format!(r#"{{"type": "data", "content": "{}"}}"#, "x".repeat(MAX_MESSAGE_SIZE + 1));
+    // Test oversized message (64KB + 1)
+    let large_message = format!(r#"{{"type": "data", "content": "{}"}}"#, "x".repeat(64 * 1024 + 1));
     let result = limits.validate_message("client123", &large_message).await;
     assert!(result.is_err(), "Oversized message should be rejected");
     

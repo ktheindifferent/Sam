@@ -4,6 +4,11 @@ version = "0.0.2"
 edition = "2021"
 build = "build.rs"
 
+# Configure both lib and bin targets
+[[bin]]
+name = "sam"
+path = "src/main.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -143,8 +148,8 @@ test = false
 bench = false
 
 [lib]
-name = "libsam"
-path = "src/lib/mod.rs"
+name = "sam"
+path = "src/lib.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"
