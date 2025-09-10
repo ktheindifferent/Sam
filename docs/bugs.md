@@ -15,7 +15,7 @@
 
 **Example:**
 ```rust
-crate::sam::tools::uinx_cmd(&format!("rm -rf {obama_zip}"));
+crate::tools::uinx_cmd(&format!("rm -rf {obama_zip}"));
 ```
 
 **Fix Required:** Replace all instances of `uinx_cmd()` with `safe_uinx_cmd()` immediately.

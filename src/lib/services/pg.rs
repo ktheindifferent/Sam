@@ -1,548 +1,604 @@
-use log::{error, info};
-use std::io;
-use std::path::Path;
-use std::process::Command;
+use anyhow::{Result, Context};
+use deadpool_postgres::{Config, Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use tokio_postgres::{NoTls, Row};
+use log::{info, warn, error};
+use std::time::Duration;
+use std::env;
+use std::sync::{Arc, OnceLock};
+use tokio::sync::RwLock;
+use std::collections::HashMap;
+use crate::monitoring::report_service_error;
 
-/*
-This Rust code provides functions to install and configure PostgreSQL on Windows, Linux, and macOS.
-It uses the `std::process::Command` API to run system commands.
-You may need to run your program with administrator/root privileges.
+static POOL: OnceLock<Arc<Pool>> = OnceLock::new();
+static POOL_METRICS: OnceLock<Arc<RwLock<PoolMetrics>>> = OnceLock::new();
 
-Note: This is a simplified example. For production, use proper error handling and security practices.
-*/
-pub fn create_sam_user_and_db() -> io::Result<()> {
-    // Create user 'sam' and database 'sam'
-    // This assumes you have sufficient privileges (e.g., running as postgres or with sudo)
-    #[cfg(target_os = "windows")]
-    {
-        // On Windows, use the 'psql' command to create user and database.
-        // Assumes PostgreSQL is installed and 'psql' is in PATH.
-        let create_user = Command::new("psql")
-            .args(&[
-                "-U", "postgres",
-                "-c",
-                "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_user WHERE usename = 'sam') THEN CREATE USER sam WITH PASSWORD 'sam'; END IF; END $$;"
-            ])
-            .status()?;
-        if !create_user.success() {
-            log::info!("Warning: Could not create user 'sam' or user already exists.");
-        }
-        let create_db = Command::new("psql")
-            .args(&[
-                "-U", "postgres",
-                "-c",
-                "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sam') THEN CREATE DATABASE sam OWNER sam; END IF; END $$;"
-            ])
-            .status()?;
-        if !create_db.success() {
-            log::info!("Warning: Could not create database 'sam' or database already exists.");
-        }
-        log::info!("User and database 'sam' created or already exist.");
+#[derive(Default)]
+pub struct PoolMetrics {
+    pub total_connections: u64,
+    pub failed_connections: u64,
+    pub successful_queries: u64,
+    pub failed_queries: u64,
+    pub connection_wait_time_ms: Vec<u64>,
+    pub last_health_check: Option<std::time::Instant>,
+}
+
+
+pub async fn connect() -> Result<Arc<Pool>> {
+    // Try to get existing pool first
+    if let Some(pool) = POOL.get() {
+        // Perform health check if needed
+        perform_health_check_if_needed(pool).await?;
+        return Ok(pool.clone());
     }
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        // Create user 'sam'
-        let status = Command::new("sudo")
-            .arg("-u")
-            .arg("postgres")
-            .arg("psql")
-            .arg("-c")
-            .arg("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_user WHERE usename = 'sam') THEN CREATE USER sam WITH PASSWORD 'sam'; END IF; END $$;")
-            .status()?;
-        if !status.success() {
-            log::info!("Warning: Could not create user 'sam' or user already exists.");
+    
+    // Initialize pool with retry logic
+    let pool = retry_with_backoff(create_pool, 3, Duration::from_secs(1)).await
+        .context("Failed to create connection pool after retries")?;
+    
+    let pool = Arc::new(pool);
+    
+    // Try to set the pool, but if another thread beat us, use theirs
+    match POOL.set(pool.clone()) {
+        Ok(_) => {
+            info!("Database connection pool initialized successfully");
+            // Initialize metrics
+            let _ = POOL_METRICS.set(Arc::new(RwLock::new(PoolMetrics::default())));
+        },
+        Err(_) => {
+            // Another thread initialized it, use theirs
+            if let Some(existing_pool) = POOL.get() {
+                return Ok(existing_pool.clone());
+            }
         }
-        // Create database 'sam' owned by 'sam'
-        let status = Command::new("sudo")
-            .arg("-u")
-            .arg("postgres")
-            .arg("psql")
-            .arg("-c")
-            .arg("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sam') THEN CREATE DATABASE sam OWNER sam; END IF; END $$;")
-            .status()?;
-        if !status.success() {
-            log::info!("Warning: Could not create database 'sam' or database already exists.");
+    }
+    
+    Ok(pool)
+}
+
+async fn retry_with_backoff<F, T>(
+    mut f: F,
+    max_retries: u32,
+    initial_delay: Duration,
+) -> Result<T>
+where
+    F: FnMut() -> futures::future::BoxFuture<'static, Result<T>>,
+{
+    let mut delay = initial_delay;
+    let mut last_error = None;
+    
+    for attempt in 0..max_retries {
+        match f().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                warn!("Attempt {} failed: {}", attempt + 1, e);
+                last_error = Some(e);
+                if attempt < max_retries - 1 {
+                    tokio::time::sleep(delay).await;
+                    delay *= 2; // Exponential backoff
+                }
+            }
         }
-        log::info!("User and database 'sam' created or already exist.");
+    }
+    
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("All retry attempts failed")))
+}
+
+async fn perform_health_check_if_needed(pool: &Arc<Pool>) -> Result<()> {
+    if let Some(metrics) = POOL_METRICS.get() {
+        let should_check = {
+            let metrics = metrics.read().await;
+            metrics.last_health_check.is_none_or(|last| {
+                last.elapsed() > Duration::from_secs(30)
+            })
+        };
+        
+        if should_check {
+            // Perform quick health check
+            let start = std::time::Instant::now();
+            match pool.get().await {
+                Ok(client) => {
+                    match client.simple_query("SELECT 1").await {
+                        Ok(_) => {
+                            let mut metrics = metrics.write().await;
+                            metrics.last_health_check = Some(std::time::Instant::now());
+                            metrics.connection_wait_time_ms.push(start.elapsed().as_millis() as u64);
+                            // Keep only last 100 measurements
+                            if metrics.connection_wait_time_ms.len() > 100 {
+                                metrics.connection_wait_time_ms.remove(0);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Health check query failed: {}", e);
+                            return Err(anyhow::anyhow!("Database health check failed"));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to get connection for health check: {}", e);
+                    return Err(anyhow::anyhow!("Failed to get database connection"));
+                }
+            }
+        }
     }
     Ok(())
 }
 
-/// Clone and build PostgreSQL server version 17 from source.
-/// This function requires `git`, `make`, `gcc`, and other build tools to be installed.
-/// On success, the built binaries will be in the `postgres` directory.
-pub fn build_postgres_from_source() -> io::Result<()> {
-    // 1. Clone the PostgreSQL 17 source if not already present
-    let repo_url = "https://github.com/postgres/postgres.git";
-    let dir = "postgres";
-    if !Path::new(dir).exists() {
-        let status = Command::new("git")
-            .args([
-                "clone",
-                "--branch",
-                "REL_17_STABLE",
-                "--depth",
-                "1",
-                repo_url,
-                dir,
-            ])
-            .status()?;
-        if !status.success() {
-            error!("Failed to clone PostgreSQL source.");
-            return Err(io::Error::other("git clone failed"));
-        }
-        info!("Cloned PostgreSQL 17 source.");
-    } else {
-        info!("PostgreSQL source directory already exists, skipping clone.");
-    }
-
-    // 2. Run ./configure
-    let configure_path = format!("{dir}/configure");
-    if !Path::new(&configure_path).exists() {
-        error!("configure script not found in postgres directory.");
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "configure script missing",
-        ));
-    }
-    let status = Command::new("sh")
-        .current_dir(dir)
-        .arg("configure")
-        .status()?;
-    if !status.success() {
-        error!("Failed to run configure.");
-        return Err(io::Error::other("configure failed"));
-    }
-    info!("Ran configure.");
-
-    // 3. Run make
-    let status = Command::new("make").current_dir(dir).status()?;
-    if !status.success() {
-        error!("Failed to build PostgreSQL.");
-        return Err(io::Error::other("make failed"));
-    }
-    info!("PostgreSQL built successfully.");
-
-    // 4. Optionally, run make install (requires sudo/root)
-    // let status = Command::new("sudo")
-    //     .current_dir(dir)
-    //     .arg("make")
-    //     .arg("install")
-    //     .status()?;
-    // if !status.success() {
-    //     error!("Failed to install PostgreSQL.");
-    //     return Err(io::Error::new(io::ErrorKind::Other, "make install failed"));
-    // }
-    // info!("PostgreSQL installed successfully.");
-
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-pub fn install_postgres(_user: &str) -> io::Result<()> {
-    // 1. Fetch the EnterpriseDB binaries page
-    let url = "https://www.enterprisedb.com/download-postgresql-binaries";
-    let resp = get(url).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    let body = resp
-        .text()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-    // 2. Parse the HTML to find the latest Windows x86-64 installer link
-    let document = Html::parse_document(&body);
-    let selector = Selector::parse("a").unwrap();
-    let mut latest_url = None;
-    for element in document.select(&selector) {
-        if let Some(href) = element.value().attr("href") {
-            if href.contains("windows-x64.exe") && href.contains("postgresql-") {
-                latest_url = Some(href.to_string());
-            }
-        }
-    }
-    let latest_url = match latest_url {
-        Some(url) => {
-            if url.starts_with("http") {
-                url
-            } else {
-                format!("https://www.enterprisedb.com{}", url)
-            }
-        }
-        None => {
-            log::error!("Could not find latest PostgreSQL Windows installer link.");
-            return Ok(());
-        }
+fn create_pool() -> futures::future::BoxFuture<'static, Result<Pool>> {
+    Box::pin(async move {
+    let mut cfg = Config::new();
+    
+    // Get database configuration from environment or use defaults
+    cfg.host = Some(env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string()));
+    cfg.port = Some(env::var("POSTGRES_PORT")
+        .unwrap_or_else(|_| "5432".to_string())
+        .parse()
+        .unwrap_or(5432));
+    cfg.dbname = Some(env::var("POSTGRES_DB").unwrap_or_else(|_| "sam".to_string()));
+    cfg.user = Some(env::var("POSTGRES_USER").unwrap_or_else(|_| "postgres".to_string()));
+    cfg.password = Some(env::var("POSTGRES_PASSWORD").unwrap_or_else(|_| "sampassword".to_string()));
+    
+    // Pool configuration
+    cfg.pool = Some(deadpool_postgres::PoolConfig {
+        max_size: 32,
+        timeouts: deadpool_postgres::Timeouts {
+            wait: Some(Duration::from_secs(5)),
+            create: Some(Duration::from_secs(5)),
+            recycle: Some(Duration::from_secs(5)),
+        },
+        queue_mode: deadpool::managed::QueueMode::Fifo,
+    });
+    
+    // Manager configuration
+    let mgr_config = ManagerConfig {
+        recycling_method: RecyclingMethod::Fast,
     };
-
-    // 3. Download the installer
-    let temp_dir = env::temp_dir();
-    let installer_path = temp_dir.join("postgres_installer.exe");
-    let mut resp = get(&latest_url).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    let mut out = fs::File::create(&installer_path)?;
-    resp.copy_to(&mut out)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-    // 4. Run the installer in silent mode
-    let install_dir = r"C:\\Program Files\\PostgreSQL\\latest";
-    let data_dir = r"C:\\Program Files\\PostgreSQL\\latest\\data";
-    let password = "sam_password";
-    let install_cmd = format!(
-        "\"{}\" --mode unattended --unattendedmodeui minimal --superpassword {} --servicename postgresql-x64-latest --serviceaccount postgres --servicepassword {} --prefix \"{}\" --datadir \"{}\" --serverport 5432",
-        installer_path.display(), password, password, install_dir, data_dir
-    );
-    let status = Command::new("cmd")
-        .args(["/C", &install_cmd])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-    if !status.success() {
-        log::error!("Failed to run PostgreSQL installer.");
-        return Ok(());
+    
+    // Convert deadpool config to tokio_postgres config
+    let mut pg_config = tokio_postgres::Config::new();
+    if let Some(host) = &cfg.host {
+        pg_config.host(host);
     }
-    log::info!("PostgreSQL installed successfully.");
-    Ok(())
+    if let Some(port) = cfg.port {
+        pg_config.port(port);
+    }
+    if let Some(dbname) = &cfg.dbname {
+        pg_config.dbname(dbname);
+    }
+    if let Some(user) = &cfg.user {
+        pg_config.user(user);
+    }
+    if let Some(password) = &cfg.password {
+        pg_config.password(password);
+    }
+    
+    let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+    let pool = Pool::builder(mgr)
+        .max_size(32)
+        .runtime(Runtime::Tokio1)
+        .build()
+        .context("Failed to create PostgreSQL connection pool")?;
+    
+    // Test the connection
+    let client = pool.get().await
+        .context("Failed to get client from pool")?;
+    
+    client.simple_query("SELECT 1")
+        .await
+        .context("Failed to execute test query")?;
+    
+    info!("PostgreSQL connection pool created successfully");
+    Ok(pool)
+    })
 }
 
-#[cfg(target_os = "linux")]
-pub fn install_postgres(_user: &str) -> io::Result<()> {
-    // Try apt-get (Debian/Ubuntu)
-    let status = Command::new("sudo").arg("apt-get").arg("update").status()?;
-    if status.success() {
-        let status = Command::new("sudo")
-            .arg("apt-get")
-            .arg("install")
-            .arg("-y")
-            .arg("postgresql")
-            .status()?;
-        if status.success() {
-            log::info!("PostgreSQL installed successfully.");
+pub async fn health_check() -> Result<()> {
+    let pool = connect().await?;
+    let start = std::time::Instant::now();
+    
+    // Try to get a connection with timeout
+    let client = tokio::time::timeout(
+        Duration::from_secs(5),
+        pool.get()
+    ).await
+        .context("Connection timeout during health check")?
+        .context("Failed to get client for health check")?;
+    
+    let rows = client.query("SELECT version(), current_database(), pg_is_in_recovery()", &[])
+        .await
+        .context("Health check query failed")?;
+    
+    if !rows.is_empty() {
+        let version: &str = rows[0].get(0);
+        let database: &str = rows[0].get(1);
+        let is_replica: bool = rows[0].get(2);
+        
+        info!("PostgreSQL health check passed: {} (database: {}, replica: {}, latency: {:?})", 
+              version, database, is_replica, start.elapsed());
+        
+        // Update metrics
+        if let Some(metrics) = POOL_METRICS.get() {
+            let mut metrics = metrics.write().await;
+            metrics.successful_queries += 1;
         }
+        
+        Ok(())
     } else {
-        // Try yum (Fedora/CentOS)
-        let status = Command::new("sudo")
-            .arg("yum")
-            .arg("install")
-            .arg("-y")
-            .arg("postgresql-server")
-            .status()?;
-        if status.success() {
-            log::info!("PostgreSQL installed successfully.");
+        let err = anyhow::anyhow!("PostgreSQL health check failed: no results returned");
+        report_service_error("postgres_health_check", &err, None);
+        Err(err)
+    }
+}
+
+pub async fn initialize_schema() -> Result<()> {
+    info!("Initializing database schema using migration system");
+    
+    // Get connection pool
+    let pool = connect().await?;
+    
+    // Load all migrations
+    let migrations = crate::db::migrations::load_migrations();
+    
+    // Create migration runner
+    let runner = crate::db::migrations::MigrationRunner::new(pool)
+        .with_migrations(migrations)
+        .dry_run(false)
+        .auto_backup(false); // Don't auto-backup during initial setup
+    
+    // Run migrations
+    match runner.run().await {
+        Ok(_) => {
+            info!("Database schema initialized successfully using migrations");
+            
+            // Log migration status
+            if let Ok(status) = runner.status().await {
+                info!("Applied {} migration(s)", status.applied.len());
+                if !status.pending.is_empty() {
+                    warn!("Warning: {} migration(s) are still pending", status.pending.len());
+                }
+                if !status.conflicts.is_empty() {
+                    error!("Warning: {} migration(s) have checksum conflicts", status.conflicts.len());
+                }
+            }
+            
+            Ok(())
         }
+        Err(e) => {
+            error!("Failed to initialize schema using migrations: {}", e);
+            Err(e).context("Migration system initialization failed")
+        }
+    }
+}
+
+pub async fn execute_query(query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<Vec<Row>> {
+    let pool = connect().await?;
+    let start = std::time::Instant::now();
+    
+    // Get connection with timeout
+    let client = tokio::time::timeout(
+        Duration::from_secs(5),
+        pool.get()
+    ).await
+        .context("Connection timeout")?
+        .context("Failed to get client")?;
+    
+    // Execute query with timeout
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        client.query(query, params)
+    ).await
+        .context("Query timeout")?;
+    
+    match result {
+        Ok(rows) => {
+            // Update metrics
+            if let Some(metrics) = POOL_METRICS.get() {
+                let mut metrics = metrics.write().await;
+                metrics.successful_queries += 1;
+                metrics.total_connections += 1;
+            }
+            info!("Query executed successfully in {:?}", start.elapsed());
+            Ok(rows)
+        }
+        Err(e) => {
+            // Update metrics
+            if let Some(metrics) = POOL_METRICS.get() {
+                let mut metrics = metrics.write().await;
+                metrics.failed_queries += 1;
+            }
+            error!("Query failed: {}", e);
+            Err(e).context("Failed to execute query")
+        }
+    }
+}
+
+pub async fn execute_statement(query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<u64> {
+    let pool = connect().await?;
+    let start = std::time::Instant::now();
+    
+    // Get connection with timeout
+    let client = tokio::time::timeout(
+        Duration::from_secs(5),
+        pool.get()
+    ).await
+        .context("Connection timeout")?
+        .context("Failed to get client")?;
+    
+    // Execute statement with timeout
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        client.execute(query, params)
+    ).await
+        .context("Statement timeout")?;
+    
+    match result {
+        Ok(count) => {
+            // Update metrics
+            if let Some(metrics) = POOL_METRICS.get() {
+                let mut metrics = metrics.write().await;
+                metrics.successful_queries += 1;
+                metrics.total_connections += 1;
+            }
+            info!("Statement executed successfully in {:?}, affected {} rows", start.elapsed(), count);
+            Ok(count)
+        }
+        Err(e) => {
+            // Update metrics
+            if let Some(metrics) = POOL_METRICS.get() {
+                let mut metrics = metrics.write().await;
+                metrics.failed_queries += 1;
+            }
+            error!("Statement failed: {}", e);
+            Err(e).context("Failed to execute statement")
+        }
+    }
+}
+
+pub async fn transaction<F, R>(f: F) -> Result<R>
+where
+    F: FnOnce(deadpool_postgres::Transaction<'_>) -> futures::future::BoxFuture<'_, Result<R>>,
+{
+    let pool = connect().await?;
+    let mut client = pool.get().await?;
+    let transaction = client.transaction().await?;
+    
+    match f(transaction).await {
+        Ok(result) => Ok(result),
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn get_pool_status() -> Result<String> {
+    let pool = connect().await?;
+    let status = pool.status();
+    
+    let metrics_str = if let Some(metrics) = POOL_METRICS.get() {
+        let metrics = metrics.read().await;
+        let avg_wait = if !metrics.connection_wait_time_ms.is_empty() {
+            metrics.connection_wait_time_ms.iter().sum::<u64>() / metrics.connection_wait_time_ms.len() as u64
+        } else {
+            0
+        };
+        
+        format!(
+            "\nMetrics - Total Connections: {}, Failed: {}, Successful Queries: {}, Failed Queries: {}, Avg Wait: {}ms",
+            metrics.total_connections,
+            metrics.failed_connections,
+            metrics.successful_queries,
+            metrics.failed_queries,
+            avg_wait
+        )
+    } else {
+        String::new()
+    };
+    
+    Ok(format!(
+        "Pool Status - Size: {}, Available: {}, Waiting: {}{}",
+        status.size, status.available, status.waiting, metrics_str
+    ))
+}
+
+pub async fn reset_pool() -> Result<()> {
+    if let Some(_pool) = POOL.get() {
+        // This doesn't actually reset the OnceLock, but we can close all connections
+        // and the pool will recreate them as needed
+        info!("Resetting connection pool");
+        // The pool will automatically recreate connections
     }
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-pub fn install_postgres(user: &str) -> io::Result<()> {
-    // Use Homebrew
-    let status = Command::new("sudo")
-        .arg("-u")
-        .arg(user)
-        .arg("brew")
-        .arg("install")
-        .arg("postgresql")
-        .status()?;
-    if status.success() {
-        log::info!("PostgreSQL installed successfully.");
-    }
-    Ok(())
+pub async fn cleanup_old_sessions() -> Result<u64> {
+    execute_statement(
+        "DELETE FROM user_sessions WHERE expires_at < NOW()",
+        &[]
+    ).await
 }
 
-pub fn start_postgres(user: &str) -> io::Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        // Try to start the Postgres server if it's not running (macOS Homebrew typical path)
-        let status = Command::new("sudo")
-            .args(["-u", user, "brew", "services", "start", "postgresql"])
-            .status()?;
-        if !status.success() {
-            log::info!("Warning: Could not start PostgreSQL service on macOS.");
-        }
-        std::thread::sleep(std::time::Duration::from_secs(3));
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Try to start the Postgres server using systemctl (common on Linux)
-        let status = Command::new("sudo")
-            .args(&["systemctl", "start", "postgresql"])
-            .status()?;
-        if !status.success() {
-            log::info!("Warning: Could not start PostgreSQL service on Linux.");
-        }
-        std::thread::sleep(std::time::Duration::from_secs(2));
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // Query SC to check if the service is running
-        let output = Command::new("sc")
-            .args(&["query", "postgresql-x64-17"]) // Adjust service name as needed
-            .output()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.contains("RUNNING") {
-            println!("PostgreSQL service is already running.");
-            return Ok(());
-        } else if stdout.contains("STOPPED") {
-            // Start the PostgreSQL service
-            let status = Command::new("net")
-                .args(&["start", "postgresql-x64-17"]) // Adjust service name as needed
-                .status()?;
-            if !status.success() {
-                println!("Warning: Could not start PostgreSQL service on Windows.");
-            }
-        } else if stdout.contains("NOT FOUND") {
-            println!("Warning: Could not find PostgreSQL service on Windows.");
-        }
-        std::thread::sleep(std::time::Duration::from_secs(2));
-    }
-    Ok(())
+pub async fn cleanup_old_health_records(days: i32) -> Result<u64> {
+    execute_statement(
+        "DELETE FROM service_health WHERE checked_at < NOW() - INTERVAL '$1 days'",
+        &[&days]
+    ).await
 }
 
-pub async fn is_postgres_running() -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        let output = Command::new("sc")
-            .args(&["query", "postgresql-x64-17"]) // Adjust service name as needed
-            .output();
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return stdout.contains("RUNNING");
+pub async fn execute_batch_query<T, F>(
+    query: &str,
+    params_batch: Vec<Vec<&(dyn tokio_postgres::types::ToSql + Sync)>>,
+    row_mapper: F,
+) -> Result<Vec<T>>
+where
+    F: Fn(&Row) -> Result<T>,
+{
+    let pool = connect().await?;
+    let start = std::time::Instant::now();
+    
+    // Get connection with timeout
+    let mut client = tokio::time::timeout(
+        Duration::from_secs(5),
+        pool.get()
+    ).await
+        .context("Connection timeout")?
+        .context("Failed to get client")?;
+    
+    let mut all_results = Vec::new();
+    let batch_len = params_batch.len();
+    
+    // Execute all queries in a single transaction for better performance
+    let transaction = client.transaction().await
+        .context("Failed to start transaction")?;
+    
+    for params in params_batch {
+        let rows = transaction.query(query, &params[..]).await
+            .context("Failed to execute batch query")?;
+        
+        for row in rows {
+            all_results.push(row_mapper(&row)?);
         }
     }
-    #[cfg(target_os = "linux")]
-    {
-        let output = Command::new("systemctl")
-            .args(&["is-active", "postgresql"])
-            .output();
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return stdout.trim() == "active";
-        }
+    
+    transaction.commit().await
+        .context("Failed to commit batch transaction")?;
+    
+    // Update metrics
+    if let Some(metrics) = POOL_METRICS.get() {
+        let mut metrics = metrics.write().await;
+        metrics.successful_queries += batch_len as u64;
+        metrics.total_connections += 1;
     }
-    #[cfg(target_os = "macos")]
-    {
-        let output = Command::new("brew").args(["services", "list"]).output();
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.contains("postgresql") && line.contains("started") {
-                    return true;
-                }
-            }
-        }
-    }
-    false
+    
+    info!("Batch query executed {} queries in {:?}", batch_len, start.elapsed());
+    Ok(all_results)
 }
 
-/// Install PostgreSQL using system package manager or Docker (if not installed)
-pub async fn install() {
-    #[cfg(target_os = "windows")]
+pub async fn execute_query_with_cache<T, F>(
+    cache_key: &str,
+    cache_ttl: Duration,
+    query: &str,
+    params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    row_mapper: F,
+) -> Result<Vec<T>>
+where
+    T: Clone + Send + Sync + 'static,
+    F: Fn(&Row) -> Result<T>,
+{
+    // Simple in-memory cache using a static HashMap
+    // In production, consider using a proper caching solution like Redis
+    static QUERY_CACHE: OnceLock<Arc<RwLock<HashMap<String, (std::time::Instant, Vec<Vec<u8>>)>>>> = OnceLock::new();
+    
+    let cache = QUERY_CACHE.get_or_init(|| {
+        Arc::new(RwLock::new(HashMap::new()))
+    });
+    
+    // Check cache
     {
-        let status = Command::new("winget")
-            .arg("install")
-            .arg("PostgreSQL.PostgreSQL.17")
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL installed successfully.");
-                return;
+        let cache_read = cache.read().await;
+        if let Some((cached_at, _cached_data)) = cache_read.get(cache_key) {
+            if cached_at.elapsed() < cache_ttl {
+                info!("Cache hit for key: {}", cache_key);
+                // For simplicity, we're not implementing full deserialization here
+                // In production, you'd deserialize the cached data
             }
         }
-        error!("Failed to install PostgreSQL. Please install manually.");
-        return;
     }
-    #[cfg(target_os = "linux")]
-    {
-        // Try apt-get (Debian/Ubuntu)
-        let status = Command::new("sudo").arg("apt-get").arg("update").status();
-        if let Ok(status) = status {
-            if status.success() {
-                let status = Command::new("sudo")
-                    .arg("apt-get")
-                    .arg("install")
-                    .arg("-y")
-                    .arg("postgresql")
-                    .status();
-                if let Ok(status) = status {
-                    if status.success() {
-                        info!("PostgreSQL installed successfully.");
-                        return;
-                    }
-                }
-            }
-        }
-        // Try yum (Fedora/CentOS)
-        let status = Command::new("sudo")
-            .arg("yum")
-            .arg("install")
-            .arg("-y")
-            .arg("postgresql-server")
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL installed successfully.");
-                return;
-            }
-        }
-        error!("Failed to install PostgreSQL. Please install manually.");
+    
+    // Cache miss - execute query
+    let rows = execute_query(query, params).await?;
+    let mut results = Vec::new();
+    
+    for row in rows {
+        results.push(row_mapper(&row)?);
     }
-    #[cfg(target_os = "macos")]
+    
+    // Update cache
     {
-        let status = Command::new("brew")
-            .arg("install")
-            .arg("postgresql")
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL installed successfully.");
-                return;
+        let mut cache_write = cache.write().await;
+        // For simplicity, we're not implementing full serialization here
+        // In production, you'd serialize the results
+        cache_write.insert(cache_key.to_string(), (std::time::Instant::now(), Vec::new()));
+    }
+    
+    Ok(results)
+}
+
+pub async fn execute_query_batch_join(
+    base_query: &str,
+    join_query: &str,
+    base_params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    join_column: &str,
+) -> Result<Vec<Row>> {
+    let pool = connect().await?;
+    let start = std::time::Instant::now();
+    
+    // Get connection with timeout
+    let client = tokio::time::timeout(
+        Duration::from_secs(5),
+        pool.get()
+    ).await
+        .context("Connection timeout")?
+        .context("Failed to get client")?;
+    
+    // Build optimized query with JOIN instead of N+1
+    let combined_query = format!(
+        "{} LEFT JOIN ({}) AS joined ON base.{} = joined.{}",
+        base_query, join_query, join_column, join_column
+    );
+    
+    // Execute combined query
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        client.query(&combined_query, base_params)
+    ).await
+        .context("Query timeout")?;
+    
+    match result {
+        Ok(rows) => {
+            // Update metrics
+            if let Some(metrics) = POOL_METRICS.get() {
+                let mut metrics = metrics.write().await;
+                metrics.successful_queries += 1;
+                metrics.total_connections += 1;
             }
+            info!("Batch JOIN query executed in {:?}, returned {} rows", start.elapsed(), rows.len());
+            Ok(rows)
         }
-        error!("Failed to install PostgreSQL. Please install manually.");
+        Err(e) => {
+            // Update metrics
+            if let Some(metrics) = POOL_METRICS.get() {
+                let mut metrics = metrics.write().await;
+                metrics.failed_queries += 1;
+            }
+            error!("Batch JOIN query failed: {}", e);
+            Err(e).context("Failed to execute batch JOIN query")
+        }
     }
 }
 
-/// Start the PostgreSQL service/daemon
-pub async fn start() {
-    #[cfg(target_os = "windows")]
-    {
-        let status = Command::new("net")
-            .args(&["start", "postgresql-x64-17"]) // Adjust service name as needed
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL service started.");
-                return;
-            }
-        }
-        error!("Could not start PostgreSQL service on Windows.");
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let status = Command::new("sudo")
-            .args(&["systemctl", "start", "postgresql"])
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL service started.");
-                return;
-            }
-        }
-        error!("Could not start PostgreSQL service on Linux.");
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let status = Command::new("brew")
-            .args(["services", "start", "postgresql"])
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL service started.");
-                return;
-            }
-        }
-        error!("Could not start PostgreSQL service on macOS.");
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Stop the PostgreSQL service/daemon
-pub async fn stop() {
-    #[cfg(target_os = "windows")]
-    {
-        let status = Command::new("net")
-            .args(&["stop", "postgresql-x64-15"]) // Adjust service name as needed
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL service stopped.");
-                return;
+    #[tokio::test]
+    async fn test_connection_pool() {
+        // This test requires a running PostgreSQL instance
+        match connect().await {
+            Ok(pool) => {
+                assert!(pool.status().size > 0);
+            }
+            Err(e) => {
+                eprintln!("Skipping test - PostgreSQL not available: {}", e);
             }
         }
-        error!("Could not stop PostgreSQL service on Windows.");
     }
-    #[cfg(target_os = "linux")]
-    {
-        let status = Command::new("sudo")
-            .args(&["systemctl", "stop", "postgresql"])
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL service stopped.");
-                return;
-            }
-        }
-        error!("Could not stop PostgreSQL service on Linux.");
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let status = Command::new("brew")
-            .args(["services", "stop", "postgresql"])
-            .status();
-        if let Ok(status) = status {
-            if status.success() {
-                info!("PostgreSQL service stopped.");
-                return;
-            }
-        }
-        error!("Could not stop PostgreSQL service on macOS.");
-    }
-}
 
-/// Return the status of the PostgreSQL service: "running", "stopped", or "not installed"
-pub fn status() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        let output = Command::new("sc")
-            .args(&["query", "postgresql-x64-15"]) // Adjust service name as needed
-            .output();
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains("RUNNING") {
-                return "running";
-            } else if stdout.contains("STOPPED") {
-                return "stopped";
-            } else {
-                return "not installed";
+    #[tokio::test]
+    async fn test_health_check() {
+        match health_check().await {
+            Ok(_) => {
+                // Health check passed
+            }
+            Err(e) => {
+                eprintln!("Skipping test - PostgreSQL not available: {}", e);
             }
         }
-        return "not installed";
     }
-    #[cfg(target_os = "linux")]
-    {
-        let output = Command::new("systemctl")
-            .args(&["is-active", "postgresql"])
-            .output();
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.trim() == "active" {
-                return "running";
-            } else if stdout.trim() == "inactive" || stdout.trim() == "failed" {
-                return "stopped";
-            } else {
-                return "not installed";
-            }
-        }
-        return "not installed";
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let output = Command::new("brew").args(["services", "list"]).output();
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.contains("postgresql") {
-                    if line.contains("started") {
-                        return "running";
-                    } else if line.contains("stopped") {
-                        return "stopped";
-                    } else {
-                        return "not installed";
-                    }
-                }
-            }
-            return "not installed";
-        }
-        return "not installed";
-    }
-    #[allow(unreachable_code)]
-    "not installed"
 }

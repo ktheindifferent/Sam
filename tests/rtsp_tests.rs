@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod rtsp_dl_tests {
-    use libsam::services::rtsp_dl_test::{
+    use crate::services::rtsp_dl_test::{
         MotionDetector, FaceRecognizer, AnomalyDetector, Detection, BoundingBox,
         Alert, AlertType, AlertSeverity, AlertManager, ObservationObjects
     };

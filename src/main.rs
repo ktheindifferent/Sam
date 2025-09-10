@@ -140,7 +140,7 @@ async fn initialize_application() {
     }
 
     println!("DEBUG: Creating Config");
-    let config = crate::sam::memory::Config::new();
+    let config = libsam::memory::Config::new();
     println!("DEBUG: Calling config.init()");
     config.init().await;
     println!("DEBUG: config.init() completed");
@@ -153,7 +153,7 @@ async fn initialize_application() {
         run_event_loop().await;
     } else {
         // In interactive mode, start the TUI
-        crate::sam::cli::start_prompt().await;
+        libsam::cli::start_prompt().await;
         run_event_loop().await;
     }
 }
@@ -259,7 +259,7 @@ async fn shutdown_services_on_panic() -> Result<(), Box<dyn std::error::Error>> 
     sam::services::redis::stop().await;
     
     // Stop PostgreSQL if needed
-    if libsam::services::pg::is_postgres_running().await {
+    if libsam::cli::commands::pg::is_postgres_running().await {
         // TODO: Implement stop_postgres function
         log::info!("PostgreSQL is running but no stop function available");
     }
@@ -283,7 +283,7 @@ fn ensure_manifest_dir() {
 
 /// Gets the application user from the whois file or defaults to "human"
 fn get_application_user() -> String {
-    crate::sam::tools::get_user_from_whois("human").unwrap_or_else(|_| {
+    libsam::tools::get_user_from_whois("human").unwrap_or_else(|_| {
         log::error!("Failed to read whoismyhuman file. Defaulting to 'human'.");
         "human".to_string()
     })
@@ -316,10 +316,10 @@ fn setup_environment_variables() {
 
 /// Sets up and configures PostgreSQL database
 async fn setup_postgres(user: &str) {
-    if crate::sam::memory::Config::check_postgres_installed() {
+    if libsam::memory::Config::check_postgres_installed() {
         println!("Postgres is already installed.");
-        libsam::services::pg::start_postgres(user).expect("Failed to start PostgreSQL service");
-        crate::sam::memory::Config::create_user_and_database(user).expect("Failed to create PostgreSQL user and database");
+        libsam::cli::commands::pg::start_postgres(user).expect("Failed to start PostgreSQL service");
+        libsam::memory::Config::create_user_and_database(user).expect("Failed to create PostgreSQL user and database");
     } else {
         install_and_configure_postgres(user).await;
     }
@@ -328,19 +328,19 @@ async fn setup_postgres(user: &str) {
 /// Installs and configures PostgreSQL for first-time setup
 async fn install_and_configure_postgres(user: &str) {
     println!("Installing Postgres...");
-    libsam::services::pg::install().await;
+    libsam::cli::commands::pg::install().await;
 
     println!("Starting Postgres...");
-    libsam::services::pg::start_postgres(user).expect("Failed to start PostgreSQL service during initial setup");
+    libsam::cli::commands::pg::start_postgres(user).expect("Failed to start PostgreSQL service during initial setup");
 
-    if libsam::services::pg::is_postgres_running().await {
+    if libsam::cli::commands::pg::is_postgres_running().await {
         println!("Postgres is running.");
     } else {
         println!("Postgres failed to start.");
     }
 
     add_postgres_to_path_if_macos();
-    crate::sam::memory::Config::create_user_and_database(user).expect("Failed to create PostgreSQL user and database during setup");
+    libsam::memory::Config::create_user_and_database(user).expect("Failed to create PostgreSQL user and database during setup");
     println!("Postgres installation complete.");
 }
 

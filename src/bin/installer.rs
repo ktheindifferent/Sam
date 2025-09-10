@@ -170,9 +170,9 @@ async fn main() -> Result<()> {
 }
 //     // install_services();
 //     log::info!("Setting up default settings...");
-//     // crate::sam::http::api::settings::set_defaults();
+//     // crate::http::api::settings::set_defaults();
 //     log::info!("Configuring Snapcast...");
-//     // crate::sam::services::media::snapcast::configure();
+//     // crate::services::media::snapcast::configure();
 //     log::info!("Installation complete!");
 
 // }
@@ -482,24 +482,24 @@ async fn check_gpu_devices() -> Result<()> {
 //     // Call async darknet install separately
 //     let rt = tokio::runtime::Runtime::new().unwrap();
 //     rt.block_on(async {
-//         match crate::sam::services::darknet::install().await {
+//         match crate::services::darknet::install().await {
 //             Ok(_) => log::info!("darknet installed successfully"),
 //             Err(e) => log::error!("Failed to install darknet: {}", e),
 //         }
 
-//         match crate::sam::services::stt::whisper::WhisperService::install().await {
+//         match crate::services::stt::whisper::WhisperService::install().await {
 //             Ok(_) => log::info!("whisper installed successfully"),
 //             Err(e) => log::error!("Failed to install whisper: {}", e),
 //         }
 //     });
 
 //     let services = vec![
-//         ("darknet", crate::sam::services::darknet::install as fn() -> std::result::Result<(), std::io::Error>), // REMOVE THIS LINE
-//         ("sprec", crate::sam::services::sprec::install as fn() -> std::result::Result<(), std::io::Error>),
-//         ("rivescript", crate::sam::services::rivescript::install as fn() -> std::result::Result<(), std::io::Error>),
-//         ("who.io", crate::sam::services::who::install as fn() -> std::result::Result<(), std::io::Error>),
-//         ("STT server", crate::sam::services::stt::install as fn() -> std::result::Result<(), std::io::Error>),
-//         ("Media service", crate::sam::services::media::install as fn() -> std::result::Result<(), std::io::Error>),
+//         ("darknet", crate::services::darknet::install as fn() -> std::result::Result<(), std::io::Error>), // REMOVE THIS LINE
+//         ("sprec", crate::services::sprec::install as fn() -> std::result::Result<(), std::io::Error>),
+//         ("rivescript", crate::services::rivescript::install as fn() -> std::result::Result<(), std::io::Error>),
+//         ("who.io", crate::services::who::install as fn() -> std::result::Result<(), std::io::Error>),
+//         ("STT server", crate::services::stt::install as fn() -> std::result::Result<(), std::io::Error>),
+//         ("Media service", crate::services::media::install as fn() -> std::result::Result<(), std::io::Error>),
 //     ];
 
 //     for (name, install_fn) in services {
@@ -511,7 +511,7 @@ async fn check_gpu_devices() -> Result<()> {
 
 //     // Install HTTP server in release mode
 //     #[cfg(not(debug_assertions))]
-//     match crate::sam::http::install() {
+//     match crate::http::install() {
 //         Ok(_) => log::info!("HTTP server installed successfully"),
 //         Err(e) => log::error!("Failed to install HTTP server: {}", e),
 //     }

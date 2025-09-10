@@ -15,7 +15,7 @@ The ThreadManager utility provides comprehensive thread panic recovery and monit
 ### Simple Thread Spawn
 
 ```rust
-use crate::sam::services::thread_manager;
+use crate::services::thread_manager;
 
 // Spawn a simple thread with default configuration
 let thread_id = thread_manager::spawn("my_worker", move |shutdown_signal, health_rx| {
@@ -29,7 +29,7 @@ let thread_id = thread_manager::spawn("my_worker", move |shutdown_signal, health
 ### Custom Configuration
 
 ```rust
-use crate::sam::services::thread_manager::{self, ThreadConfig};
+use crate::services::thread_manager::{self, ThreadConfig};
 
 let config = ThreadConfig {
     name: "critical_service".to_string(),
@@ -151,7 +151,7 @@ thread::spawn(move || {
 ### After (using ThreadManager)
 
 ```rust
-use crate::sam::services::thread_manager::{self, ThreadConfig};
+use crate::services::thread_manager::{self, ThreadConfig};
 
 let config = ThreadConfig {
     name: "data_processor".to_string(),

@@ -1,107 +1,200 @@
-use anyhow::{Context, Result};
+use std::fs;
+use std::io::{self};
 use std::path::Path;
-use std::process::Stdio;
-use tokio::{fs, process::Command};
-use std::sync::{Arc};
-use tokio::sync::Mutex;
-// use futures::StreamExt;
-use tokio::io::AsyncBufReadExt;
-use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
-// Helper: Run a command and stream output lines
-async fn run_command_stream_lines(mut cmd: Command, output_lines: Option<&Arc<Mutex<Vec<String>>>>, prefix: &str) -> Result<()> {
-    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
+pub struct LlamaService;
 
-    let mut lines = vec![];
-    if let Some(stdout) = stdout {
-        let reader = tokio::io::BufReader::new(stdout);
-        let mut lines_stream = reader.lines();
-        while let Some(line) = lines_stream.next_line().await? {
-            let msg = format!("{}: {}", prefix, line);
-            crate::println(output_lines, msg.clone()).await;
-            if output_lines.is_none() {
-                println!("{}", msg);
-            }
-            lines.push(msg);
+impl LlamaService {
+    pub fn ensure_llama_binary_with_output() -> io::Result<String> {
+        let llama_src = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/llama.cpp");
+        let llama_bin = Path::new("/opt/sam/bin/llama");
+        let build_dir = llama_src.join("build");
+        fs::create_dir_all(&build_dir)?;
+
+        if llama_bin.exists() {
+            return Ok("llama binary already exists.".to_string());
         }
-    }
-    if let Some(stderr) = stderr {
-        let reader = tokio::io::BufReader::new(stderr);
-        let mut lines_stream = reader.lines();
-        while let Some(line) = lines_stream.next_line().await? {
-            let msg = format!("{}: {}", prefix, line);
-            crate::println(output_lines, msg.clone()).await;
-            if output_lines.is_none() {
-                println!("{}", msg);
-            }
-            lines.push(msg);
+
+        let mut output_log = String::new();
+
+        // Run cmake -B build
+        let cmake_config = Command::new("cmake")
+            .current_dir(llama_src.clone())
+            .arg("-B")
+            .arg("build")
+            .output()?;
+        output_log.push_str("--- cmake configure ---\n");
+        output_log.push_str(&String::from_utf8_lossy(&cmake_config.stdout));
+        output_log.push_str(&String::from_utf8_lossy(&cmake_config.stderr));
+        if !cmake_config.status.success() {
+            return Err(io::Error::other(format!(
+                "Failed to configure llama.cpp with cmake\n{output_log}"
+            )));
         }
+
+        // Run cmake --build build --config Release
+        let cmake_build = Command::new("cmake")
+            .current_dir(llama_src.clone())
+            .arg("--build")
+            .arg("build")
+            .arg("--config")
+            .arg("Release")
+            .output()?;
+        output_log.push_str("--- cmake build ---\n");
+        output_log.push_str(&String::from_utf8_lossy(&cmake_build.stdout));
+        output_log.push_str(&String::from_utf8_lossy(&cmake_build.stderr));
+        if !cmake_build.status.success() {
+            return Err(io::Error::other(format!(
+                "Failed to build llama.cpp with cmake\n{output_log}"
+            )));
+        }
+
+        // Find the built binaries
+        let binaries = [
+            "llama-cli",
+            "llama-simple",
+            "llama-bench",
+            "llama-run",
+            "llama-server",
+            "llama-perplexity",
+        ];
+        let mut found_any = false;
+
+        fs::create_dir_all("/opt/sam/bin")?;
+
+        for bin_name in &binaries {
+            let built_bin = build_dir.join("bin").join(bin_name);
+            let built_bin_alt = build_dir.join(bin_name);
+            let target_bin = Path::new("/opt/sam/bin").join(bin_name);
+
+            let src_bin = if built_bin.exists() {
+                built_bin
+            } else if built_bin_alt.exists() {
+                built_bin_alt
+            } else {
+                continue;
+            };
+
+            fs::copy(&src_bin, &target_bin)?;
+            let _ = Command::new("chmod").arg("+x").arg(&target_bin).output();
+            found_any = true;
+            output_log.push_str(&format!("Installed binary: {}\n", target_bin.display()));
+        }
+
+        if !found_any {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("None of the expected llama binaries were found after cmake build\n{output_log}"),
+            ));
+        }
+
+        Ok(output_log)
     }
-    let status = child.wait().await?;
-    if !status.success() {
-        anyhow::bail!("{} failed: {:?}", prefix, lines);
+
+    fn download_model(model_url: &str, model_filename: &str) -> io::Result<()> {
+        let models_dir = Path::new("/opt/sam/models/");
+        let model_path = models_dir.join(model_filename);
+
+        // Create models directory if it doesn't exist
+        fs::create_dir_all(models_dir)?;
+
+        // Skip download if model already exists
+        if model_path.exists() {
+            return Ok(());
+        }
+
+        // Download the model file
+        let mut resp = reqwest::blocking::get(model_url)
+            .map_err(|e| io::Error::other(format!("Download failed: {e}")))?;
+
+        if !resp.status().is_success() {
+            return Err(io::Error::other(format!(
+                "Failed to download model: HTTP {}",
+                resp.status()
+            )));
+        }
+
+        let mut out = fs::File::create(&model_path)?;
+        io::copy(&mut resp, &mut out)?;
+
+        Ok(())
     }
-    Ok(())
+
+    pub fn download_v3_model() -> io::Result<()> {
+        Self::download_model(
+            "https://huggingface.co/meta-llama/Llama-3.1-8B-GGUF/resolve/main/llama-3.1-8b.Q4_K_M.gguf",
+            "llama-3.1-8b.Q4_K_M.gguf",
+        )
+    }
+
+    pub fn download_v2_tiny_model() -> io::Result<()> {
+        Self::download_model(
+            "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_0.gguf?download=true",
+            "tinyllama-1.1b-chat-v1.0.Q4_0.gguf",
+        )
+    }
+
+    pub fn download_v2_model() -> io::Result<()> {
+        Self::download_model(
+            "https://huggingface.co/TheBloke/Llama-2-7B-GGUF/resolve/main/llama-2-7b.Q4_K_M.gguf",
+            "llama-2-7b.Q4_K_M.gguf",
+        )
+    }
+
+    pub fn install_blocking() -> io::Result<String> {
+        let mut log = String::new();
+        log.push_str(&Self::ensure_llama_binary_with_output()?);
+        Self::download_v2_model()?;
+        Self::download_v2_tiny_model()?;
+        Self::download_v3_model()?;
+        log.push_str("Llama binary and models installed.\n");
+        Ok(log)
+    }
+
+    pub fn query_v2(prompt: &str) -> io::Result<String> {
+        let model_path = Path::new("/opt/sam/models/llama-2-7b.Q4_K_M.gguf");
+        if !model_path.exists() {
+            Self::download_v2_model()?;
+        }
+        Self::query(model_path, prompt)
+    }
+
+    pub fn query_v2_tiny(prompt: &str) -> io::Result<String> {
+        let model_path = Path::new("/opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf");
+        if !model_path.exists() {
+            Self::download_v2_tiny_model()?;
+        }
+        Self::query(model_path, prompt)
+    }
+
+    pub fn query(model_path: &Path, prompt: &str) -> io::Result<String> {
+        Self::ensure_llama_binary_with_output()?;
+
+        if !model_path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Model file not found.",
+            ));
+        }
+
+        let llama_bin = "/opt/sam/bin/llama-cli";
+        let output = Command::new(llama_bin)
+            .arg("--model")
+            .arg(model_path)
+            .arg("--prompt")
+            .arg(prompt)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()?;
+
+        let mut output_str = String::new();
+        output_str.push_str(&String::from_utf8_lossy(&output.stdout));
+        // output_str.push_str(&String::from_utf8_lossy(&output.stderr));
+        Ok(output_str)
+    }
 }
 
-pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<()> {
-    let scripts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/llama.cpp");
-    let llama_cli = PathBuf::from("/opt/sam/bin/llama-cli");
-
-    if llama_cli.exists() {
-        crate::println(output_lines, "llama-cli binary already exists.".to_string()).await;
-        return Ok(());
-    }
-
-    let repo_url = "https://github.com/ggml-org/llama.cpp.git";
-    let bin_dir = Path::new("/opt/sam/bin");
-
-    // Clone if not already present
-    if !scripts_dir.exists() {
-        let mut git_cmd = Command::new("git");
-        git_cmd.arg("clone").arg(repo_url).arg(&scripts_dir);
-        run_command_stream_lines(git_cmd, output_lines, "git").await?;
-    }
-
-    // Build with CMake
-    let mut cmake_cmd = Command::new("cmake");
-    cmake_cmd.arg("-DLLAMA_CURL=OFF").arg("-DGGML_CCACHE=OFF").arg(".").current_dir(&scripts_dir);
-    run_command_stream_lines(cmake_cmd, output_lines, "cmake").await?;
-
-    let mut build_cmd = Command::new("cmake");
-    build_cmd.arg("--build").arg(".").current_dir(&scripts_dir);
-    run_command_stream_lines(build_cmd, output_lines, "cmake-build").await?;
-
-    // Ensure /opt/sam/bin exists
-    if !bin_dir.exists() {
-        fs::create_dir_all(bin_dir)
-            .await
-            .context("Failed to create /opt/sam/bin directory")?;
-        crate::println(output_lines, "Created /opt/sam/bin".to_string()).await;
-    }
-
-    // Copy binaries (llama, main, etc.)
-    let mut entries = fs::read_dir(&scripts_dir)
-        .await
-        .context("Failed to read scripts/llama.cpp directory")?;
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(fname) = path.file_name() {
-                let fname = fname.to_string_lossy();
-                if fname.starts_with("llama") || fname == "main" {
-                    let dest = bin_dir.join(fname.as_ref());
-                    fs::copy(&path, &dest)
-                        .await
-                        .with_context(|| format!("Failed to copy {:?} to {:?}", path, dest))?;
-                    crate::println(output_lines, format!("Installed {} to {}", fname, dest.display())).await;
-                }
-            }
-        }
-    }
-
-    crate::println(output_lines, "llama install: done.".to_string()).await;
-    Ok(())
-}
+// Example usage (not part of the service):
+// let model_path = Path::new("./models/llama-7b.bin");
+// let response = LlamaService::query(model_path, "What is Rust?")?;

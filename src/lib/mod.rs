@@ -12,6 +12,19 @@ use tokio::process::Command as TokioCommand;
 use zip::read::ZipArchive;
 
 pub mod services;
+pub mod cli;
+pub mod http;
+pub mod memory;
+pub mod tools;
+pub mod websocket;
+pub mod network_monitor;
+pub mod network_config;
+pub mod db;
+pub mod jobs;
+pub mod security;
+pub mod logging;
+pub mod monitoring;
+pub mod resource_management;
 
 // pub use self::cmd_async;
 

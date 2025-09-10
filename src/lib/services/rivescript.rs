@@ -7,39 +7,46 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+use crate::http::api::io::IOReply;
+use thiserror::Error;
+pub type Result<T> = anyhow::Result<T>;
+
+#[derive(Error, Debug)]
+pub enum RiveScriptError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serde JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("HTTP request error: {0}")]
+    HttpRequest(#[from] reqwest::Error),
+    #[error("Postgres error: {0}")]
+    Postgres(#[from] postgres::Error),
+    #[error("Sam memory error: {0}")]
+    SamMemoryError(#[from] crate::memory::Error),
+    #[error("Toolkit error: {0}")]
+    ToolkitError(#[from] crate::tools::Error),
+    #[error("Other error: {0}")]
+    Other(String),
+}
+
 // use std::io::Write;
 
-use tokio::fs::File as TokioFile;
-use tokio::io::AsyncWriteExt;
-pub async fn install() -> std::io::Result<()> {
-    let data = include_bytes!("../../../scripts/rivescript/brain.py");
+#[allow(unexpected_cfgs)]
+pub fn query(input: &str) -> anyhow::Result<IOReply> {
+    let rivescript_reply = crate::tools::safe_cmd(
+        "python3",
+        &["/opt/sam/scripts/rivescript/brain.py", input],
+    )?;
 
-    let mut pos = 0;
-    let mut buffer = TokioFile::create("/opt/sam/scripts/rivescript/brain.py").await?;
-
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..]).await?;
-        pos += bytes_written;
+    if rivescript_reply.contains(":::::") {
+        // TODO - Parse Command
     }
-    buffer.flush().await?;
 
-    let data = include_bytes!("../../../scripts/rivescript/eg.zip");
+    let io = IOReply {
+        text: rivescript_reply,
+        timestamp: 0,
+        response_type: "io".to_string(),
+    };
 
-    let mut pos = 0;
-    let mut buffer = TokioFile::create("/opt/sam/scripts/rivescript/eg.zip").await?;
-
-    while pos < data.len() {
-        let bytes_written = buffer.write(&data[pos..]).await?;
-        pos += bytes_written;
-    }
-    buffer.flush().await?;
-
-    crate::extract_zip_async(
-        "/opt/sam/scripts/rivescript/eg.zip",
-        "/opt/sam/scripts/rivescript/",
-    )
-    .await?;
-    let _ = crate::cmd_async("rm -rf /opt/sam/scripts/rivescript/eg.zip").await?;
-
-    Ok(())
+    Ok(io)
 }

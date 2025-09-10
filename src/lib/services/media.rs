@@ -1,30 +1,28 @@
-pub fn install() -> std::io::Result<()> {
-    // match games::install(){
-    //     Ok(_) => {
-    //         log::info!("Games installed successfully");
-    //     },
-    //     Err(e) => {
-    //         log::error!("Failed to install games: {}", e);
-    //     }
-    // }
+pub mod games;
+pub mod image;
+pub mod snapcast;
+pub mod youtube;
 
-    // match snapcast::install(){
-    //     Ok(_) => {
-    //         log::info!("Snapcast server installed successfully");
-    //     },
-    //     Err(e) => {
-    //         log::error!("Failed to install snapcast server: {}", e);
-    //     }
-    // }
+use rouille::Request;
+use rouille::Response;
 
-    // match image::install(){
-    //     Ok(_) => {
-    //         log::info!("Image service installed successfully");
-    //     },
-    //     Err(e) => {
-    //         log::error!("Failed to install image service: {}", e);
-    //     }
-    // }
+pub fn handle(
+    current_session: crate::memory::cache::WebSessions,
+    request: &Request,
+) -> Result<Response, crate::http::Error> {
+    if request.url().contains("/image") {
+        return image::handle(current_session, request);
+    }
 
+    if request.url().contains("/games") {
+        return games::handle(current_session, request);
+    }
+
+    Ok(Response::empty_404())
+}
+
+/// Initialize the media service
+pub async fn initialize() -> anyhow::Result<()> {
+    log::info!("Media service initialized");
     Ok(())
 }

@@ -71,7 +71,7 @@ Comprehensive resource management system has been implemented to prevent DoS att
 std::fs::write(tmp_file_path.clone(), wav_data)?;
 // ... processing ...
 // Manual cleanup that might not run on error
-crate::sam::tools::uinx_cmd(format!("rm {}", tmp_file_path));
+crate::tools::uinx_cmd(format!("rm {}", tmp_file_path));
 ```
 
 **After**: Automatic cleanup using RAII pattern
@@ -234,8 +234,8 @@ let metrics = resource_manager.get_metrics().await;
 To use the improved observations handler:
 ```rust
 // Replace in your routing:
-// OLD: crate::sam::http::api::observations::handle
-// NEW: crate::sam::http::api::observations_improved::handle
+// OLD: crate::http::api::observations::handle
+// NEW: crate::http::api::observations_improved::handle
 ```
 
 The new implementation is fully backward compatible while adding resource protection.
