@@ -3,6 +3,9 @@ Smart Artificial Mind
 WIP. Dont use this software yet.
 Licensed under GPL version 3.
 
+TODO: 
+1. Migrate all core files to libsam so that they can be shared with benchmarks, tests and other binaries beyond just "sam".
+
 TTS API:
 https://tts.opensam.foundation/api/tts?text=hello%20world&speaker_id=&style_wav=
 https://tts.alpha.opensam.foundation/api/tts?text=hello%20world&speaker_id=&style_wav=

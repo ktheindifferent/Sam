@@ -226,7 +226,7 @@ fn setup_panic_handler() {
 /// Clear Redis cache on panic
 async fn clear_redis_cache_on_panic() -> Result<(), Box<dyn std::error::Error>> {
     use deadpool_redis::{Config, Runtime};
-    use deadpool_redis::redis::AsyncCommands;
+    // use deadpool_redis::redis::AsyncCommands;
     
     // Try to connect to Redis
     let redis_url = std::env::var("REDIS_URL")
