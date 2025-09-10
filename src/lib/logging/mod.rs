@@ -5,20 +5,11 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use log::{Level, Metadata, Record};
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec,
-    CounterVec, GaugeVec, HistogramVec, TextEncoder, Encoder,
+    register_gauge_vec, register_histogram_vec, GaugeVec, HistogramVec, TextEncoder, Encoder,
     register_int_counter_vec, IntCounterVec,
 };
-use opentelemetry::{
-    global,
-    trace::{Tracer as OtelTracer, TracerProvider, SpanBuilder, Status},
-    KeyValue,
-};
-use opentelemetry_sdk::{trace, Resource};
-use opentelemetry_otlp::WithExportConfig;
-use tracing::{error, warn, info, debug, trace, span, Span};
+use tracing::{error, warn, info, debug, trace};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
-use std::time::Instant;
 
 /// Logging configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -361,6 +352,11 @@ impl MetricsCollector {
             .with_label_values(&["total"])
             .set(sys.total_memory() as f64);
         
+        // Thread count
+        self.thread_count_gauge
+            .with_label_values(&["active"])
+            .set(sys.processes().len() as f64);
+        
         // Disk usage
         let disks = sysinfo::Disks::new_with_refreshed_list();
         for disk in disks.list() {
@@ -369,6 +365,13 @@ impl MetricsCollector {
                 .with_label_values(&[&mount_point])
                 .set((disk.total_space() - disk.available_space()) as f64);
         }
+    }
+    
+    /// Update error rates
+    pub fn update_error_rate(&self, service: &str, rate: f64) {
+        self.error_rate_gauge
+            .with_label_values(&[service])
+            .set(rate);
     }
     
     /// Export metrics in Prometheus format
@@ -519,10 +522,11 @@ impl LoggingManager {
     }
     
     /// Setup file logging with rotation
+    #[allow(dead_code)]
     fn setup_file_logging(
         path: &str,
-        max_size_mb: u64,
-        max_files: u32,
+        _max_size_mb: u64,
+        _max_files: u32,
     ) -> Result<(), Box<dyn std::error::Error>> {
         use std::fs;
         use std::path::Path;
@@ -809,6 +813,12 @@ impl log::Log for SamLogger {
     fn flush(&self) {}
 }
 
+impl Default for ErrorTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ErrorTracker {
     pub fn new() -> Self {
         ErrorTracker {
@@ -918,7 +928,7 @@ impl ErrorTracker {
                 let last_alert = alerts.get(&pattern_key);
                 
                 // Only alert once per hour for the same pattern
-                let should_alert = last_alert.map_or(true, |last| {
+                let should_alert = last_alert.is_none_or(|last| {
                     error.timestamp.signed_duration_since(*last).num_seconds() > 3600
                 });
                 
@@ -1024,9 +1034,9 @@ mod tests {
         let collector = MetricsCollector::new().unwrap();
         
         // Record some metrics
-        collector.record_request("GET", "/api/test", 200, 0.1);
-        collector.record_error("test_service", "connection_error");
-        collector.set_active_connections("websocket", 5.0);
+        collector.record_request("GET", "/api/test", 200, 0.1, "sam", 1024.0, 2048.0);
+        collector.record_error("test_service", "connection_error", "high");
+        collector.set_active_connections("websocket", "sam", 5.0);
         
         // Export metrics
         let metrics_text = collector.export_metrics();

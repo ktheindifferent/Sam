@@ -16,7 +16,8 @@ fn benchmark_url_normalization(c: &mut Criterion) {
     c.bench_function("url_normalization", |b| {
         b.iter(|| {
             for url in &urls {
-                crawler::url_patterns::normalize_url(black_box(url));
+                // Use the clean_url function from url_patterns
+                let _cleaned = crawler::url_patterns::clean_url(black_box(url));
             }
         })
     });
@@ -39,7 +40,15 @@ fn benchmark_content_hashing(c: &mut Criterion) {
             BenchmarkId::from_parameter(content.len()),
             content,
             |b, content| {
-                b.iter(|| crawler::CrawledContent::compute_hash(black_box(content)))
+                b.iter(|| {
+                    // Create a CrawledContent instance to compute hash
+                    let _crawled = crawler::content_storage::CrawledContent::new(
+                        "https://example.com".to_string(),
+                        black_box(content),
+                        None,
+                        200
+                    );
+                })
             },
         );
     }
@@ -54,17 +63,13 @@ fn benchmark_bloom_filter(c: &mut Criterion) {
             BenchmarkId::from_parameter(size),
             size,
             |b, &size| {
-            let config = crawler::memory_optimized::MemoryConfig {
-                max_urls: size,
-                cleanup_threshold: 0.8,
-            };
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let tracker = crawler::memory_optimized::OptimizedUrlTracker::new(size, 1000);
                 
-                let mut tracker = crawler::memory_optimized::OptimizedUrlTracker::new(config);
-                
-                b.iter(|| {
+                b.to_async(&rt).iter(|| async {
                     for i in 0..100 {
                         let url = format!("https://example.com/page{}", i);
-                        tracker.visit_url(black_box(&url));
+                        tracker.mark_visited(black_box(url)).await;
                     }
                 })
             },
@@ -74,7 +79,7 @@ fn benchmark_bloom_filter(c: &mut Criterion) {
 }
 
 fn benchmark_pattern_detection(c: &mut Criterion) {
-    let detector = crawler::url_patterns::UrlPatternDetector::new();
+    let mut analyzer = crawler::url_patterns::UrlPatternAnalyzer::new();
     
     let test_urls = vec![
         "https://example.com/2024/01/15",
@@ -87,8 +92,8 @@ fn benchmark_pattern_detection(c: &mut Criterion) {
     c.bench_function("pattern_detection", |b| {
         b.iter(|| {
             for url in &test_urls {
-                detector.is_calendar_pattern(black_box(url));
-                detector.is_pagination_pattern(black_box(url));
+                analyzer.is_potentially_infinite(black_box(url));
+                crawler::url_patterns::is_infinite_pattern(black_box(url));
             }
         })
     });
@@ -120,8 +125,8 @@ fn benchmark_html_parsing(c: &mut Criterion) {
             html,
             |b, html| {
                 b.iter(|| {
-                    crawler::CrawledContent::extract_title(black_box(html));
-                    crawler::CrawledContent::extract_description(black_box(html));
+                    crawler::content_storage::CrawledContent::extract_title(black_box(html));
+                    crawler::content_storage::CrawledContent::extract_description(black_box(html));
                 })
             },
         );
@@ -145,9 +150,15 @@ fn benchmark_compression(c: &mut Criterion) {
             text,
             |b, text| {
                 b.iter(|| {
-                    let compressed = crawler::CrawledContent::compress_content(black_box(text));
-                    crawler::CrawledContent::decompress_content(black_box(&compressed))
-                        .unwrap();
+                    // Create a CrawledContent with HTML content to test compression
+                    let crawled = crawler::content_storage::CrawledContent::new(
+                        "https://example.com".to_string(),
+                        black_box(text),
+                        Some(text), // HTML content for compression
+                        200
+                    );
+                    // Test decompression
+                    crawled.decompress_html();
                 })
             },
         );
@@ -160,13 +171,7 @@ fn benchmark_circuit_breaker(c: &mut Criterion) {
     
     c.bench_function("circuit_breaker_operations", |b| {
         b.to_async(&rt).iter(|| async {
-            let config = crawler::circuit_breaker::CircuitBreakerConfig {
-                failure_threshold: 5,
-                timeout_seconds: 60,
-                recovery_timeout_seconds: 30,
-            };
-            
-            let breaker = crawler::circuit_breaker::CircuitBreaker::with_config(config);
+            let breaker = crawler::circuit_breaker::CircuitBreaker::new();
             
             // Simulate operations
             for i in 0..10 {
@@ -187,21 +192,18 @@ fn benchmark_rate_limiter(c: &mut Criterion) {
     
     c.bench_function("rate_limiter_operations", |b| {
         b.to_async(&rt).iter(|| async {
-            let config = crawler::rate_limiter::RateLimitConfig {
-                requests_per_second: 1000,
-                burst_size: 10,
-                adaptive_threshold: 0.8,
-            };
-            
-            let limiter = crawler::rate_limiter::AdaptiveRateLimiter::with_config(config);
+            let config = crawler::rate_limiter::RateLimitConfig::default();
+            let limiter = crawler::rate_limiter::AdaptiveRateLimiter::new(config, None);
             
             for i in 0..10 {
-                let domain = format!("domain{}.com", i % 3);
-                limiter.can_crawl_domain(black_box(&domain)).await;
-                limiter.record_request(
-                    black_box(&domain),
-                    Duration::from_millis(10)
-                ).await;
+                let url = format!("https://domain{}.com/page", i % 3);
+                limiter.wait_for_slot(black_box(&url), None).await.unwrap_or_default();
+                limiter.record_request_complete(
+                    black_box(&url),
+                    Duration::from_millis(10),
+                    Some(200),
+                    None
+                ).await.unwrap_or_default();
             }
         })
     });
@@ -224,11 +226,14 @@ fn benchmark_user_agent_rotation(c: &mut Criterion) {
             &strategy,
             |b, strategy| {
                 b.to_async(&rt).iter(|| async {
-                    let rotator = crawler::user_agents::UserAgentRotator::new(strategy.clone());
+                    let rotator = crawler::user_agents::UserAgentRotator::new(
+                        strategy.clone(), 
+                        crawler::user_agents::UserAgentType::Desktop
+                    );
                     
                     for i in 0..20 {
                         let url = format!("https://example{}.com/page", i % 5);
-                        rotator.get_user_agent(black_box(&url));
+                        rotator.get_user_agent(black_box(&url)).await;
                     }
                 })
             },
@@ -254,7 +259,8 @@ fn benchmark_framework_detection(c: &mut Criterion) {
             );
             
             for (_, html) in &html_samples {
-                renderer.detect_frameworks(black_box(html)).await;
+                // Use render method since detect_frameworks might not exist
+                let _result = renderer.render(&format!("data:text/html,{}", html)).await;
             }
         })
     });

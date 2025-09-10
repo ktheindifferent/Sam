@@ -121,7 +121,7 @@ pub async fn darknet_detect(image_path: &str) -> Result<DetectionResult, String>
 
 
 // Helper: Run a command and stream output lines
-async fn run_command_stream_lines(mut cmd: Command, output_lines: Option<&Arc<Mutex<Vec<String>>>>, prefix: &str) -> Result<(), String> {
+async fn run_command_stream_lines(cmd: Command, output_lines: Option<&Arc<Mutex<Vec<String>>>>, prefix: &str) -> Result<(), String> {
     let mut child = tokio::process::Command::from(cmd).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()
         .map_err(|e| format!("Failed to spawn {}: {}", prefix, e))?;
     let stdout = child.stdout.take();
