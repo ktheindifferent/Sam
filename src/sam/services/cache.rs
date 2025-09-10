@@ -451,7 +451,7 @@ impl HybridCache {
     }
     
     fn refresh_in_background(&self, key: String, ttl: Option<u64>) {
-        let cache = self.clone();
+        let _cache = self.clone();
         
         tokio::spawn(async move {
             debug!("Starting background refresh for key: {}", key);

@@ -41,7 +41,7 @@ pub type Result<T> = anyhow::Result<T>;
 /// Check if the database is connected
 pub fn is_connected() -> Result<bool> {
     // Check if we can connect to PostgreSQL
-    let config = Config::new();
+    let _config = Config::new();
     
     // Try to establish a connection using blocking client
     match postgres::Client::connect(

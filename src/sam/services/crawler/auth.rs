@@ -474,7 +474,7 @@ mod tests {
     
     #[test]
     fn test_basic_auth_encoding() {
-        let auth = AuthMethod::Basic {
+        let _auth = AuthMethod::Basic {
             username: "user".to_string(),
             password: "pass".to_string(),
         };

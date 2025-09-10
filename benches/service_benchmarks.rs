@@ -51,10 +51,6 @@ fn bench_noise_gate_processing(c: &mut Criterion) {
     let noise_gate = NoiseGate::<f32>::new(
         -30.0,  // open_threshold
         -40.0,  // close_threshold
-        150.0,  // attack_ms
-        150.0,  // hold_ms
-        300.0,  // release_ms
-        16000,  // sample_rate
     );
     
     let mut group = c.benchmark_group("noise_gate");

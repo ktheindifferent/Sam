@@ -148,8 +148,8 @@ test = false
 bench = false
 
 [lib]
-name = "sam"
-path = "src/lib.rs"
+name = "libsam"
+path = "src/lib/mod.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -860,7 +860,7 @@ impl Config {
                     .trim();
                 
                 // Special handling for SQL functions like LOWER()
-                let (column_expr, needs_validation) = if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
+                let (column_expr, _needs_validation) = if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
                     // Extract the column name from LOWER(column)
                     let inner = &col_cleaned[6..col_cleaned.len()-1];
                     Self::validate_sql_identifier(inner)?;

@@ -4,6 +4,7 @@ use tokio::io::AsyncWriteExt;
 use anyhow::{Result, Context};
 use log::{debug, warn};
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 /// Temporary file with automatic cleanup on drop
 pub struct TempFile {
@@ -296,6 +297,8 @@ macro_rules! scope_guard {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use tempfile::TempDir;
 

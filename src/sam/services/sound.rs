@@ -915,7 +915,7 @@ mod tests {
         
         #[test]
         fn test_sample_processing(
-            samples in prop::collection::vec(-32768i16..32768, 10..100)
+            samples in prop::collection::vec(i16::MIN..=i16::MAX, 10..100)
         ) {
             let temp_dir = TempDir::new().unwrap();
             let output_path = temp_dir.path().join("test_samples.wav");
