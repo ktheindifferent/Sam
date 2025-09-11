@@ -21,8 +21,14 @@ brain_dir = os.path.join(script_dir, "brain")
 if not os.path.exists(brain_dir):
     brain_dir = "/opt/sam/scripts/rivescript/brain"
 
-rs.load_directory(brain_dir)
-rs.sort_replies()
+try:
+    rs.load_directory(brain_dir)
+    rs.sort_replies()
+except Exception as e:
+    # Log the syntax error to Sentry silently
+    sentry_sdk.capture_exception(e)
+    # Exit gracefully without printing errors
+    sys.exit(1)
 
 # Get user input
 user_input = sys.argv[1] if len(sys.argv) > 1 else ""

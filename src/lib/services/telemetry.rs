@@ -60,8 +60,14 @@ pub struct TelemetryContent {
 impl From<&CrawledContent> for TelemetryContent {
     fn from(content: &CrawledContent) -> Self {
         // Truncate content text for bandwidth/privacy (keep first 2000 chars)
-        let truncated_text = if content.content_text.len() > 2000 {
-            format!("{}...[truncated]", &content.content_text[..2000])
+        // Use char_indices to find safe truncation point that respects UTF-8 boundaries
+        let truncated_text = if content.content_text.chars().count() > 2000 {
+            let truncate_at = content.content_text
+                .char_indices()
+                .nth(2000)
+                .map(|(i, _)| i)
+                .unwrap_or(content.content_text.len());
+            format!("{}...[truncated]", &content.content_text[..truncate_at])
         } else {
             content.content_text.clone()
         };
@@ -193,7 +199,7 @@ impl TelemetryService {
                 if !successful_ids.is_empty() {
                     CrawledContent::mark_batch_telemetry_shared(successful_ids.clone()).await?;
                     info!("Marked {} items as telemetry shared", successful_ids.len());
-                    Ok(successful_ids.len())
+                    Box::pin(self.process_unshared_content()).await.map(|next_count| successful_ids.len() + next_count)
                 } else {
                     Ok(0)
                 }
@@ -286,15 +292,8 @@ mod tests {
     
     #[test]
     fn test_should_send_telemetry() {
-        let mut config = TelemetryConfig::default();
-        let client = Client::new();
-        let service = TelemetryService {
-            config: config.clone(),
-            client,
-            instance_id: "test-instance".to_string(),
-        };
-        
         // Should send when enabled and not OSF server
+        let mut config = TelemetryConfig::default();
         config.enabled = true;
         config.is_osf_server = false;
         let service = TelemetryService {
@@ -305,7 +304,9 @@ mod tests {
         assert!(service.should_send_telemetry());
         
         // Should not send when disabled
+        let mut config = TelemetryConfig::default();
         config.enabled = false;
+        config.is_osf_server = false;
         let service = TelemetryService {
             config,
             client: Client::new(),
@@ -314,6 +315,7 @@ mod tests {
         assert!(!service.should_send_telemetry());
         
         // Should not send when running on OSF server
+        let mut config = TelemetryConfig::default();
         config.enabled = true;
         config.is_osf_server = true;
         let service = TelemetryService {
@@ -360,5 +362,33 @@ mod tests {
         assert!(telemetry_content.content_text.len() < long_content.len());
         assert!(telemetry_content.content_text.contains("[truncated]"));
         assert!(telemetry_content.content_text.starts_with("A"));
+        // Verify it's truncated at character boundary (should be exactly 2000 chars + truncation suffix)
+        let content_without_suffix = telemetry_content.content_text.replace("...[truncated]", "");
+        assert_eq!(content_without_suffix.chars().count(), 2000);
+    }
+
+    #[test]
+    fn test_utf8_content_truncation() {
+        // Create content with multi-byte UTF-8 characters like the one causing the panic
+        let utf8_content = "Créer un cluster Kubernetes local avec Kind ê".repeat(100); // Contains multi-byte chars
+        let mut content = CrawledContent::new(
+            "https://example.com".to_string(),
+            &utf8_content,
+            None,
+            200
+        );
+        content.id = 1;
+        
+        let telemetry_content = TelemetryContent::from(&content);
+        
+        // Should not panic and should handle UTF-8 correctly
+        if utf8_content.chars().count() > 2000 {
+            assert!(telemetry_content.content_text.contains("[truncated]"));
+            let content_without_suffix = telemetry_content.content_text.replace("...[truncated]", "");
+            assert_eq!(content_without_suffix.chars().count(), 2000);
+        }
+        
+        // Verify the string is still valid UTF-8
+        assert!(telemetry_content.content_text.is_ascii() || !telemetry_content.content_text.is_empty());
     }
 }

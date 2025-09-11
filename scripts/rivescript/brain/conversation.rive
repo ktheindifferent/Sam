@@ -1,7 +1,10 @@
 // SAM Conversational Patterns
 
-// Question patterns
-+ what *
+// Question patterns - exclude mathematical expressions
++ what * 
+- <call>check_if_math <star></call>
+
++ what is (the|a) *
 - That's an interesting question about <star>. Let me think about that.
 - Regarding <star>, I can help you explore that topic.
 - <star> is something I can assist you with. What would you like to know specifically?

@@ -216,9 +216,6 @@
 + tell me about the gulf war
 - The Gulf War (1991) was fought by a US-led coalition against Iraq after Saddam Hussein's invasion of Kuwait. The war featured precision bombing and demonstrated new military technology, ending in quick coalition victory and Iraqi withdrawal.
 
-+ what was 9/11
-- September 11, 2001, was when al-Qaeda terrorists hijacked four commercial airplanes, crashing them into the World Trade Center, Pentagon, and a field in Pennsylvania. Nearly 3,000 people died, fundamentally changing American foreign policy and security measures.
-
 + tell me about the arab spring
 - The Arab Spring (2010-2012) was a series of pro-democracy uprisings across the Middle East and North Africa, beginning in Tunisia. While some countries achieved democratic reforms, others experienced prolonged conflict and instability.
 
@@ -346,10 +343,6 @@
 
 // History Facts Array
 ! array history_facts = The Great Wall of China took over 2,000 years to complete|Cleopatra lived closer in time to the Moon landing than to the construction of the Great Pyramid|The shortest war in history lasted 38-45 minutes between Britain and Zanzibar in 1896|Vikings never actually wore horned helmets - this is a modern myth|The ancient Romans used urine as mouthwash|Marie Curie was the first woman to win a Nobel Prize and the first person to win Nobel Prizes in two different sciences|The Statue of Liberty was originally brown but turned green due to oxidation|Ancient Egyptians used slabs of stone as pillows|The first recorded use of "OMG" was in a letter to Winston Churchill in 1917|Beethoven was completely deaf when he composed his 9th Symphony|Napoleon was average height for his time - the "short" myth came from British propaganda|Oxford University is older than the Aztec Empire|Woolly mammoths were still alive when the Great Pyramid was built|The last person to be executed by guillotine was in 1977, the same year Star Wars was released|Ancient Rome had a 4-story shopping mall complete with architectural blueprints that exist today|The Byzantine Empire called itself the Roman Empire for its entire 1000+ year existence|There are more people alive today than have ever died in all of human history|The University of Oxford is older than the Inca Empire by about 200 years|Ancient Egyptians invented toothpaste, breath mints, and eye makeup|The longest-reigning monarch in history was Pepi II of Egypt, who ruled for 94 years|Ice cream was once so rare that only royalty could afford it|The ancient Greeks invented the vending machine in the 1st century AD|Romans used to brush their teeth with their own urine because they thought it would whiten them|The oldest known recipe is for beer, dating back to 5,000 BCE|Anne Frank and Martin Luther King Jr. were born in the same year (1929)|The last cavalry charge in history occurred during World War II by Polish soldiers|Ancient Chinese warriors would sometimes wear armor made of paper - and it was surprisingly effective|Honey never spoils - archaeologists have found edible honey in ancient Egyptian tombs|The Leaning Tower of Pisa took 344 years to complete due to multiple construction halts|Ancient Romans invented concrete that was stronger than modern concrete and could set underwater|The word "salary" comes from the Latin "salarium," referring to Roman soldiers' salt allowance|Ketchup was originally a medicine sold in the 1830s to cure diarrhea|The Eiffel Tower was supposed to be temporary and was almost torn down in 1909|Emperor Nero never actually fiddled while Rome burned - fiddles hadn't been invented yet|The oldest known customer complaint was written on a clay tablet in Babylon 4,000 years ago|Ancient Mayans used chocolate as currency - beans were more valuable than gold|The Berlin Wall fell due to a miscommunication during a press conference|Pirates really did make people walk the plank, but it was rare - they usually just killed or enslaved captives|The first person convicted of speeding was going 8 mph in a 2 mph zone in 1896|Ancient Olympic athletes competed nude and married women weren't allowed to watch (penalty: death)|The word "muscle" comes from Latin for "little mouse" because flexing looked like mice running under skin|Genghis Khan killed so many people that it cooled the planet by removing 700 million tons of CO2|The average medieval person bathed more frequently than people think - about once a week|Bubble wrap was originally invented as wallpaper|The ancient Egyptians had pregnancy tests involving urinating on wheat and barley seeds|Napoleon's invasion of Russia failed partly because his army's buttons disintegrated in the cold|Ancient Greeks thought redheads would turn into vampires after death|The phrase "mad as a hatter" comes from hat makers who went insane from mercury poisoning|Roman gladiators were mostly vegetarians and drank ash-and-bone protein shakes|The Statue of Liberty's real name is "Liberty Enlightening the World"|George Washington never actually chopped down a cherry tree - that story was completely made up
-
-+ tell me about the (renaissance|dark ages|medieval times|middle ages)
-* <get renaissance_info>
-- During the Renaissance, there was a renewed interest in classical learning and humanism. Artists like Leonardo da Vinci and Michelangelo created masterpieces that still inspire us today. It was truly a golden age of art, science, and culture.
 
 + what happened in (ancient egypt|egypt)
 - Ancient Egypt was one of the world's greatest civilizations, lasting over 3,000 years. They built the pyramids, developed hieroglyphic writing, practiced mummification, and were ruled by pharaohs who were considered living gods.
@@ -641,9 +634,6 @@
 + tell me about the abolition movement
 - The abolition movement (late 18th-19th centuries) fought to end slavery. Key figures included William Wilberforce (Britain), Frederick Douglass and Harriet Tubman (America). The movement used moral arguments, political action, and the Underground Railroad to achieve emancipation.
 
-+ what was women's suffrage
-- The women's suffrage movement fought for women's right to vote. Pioneers like Susan B. Anthony and Elizabeth Cady Stanton led decades of activism. New Zealand granted women voting rights first (1893), followed by other nations. The 19th Amendment gave American women the vote in 1920.
-
 + tell me about the temperance movement
 - The temperance movement (19th-early 20th centuries) campaigned against alcohol consumption, viewing it as a social evil. Led largely by women's organizations, it achieved Prohibition in the United States (1920-1933), though this ultimately failed and was repealed.
 
@@ -653,7 +643,7 @@
 + tell me about labor movements
 - Labor movements emerged during industrialization as workers organized for better wages, hours, and conditions. Key events include the Haymarket Affair (1886), formation of unions like the AFL, and violent conflicts like the Homestead Strike. These struggles led to modern labor rights.
 
-+ what was the children's crusade
++ what was the childrens crusade
 - The Children's Crusade (1963) saw thousands of Birmingham, Alabama students participate in civil rights demonstrations. Images of police using dogs and fire hoses against children shocked the nation and world, building support for civil rights legislation and demonstrating the power of nonviolent protest.
 
 // More Historical Figures - Scientists and Thinkers

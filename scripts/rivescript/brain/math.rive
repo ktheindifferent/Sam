@@ -16,20 +16,75 @@
         expression = expression.replace("^", "**")  # exponentiation
         expression = expression.replace("π", str(math.pi))
         expression = expression.replace("pi", str(math.pi))
-        expression = expression.replace("e", str(math.e))
+        # Be more careful with 'e' replacement - only replace standalone 'e'
+        import re
+        expression = re.sub(r'\be\b', str(math.e), expression)
         
-        # Security: only allow safe mathematical operations
+        # Security: only allow safe mathematical operations and functions
         allowed_chars = "0123456789+-*/().** "
-        allowed_funcs = ["sin", "cos", "tan", "sqrt", "log", "exp", "abs", "pow"]
         
-        # Basic validation
-        if all(c in allowed_chars + "abcdefghijklmnopqrstuvwxyz" for c in expression.lower()):
-            result = eval(expression, {"__builtins__": {}, "math": math})
+        # Create safe namespace with math functions
+        safe_dict = {
+            "__builtins__": {},
+            "sin": math.sin, "cos": math.cos, "tan": math.tan,
+            "sqrt": math.sqrt, "log": math.log, "exp": math.exp,
+            "abs": abs, "pow": pow, "pi": math.pi, "e": math.e
+        }
+        
+        # Basic validation - allow basic math chars and function names
+        if all(c in allowed_chars + "abcdefghijklmnopqrstuvwxyz" for c in expression.lower().replace("sqrt", "").replace("sin", "").replace("cos", "").replace("tan", "").replace("log", "").replace("exp", "").replace("abs", "").replace("pow", "")):
+            result = eval(expression, safe_dict)
+            # Format result nicely
+            if isinstance(result, float):
+                if result.is_integer():
+                    result = int(result)
+                else:
+                    result = round(result, 6)
             return f"{expression} = {result}"
         else:
             return "Invalid mathematical expression. Please use only numbers and basic operators."
     except Exception as e:
         return f"Error calculating: {expression}. Please check your syntax."
+< object
+
+> object is_math_expression python
+    import re
+    try:
+        if len(args) != 1:
+            return "I want to help with that, but I need a bit more clarity. Could you elaborate?"
+        
+        expression = args[0]
+        
+        # Check if expression contains math symbols and numbers
+        # Look for patterns like "2 + 3", "5 * 7", "10 - 4", "15 divided 3", etc.
+        # Note: "/" gets converted to "divided" by RiveScript substitutions
+        math_pattern = r'^\s*\d+(\.\d+)?\s*[\+\-\*\/x]\s*\d+(\.\d+)?\s*$'
+        divided_pattern = r'^\s*\d+(\.\d+)?\s+divided\s+\d+(\.\d+)?\s*$'
+        
+        if re.match(math_pattern, expression):
+            # Replace 'x' with '*' for multiplication
+            clean_expr = expression.replace('x', '*').replace(' ', '')
+        elif re.match(divided_pattern, expression):
+            # Handle "15 divided 3" -> "15/3"
+            clean_expr = re.sub(r'(\d+(?:\.\d+)?)\s+divided\s+(\d+(?:\.\d+)?)', r'\1/\2', expression)
+        else:
+            return "I want to help with \"" + expression + "\" but I need a bit more clarity. Could you elaborate?"
+            
+        # Use calculate function
+        import math
+        try:
+            result = eval(clean_expr, {"__builtins__": {}})
+            if isinstance(result, float):
+                if result.is_integer():
+                    result = int(result)
+                else:
+                    result = round(result, 6)
+            return f"{expression} = {result}"
+        except:
+            return "Invalid mathematical expression. Please check your syntax."
+            
+    except Exception as e:
+        return "I want to help with that, but I need a bit more clarity. Could you elaborate?"
 < object
 
 > object solve_quadratic python
@@ -380,7 +435,7 @@
 + what are logarithms
 - Logarithms are the inverse of exponentials. If 2³ = 8, then log₂(8) = 3. They turn multiplication into addition and are useful for solving exponential equations. Natural logarithms (ln) use base e and appear frequently in calculus and science.
 
-+ what is euler's number
++ what is eulers number
 - Euler's number (e ≈ 2.71828) is a mathematical constant that appears in exponential growth and decay, compound interest, and probability. The function e^x has the unique property that its derivative equals itself, making it fundamental in calculus.
 
 + what are fractals
@@ -566,7 +621,7 @@
 + how do i solve math problems
 - Start by understanding what's being asked, identify given information, choose appropriate methods, work step-by-step, check your answer, and reflect on whether it makes sense. Practice is key to developing mathematical problem-solving skills.
 
-+ what if i'm bad at math
++ what if i am bad at math
 - Math anxiety is common but can be overcome! Start with basics, practice regularly, ask questions, use visual aids, and remember that making mistakes is part of learning. Math is a skill that improves with practice, not a fixed talent.
 
 + math study tips
@@ -587,8 +642,39 @@
 + calc *
 - <call>calculate <star></call>
 
-+ what is *
-- <call>calculate <star></call>
+// Basic math question patterns handled in python_objects.rive - removed duplicates
+
++ # plus #
+- <call>calculate <star1> + <star2></call>
+
++ # minus #
+- <call>calculate <star1> - <star2></call>
+
++ # times #
+- <call>calculate <star1> * <star2></call>
+
++ # divided by #
+- <call>calculate <star1> / <star2></call>
+
++ # * #
+- <call>calculate <star1> <star2></call>
+
+// Additional flexible math patterns
++ * plus *
+- <call>calculate <star1> + <star2></call>
+
++ * minus *
+- <call>calculate <star1> - <star2></call>
+
++ * times *
+- <call>calculate <star1> * <star2></call>
+
++ * divided by *
+- <call>calculate <star1> / <star2></call>
+
+// Handle direct math expressions - check if it contains common math symbols
++ *
+- <call>is_math_expression <star></call>
 
 + * equals
 - <call>calculate <star></call>
@@ -696,7 +782,7 @@
 + what is pi
 - π (pi) is approximately <call>calculate pi</call>. It's the ratio of a circle's circumference to its diameter.
 
-+ what is euler's number
++ what is eulers number
 - e (Euler's number) is approximately <call>calculate e</call>. It's the base of natural logarithms.
 
 + sine of *
@@ -956,7 +1042,6 @@
 
 + what math can you do
 - I can perform a wide range of mathematical operations:
-^ 
 ^ **Basic Calculator:** arithmetic, trigonometry, logarithms, square roots
 ^ **Algebra:** quadratic equations, factorials, exponents
 ^ **Statistics:** mean, median, mode, standard deviation
@@ -968,42 +1053,34 @@
 ^ **Financial:** compound interest, percentage calculations
 ^ **Unit Conversions:** temperature, distance
 ^ **Practice:** random problems and math facts
-^ 
 ^ Just ask naturally: "What is 15 + 23?", "Is 17 prime?", "Circle area 5", etc.
 
 + math capabilities
 - My mathematical capabilities include:
-^ 
 ^ 🧮 **Calculator Functions**
 ^ • Basic arithmetic: +, -, ×, ÷
 ^ • Advanced: powers, roots, trigonometry, logarithms
 ^ • Constants: π, e
-^ 
 ^ 🔢 **Number Theory**
 ^ • Prime checking and factorization
 ^ • GCD, LCM calculations
 ^ • Perfect number detection
-^ 
 ^ 📊 **Statistics & Data**
 ^ • Mean, median, mode, standard deviation
 ^ • Data analysis for number sets
-^ 
 ^ 📐 **Geometry**
 ^ • Areas: circles, rectangles, triangles
 ^ • Volumes: spheres, cylinders
-^ 
 ^ 🧪 **Advanced Math**
 ^ • Quadratic equation solver
 ^ • Matrix operations (2×2)
 ^ • Fibonacci sequences
 ^ • Combinatorics (permutations, combinations)
-^ 
 ^ 💰 **Practical Applications**
 ^ • Compound interest calculations
 ^ • Percentage operations
 ^ • Unit conversions
 ^ • Tip and tax calculations
-^ 
 ^ Try asking: "Calculate 2^10", "Is 127 prime?", "Statistics 1 2 3 4 5", or "Compound interest 1000 5 10 12"!
 
 + what is the fibonacci sequence
