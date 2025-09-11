@@ -876,25 +876,45 @@ impl Config {
                     .trim_end_matches("=")
                     .trim();
                 
-                // Special handling for SQL functions like LOWER()
+                // Special handling for SQL functions like LOWER() and comparison operators
                 let (column_expr, _needs_validation) = if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
                     // Extract the column name from LOWER(column)
                     let inner = &col_cleaned[6..col_cleaned.len()-1];
                     Self::validate_sql_identifier(inner)?;
                     (format!("LOWER({})", inner), false)
+                } else if col_cleaned.ends_with(" <") || col_cleaned.ends_with(" >") || col_cleaned.ends_with(" <=") || col_cleaned.ends_with(" >=") {
+                    // Handle comparison operators
+                    let parts: Vec<&str> = col_cleaned.rsplitn(2, ' ').collect();
+                    if parts.len() == 2 {
+                        let column_name = parts[1];
+                        let operator = parts[0];
+                        Self::validate_sql_identifier(column_name)?;
+                        (format!("{} {}", column_name, operator), false)
+                    } else {
+                        // Fallback - treat as regular column name
+                        Self::validate_sql_identifier(col_cleaned)?;
+                        (col_cleaned.to_string(), true)
+                    }
                 } else {
                     // Regular column name
                     Self::validate_sql_identifier(col_cleaned)?;
                     (col_cleaned.to_string(), true)
                 };
 
-                // Handle OR conditions (legacy support)
-                if col.trim().starts_with("OR ") {
-                    execquery = format!("{execquery} OR {} = ${counter}", column_expr);
-                } else if counter == 1 {
-                    execquery = format!("{execquery} WHERE {} = ${counter}", column_expr);
+                // Handle OR conditions (legacy support) and comparison operators
+                let operator = if column_expr.contains(" <") || column_expr.contains(" >") {
+                    // For comparison operators, don't add = since it's already part of column_expr
+                    ""
                 } else {
-                    execquery = format!("{execquery} AND {} = ${counter}", column_expr);
+                    " ="
+                };
+                
+                if col.trim().starts_with("OR ") {
+                    execquery = format!("{execquery} OR {}{} ${counter}", column_expr, operator);
+                } else if counter == 1 {
+                    execquery = format!("{execquery} WHERE {}{} ${counter}", column_expr, operator);
+                } else {
+                    execquery = format!("{execquery} AND {}{} ${counter}", column_expr, operator);
                 }
                 counter += 1;
             }
@@ -1026,25 +1046,45 @@ impl Config {
                     .trim_end_matches("=")
                     .trim();
                 
-                // Special handling for SQL functions like LOWER()
+                // Special handling for SQL functions like LOWER() and comparison operators
                 let (column_expr, needs_validation) = if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
                     // Extract the column name from LOWER(column)
                     let inner = &col_cleaned[6..col_cleaned.len()-1];
                     Self::validate_sql_identifier(inner)?;
                     (format!("LOWER({})", inner), false)
+                } else if col_cleaned.ends_with(" <") || col_cleaned.ends_with(" >") || col_cleaned.ends_with(" <=") || col_cleaned.ends_with(" >=") {
+                    // Handle comparison operators
+                    let parts: Vec<&str> = col_cleaned.rsplitn(2, ' ').collect();
+                    if parts.len() == 2 {
+                        let column_name = parts[1];
+                        let operator = parts[0];
+                        Self::validate_sql_identifier(column_name)?;
+                        (format!("{} {}", column_name, operator), false)
+                    } else {
+                        // Fallback - treat as regular column name
+                        Self::validate_sql_identifier(col_cleaned)?;
+                        (col_cleaned.to_string(), true)
+                    }
                 } else {
                     // Regular column name
                     Self::validate_sql_identifier(col_cleaned)?;
                     (col_cleaned.to_string(), true)
                 };
                 
-                // Handle OR conditions (legacy support)
-                if col.trim().starts_with("OR ") {
-                    execquery = format!("{execquery} OR {} = ${counter}", column_expr);
-                } else if counter == 1 {
-                    execquery = format!("{execquery} WHERE {} = ${counter}", column_expr);
+                // Handle OR conditions (legacy support) and comparison operators
+                let operator = if column_expr.contains(" <") || column_expr.contains(" >") {
+                    // For comparison operators, don't add = since it's already part of column_expr
+                    ""
                 } else {
-                    execquery = format!("{execquery} AND {} = ${counter}", column_expr);
+                    " ="
+                };
+                
+                if col.trim().starts_with("OR ") {
+                    execquery = format!("{execquery} OR {}{} ${counter}", column_expr, operator);
+                } else if counter == 1 {
+                    execquery = format!("{execquery} WHERE {}{} ${counter}", column_expr, operator);
+                } else {
+                    execquery = format!("{execquery} AND {}{} ${counter}", column_expr, operator);
                 }
                 counter += 1;
             }
