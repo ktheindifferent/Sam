@@ -11,6 +11,7 @@ pub mod matter;
 pub mod mdns;
 pub mod migrate;
 pub mod misc;
+pub mod nano;
 pub mod p2p;
 pub mod pg;
 pub mod redis;

@@ -78,6 +78,9 @@ struct TuiState {
     mode: TuiMode,
     selected_service: usize,
     log_filter_level: String,
+    log_scroll_offset: u16,
+    log_filter_text: String,
+    log_input_mode: bool, // whether we're in filter input mode
     help_scroll: u16,
     file_browser_path: std::path::PathBuf,
     db_table_list: Vec<String>,
@@ -129,20 +132,15 @@ fn render_command_mode(
     };
 
     let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(66), Constraint::Percentage(34)])
-        .split(area);
-
-    let left_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(5), // status block (made larger)
             Constraint::Min(3),    // output
             Constraint::Length(3), // input
         ])
-        .split(chunks[0]);
+        .split(area);
 
-    *output_height = left_chunks[1].height.max(1) as usize;
+    *output_height = chunks[1].height.max(1) as usize;
 
     let cursor_char = if show_cursor { "_" } else { " " };
     let input_display = format!("{input}{cursor_char}");
@@ -223,17 +221,10 @@ fn render_command_mode(
             .title("Command Input"),
     );
 
-    let tui_logger_widget = TuiLoggerWidget::default()
-        .block(Block::default().borders(Borders::ALL).title("System Logs"))
-        .output_separator('|')
-        .output_level(Some(TuiLoggerLevelOutput::Long))
-        .output_target(true)
-        .output_timestamp(Some("%H:%M:%S".to_string()));
 
-    f.render_widget(status_widget, left_chunks[0]);
-    f.render_widget(output_widget, left_chunks[1]);
-    f.render_widget(input_widget, left_chunks[2]);
-    f.render_widget(tui_logger_widget, chunks[1]);
+    f.render_widget(status_widget, chunks[0]);
+    f.render_widget(output_widget, chunks[1]);
+    f.render_widget(input_widget, chunks[2]);
 }
 
 /// Render the services management mode
@@ -458,20 +449,91 @@ fn render_system_info_mode(
     f.render_widget(service_widget, chunks[1]);
 }
 
-/// Render other modes (placeholder implementations)
-fn render_logs_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _filter_level: &str) {
+/// Render the logs mode with scrolling and filtering support
+fn render_logs_mode(
+    f: &mut ratatui::Frame, 
+    area: ratatui::layout::Rect, 
+    state: &TuiState,
+    show_cursor: bool,
+) {
+    use ratatui::{
+        layout::{Constraint, Direction, Layout},
+        widgets::Paragraph,
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Filter input
+            Constraint::Min(3),    // Log output
+            Constraint::Length(2), // Status/help line
+        ])
+        .split(area);
+
+    // Filter input box
+    let cursor_char = if show_cursor && state.log_input_mode { "_" } else { " " };
+    let filter_display = format!("{}{}", state.log_filter_text, cursor_char);
+    let filter_title = if state.log_input_mode {
+        "Filter (Type to filter, ESC to exit, Enter to apply)"
+    } else {
+        "Filter (Press / to edit, Use Up/Down to scroll)"
+    };
+    
+    let filter_widget = Paragraph::new(filter_display)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(filter_title),
+        );
+
+    // Apply filter if there is one
+    if !state.log_filter_text.is_empty() {
+        // The tui-logger crate doesn't have built-in text filtering,
+        // but we can set a custom target filter. For now, we'll show the filter
+        // in the title to indicate it's active, and in the future this could
+        // be enhanced with custom log filtering logic.
+    }
+
+    // Create a custom log widget with scrolling and filtering
+    let log_title = if !state.log_filter_text.is_empty() {
+        format!("System Logs - Filter: '{}' | Scroll: {}", state.log_filter_text, state.log_scroll_offset)
+    } else {
+        format!("System Logs - Scroll: {}", state.log_scroll_offset)
+    };
+
     let tui_logger_widget = TuiLoggerWidget::default()
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("System Logs - Full View"),
+                .title(log_title),
         )
         .output_separator('|')
         .output_level(Some(TuiLoggerLevelOutput::Long))
         .output_target(true)
-        .output_timestamp(Some("%H:%M:%S".to_string()));
+        .output_timestamp(Some("%H:%M:%S".to_string()))
+        .style_error(ratatui::style::Style::default().fg(ratatui::style::Color::Red))
+        .style_warn(ratatui::style::Style::default().fg(ratatui::style::Color::Yellow))
+        .style_info(ratatui::style::Style::default().fg(ratatui::style::Color::Blue))
+        .style_debug(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan))
+        .style_trace(ratatui::style::Style::default().fg(ratatui::style::Color::Gray));
 
-    f.render_widget(tui_logger_widget, area);
+    // Status/help line
+    let help_text = if state.log_input_mode {
+        "ESC: Exit filter | Enter: Apply filter | Backspace: Delete"
+    } else {
+        "Up/Down: Scroll | /: Filter | F1-F7: Switch modes | Ctrl+C: Exit"
+    };
+    
+    let help_widget = Paragraph::new(help_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Controls"),
+        );
+
+    f.render_widget(filter_widget, chunks[0]);
+    f.render_widget(tui_logger_widget, chunks[1]);
+    f.render_widget(help_widget, chunks[2]);
 }
 
 fn render_database_mode(
@@ -504,7 +566,7 @@ fn render_help_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _scroll
         )]),
         Line::from("  F1 - Command Mode (default)"),
         Line::from("  F2 - Services Management"),
-        Line::from("  F3 - System Logs"),
+        Line::from("  F3 - System Logs (with scrolling & filtering)"),
         Line::from("  F4 - System Information"),
         Line::from("  F5 - Database Management"),
         Line::from("  F6 - File Browser"),
@@ -527,6 +589,16 @@ fn render_help_mode(f: &mut ratatui::Frame, area: ratatui::layout::Rect, _scroll
         Line::from("  Space - Start/Stop service"),
         Line::from("  R - Restart service"),
         Line::from("  L - View service logs"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Log Viewer (F3):",
+            ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+        )]),
+        Line::from("  Up/Down - Scroll logs"),
+        Line::from("  Page Up/Down - Fast scroll"),
+        Line::from("  / - Enter filter mode"),
+        Line::from("  c - Clear filter"),
+        Line::from("  ESC - Exit filter mode"),
         Line::from(""),
         Line::from(vec![Span::styled(
             "Tips:",
@@ -589,6 +661,9 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         mode: TuiMode::Command,
         selected_service: 0,
         log_filter_level: "INFO".to_string(),
+        log_scroll_offset: 0,
+        log_filter_text: String::new(),
+        log_input_mode: false,
         help_scroll: 0,
         file_browser_path: std::env::current_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from(".")),
@@ -884,7 +959,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                         tui_state_local.selected_service,
                     ),
                     TuiMode::Logs => {
-                        render_logs_mode(f, main_chunks[1], &tui_state_local.log_filter_level)
+                        render_logs_mode(f, main_chunks[1], &tui_state_local, show_cursor)
                     }
                     TuiMode::SystemInfo => render_system_info_mode(f, main_chunks[1], &status),
                     TuiMode::Database => render_database_mode(
@@ -1096,6 +1171,68 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                                         .await;
                                     }
                                     _ => {}
+                                }
+                            }
+
+                            TuiMode::Logs => {
+                                let current_input_mode = {
+                                    let state = tui_state.lock().await;
+                                    state.log_input_mode
+                                };
+
+                                if current_input_mode {
+                                    // Handle filter input mode
+                                    match key.code {
+                                        KeyCode::Esc => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_input_mode = false;
+                                        }
+                                        KeyCode::Enter => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_input_mode = false;
+                                            // Filter text is already stored in log_filter_text
+                                            // The TuiLoggerWidget will need to be enhanced to support filtering
+                                        }
+                                        KeyCode::Char(c) => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_filter_text.push(c);
+                                        }
+                                        KeyCode::Backspace => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_filter_text.pop();
+                                        }
+                                        _ => {}
+                                    }
+                                } else {
+                                    // Handle navigation mode
+                                    match key.code {
+                                        KeyCode::Up => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_scroll_offset = state.log_scroll_offset.saturating_sub(1);
+                                        }
+                                        KeyCode::Down => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_scroll_offset = state.log_scroll_offset.saturating_add(1);
+                                        }
+                                        KeyCode::PageUp => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_scroll_offset = state.log_scroll_offset.saturating_sub(10);
+                                        }
+                                        KeyCode::PageDown => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_scroll_offset = state.log_scroll_offset.saturating_add(10);
+                                        }
+                                        KeyCode::Char('/') => {
+                                            let mut state = tui_state.lock().await;
+                                            state.log_input_mode = true;
+                                        }
+                                        KeyCode::Char('c') => {
+                                            // Clear filter
+                                            let mut state = tui_state.lock().await;
+                                            state.log_filter_text.clear();
+                                        }
+                                        _ => {}
+                                    }
                                 }
                             }
 

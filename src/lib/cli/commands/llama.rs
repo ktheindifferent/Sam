@@ -33,42 +33,42 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             )
             .await;
         }
-        _ if cmd.starts_with("llama v2 ") => {
-            let prompt = cmd.trim_start_matches("llama v2 ").trim().to_string();
+        _ if cmd.starts_with("llama2 ") => {
+            let prompt = cmd.trim_start_matches("llama2 ").trim().to_string();
             if prompt.is_empty() {
                 let mut out = output_lines.lock().await;
-                out.push("Usage: llama v2 <prompt>".to_string());
+                out.push("Usage: llama2 <prompt>".to_string());
             } else {
                 crate::cli::spinner::run_with_spinner(
                     output_lines,
-                    "Querying llama v2...",
-                    |lines, result| lines.push(format!("llama v2: {}", result)),
+                    "Querying llama2...",
+                    |lines, result| lines.push(format!("llama2: {}", result)),
                     move || {
                         let prompt = prompt.clone();
                         async move {
                             crate::services::llama::LlamaService::query_v2(&prompt)
-                                .unwrap_or_else(|e| format!("llama v2 error: {}", e))
+                                .unwrap_or_else(|e| format!("llama2 error: {}", e))
                         }
                     },
                 )
                 .await;
             }
         }
-        _ if cmd.starts_with("llama v2-tiny ") => {
-            let prompt = cmd.trim_start_matches("llama v2-tiny ").trim().to_string();
+        _ if cmd.starts_with("llama2-tiny ") => {
+            let prompt = cmd.trim_start_matches("llama2-tiny ").trim().to_string();
             if prompt.is_empty() {
                 let mut out = output_lines.lock().await;
-                out.push("Usage: llama v2-tiny <prompt>".to_string());
+                out.push("Usage: llama2-tiny <prompt>".to_string());
             } else {
                 crate::cli::spinner::run_with_spinner(
                     output_lines,
-                    "Querying llama v2-tiny...",
-                    |lines, result| lines.push(format!("llama v2-tiny: {}", result)),
+                    "Querying llama2-tiny...",
+                    |lines, result| lines.push(format!("llama2-tiny: {}", result)),
                     move || {
                         let prompt = prompt.clone();
                         async move {
                             crate::services::llama::LlamaService::query_v2_tiny(&prompt)
-                                .unwrap_or_else(|e| format!("llama v2-tiny error: {}", e))
+                                .unwrap_or_else(|e| format!("llama2-tiny error: {}", e))
                         }
                     },
                 )
@@ -77,29 +77,48 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         }
         _ if cmd.starts_with("llama ") => {
             let rest = cmd["llama ".len()..].to_string();
+            
+            // Check if the input might be just a prompt (no model path specified)
+            let default_model_path = PathBuf::from("/opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf");
+            
+            // Try to parse as model_path + prompt first
             let mut split = rest.splitn(2, ' ');
-            let model_path_str = split.next().unwrap_or("").to_string();
-            let prompt_str = split.next().unwrap_or("").to_string();
-
-            if model_path_str.is_empty() || prompt_str.is_empty() {
+            let first_part = split.next().unwrap_or("").to_string();
+            let second_part = split.next().unwrap_or("").to_string();
+            
+            let (model_path_str, prompt_str) = if !second_part.is_empty() {
+                // Two parts provided: treat as model_path + prompt
+                (first_part, second_part)
+            } else if !first_part.is_empty() && default_model_path.exists() {
+                // Only one part provided and default model exists: treat as prompt only
+                (default_model_path.to_string_lossy().to_string(), first_part)
+            } else if !first_part.is_empty() {
+                // Only one part provided but no default model: show usage
                 let mut out = output_lines.lock().await;
-                out.push("Usage: llama <model_path> <prompt>".to_string());
+                out.push("Default model not found at /opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf".to_string());
+                out.push("Usage: llama <model_path> <prompt> or llama <prompt> (with default model)".to_string());
+                return;
             } else {
-                crate::cli::spinner::run_with_spinner(
-                    output_lines,
-                    &format!("Querying llama model {}...", model_path_str),
-                    |lines, result| lines.push(format!("llama: {}", result)),
-                    move || {
-                        let model_path = std::path::PathBuf::from(model_path_str.clone());
-                        let prompt = prompt_str.clone();
-                        async move {
-                            crate::services::llama::LlamaService::query(&model_path, &prompt)
-                                .unwrap_or_else(|e| format!("llama error: {}", e))
-                        }
-                    },
-                )
-                .await;
-            }
+                // No parts provided
+                let mut out = output_lines.lock().await;
+                out.push("Usage: llama <model_path> <prompt> or llama <prompt> (with default model)".to_string());
+                return;
+            };
+
+            crate::cli::spinner::run_with_spinner(
+                output_lines,
+                &format!("Querying llama model {}...", model_path_str),
+                |lines, result| lines.push(format!("llama: {}", result)),
+                move || {
+                    let model_path = std::path::PathBuf::from(model_path_str.clone());
+                    let prompt = prompt_str.clone();
+                    async move {
+                        crate::services::llama::LlamaService::query(&model_path, &prompt)
+                            .unwrap_or_else(|e| format!("llama error: {}", e))
+                    }
+                },
+            )
+            .await;
         }
         _ => {
             let mut out = output_lines.lock().await;
@@ -147,7 +166,8 @@ async fn run_command_stream_lines(mut cmd: Command, output_lines: Option<&Arc<Mu
 }
 
 pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<()> {
-    let scripts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/llama.cpp");
+    let repositories_dir = Path::new("/opt/sam/repositories");
+    let llama_repo_dir = repositories_dir.join("llama.cpp");
     let llama_cli = PathBuf::from("/opt/sam/bin/llama-cli");
 
     if llama_cli.exists() {
@@ -158,20 +178,28 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(
     let repo_url = "https://github.com/ggml-org/llama.cpp.git";
     let bin_dir = Path::new("/opt/sam/bin");
 
+    // Ensure /opt/sam/repositories exists
+    if !repositories_dir.exists() {
+        fs::create_dir_all(repositories_dir)
+            .await
+            .context("Failed to create /opt/sam/repositories directory")?;
+        crate::println(output_lines, "Created /opt/sam/repositories".to_string()).await;
+    }
+
     // Clone if not already present
-    if !scripts_dir.exists() {
+    if !llama_repo_dir.exists() {
         let mut git_cmd = Command::new("git");
-        git_cmd.arg("clone").arg(repo_url).arg(&scripts_dir);
+        git_cmd.arg("clone").arg(repo_url).arg(&llama_repo_dir);
         run_command_stream_lines(git_cmd, output_lines, "git").await?;
     }
 
     // Build with CMake
     let mut cmake_cmd = Command::new("cmake");
-    cmake_cmd.arg("-DLLAMA_CURL=OFF").arg("-DGGML_CCACHE=OFF").arg(".").current_dir(&scripts_dir);
+    cmake_cmd.arg("-DLLAMA_CURL=OFF").arg("-DGGML_CCACHE=OFF").arg(".").current_dir(&llama_repo_dir);
     run_command_stream_lines(cmake_cmd, output_lines, "cmake").await?;
 
     let mut build_cmd = Command::new("cmake");
-    build_cmd.arg("--build").arg(".").current_dir(&scripts_dir);
+    build_cmd.arg("--build").arg(".").current_dir(&llama_repo_dir);
     run_command_stream_lines(build_cmd, output_lines, "cmake-build").await?;
 
     // Ensure /opt/sam/bin exists
@@ -183,9 +211,9 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(
     }
 
     // Copy binaries (llama, main, etc.)
-    let mut entries = fs::read_dir(&scripts_dir)
+    let mut entries = fs::read_dir(&llama_repo_dir)
         .await
-        .context("Failed to read scripts/llama.cpp directory")?;
+        .context("Failed to read llama.cpp repository directory")?;
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         if path.is_file() {

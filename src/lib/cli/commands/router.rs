@@ -59,6 +59,7 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         },
         _ if cmd.starts_with("mdns ") => mdns::handle_mdns(cmd, ctx.output_lines.clone()).await,
         _ if cmd.starts_with("ssh ") => ssh::handle_ssh_command(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("nano") => nano::handle_nano(cmd, ctx.output_lines).await,
         
         // Default fallback
         _ => misc::handle_default(cmd, ctx.output_lines).await,
@@ -222,6 +223,7 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         },
         _ if cmd.starts_with("mdns ") => mdns::handle_mdns(cmd, ctx.output_lines.clone()).await,
         _ if cmd.starts_with("ssh ") => ssh::handle_ssh_command(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("nano") => nano::handle_nano(cmd, ctx.output_lines).await,
         
         // Default fallback
         _ => misc::handle_default(cmd, ctx.output_lines).await,
