@@ -275,6 +275,25 @@ impl CrawlJob {
         Ok(rows > 0)
     }
 
+    /// Check if a URL has been crawled recently (within the past month).
+    /// Returns true if the URL was crawled recently and shouldn't be crawled again.
+    pub async fn is_recently_crawled(start_url: &str) -> crate::memory::Result<bool> {
+        let config = crate::memory::Config::new();
+        let client = config.connect_pool().await?;
+        
+        // Calculate timestamp for one month ago (30 days)
+        let one_month_ago = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64 - (30 * 24 * 60 * 60)) // 30 days in seconds
+            .unwrap_or(0);
+        
+        let query = "SELECT COUNT(*) FROM crawl_jobs WHERE start_url = $1 AND created_at > $2";
+        let row = client.query_one(query, &[&start_url, &one_month_ago]).await?;
+        let count: i64 = row.get(0);
+        
+        Ok(count > 0)
+    }
+
     /// Destroy by oid.
     pub fn destroy(oid: String) -> crate::memory::Result<bool> {
         Config::destroy_row(oid, Self::sql_table_name())

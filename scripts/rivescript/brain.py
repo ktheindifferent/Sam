@@ -33,6 +33,30 @@ except Exception as e:
 # Get user input
 user_input = sys.argv[1] if len(sys.argv) > 1 else ""
 
+# Pre-process mathematical expressions to prevent corruption
+def preprocess_math_expressions(text):
+    """
+    Pre-process mathematical expressions before RiveScript substitutions
+    to prevent corruption during text processing
+    """
+    import re
+    
+    # Handle "whats 2+2" style expressions by adding spaces around operators
+    # This prevents RiveScript substitution corruption
+    math_patterns = [
+        (r'(whats|what\s+is)\s+(\d+)([+\-*/])(\d+)', r'\1 \2 \3 \4'),  # whats 2+2 -> whats 2 + 2
+        (r'(\d+)([+\-*/])(\d+)', r'\1 \2 \3'),  # 2+2 -> 2 + 2 (for standalone expressions)
+    ]
+    
+    processed_text = text
+    for pattern, replacement in math_patterns:
+        processed_text = re.sub(pattern, replacement, processed_text)
+    
+    return processed_text
+
+# Apply preprocessing
+user_input = preprocess_math_expressions(user_input)
+
 # Get context if provided
 context_data = {}
 if len(sys.argv) > 2:

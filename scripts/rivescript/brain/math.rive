@@ -672,9 +672,8 @@
 + * divided by *
 - <call>calculate <star1> / <star2></call>
 
-// Handle direct math expressions - check if it contains common math symbols
-+ *
-- <call>is_math_expression <star></call>
+// Remove overly broad catch-all pattern that interferes with other files
+// Mathematical expressions should be caught by more specific patterns above
 
 + * equals
 - <call>calculate <star></call>
@@ -712,8 +711,15 @@
 + convert * * to *
 - <call>convert_units <star></call>
 
-+ * * in *
-- <call>convert_units <star></call>
+// More specific unit conversion patterns to avoid catching directory queries
++ # * in *
+- <call>convert_units <star1> <star2> <star3></call>
+
++ * (meters|feet|inches|centimeters|kilometers|miles|yards|millimeters) in *
+- <call>convert_units <star1> <star2> <star3></call>
+
++ * (celsius|fahrenheit|kelvin|pounds|kilograms|grams|ounces|liters|gallons) in *
+- <call>convert_units <star1> <star2> <star3></call>
 
 + how many * is * *
 - <call>convert_units <star2> <star1> <star3></call>

@@ -4,6 +4,10 @@
 + what * 
 - <call>check_if_math <star></call>
 
+// Handle corrupted math expressions that lose the "what" part
++ is ##
+- <call>handle_corrupted_math is <star1><star2></call>
+
 + what is (the|a) *
 - That's an interesting question about <star>. Let me think about that.
 - Regarding <star>, I can help you explore that topic.

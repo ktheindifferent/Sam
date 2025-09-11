@@ -204,6 +204,11 @@ fn handle_create_job(request: &Request) -> Response {
             .with_status_code(400);
     }
     
+    // Check if URL has been crawled recently
+    // Note: This would need to be made async in a proper implementation
+    // For now, we create the job and let it check at execution time
+    info!("Creating crawl job for URL: {}", body.start_url);
+    
     // Create job
     let job = ConfigurableCrawlJob::new(body.start_url, config);
     let job_id = job.oid.clone();

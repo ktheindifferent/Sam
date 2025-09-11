@@ -515,7 +515,7 @@
 - Of course! <star>. ::::: <star> :::::
 
 // Natural Language File Operations
-+ (what files are here|show me files|list current files|whats in this directory|directory contents)
++ (what files are here|show me files|list current files|whats in this directory|whats in this folder|whats in the current directory|whats in the current folder|what is in this directory|what is in this folder|what is in the current directory|what is in the current folder|directory contents|folder contents)
 - I'll show you the files in the current directory. ::::: ls -la :::::
 
 + (how much space|disk space|storage space|available storage|free space left)

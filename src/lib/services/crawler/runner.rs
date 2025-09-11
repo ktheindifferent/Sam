@@ -1397,7 +1397,20 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             
             for domain in selected {
                 let url = format!("https://{}/", domain);
-                log::info!("Creating new crawl job for: {}", url);
+                
+                // Check if this URL has been crawled recently (within the past month)
+                match CrawlJob::is_recently_crawled(&url).await {
+                    Ok(true) => {
+                        log::info!("Skipping recently crawled URL: {}", url);
+                        continue;
+                    }
+                    Ok(false) => {
+                        log::info!("Creating new crawl job for: {}", url);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to check recent crawls for {}: {}, proceeding anyway", url, e);
+                    }
+                }
                 
                 let oid: String = rand::thread_rng()
                     .sample_iter(&Alphanumeric)
@@ -2013,6 +2026,20 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             log::info!("Starting to crawl {} URLs directly", urls.len());
             // Still try to create jobs for tracking (even if saves fail)
             for url in &urls {
+                // Check if this URL has been crawled recently (within the past month)
+                match CrawlJob::is_recently_crawled(url).await {
+                    Ok(true) => {
+                        log::info!("Skipping recently crawled URL: {}", url);
+                        continue;
+                    }
+                    Ok(false) => {
+                        log::debug!("URL not recently crawled: {}", url);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to check recent crawls for {}: {}, proceeding anyway", url, e);
+                    }
+                }
+                
                 let job_create_start = tokio::time::Instant::now();
                 let oid: String = thread_rng()
                     .sample_iter(&Alphanumeric)
