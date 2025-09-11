@@ -18,6 +18,16 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         "version" => misc::handle_version(ctx.output_lines).await,
         "status" => status::handle_status(ctx.output_lines, ctx.current_dir, ctx.human_name).await,
         
+        // System Information Commands
+        "whoami" => misc::handle_whoami(ctx.output_lines).await,
+        "date" => misc::handle_date(cmd, ctx.output_lines).await,
+        "top" => misc::handle_top(ctx.output_lines).await,
+        
+        // Text Processing Commands
+        "echo" => misc::handle_echo("echo", ctx.output_lines).await,
+        "sort" => misc::handle_sort("sort", ctx.output_lines, ctx.current_dir).await,
+        "wc" => misc::handle_wc("wc", ctx.output_lines, ctx.current_dir).await,
+        
         // Service commands (exact matches)
         _ if is_crawler_command(cmd) => crawler::handle_crawler(cmd, ctx.output_lines).await,
         _ if is_redis_command(cmd) => redis::handle_redis(cmd, ctx.output_lines).await,
@@ -38,6 +48,13 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if cmd.starts_with("p2p ") => p2p::handle_p2p(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("cd ") => cd::handle_cd(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("cat ") => misc::handle_cat(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("uname") => misc::handle_uname(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("date ") => misc::handle_date(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("df") => misc::handle_df(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("du") => misc::handle_du(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("ps") => misc::handle_ps(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("kill ") => misc::handle_kill(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("man ") => misc::handle_man(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("mkdir ") => misc::handle_mkdir(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("rmdir ") => misc::handle_rmdir(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("cp ") => misc::handle_cp(cmd, ctx.output_lines, ctx.current_dir).await,
@@ -45,6 +62,12 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if cmd.starts_with("rm ") => misc::handle_rm(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("less ") => misc::handle_less(cmd, ctx.output_lines, ctx.current_dir, ctx.output_height, ctx.scroll_offset).await,
         _ if cmd.starts_with("grep ") => misc::handle_grep(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("touch ") => misc::handle_touch(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("head ") => misc::handle_head(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("tail ") => misc::handle_tail(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("find ") => misc::handle_find(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("chmod ") => misc::handle_chmod(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("chown ") => misc::handle_chown(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("darknet ") => darknet::handle_darknet(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("tts ") => tts::handle_tts(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("llama") => llama::handle_llama(cmd, ctx.output_lines).await,
@@ -60,6 +83,12 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if cmd.starts_with("mdns ") => mdns::handle_mdns(cmd, ctx.output_lines.clone()).await,
         _ if cmd.starts_with("ssh ") => ssh::handle_ssh_command(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("nano") => nano::handle_nano(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("echo ") => misc::handle_echo(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("sort ") => misc::handle_sort(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("wc ") => misc::handle_wc(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("tar ") => misc::handle_tar(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("gzip ") => misc::handle_gzip(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("gunzip ") => misc::handle_gunzip(cmd, ctx.output_lines, ctx.current_dir).await,
         
         // Default fallback
         _ => misc::handle_default(cmd, ctx.output_lines).await,
@@ -202,6 +231,13 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if cmd.starts_with("p2p ") => p2p::handle_p2p(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("cd ") => cd::handle_cd(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("cat ") => misc::handle_cat(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("uname") => misc::handle_uname(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("date ") => misc::handle_date(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("df") => misc::handle_df(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("du") => misc::handle_du(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("ps") => misc::handle_ps(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("kill ") => misc::handle_kill(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("man ") => misc::handle_man(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("mkdir ") => misc::handle_mkdir(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("rmdir ") => misc::handle_rmdir(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("cp ") => misc::handle_cp(cmd, ctx.output_lines, ctx.current_dir).await,
@@ -209,6 +245,12 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if cmd.starts_with("rm ") => misc::handle_rm(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("less ") => misc::handle_less(cmd, ctx.output_lines, ctx.current_dir, ctx.output_height, ctx.scroll_offset).await,
         _ if cmd.starts_with("grep ") => misc::handle_grep(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("touch ") => misc::handle_touch(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("head ") => misc::handle_head(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("tail ") => misc::handle_tail(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("find ") => misc::handle_find(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("chmod ") => misc::handle_chmod(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("chown ") => misc::handle_chown(cmd, ctx.output_lines, ctx.current_dir).await,
         _ if cmd.starts_with("darknet ") => darknet::handle_darknet(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("tts ") => tts::handle_tts(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("llama") => llama::handle_llama(cmd, ctx.output_lines).await,
@@ -224,6 +266,12 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if cmd.starts_with("mdns ") => mdns::handle_mdns(cmd, ctx.output_lines.clone()).await,
         _ if cmd.starts_with("ssh ") => ssh::handle_ssh_command(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("nano") => nano::handle_nano(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("echo ") => misc::handle_echo(cmd, ctx.output_lines).await,
+        _ if cmd.starts_with("sort ") => misc::handle_sort(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("wc ") => misc::handle_wc(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("tar ") => misc::handle_tar(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("gzip ") => misc::handle_gzip(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("gunzip ") => misc::handle_gunzip(cmd, ctx.output_lines, ctx.current_dir).await,
         
         // Default fallback
         _ => misc::handle_default(cmd, ctx.output_lines).await,
@@ -254,46 +302,72 @@ async fn execute_piped_command(
         },
         "head" => {
             // Implement head command for pipes
-            let n = if args.len() > 1 && args[1] == "-n" && args.len() > 2 {
-                args[2].parse().unwrap_or(10)
-            } else {
-                10
-            };
+            let mut n = 10; // default
+            let mut i = 1;
+            
+            while i < args.len() {
+                match args[i] {
+                    "-n" | "--lines" => {
+                        if i + 1 < args.len() {
+                            n = args[i + 1].parse().unwrap_or(10);
+                            i += 1;
+                        }
+                    }
+                    _ if args[i].starts_with('-') && args[i].len() > 1 => {
+                        // Handle -N format
+                        if let Ok(num) = args[i][1..].parse::<usize>() {
+                            n = num;
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            
             let mut out = output_lines.lock().await;
             out.extend(input_lines.iter().take(n).cloned());
         },
         "tail" => {
             // Implement tail command for pipes
-            let n = if args.len() > 1 && args[1] == "-n" && args.len() > 2 {
-                args[2].parse().unwrap_or(10)
-            } else {
-                10
-            };
+            let mut n = 10; // default
+            let mut i = 1;
+            
+            while i < args.len() {
+                match args[i] {
+                    "-n" | "--lines" => {
+                        if i + 1 < args.len() {
+                            n = args[i + 1].parse().unwrap_or(10);
+                            i += 1;
+                        }
+                    }
+                    _ if args[i].starts_with('-') && args[i].len() > 1 && args[i] != "-f" => {
+                        // Handle -N format
+                        if let Ok(num) = args[i][1..].parse::<usize>() {
+                            n = num;
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            
             let mut out = output_lines.lock().await;
             let start_index = input_lines.len().saturating_sub(n);
             out.extend(input_lines.iter().skip(start_index).cloned());
         },
-        "wc" => {
-            // Word count command for pipes
-            let mut line_count = 0;
-            let mut word_count = 0;
-            let mut char_count = 0;
-            
-            for line in input_lines {
-                line_count += 1;
-                word_count += line.split_whitespace().count();
-                char_count += line.chars().count() + 1; // +1 for newline
-            }
-            
-            let mut out = output_lines.lock().await;
-            out.push(format!("{:8} {:8} {:8}", line_count, word_count, char_count));
-        },
+
         "sort" => {
-            // Sort command for pipes
-            let mut sorted_lines = input_lines.to_vec();
-            sorted_lines.sort();
-            let mut out = output_lines.lock().await;
-            out.extend(sorted_lines);
+            // Sort command for pipes (use advanced version)
+            misc::handle_sort_with_input(cmd, input_lines, output_lines).await;
+        },
+        "wc" => {
+            // Word count command for pipes (use advanced version)
+            misc::handle_wc_with_input(cmd, input_lines, output_lines).await;
+        },
+        "echo" => {
+            // Echo command doesn't typically read from stdin, but in pipe context
+            // we'll just output what was requested
+            misc::handle_echo(cmd, output_lines).await;
         },
         "uniq" => {
             // Unique command for pipes

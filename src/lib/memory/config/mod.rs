@@ -99,6 +99,23 @@ impl Config {
                 }
             });
         });
+
+        // Initialize and start crawler service
+        thread_manager::spawn("crawler-service", move |shutdown_signal, _health_rx| {
+            let runtime = tokio::runtime::Runtime::new().expect("Failed to create crawler runtime");
+            
+            runtime.block_on(async {
+                log::info!("Initializing crawler database pool");
+                match crate::services::crawler::initialize_db_pool().await {
+                    Ok(_) => log::info!("Crawler database pool initialized successfully"),
+                    Err(e) => log::error!("Failed to initialize crawler database pool: {}", e),
+                }
+                
+                log::info!("Starting crawler service");
+                crate::services::crawler::start_service_async().await;
+                log::info!("Crawler service started successfully");
+            });
+        });
     }
 
     /// Returns a new PostgreSQL client connection.

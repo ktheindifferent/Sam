@@ -6,11 +6,40 @@ use std::process::{Command, Stdio};
 pub struct LlamaService;
 
 impl LlamaService {
+    fn ensure_repository_cloned() -> io::Result<()> {
+        let repositories_dir = Path::new("/opt/sam/repositories");
+        let llama_repo_dir = repositories_dir.join("llama.cpp");
+        
+        if llama_repo_dir.exists() {
+            return Ok(());
+        }
+        
+        // Create repositories directory if it doesn't exist
+        fs::create_dir_all(repositories_dir)?;
+        
+        // Clone the repository
+        let output = Command::new("git")
+            .arg("clone")
+            .arg("https://github.com/ggml-org/llama.cpp.git")
+            .arg(&llama_repo_dir)
+            .output()?;
+        
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "Failed to clone llama.cpp repository: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        
+        Ok(())
+    }
+
     pub fn ensure_llama_binary_with_output() -> io::Result<String> {
-        let llama_src = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/llama.cpp");
-        let llama_bin = Path::new("/opt/sam/bin/llama");
-        let build_dir = llama_src.join("build");
-        fs::create_dir_all(&build_dir)?;
+        let llama_src = Path::new("/opt/sam/repositories/llama.cpp");
+        let llama_bin = Path::new("/opt/sam/bin/llama-cli");
+        
+        // Ensure repository is cloned first
+        Self::ensure_repository_cloned()?;
 
         if llama_bin.exists() {
             return Ok("llama binary already exists.".to_string());
@@ -18,11 +47,12 @@ impl LlamaService {
 
         let mut output_log = String::new();
 
-        // Run cmake -B build
+        // Run cmake with configuration (matching CLI version)
         let cmake_config = Command::new("cmake")
             .current_dir(llama_src.clone())
-            .arg("-B")
-            .arg("build")
+            .arg("-DLLAMA_CURL=OFF")
+            .arg("-DGGML_CCACHE=OFF")
+            .arg(".")
             .output()?;
         output_log.push_str("--- cmake configure ---\n");
         output_log.push_str(&String::from_utf8_lossy(&cmake_config.stdout));
@@ -33,13 +63,11 @@ impl LlamaService {
             )));
         }
 
-        // Run cmake --build build --config Release
+        // Run cmake --build . (matching CLI version)
         let cmake_build = Command::new("cmake")
             .current_dir(llama_src.clone())
             .arg("--build")
-            .arg("build")
-            .arg("--config")
-            .arg("Release")
+            .arg(".")
             .output()?;
         output_log.push_str("--- cmake build ---\n");
         output_log.push_str(&String::from_utf8_lossy(&cmake_build.stdout));
@@ -50,36 +78,27 @@ impl LlamaService {
             )));
         }
 
-        // Find the built binaries
-        let binaries = [
-            "llama-cli",
-            "llama-simple",
-            "llama-bench",
-            "llama-run",
-            "llama-server",
-            "llama-perplexity",
-        ];
+        // Copy binaries from repository root (matching CLI version)
         let mut found_any = false;
-
         fs::create_dir_all("/opt/sam/bin")?;
-
-        for bin_name in &binaries {
-            let built_bin = build_dir.join("bin").join(bin_name);
-            let built_bin_alt = build_dir.join(bin_name);
-            let target_bin = Path::new("/opt/sam/bin").join(bin_name);
-
-            let src_bin = if built_bin.exists() {
-                built_bin
-            } else if built_bin_alt.exists() {
-                built_bin_alt
-            } else {
-                continue;
-            };
-
-            fs::copy(&src_bin, &target_bin)?;
-            let _ = Command::new("chmod").arg("+x").arg(&target_bin).output();
-            found_any = true;
-            output_log.push_str(&format!("Installed binary: {}\n", target_bin.display()));
+        
+        // Read directory contents to find built binaries
+        let entries = fs::read_dir(llama_src)?;
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(fname) = path.file_name() {
+                    let fname_str = fname.to_string_lossy();
+                    if fname_str.starts_with("llama") || fname_str == "main" {
+                        let target_bin = Path::new("/opt/sam/bin").join(&fname_str.as_ref());
+                        fs::copy(&path, &target_bin)?;
+                        let _ = Command::new("chmod").arg("+x").arg(&target_bin).output();
+                        found_any = true;
+                        output_log.push_str(&format!("Installed binary: {}\n", target_bin.display()));
+                    }
+                }
+            }
         }
 
         if !found_any {

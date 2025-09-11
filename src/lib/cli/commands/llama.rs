@@ -76,31 +76,38 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             }
         }
         _ if cmd.starts_with("llama ") => {
-            let rest = cmd["llama ".len()..].to_string();
+            let rest = cmd["llama ".len()..].trim().to_string();
+            
+            if rest.is_empty() {
+                let mut out = output_lines.lock().await;
+                out.push("Usage: llama <model_path> <prompt> or llama <prompt> (with default model)".to_string());
+                return;
+            }
             
             // Check if the input might be just a prompt (no model path specified)
             let default_model_path = PathBuf::from("/opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf");
             
-            // Try to parse as model_path + prompt first
-            let mut split = rest.splitn(2, ' ');
-            let first_part = split.next().unwrap_or("").to_string();
-            let second_part = split.next().unwrap_or("").to_string();
-            
-            let (model_path_str, prompt_str) = if !second_part.is_empty() {
-                // Two parts provided: treat as model_path + prompt
+            // Check if the first part looks like a file path (contains /, ends with .gguf, etc.)
+            // If not, assume the entire input is a prompt and use the default model
+            let (model_path_str, prompt_str) = if rest.contains('/') || rest.ends_with(".gguf") || rest.ends_with(".bin") {
+                // Looks like a model path was provided, split on the first space
+                let mut split = rest.splitn(2, ' ');
+                let first_part = split.next().unwrap_or("").to_string();
+                let second_part = split.next().unwrap_or("").to_string();
+                
+                if second_part.is_empty() {
+                    let mut out = output_lines.lock().await;
+                    out.push("Usage: llama <model_path> <prompt>".to_string());
+                    return;
+                }
                 (first_part, second_part)
-            } else if !first_part.is_empty() && default_model_path.exists() {
-                // Only one part provided and default model exists: treat as prompt only
-                (default_model_path.to_string_lossy().to_string(), first_part)
-            } else if !first_part.is_empty() {
-                // Only one part provided but no default model: show usage
+            } else if default_model_path.exists() {
+                // Treat entire input as prompt and use default model
+                (default_model_path.to_string_lossy().to_string(), rest)
+            } else {
+                // No default model exists, show usage
                 let mut out = output_lines.lock().await;
                 out.push("Default model not found at /opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf".to_string());
-                out.push("Usage: llama <model_path> <prompt> or llama <prompt> (with default model)".to_string());
-                return;
-            } else {
-                // No parts provided
-                let mut out = output_lines.lock().await;
                 out.push("Usage: llama <model_path> <prompt> or llama <prompt> (with default model)".to_string());
                 return;
             };
