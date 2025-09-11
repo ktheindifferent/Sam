@@ -20,6 +20,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+// Import the main sam library
+
 // TODO: Wrap in a feature just in case we dont want it
 use opencl3::device::get_all_devices;
 use opencl3::device::CL_DEVICE_TYPE_GPU;
@@ -109,16 +111,13 @@ async fn main() -> Result<()> {
     libsam::services::snapcast::install().await?;
     log::info!("Installing darknet...");
     libsam::services::darknet::install(None).await?;
-    log::info!("Installing SPREC...");
-    libsam::services::sprec::install().await?;
-    log::info!("Installing LLAMA...");
-    libsam::services::llama::install(None).await?;
     log::info!("Installing STT...");
     libsam::services::stt::install(None).await?;
-    log::info!("Installing Rivescript...");
-    libsam::services::rivescript::install().await?;
     log::info!("Installing Who.io...");
-    libsam::services::who::install().await?;
+    match libsam::services::who::install() {
+        Ok(_) => log::info!("Who.io installed successfully"),
+        Err(e) => log::error!("Failed to install Who.io: {}", e),
+    }
     log::info!("Installing HTTP server...");
     libsam::services::http::install().await?;
     log::info!("Installing Emulators...");
@@ -224,7 +223,7 @@ async fn ensure_chocolatey_installed() -> Result<()> {
 #[cfg(target_os = "windows")]
 fn refresh_env_vars() {
     log::info!("Refreshing environment variables with refreshenv...");
-    // let result = libsam::run_and_log("refreshenv", &[]);
+    // let result = sam::run_and_log("refreshenv", &[]);
     let refreshenv_path = "C:\\ProgramData\\chocolatey\\bin\\refreshenv.cmd";
     let result = libsam::run_and_log(refreshenv_path, &[]);
     match result {

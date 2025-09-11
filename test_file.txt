@@ -1,0 +1,6 @@
+Hello, World!
+This is a test file for the cat command.
+Line 3 with some content.
+Line 4 with more text.
+
+Line 6 (after an empty line).

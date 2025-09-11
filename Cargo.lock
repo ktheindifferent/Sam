@@ -7013,6 +7013,7 @@ dependencies = [
  "futures-util",
  "get_if_addrs",
  "git2",
+ "glob",
  "hex",
  "hmac 0.12.1",
  "hound",

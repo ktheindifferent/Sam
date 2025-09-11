@@ -1,5 +1,4 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use std::time::Duration;
 
 // Benchmark LIFX service endpoints
 // fn bench_lifx_endpoint_selection(c: &mut Criterion) {

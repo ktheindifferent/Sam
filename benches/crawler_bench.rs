@@ -27,15 +27,13 @@ fn benchmark_content_hashing(c: &mut Criterion) {
     let long_content = "Very long content that repeats. ".repeat(100);
     let extremely_long_content = "Extremely long content with lots of text. ".repeat(1000);
     
-    let contents = vec![
-        "Short content",
+    let contents = ["Short content",
         "Medium length content that is a bit longer than the short one but not too long",
         &long_content,
-        &extremely_long_content,
-    ];
+        &extremely_long_content];
 
     let mut group = c.benchmark_group("content_hashing");
-    for (_i, content) in contents.iter().enumerate() {
+    for content in contents.iter() {
         group.bench_with_input(
             BenchmarkId::from_parameter(content.len()),
             content,
@@ -102,8 +100,7 @@ fn benchmark_pattern_detection(c: &mut Criterion) {
 fn benchmark_html_parsing(c: &mut Criterion) {
     let complex_html = format!(r#"<html><body>{}</body></html>"#, 
                                "<a href='/link'>Link</a>".repeat(100));
-    let html_samples = vec![
-        r#"<html><head><title>Simple</title></head><body>Content</body></html>"#,
+    let html_samples = [r#"<html><head><title>Simple</title></head><body>Content</body></html>"#,
         r#"<html>
             <head>
                 <title>Complex Page</title>
@@ -115,8 +112,7 @@ fn benchmark_html_parsing(c: &mut Criterion) {
                 <a href="/link3">Link 3</a>
             </body>
         </html>"#,
-        &complex_html,
-    ];
+        &complex_html];
 
     let mut group = c.benchmark_group("html_parsing");
     for (i, html) in html_samples.iter().enumerate() {

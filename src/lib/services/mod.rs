@@ -36,10 +36,12 @@ pub mod darknet;
 pub mod database;
 pub mod docker;
 pub mod dropbox;
+pub mod emulators;
 pub mod error_handling;
 pub mod file_storage;
 pub mod git;
 pub mod github;
+pub mod http;
 pub mod jupiter;
 pub mod lifx;
 pub mod llama;
@@ -51,6 +53,7 @@ pub mod notifications;
 pub mod openai;
 pub mod orchestrator;
 pub mod osf;
+pub mod package_managers;
 pub mod restart;
 #[cfg(test)]
 pub mod restart_test;
@@ -65,6 +68,7 @@ pub mod rtsp_dl_test;
 pub mod rtsp_dl_simple;
 pub mod rtsp_recording;
 pub mod sms;
+pub mod snapcast;
 pub mod socket;
 pub mod sound;
 pub mod spotify;
@@ -74,6 +78,7 @@ pub mod storage;
 pub mod stt;
 pub mod thread_manager;
 pub mod tts;
+pub mod vcpkg;
 
 #[cfg(test)]
 mod thread_safety_test;

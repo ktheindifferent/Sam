@@ -1020,6 +1020,31 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                                             &mut scroll_offset,
                                         )
                                         .await;
+                                        
+                                        // Check if TUI restart is needed (e.g., after SSH session)
+                                        {
+                                            let mut lines = output_lines.lock().await;
+                                            if lines.iter().any(|line| line.contains("__TUI_RESTART_NEEDED__")) {
+                                                // Remove the marker
+                                                lines.retain(|line| !line.contains("__TUI_RESTART_NEEDED__"));
+                                                drop(lines); // Release lock before terminal operations
+                                                
+                                                // Force complete TUI reinitialization
+                                                let _ = terminal.clear();
+                                                let _ = execute!(io::stdout(), 
+                                                    crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
+                                                    crossterm::cursor::MoveTo(0, 0)
+                                                );
+                                                
+                                                // Reinitialize the terminal
+                                                let _ = disable_raw_mode();
+                                                let _ = execute!(io::stdout(), LeaveAlternateScreen);
+                                                std::thread::sleep(std::time::Duration::from_millis(50));
+                                                let _ = enable_raw_mode();
+                                                let _ = execute!(io::stdout(), EnterAlternateScreen);
+                                                let _ = terminal.clear();
+                                            }
+                                        }
                                     }
                                     input.clear();
                                 }
@@ -1109,67 +1134,53 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Take over the terminal for an interactive SSH session
+/// Take over the terminal for an interactive SSH session by using system exec
+/// This function completely exits TUI mode and runs SSH natively
+/// Returns true if TUI needs to be restarted (always true after SSH)
 #[cfg(unix)]
-pub fn tui_takeover_ssh_session<In, Out>(mut send_input: In, mut read_output: Out)
-where
-    In: FnMut(&[u8]) + Send + 'static,
-    Out: FnMut() -> Option<Vec<u8>> + Send + 'static,
-{
+pub fn tui_takeover_ssh_session(ssh_command: &str) -> bool {
     use crossterm::{
-        event::{self, Event, KeyCode},
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{disable_raw_mode, LeaveAlternateScreen},
     };
     use std::io::{self, Write};
 
-    // Leave TUI alternate screen and raw mode
+    // Exit TUI mode completely - use LeaveAlternateScreen like the main cleanup
     let _ = disable_raw_mode();
     let _ = execute!(io::stdout(), LeaveAlternateScreen);
-    println!("[SSH session started. Press Ctrl+D or exit to return to TUI.]");
+    let _ = io::stdout().flush();
+    
+    println!("\r[Starting SSH session: {}]", ssh_command);
+    println!("[The TUI will return when SSH session ends]");
+    io::stdout().flush().unwrap();
+    
+    // Run SSH using system call - this gives us real TTY behavior
+    let exit_status = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(ssh_command)
+        .status();
 
-    // Set terminal to raw mode for direct input
-    let _ = enable_raw_mode();
-    let mut stdout = io::stdout();
-    loop {
-        // Print any available SSH output
-        if let Some(data) = read_output() {
-            let _ = stdout.write_all(&data);
-            let _ = stdout.flush();
+    // Show result
+    match exit_status {
+        Ok(status) if status.success() => {
+            println!("\r[SSH session completed successfully]");
         }
-        // Poll for user input
-        if event::poll(std::time::Duration::from_millis(30)).unwrap_or(false) {
-            if let Event::Key(key) = event::read().unwrap() {
-                match key.code {
-                    KeyCode::Char('d')
-                        if key
-                            .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                    {
-                        // Ctrl+D: send EOF and break
-                        send_input(&[4]);
-                        break;
-                    }
-                    KeyCode::Char(c) => {
-                        let mut buf = [0u8; 4];
-                        let n = c.encode_utf8(&mut buf).len();
-                        send_input(&buf[..n]);
-                    }
-                    KeyCode::Enter => send_input(b"\n"),
-                    KeyCode::Tab => send_input(b"\t"),
-                    KeyCode::Backspace => send_input(&[8]),
-                    KeyCode::Esc => send_input(&[27]),
-                    _ => {}
-                }
-            }
+        Ok(status) => {
+            println!("\r[SSH session ended with exit code: {:?}]", status.code());
         }
-        // End if SSH session output is closed
-        if read_output().is_none() {
-            break;
+        Err(e) => {
+            println!("\r[SSH session failed: {}]", e);
         }
     }
-    // Restore TUI alternate screen and raw mode
-    let _ = execute!(io::stdout(), EnterAlternateScreen);
-    let _ = enable_raw_mode();
-    println!("[SSH session ended. Returning to TUI...]");
+    
+    println!("[Press Enter to return to TUI...]");
+    io::stdout().flush().unwrap();
+    
+    // Wait for user to press Enter before returning to TUI
+    let mut input = String::new();
+    let _ = io::stdin().read_line(&mut input);
+    
+    // Don't try to restore here - let the main loop handle it
+    // Return true to signal TUI needs complete reinitialization
+    true
 }

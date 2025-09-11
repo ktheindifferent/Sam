@@ -1,8 +1,8 @@
 // Network Monitoring Integration Example
 // This example demonstrates how to use the network monitoring module
 
-use sam::network_monitor::{NetworkMonitor, ConnectionStats};
-use sam::network_config::NetworkMonitorConfig;
+use libsam::network_monitor::{NetworkMonitor, ConnectionStats};
+use libsam::network_config::NetworkMonitorConfig;
 use std::time::Duration;
 use tokio;
 
@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         latency_check_hosts: vec!["8.8.8.8".to_string()],
         latency_check_interval_ms: 5000,
         interfaces_to_monitor: vec![],
-        alert_thresholds: sam::network_config::AlertThresholds {
+        alert_thresholds: libsam::network_config::AlertThresholds {
             high_latency_ms: 100.0,
             packet_loss_percent: 5.0,
             low_bandwidth_mbps: 1.0,
