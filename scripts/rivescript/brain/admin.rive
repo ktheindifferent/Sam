@@ -1,0 +1,178 @@
+// Administrative Functions for SAM
+
++ shutdown{weight=10000}
+* <id> eq <bot master> => Shutting down SAM system... ::::: shutdown -h now :::::
+- {@botmaster only}
+
++ restart sam{weight=10000}
+* <id> eq <bot master> => Restarting SAM services... ::::: systemctl restart sam :::::
+- {@botmaster only}
+
++ reload config{weight=10000}
+* <id> eq <bot master> => Reloading SAM configuration... ::::: kill -HUP `pgrep sam` :::::
+- {@botmaster only}
+
++ debug mode on{weight=10000}
+* <id> eq <bot master> => Enabling debug mode... ::::: debug all trace :::::
+- {@botmaster only}
+
++ debug mode off{weight=10000}
+* <id> eq <bot master> => Disabling debug mode... ::::: debug all error :::::
+- {@botmaster only}
+
++ show logs{weight=10000}
+* <id> eq <bot master> => Displaying SAM logs... ::::: tail -f /var/log/sam/sam.log :::::
+- {@botmaster only}
+
++ clear logs{weight=10000}
+* <id> eq <bot master> => Clearing SAM logs... ::::: echo > /var/log/sam/sam.log :::::
+- {@botmaster only}
+
++ system stats{weight=10000}
+* <id> eq <bot master> => Gathering system statistics... ::::: top -l 1 | head -20 :::::
+- {@botmaster only}
+
++ memory usage{weight=10000}
+* <id> eq <bot master> => Checking memory usage... ::::: ps aux --sort=-%mem | head -20 :::::
+- {@botmaster only}
+
++ disk usage{weight=10000}
+* <id> eq <bot master> => Checking disk usage... ::::: df -h :::::
+- {@botmaster only}
+
++ network status{weight=10000}
+* <id> eq <bot master> => Checking network status... ::::: netstat -rn :::::
+- {@botmaster only}
+
++ service status{weight=10000}
+* <id> eq <bot master> => Checking all service status... ::::: services :::::
+- {@botmaster only}
+
++ update sam{weight=10000}
+* <id> eq <bot master> => Updating SAM system... ::::: cd /opt/sam && git pull && cargo build --release :::::
+- {@botmaster only}
+
++ backup config{weight=10000}
+* <id> eq <bot master> => Backing up SAM configuration... ::::: cp -r /opt/sam/config /opt/sam/backup/config-`date +%Y%m%d` :::::
+- {@botmaster only}
+
++ restore config{weight=10000}
+* <id> eq <bot master> => This will restore configuration from backup. Are you sure? (Type 'confirm restore' to proceed)
+- {@botmaster only}
+
++ confirm restore{weight=10000}
+* <id> eq <bot master> => Restoring SAM configuration from latest backup... ::::: cp -r /opt/sam/backup/config-* /opt/sam/config :::::
+- {@botmaster only}
+
++ emergency stop{weight=10000}
+* <id> eq <bot master> => Emergency stop initiated... ::::: pkill -f sam :::::
+- {@botmaster only}
+
++ reset sam{weight=10000}
+* <id> eq <bot master> => This will reset SAM to default settings. Type 'confirm reset' to proceed.
+- {@botmaster only}
+
++ confirm reset{weight=10000}
+* <id> eq <bot master> => Resetting SAM to default configuration... ::::: cp /opt/sam/config/defaults/* /opt/sam/config/ :::::
+- {@botmaster only}
+
++ botmaster only
+- This command can only be used by my administrator. Access denied for user <id>.
+
++ set master *{weight=10000}
+* <id> eq <bot master> => <set master=<star>>Master user updated to <star>.
+- {@botmaster only}
+
++ add user *{weight=10000}
+* <id> eq <bot master> => Adding user <star> to authorized users list...
+- {@botmaster only}
+
++ remove user *{weight=10000}  
+* <id> eq <bot master> => Removing user <star> from authorized users list...
+- {@botmaster only}
+
++ list users{weight=10000}
+* <id> eq <bot master> => Listing all authorized users...
+- {@botmaster only}
+
++ change log level *{weight=10000}
+* <id> eq <bot master> => Changing log level to <star>... ::::: debug all <star> :::::
+- {@botmaster only}
+
++ enable service *{weight=10000}
+* <id> eq <bot master> => Enabling service <star>... ::::: systemctl enable <star> :::::
+- {@botmaster only}
+
++ disable service *{weight=10000}
+* <id> eq <bot master> => Disabling service <star>... ::::: systemctl disable <star> :::::
+- {@botmaster only}
+
++ maintenance mode on{weight=10000}
+* <id> eq <bot master> => Entering maintenance mode...
+- {@botmaster only}
+
++ maintenance mode off{weight=10000}
+* <id> eq <bot master> => Exiting maintenance mode...
+- {@botmaster only}
+
++ flush cache{weight=10000}
+* <id> eq <bot master> => Flushing all caches... ::::: redis-cli flushall :::::
+- {@botmaster only}
+
++ optimize database{weight=10000}
+* <id> eq <bot master> => Optimizing SAM database... This may take a while...
+- {@botmaster only}
+
++ vacuum database{weight=10000}
+* <id> eq <bot master> => Running database vacuum... ::::: sqlite3 /opt/sam/data/sam.db "VACUUM;" :::::
+- {@botmaster only}
+
++ health check{weight=10000}
+* <id> eq <bot master> => Running comprehensive health check... ::::: /opt/sam/scripts/health_check.sh :::::
+- {@botmaster only}
+
++ security scan{weight=10000}
+* <id> eq <bot master> => Running security scan... This may take several minutes...
+- {@botmaster only}
+
++ export data{weight=10000}
+* <id> eq <bot master> => Exporting SAM data... ::::: /opt/sam/scripts/export_data.sh :::::
+- {@botmaster only}
+
++ import data *{weight=10000}
+* <id> eq <bot master> => Importing data from <star>... ::::: /opt/sam/scripts/import_data.sh <star> :::::
+- {@botmaster only}
+
+// General administrative info (available to all users)
++ admin help
+- Administrative commands are available only to the system administrator.
+- For basic help, try typing "help" to see available user commands.
+- If you need administrative access, contact the system administrator.
+
++ who is the admin
+- The current administrator is <bot master>.
+
++ sam version
+- I'm SAM (Smart Assistant Manager) version <bot version>.
+- You can also type "version" to get detailed version information.
+
++ system info
+- I can provide system information. Type "status" for current system status.
+- For detailed system info, try "system status" or "services".
+
+// Error handling for unauthorized admin commands
++ * admin
+- Administrative functions require special authorization.
+
++ sudo *
+- I don't process sudo commands directly for security reasons. Administrative tasks should use the proper SAM admin commands.
+
++ su *  
+- User switching is not available through SAM for security purposes.
+
+> object shutdown python
+    # Controlled shutdown
+    import os
+    os.system("echo 'SAM shutdown requested'")
+    # Note: Actual shutdown should be handled by the system
+< object

@@ -99,15 +99,46 @@ pub async fn start_prompt() {
     let _ = tui_logger::init_logger(log::LevelFilter::Debug);
     tui_logger::set_default_level(log::LevelFilter::Debug);
 
-    // Only set log file if /opt/sam exists
-    let log_dir = std::path::Path::new("/opt/sam");
-    if log_dir.exists() && log_dir.is_dir() {
-        let log_file_path = log_dir.join("output.log");
-        let file_options = tui_logger::TuiLoggerFile::new(log_file_path.to_str().unwrap())
-            .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
-            .output_file(true)
-            .output_separator(':');
-        tui_logger::set_log_file(file_options);
+    // Set up log file in a more robust way that handles sudo permissions
+    let log_file_path = if let Ok(temp_dir) = std::env::var("TMPDIR") {
+        // Use TMPDIR if available (macOS)
+        std::path::PathBuf::from(temp_dir).join("sam_output.log")
+    } else if std::path::Path::new("/tmp").exists() {
+        // Fallback to /tmp (Linux/Unix)
+        std::path::PathBuf::from("/tmp/sam_output.log")
+    } else {
+        // Final fallback - try /opt/sam if it exists, otherwise skip file logging
+        let opt_sam = std::path::Path::new("/opt/sam");
+        if opt_sam.exists() && opt_sam.is_dir() {
+            opt_sam.join("output.log")
+        } else {
+            // Skip file logging if no suitable directory is found
+            log::warn!("No suitable directory found for TUI log file, skipping file logging");
+            std::path::PathBuf::new()
+        }
+    };
+    
+    // Only set up file logging if we have a valid path
+    if !log_file_path.as_os_str().is_empty() {
+        // Test if we can write to the log file
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(&log_file_path)
+        {
+            Ok(_) => {
+                log::debug!("Setting TUI log file to: {:?}", log_file_path);
+                let file_options = tui_logger::TuiLoggerFile::new(log_file_path.to_str().unwrap())
+                    .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
+                    .output_file(true)
+                    .output_separator(':');
+                tui_logger::set_log_file(file_options);
+            },
+            Err(e) => {
+                log::warn!("Cannot write to log file {:?}: {}. TUI logging will be memory-only.", log_file_path, e);
+            }
+        }
     }
 
     if let Err(e) = run_tui().await {

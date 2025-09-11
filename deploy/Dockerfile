@@ -30,7 +30,7 @@ WORKDIR /usr/src/sam
 COPY Cargo.toml Cargo.lock build.rs ./
 
 # Cache bust to force rebuild with Rust nightly for edition2024 support
-RUN echo "Cache bust: 2025-09-11-0.03"
+RUN echo "Cache bust: 2025-09-11-0.04"
 
 # Create dummy source structure for dependency compilation
 RUN mkdir -p src/bin src/lib benches && \
@@ -63,7 +63,7 @@ RUN cargo build --release --bin sam
 # Stage 2: Runtime optimized for CapRover
 FROM debian:bookworm-slim
 
-# Install runtime dependencies
+# Install runtime dependencies including Python for RiveScript
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
@@ -78,9 +78,19 @@ RUN apt-get update && apt-get install -y \
     wget \
     tzdata \
     dumb-init \
+    python3 \
+    python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get autoremove -y \
     && apt-get clean
+
+# Install Python packages required for brain.py
+RUN pip3 install --no-cache-dir \
+    rivescript \
+    sentry-sdk \
+    six \
+    setuptools
 
 # Create non-root user for security
 RUN useradd -m -u 1001 -s /bin/bash sam && \
@@ -96,6 +106,7 @@ COPY --from=builder /usr/src/sam/cfg /app/cfg
 COPY --from=builder /usr/src/sam/data /app/data
 COPY --from=builder /usr/src/sam/packages /app/packages
 COPY --from=builder /usr/src/sam/www /app/www
+COPY --from=builder /usr/src/sam/scripts /app/scripts
 
 # Copy and setup entrypoint script
 COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh

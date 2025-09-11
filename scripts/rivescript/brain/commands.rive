@@ -1,0 +1,629 @@
+// SAM System Commands
+
+// Help and Information
++ (help|what can you do|commands|show commands|assist me|what commands|available commands)
+- Here are the commands I can help you with! I can manage files, control services, run system commands, and much more. ::::: help :::::
+
++ (status|how are things|system status|check status|system check|how is everything)
+- Let me check the system status for you. ::::: status :::::
+
++ (services|what services|running services|list services|show services|service list)
+- I'll show you all available services. ::::: services :::::
+
++ (version|what version|sam version|show version|check version|current version)
+- Let me show you the current SAM version. ::::: version :::::
+
++ (errors|show errors|error log|check errors|any errors|system errors)
+- I'll display the error output for you. ::::: errors :::::
+
++ (clear|clear screen|cls|clear my screen|clear the screen|clean screen|empty screen|refresh screen)
+- Clearing the screen for you. ::::: clear :::::
+
++ (exit|quit|bye|goodbye|terminate|stop|close|shutdown|end)
+- Goodbye! Exiting the command prompt. ::::: exit :::::
+
+// File Operations
++ (ls|list files|show files|what files|files|list directory|directory contents|show directory|what is here|what files are here|dir|directory listing)
+- I'll list the files in the current directory. ::::: ls :::::
+
++ (ls la|list all files|show all files|detailed files|detailed listing|list all|show all|hidden files|all files|detailed view)
+- Showing detailed file listing with hidden files. ::::: ls -la :::::
+
++ (ls l|detailed list|long listing|detailed format|file details|show details)
+- Showing detailed file listing. ::::: ls -l :::::
+
++ (ls a|show hidden|hidden files|list hidden|include hidden|all including hidden)
+- Showing all files including hidden ones. ::::: ls -a :::::
+
++ (pwd|where am i|current directory|working directory|current location|my location|where am i now|current path|show path)
+- Let me show you the current directory. ::::: pwd :::::
+
++ cd *
+- Changing to directory <star>. ::::: cd <star> :::::
+
++ (cd|go home|home directory|go to home|navigate home|home folder)
+- Going to your home directory. ::::: cd ~ :::::
+
++ (go to downloads|downloads folder|cd downloads|navigate downloads|switch to downloads|downloads directory)
+- Switching to your Downloads folder. ::::: cd ~/Downloads :::::
+
++ (go to desktop|desktop folder|cd desktop|navigate desktop|switch to desktop|desktop directory)
+- Moving to your Desktop folder. ::::: cd ~/Desktop :::::
+
++ (go to documents|documents folder|cd documents|navigate documents|switch to documents|documents directory)
+- Navigating to your Documents folder. ::::: cd ~/Documents :::::
+
++ (go back|cd back|go up|parent directory|cd up|up one level|back up|previous directory)
+- Going up one directory level. ::::: cd .. :::::
+
++ (go to root|root directory|cd root|navigate root|filesystem root)
+- Going to the filesystem root. ::::: cd / :::::
+
++ mkdir *
+- Creating directory <star>. ::::: mkdir <star> :::::
+
++ (mkdir p *|create directory *|make directory *|create folder *|make folder *|new directory *|new folder *)
+- Creating directory <star> with parent directories. ::::: mkdir -p <star> :::::
+
++ (create directory|make directory|new directory|create folder|make folder|new folder)
+- I can create a directory for you. What would you like to name it?
+
++ rmdir *
+- Removing directory <star>. ::::: rmdir <star> :::::
+
++ (remove directory *|delete directory *|remove folder *|delete folder *)
+- Removing directory <star>. ::::: rmdir <star> :::::
+
++ cp * *
+- Copying from <star1> to <star2>. ::::: cp <star1> <star2> :::::
+
++ (cp r *|copy recursive *|copy directory *|copy folder *)
+- Copying <star> recursively. ::::: cp -r <star> :::::
+
++ (copy * to *|copy file * to *|duplicate * to *)
+- Copying <star1> to <star2>. ::::: cp <star1> <star2> :::::
+
++ mv * *
+- Moving/renaming from <star1> to <star2>. ::::: mv <star1> <star2> :::::
+
++ (move * to *|rename * to *|relocate * to *)
+- Moving/renaming <star1> to <star2>. ::::: mv <star1> <star2> :::::
+
++ rm *
+- Removing file <star>. ::::: rm <star> :::::
+
++ (rm r *|remove recursive *|delete directory *|delete folder *)
+- Removing <star> recursively. ::::: rm -r <star> :::::
+
++ (rm rf *|force remove *|delete everything *|force delete *)
+- Force removing <star> and all contents. ::::: rm -rf <star> :::::
+
++ (delete *|remove *|delete file *|remove file *)
+- Removing file <star>. ::::: rm <star> :::::
+
++ cat *
+- Displaying contents of <star>. ::::: cat <star> :::::
+
++ (show file *|display file *|read file *|view file *|show contents *|file contents *)
+- Displaying contents of <star>. ::::: cat <star> :::::
+
++ less *
+- Opening <star> in the pager. ::::: less <star> :::::
+
++ (page *|view *|browse *|scroll through *)
+- Opening <star> in the pager. ::::: less <star> :::::
+
++ nano *
+- Opening <star> in the nano editor. ::::: nano <star> :::::
+
++ (edit *|edit file *|modify *|change *|update *|open editor *)
+- Opening <star> in the nano editor. ::::: nano <star> :::::
+
++ (nano|edit file|text editor|open editor|start editor|new file)
+- Opening nano text editor. ::::: nano :::::
+
++ touch *
+- Creating or updating file <star>. ::::: touch <star> :::::
+
++ (create file *|new file *|make file *|touch file *)
+- Creating or updating file <star>. ::::: touch <star> :::::
+
++ head *
+- Showing first 10 lines of <star>. ::::: head <star> :::::
+
++ (head n # *|first # lines *|top # lines *)
+- Showing first <star1> lines of <star2>. ::::: head -n <star1> <star2> :::::
+
++ (beginning of *|start of *|top of *)
+- Showing first 10 lines of <star>. ::::: head <star> :::::
+
++ tail *
+- Showing last 10 lines of <star>. ::::: tail <star> :::::
+
++ (tail n # *|last # lines *|bottom # lines *)
+- Showing last <star1> lines of <star2>. ::::: tail -n <star1> <star2> :::::
+
++ (tail f *|follow *|watch *|monitor *)
+- Following changes to <star>. ::::: tail -f <star> :::::
+
++ (end of *|bottom of *|last part of *)
+- Showing last 10 lines of <star>. ::::: tail <star> :::::
+
++ find *
+- Searching for <star>. ::::: find . -name "*<star>*" :::::
+
++ (find file *|search for *|locate *|look for *|search file *)
+- Searching for <star>. ::::: find . -name "*<star>*" :::::
+
++ chmod * *
+- Changing permissions of <star2> to <star1>. ::::: chmod <star1> <star2> :::::
+
++ (permissions *|change permissions *|modify permissions *)
+- Changing permissions of <star2> to <star1>. ::::: chmod <star1> <star2> :::::
+
++ chown * *
+- Changing owner of <star2> to <star1>. ::::: chown <star1> <star2> :::::
+
++ (change owner *|owner *|change ownership *)
+- Changing owner of <star2> to <star1>. ::::: chown <star1> <star2> :::::
+
++ grep * *
+- Searching for "<star1>" in <star2>. ::::: grep <star1> <star2> :::::
+
++ (search * in *|find * in *|look for * in *|search text *)
+- Searching for "<star1>" in <star2>. ::::: grep <star1> <star2> :::::
+
++ echo *
+- Displaying: <star> ::::: echo <star> :::::
+
++ (print *|display *|show text *|output *)
+- Displaying: <star> ::::: echo <star> :::::
+
++ sort *
+- Sorting contents of <star>. ::::: sort <star> :::::
+
++ (sort file *|organize *|arrange *)
+- Sorting contents of <star>. ::::: sort <star> :::::
+
++ wc *
+- Counting lines, words, and characters in <star>. ::::: wc <star> :::::
+
++ (word count *|count lines *|count words *|file stats *)
+- Counting lines, words, and characters in <star>. ::::: wc <star> :::::
+
++ tar *
+- Working with archive <star>. ::::: tar <star> :::::
+
++ (archive *|compress *|create archive *)
+- Working with archive <star>. ::::: tar <star> :::::
+
++ gzip *
+- Compressing <star>. ::::: gzip <star> :::::
+
++ (compress *|zip *)
+- Compressing <star>. ::::: gzip <star> :::::
+
++ gunzip *
+- Decompressing <star>. ::::: gunzip <star> :::::
+
++ (decompress *|unzip *|extract *)
+- Decompressing <star>. ::::: gunzip <star> :::::
+
+// System Information & Monitoring
++ (uname|system info|os info|kernel info|operating system|what system|system details|os details)
+- Showing system information. ::::: uname -a :::::
+
++ (whoami|who am i|current user|username|user|my username|logged in as)
+- Showing current user information. ::::: whoami :::::
+
++ (date|current date|what date|today|current time|time|what time|now|timestamp)
+- Showing current date and time. ::::: date :::::
+
++ (disk space|storage|df|disk usage|free space|available space|storage space|how much space)
+- Checking disk space usage. ::::: df -h :::::
+
++ (du|directory size|folder size|disk usage here|space used|how big)
+- Checking directory space usage. ::::: du -h :::::
+
++ (memory usage|ram|memory|free memory|available memory|memory stats)
+- Showing memory usage. ::::: free -h :::::
+
++ (top|processes|running processes|process list|cpu usage|system performance|performance)
+- Showing system processes and performance. ::::: top :::::
+
++ (ps|process list|running programs|whats running|active processes|process status)
+- Listing running processes. ::::: ps aux :::::
+
++ kill *
+- Terminating process <star>. ::::: kill <star> :::::
+
++ (kill process *|terminate *|stop process *|end process *)
+- Terminating process <star>. ::::: kill <star> :::::
+
++ man *
+- Showing manual page for <star>. ::::: man <star> :::::
+
++ (manual *|help with *|documentation *|man page *)
+- Showing manual page for <star>. ::::: man <star> :::::
+
+// Text-to-Speech & AI Services
++ (say *|speak *|tts *|text to speech *|talk *|voice *)
+- Speaking: "<star>". ::::: tts <star> :::::
+
++ (say|speak|talk|voice|text to speech|tts)
+- I can speak text for you. What would you like me to say?
+
+// AI/LLM Operations
++ (llama install|install llama|setup llama|download llama|get llama|llama setup)
+- Installing Llama.cpp models for you. ::::: llama install :::::
+
++ llama *
+- Querying Llama with: "<star>". ::::: llama <star> :::::
+
++ llama2 *
+- Querying Llama v2 with: "<star>". ::::: llama2 <star> :::::
+
++ llama2 tiny *
+- Querying Llama v2-tiny with: "<star>". ::::: llama2-tiny <star> :::::
+
++ (ask llama *|llama query *|llama question *)
+- Querying Llama with: "<star>". ::::: llama <star> :::::
+
+// LIFX Light Control
++ (lifx start|start lifx|turn on lights|lights on|lifx on|enable lights|start lights|lights start)
+- Starting LIFX service and turning on your lights. ::::: lifx start :::::
+
++ (lifx stop|stop lifx|turn off lights|lights off|lifx off|disable lights|stop lights|lights stop)
+- Stopping LIFX service and turning off your lights. ::::: lifx stop :::::
+
++ (lifx status|light status|check lights|lights status|lifx check|light check)
+- Checking LIFX service status. ::::: lifx status :::::
+
+// Web Crawler Service
++ (crawler start|start crawler|begin crawling|start crawling|crawler on|enable crawler)
+- Starting the background web crawler. ::::: crawler start :::::
+
++ (crawler stop|stop crawler|halt crawling|stop crawling|crawler off|disable crawler)
+- Stopping the background web crawler. ::::: crawler stop :::::
+
++ (crawler status|check crawler|crawler check|crawling status|crawler state)
+- Checking web crawler status. ::::: crawler status :::::
+
++ (crawl search *|search crawled pages *|search pages *|find in crawled *|search crawl *)
+- Searching crawled pages for "<star>". ::::: crawl search <star> :::::
+
+// Redis Operations
++ (redis install|install redis|setup redis|get redis|download redis|redis setup)
+- Installing Redis using Docker. ::::: redis install :::::
+
++ (redis start|start redis|redis on|enable redis|start redis server|redis server start)
+- Starting the Redis Docker container. ::::: redis start :::::
+
++ (redis stop|stop redis|redis off|disable redis|stop redis server|redis server stop)
+- Stopping the Redis Docker container. ::::: redis stop :::::
+
++ (redis status|check redis|redis check|redis state|redis server status)
+- Checking Redis Docker container status. ::::: redis status :::::
+
+// PostgreSQL Operations  
++ (pg install|install postgres|setup postgres|get postgres|download postgres|postgres setup|postgresql install)
+- Installing PostgreSQL using Docker. ::::: pg install :::::
+
++ (pg start|start postgres|postgres on|enable postgres|start postgres server|postgres server start|postgresql start)
+- Starting the PostgreSQL Docker container. ::::: pg start :::::
+
++ (pg stop|stop postgres|postgres off|disable postgres|stop postgres server|postgres server stop|postgresql stop)
+- Stopping the PostgreSQL Docker container. ::::: pg stop :::::
+
++ (pg status|check postgres|postgres check|postgres state|postgres server status|postgresql status)
+- Checking PostgreSQL Docker container status. ::::: pg status :::::
+
+// Docker Operations
++ (docker start|start docker|docker on|enable docker|docker daemon start)
+- Starting the Docker daemon. ::::: docker start :::::
+
++ (docker stop|stop docker|docker off|disable docker|docker daemon stop)
+- Stopping the Docker daemon. ::::: docker stop :::::
+
++ (docker status|check docker|docker check|docker state|docker daemon status)
+- Checking Docker daemon status. ::::: docker status :::::
+
+// Spotify Operations
++ (spotify start|start spotify|spotify on|enable spotify|music start)
+- Starting Spotify service. ::::: spotify start :::::
+
++ (spotify stop|stop spotify|spotify off|disable spotify|music stop)
+- Stopping Spotify service. ::::: spotify stop :::::
+
++ (spotify status|check spotify|spotify check|music status|spotify state)
+- Checking Spotify service status. ::::: spotify status :::::
+
++ (spotify play|play music|start playing|music play|play spotify)
+- Playing music on Spotify. ::::: spotify play :::::
+
++ (spotify pause|pause music|stop playing|music pause|pause spotify)
+- Pausing music on Spotify. ::::: spotify pause :::::
+
++ (spotify shuffle|shuffle music|random music|music shuffle|shuffle spotify)
+- Shuffling music on Spotify. ::::: spotify shuffle :::::
+
+// SMS Operations
++ (sms start|start sms|sms on|enable sms|messaging start)
+- Starting SMS service. ::::: sms start :::::
+
++ (sms stop|stop sms|sms off|disable sms|messaging stop)
+- Stopping SMS service. ::::: sms stop :::::
+
++ (sms status|check sms|sms check|messaging status|sms state)
+- Checking SMS service status. ::::: sms status :::::
+
+// HTTP/Web Services
++ (http start|start http|start web server|web server start|server start|start server)
+- Starting HTTP/web services. ::::: http start :::::
+
++ (http stop|stop http|stop web server|web server stop|server stop|stop server)
+- Stopping HTTP/web services. ::::: http stop :::::
+
++ (http status|check http|web server status|server status|check server)
+- Checking HTTP/web server status. ::::: http status :::::
+
+// Networking & Advanced Commands
++ (ssh *|secure shell *|remote *|connect to *)
+- Connecting via SSH: <star>. ::::: ssh <star> :::::
+
++ (ssh connect *|ssh login *|remote login *|remote connect *)
+- Connecting via SSH to <star>. ::::: ssh <star> :::::
+
++ (mdns *|multicast dns *|bonjour *|network discovery *)
+- mDNS operation: <star>. ::::: mdns <star> :::::
+
++ (mdns scan|scan network|find devices|network scan|discover devices)
+- Scanning network for devices. ::::: mdns scan :::::
+
++ (p2p *|peer to peer *|p2p network *)
+- P2P operation: <star>. ::::: p2p <star> :::::
+
++ (darknet *|yolo *|object detection *|image recognition *)
+- Darknet/YOLO operation: <star>. ::::: darknet <star> :::::
+
++ (matter *|smart home *|iot *|home automation *)
+- Matter/IoT operation: <star>. ::::: matter <star> :::::
+
+// Migration & Database
++ (migrate *|database migrate *|migration *|db migrate *)
+- Running migration: <star>. ::::: migrate <star> :::::
+
++ (migrate up|upgrade database|apply migrations|update database)
+- Applying database migrations. ::::: migrate up :::::
+
++ (migrate down|downgrade database|rollback migrations|revert database)
+- Rolling back database migrations. ::::: migrate down :::::
+
++ (migrate status|migration status|check migrations|database status)
+- Checking migration status. ::::: migrate status :::::
+
+// System Monitoring
+- Checking disk space usage. ::::: df -h :::::
+
++ (memory usage|ram|memory|free memory|available memory|memory stats)
+- Showing memory usage and processes. ::::: top :::::
+
++ (processes|running processes|ps|process list|whats running)
+- Listing running processes. ::::: ps aux :::::
+
++ (system load|load average|cpu load|system performance)
+- Checking system load and performance. ::::: top :::::
+
++ (network usage|network stats|network traffic|bandwidth usage)
+- Checking network statistics. ::::: netstat -i :::::
+
++ (open ports|listening ports|network ports|port status)
+- Checking open network ports. ::::: netstat -tuln :::::
+
++ (system uptime|uptime|how long running|system runtime)
+- Checking system uptime. ::::: uptime :::::
+
+// Debug Operations
++ debug *
+- Setting debug level to <star>. ::::: debug <star> :::::
+
++ (debug|debug level)
+- I can help you set debug levels. What level would you like? (error, warn, info, debug, trace)
+
+// Common Cleanup Tasks
++ (clean downloads|clear downloads|empty downloads)
+- Cleaning your Downloads folder. ::::: rm -rf ~/Downloads/* :::::
+
++ (clean desktop|clear desktop|empty desktop)
+- Cleaning your Desktop. ::::: rm -rf ~/Desktop/* :::::
+
++ (empty trash|clear trash|clean trash)
+- Emptying the trash. ::::: rm -rf ~/.Trash/* :::::
+
+// Pipe Operations & Advanced Commands
++ * pipe *
+- Running piped command: <star1> | <star2>. ::::: <star1> | <star2> :::::
+
++ (* | *)
+- Running piped command: <star1> | <star2>. ::::: <star1> | <star2> :::::
+
++ (search * in files|find * in all files|grep *)
+- Searching for <star> in all files. ::::: grep -r <star> . :::::
+
++ (search * in *|find * in *|grep * *)
+- Searching for <star1> in <star2>. ::::: grep <star1> <star2> :::::
+
++ (count lines in *|line count *|wc lines *)
+- Counting lines in <star>. ::::: wc -l <star> :::::
+
++ (count words in *|word count *|wc words *)
+- Counting words in <star>. ::::: wc -w <star> :::::
+
++ (first * lines of *|head * lines *|top * lines *)
+- Showing first <star1> lines of <star2>. ::::: head -n <star1> <star2> :::::
+
++ (last * lines of *|tail * lines *|bottom * lines *)
+- Showing last <star1> lines of <star2>. ::::: tail -n <star1> <star2> :::::
+
++ (sort * file|organize * file|arrange * file)
+- Sorting file <star>. ::::: sort <star> :::::
+
++ (unique lines in *|remove duplicates *|uniq *)
+- Showing unique lines in <star>. ::::: sort <star> | uniq :::::
+
++ (process list|running programs|active processes)
+- Showing running processes. ::::: ps aux :::::
+
++ (process * info|info about process *|process details *)
+- Getting information about process <star>. ::::: ps aux | grep <star> :::::
+
++ (files larger than *|big files *|large files *)
+- Finding files larger than <star>. ::::: find . -size +<star> :::::
+
++ (files modified today|todays files|recent files)
+- Finding files modified today. ::::: find . -mtime -1 :::::
+
++ (files containing *|files with text *|search files for *)
+- Finding files containing <star>. ::::: grep -r "<star>" . :::::
+
++ (disk usage sorted|largest directories|biggest folders)
+- Showing largest directories. ::::: du -sh */ | sort -hr :::::
+
++ (network connections|open connections|network status)
+- Showing network connections. ::::: netstat -tuln :::::
+
++ (listen ports|listening services|open ports)
+- Showing listening ports. ::::: netstat -tuln | grep LISTEN :::::
+
++ (system resources|resource usage|memory cpu)
+- Showing system resources. ::::: top | head -20 :::::
+
+// Generic command patterns
++ run *
+- Running command: <star>. ::::: <star> :::::
+
++ execute *
+- Executing: <star>. ::::: <star> :::::
+
++ command *
+- Executing command: <star>. ::::: <star> :::::
+
++ (do *|perform *|carry out *)
+- Performing: <star>. ::::: <star> :::::
+
++ (please *|can you *|would you *)
+- Of course! <star>. ::::: <star> :::::
+
+// Natural Language File Operations
++ (what files are here|show me files|list current files|whats in this directory|directory contents)
+- I'll show you the files in the current directory. ::::: ls -la :::::
+
++ (how much space|disk space|storage space|available storage|free space left)
+- Let me check your disk space usage. ::::: df -h :::::
+
++ (find file *|locate file *|search for file *|where is file *|look for *)
+- Searching for file containing "<star>". ::::: find . -name "*<star>*" :::::
+
++ (what directory|where am i located|current location|my location|working directory)
+- Let me show you your current location. ::::: pwd :::::
+
++ (how big is *|size of *|file size *|directory size *)
+- Checking size of <star>. ::::: du -sh <star> :::::
+
++ (when was * modified|last modified *|file date *|modification time *)
+- Checking modification time for <star>. ::::: ls -l <star> :::::
+
++ (who owns *|owner of *|permissions *|file permissions *)
+- Checking ownership and permissions for <star>. ::::: ls -l <star> :::::
+
++ (is * a file|is * a directory|what type is *|file type *)
+- Checking type of <star>. ::::: file <star> :::::
+
+// Natural Language System Questions
++ (whats my username|who am i logged in as|current user|my account)
+- Let me check your current user. ::::: whoami :::::
+
++ (what time is it|current time|whats the time|time now)
+- Here's the current time. ::::: date :::::
+
++ (what system am i on|operating system|what os|system info|computer info)
+- Here's your system information. ::::: uname -a :::::
+
++ (how long has the system been running|system uptime|how long online)
+- Checking system uptime. ::::: uptime :::::
+
++ (what processes are running|running programs|active applications|system processes)
+- Here are the running processes. ::::: ps aux :::::
+
++ (system performance|how is the system|cpu usage|resource usage)
+- Checking system performance. ::::: top :::::
+
+// Service Status Questions
++ (what services are running|active services|running services|service status)
+- Let me check the service status. ::::: status :::::
+
++ (is * running|is * active|* status|check * service)
+- Checking status of <star>. ::::: <star> status :::::
+
++ (start *|turn on *|enable *|activate *)
+- Starting <star>. ::::: <star> start :::::
+
++ (stop *|turn off *|disable *|deactivate *)
+- Stopping <star>. ::::: <star> stop :::::
+
+// Error handling and help
++ i need help with *
+- I'd be happy to help you with <star>. Can you be more specific about what you need?
+
++ how do i *
+- To <star>, I can help guide you. What specifically would you like to do?
+
++ (how to *|help with *|assist with *|guide for *)
+- I can help you with <star>. What would you like to know specifically?
+
++ * not working
+- It sounds like <star> isn't working properly. Let me help you troubleshoot this. You might want to check the status first.
+
++ * error
+- I see you're having an error with <star>. Can you tell me more about what's happening?
+
++ (something is wrong|having problems|need troubleshooting|system issues)
+- I'm here to help! Can you describe what problem you're experiencing?
+
++ (cant *|cannot *|unable to *|wont *)
+- I understand you're having trouble with <star>. Let me help you figure this out.
+
+// Common variations and shortcuts
++ (l|list|dir)
+- Listing current directory contents. ::::: ls :::::
+
++ (la|ll|detailed)
+- Showing detailed directory listing. ::::: ls -la :::::
+
++ (h|home)
+- Going to home directory. ::::: cd ~ :::::
+
++ (b|back|up)
+- Going up one directory level. ::::: cd .. :::::
+
++ (q|quit|exit)
+- Goodbye! ::::: exit :::::
+
++ (c|cls|clean)
+- Clearing the screen. ::::: clear :::::
+
+// Friendly conversational patterns
++ (thanks|thank you|great|awesome|perfect)
+- You're welcome! Is there anything else I can help you with?
+
++ (hi|hello|hey|greetings)
+- Hello! I'm here to help you with system commands. What would you like to do?
+
++ (good morning|good afternoon|good evening)
+- Good day! How can I assist you with your system today?
+
++ (what can you do|your capabilities|what are you|who are you)
+- I'm SAM, your system assistant! I can help you with file operations, system monitoring, service management, and much more. Just ask me naturally, like "show me files" or "start the web server".
+
++ (nice|cool|impressive|good job)
+- Thank you! I'm always here to help make your system tasks easier.

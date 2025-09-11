@@ -1,0 +1,198 @@
+! version = 2.0
+
+// Geography Knowledge Base for SAM
+// Covers physical geography, countries, cities, natural features, and environmental topics
+
+// Geography Basics
++ what is geography
+- Geography is the study of Earth's places, peoples, and environments. It examines spatial relationships, human-environment interactions, and the distribution of phenomena across Earth's surface. Geography bridges physical sciences and social sciences.
+
++ what is physical geography
+- Physical geography studies Earth's natural features and processes including landforms, climate, weather, water bodies, soils, and ecosystems. It examines how these physical systems interact and change over time through processes like erosion, plate tectonics, and climate cycles.
+
++ what is human geography
+- Human geography studies how people create and interact with their environments. It covers population distribution, cities, cultures, languages, religions, economic activities, and political systems. It examines how human activities shape and are shaped by geography.
+
++ what are the seven continents
+- The seven continents are Asia (largest), Africa, North America, South America, Antarctica, Europe, and Australia/Oceania. These massive landmasses contain all the world's countries and most of Earth's land surface.
+
++ what are the five oceans
+- The five oceans are Pacific (largest), Atlantic, Indian, Southern (Antarctic), and Arctic (smallest). These connected bodies of water cover about 71% of Earth's surface and contain 97% of Earth's water.
+
+// Physical Features
++ what are mountains
+- Mountains are large landforms that rise prominently above surrounding terrain. They form through tectonic forces, volcanic activity, or erosion. Mountain ranges like the Himalayas, Alps, and Rockies shape climate, water flow, and human settlement patterns.
+
++ tell me about the himalayas
+- The Himalayas are the world's highest mountain range, stretching across Nepal, India, Bhutan, and China. Home to Mount Everest (29,032 feet), they were formed by the collision of Indian and Eurasian tectonic plates and contain over 110 peaks above 24,000 feet.
+
++ what are rivers
+- Rivers are flowing bodies of water that drain land areas and flow toward seas, lakes, or other rivers. They shape landscapes through erosion and deposition, provide fresh water, support ecosystems, and serve as transportation routes and political boundaries.
+
++ tell me about the amazon river
+- The Amazon River is the world's largest river by discharge and second-longest by length (about 4,000 miles). It flows through South America from Peru to Brazil, draining the Amazon Basin and supporting the world's largest rainforest ecosystem.
+
++ what are deserts
+- Deserts are arid regions receiving less than 10 inches of annual precipitation. They cover about 30% of Earth's land surface and can be hot (Sahara) or cold (Antarctica). Desert landscapes are shaped by wind erosion and extreme temperature variations.
+
++ tell me about the sahara desert
+- The Sahara is the world's largest hot desert, covering 3.6 million square miles across North Africa. It's roughly the size of the United States and continues to expand. Despite harsh conditions, it supports various adapted plants, animals, and human communities.
+
+// Countries and Capitals
++ largest country in the world
+- Russia is the world's largest country by land area, covering over 6.6 million square miles (17.1 million km²). It spans 11 time zones from Eastern Europe to the Pacific Ocean, bordered by 16 countries.
+
++ smallest country in the world
+- Vatican City is the world's smallest country, covering only 0.17 square miles (0.44 km²). Located within Rome, Italy, it serves as the spiritual and administrative headquarters of the Roman Catholic Church.
+
++ most populous country
+- China is the world's most populous country with over 1.4 billion people, followed closely by India. These two countries together contain more than one-third of the world's population.
+
++ what is the capital of france
+- Paris is the capital of France, located on the Seine River in northern France. Known as the "City of Light," it's famous for landmarks like the Eiffel Tower, Louvre Museum, and Notre-Dame Cathedral.
+
++ capital of japan
+- Tokyo is Japan's capital and largest city, with a metropolitan area population exceeding 37 million. It's a major global financial center and was the host city for the 2020 Olympics (held in 2021).
+
++ what is the capital of australia
+- Canberra is Australia's capital city, located between Sydney and Melbourne. It was purpose-built as the national capital in 1913 to resolve rivalry between Sydney and Melbourne.
+
+// Climate and Weather
++ what is climate
+- Climate is the long-term average weather pattern in a region over decades or centuries. It includes temperature, precipitation, humidity, and seasonal variations. Climate zones are determined by latitude, altitude, ocean currents, and landforms.
+
++ what causes seasons
+- Seasons are caused by Earth's tilted axis (23.5 degrees) as it orbits the Sun. When the Northern Hemisphere tilts toward the Sun, it experiences summer while the Southern Hemisphere has winter, and vice versa.
+
++ what is the greenhouse effect
+- The greenhouse effect occurs when atmospheric gases like carbon dioxide and methane trap heat from the Sun, warming Earth's surface. This natural process makes Earth habitable, but human activities are intensifying it, causing climate change.
+
++ tell me about climate change
+- Climate change refers to long-term shifts in global temperatures and weather patterns. While natural, human activities since the Industrial Revolution have dramatically accelerated warming through greenhouse gas emissions, causing rising seas, extreme weather, and ecosystem changes.
+
++ what are monsoons
+- Monsoons are seasonal wind patterns that bring heavy rainfall to regions like South Asia and West Africa. They're caused by temperature differences between land and sea, and billions of people depend on monsoon rains for agriculture and water supply.
+
+// Natural Disasters
++ what causes earthquakes
+- Earthquakes occur when tectonic plates move suddenly along fault lines, releasing stored energy as seismic waves. Most happen at plate boundaries, and their magnitude is measured on the Richter scale. The Ring of Fire around the Pacific is particularly active.
+
++ what are tsunamis
+- Tsunamis are series of ocean waves caused by underwater earthquakes, volcanic eruptions, or landslides. These waves can travel thousands of miles at jet-like speeds and cause devastating flooding when they reach coastal areas.
+
++ tell me about volcanoes
+- Volcanoes form where magma reaches Earth's surface, often at tectonic plate boundaries. They can be active, dormant, or extinct. Volcanic eruptions can be explosive or effusive, creating various landforms and affecting global climate through ash and gas emissions.
+
++ what are hurricanes
+- Hurricanes are powerful tropical storms with winds exceeding 74 mph, formed over warm ocean waters. Called typhoons in the Pacific and cyclones in the Indian Ocean, they bring destructive winds, flooding, and storm surges to coastal areas.
+
++ what causes tornadoes
+- Tornadoes form when warm, moist air collides with cool, dry air under specific atmospheric conditions. These rotating columns of air can reach speeds over 200 mph and are most common in "Tornado Alley" in the central United States.
+
+// World Regions
++ tell me about europe
+- Europe is a continent of 44 countries known for its rich history, diverse cultures, and economic development. It includes major powers like Germany, France, and the UK, and is home to the European Union, a political and economic union of 27 member states.
+
++ what is asia like
+- Asia is the world's largest and most populous continent, containing 60% of the world's population. It includes diverse countries from Russia and China to Japan and India, with varied climates, cultures, economies, and political systems.
+
++ tell me about africa
+- Africa is the second-largest continent with 54 countries and over 1.3 billion people. It's known for diverse ecosystems (Sahara, rainforests, savannas), rich mineral resources, ancient civilizations, and the origin of human species.
+
++ what is north america
+- North America includes Canada, the United States, and Mexico, plus Central America and Caribbean islands. It features diverse geography from Arctic tundra to tropical beaches, and is home to major economic powers and cultural influences.
+
++ tell me about south america
+- South America contains 12 countries including Brazil (largest), Argentina, and Chile. It's known for the Amazon rainforest, Andes Mountains, diverse cultures, and natural resources. The continent has both Spanish and Portuguese colonial heritage.
+
++ what is oceania
+- Oceania includes Australia, New Zealand, and thousands of Pacific islands grouped into Melanesia, Micronesia, and Polynesia. Despite vast ocean distances, these regions share similar challenges and opportunities related to island geography.
+
+// Major Cities
++ largest city in the world
+- Tokyo, Japan, has the world's largest metropolitan area with over 37 million people. Other megacities include Delhi, Shanghai, São Paulo, and Mexico City. Urban growth is fastest in developing countries.
+
++ tell me about new york city
+- New York City is America's largest city and a global financial center. Located on the east coast, it includes five boroughs: Manhattan, Brooklyn, Queens, Bronx, and Staten Island. It's known for Wall Street, Broadway, and the Statue of Liberty.
+
++ what is london like
+- London is the capital of the United Kingdom and a major global city. Located on the Thames River, it's known for historic landmarks like Big Ben and Tower Bridge, financial districts, cultural attractions, and its role in world finance.
+
++ tell me about mumbai
+- Mumbai (formerly Bombay) is India's largest city and financial capital. Located on India's west coast, it's home to Bollywood film industry, major ports, and serves as India's commercial hub with a population over 20 million.
+
+// Environmental Geography
++ what are ecosystems
+- Ecosystems are communities of living organisms interacting with their physical environment. Examples include forests, grasslands, deserts, and marine systems. Each has unique climate, soil, plants, and animals adapted to those conditions.
+
++ tell me about rainforests
+- Rainforests are dense forests with high rainfall (80+ inches annually) found near the equator. The Amazon is the largest, but others exist in Africa, Asia, and Australia. They contain over half of Earth's species and produce much of our oxygen.
+
++ what are coral reefs
+- Coral reefs are marine ecosystems built by coral polyps in warm, shallow waters. They support 25% of marine species despite covering less than 1% of ocean floor. The Great Barrier Reef in Australia is the world's largest coral reef system.
+
++ tell me about the polar regions
+- The polar regions include the Arctic (North Pole) and Antarctica (South Pole). These areas experience extreme cold, long periods of daylight/darkness, and are covered by ice. They're crucial for regulating global climate and sea levels.
+
++ what is deforestation
+- Deforestation is the clearing of forests for agriculture, development, or logging. It reduces biodiversity, increases carbon dioxide levels, and disrupts water cycles. The Amazon and other tropical forests face significant deforestation pressures.
+
+// Economic Geography
++ what are natural resources
+- Natural resources include materials from Earth used by humans: fossil fuels (oil, gas, coal), minerals (iron, gold), water, forests, and agricultural land. Their distribution affects economic development and international trade patterns.
+
++ tell me about oil reserves
+- The largest oil reserves are in Saudi Arabia, Venezuela, Canada, Iran, and Iraq. Oil distribution affects global politics and economics, as countries depend on petroleum for energy and transportation. The Middle East contains about 60% of proven reserves.
+
++ what is globalization
+- Globalization is the increasing interconnection of world economies, cultures, and societies through trade, communication, and technology. It creates opportunities but also challenges like economic inequality and cultural homogenization.
+
++ tell me about trade routes
+- Major trade routes connect regions and facilitate global commerce. Modern routes include shipping lanes through the Suez Canal, Panama Canal, and Strait of Malacca. Historical routes like the Silk Road shaped civilization development.
+
+// Population and Demographics
++ world population facts
+- World population exceeded 8 billion in 2022 and grows by about 80 million annually. Growth rates are highest in Africa and lowest in developed countries. Population distribution is uneven, with most people living in Asia.
+
++ what is urbanization
+- Urbanization is the movement of people from rural to urban areas. Over half the world's population now lives in cities, with this percentage growing. Urbanization brings opportunities but also challenges like overcrowding and pollution.
+
++ population density
+- Population density measures people per square mile/kilometer. Monaco has the highest density, while countries like Mongolia and Australia have very low density. Density affects resource use, infrastructure needs, and quality of life.
+
++ tell me about migration
+- Migration is the movement of people from one place to another, either within countries (internal) or between countries (international). People migrate for economic opportunities, safety, education, or environmental reasons.
+
+// Geographic Tools and Concepts
++ what is a map
+- Maps are visual representations of geographic areas showing features like landforms, cities, roads, and boundaries. Different map projections present Earth's curved surface on flat surfaces, each with advantages and distortions.
+
++ what is gps
+- GPS (Global Positioning System) uses satellites to determine precise locations on Earth. Originally developed for military use, it now enables navigation, mapping, surveying, and location-based services in smartphones and other devices.
+
++ what are time zones
+- Time zones divide Earth into 24 regions with standardized times. They roughly follow longitude lines but are adjusted for political boundaries. The prime meridian (0°) at Greenwich, England, is the reference point for global time coordination.
+
++ what is the equator
+- The equator is an imaginary line circling Earth at 0° latitude, equally distant from both poles. It divides Earth into Northern and Southern Hemispheres and experiences nearly equal day and night lengths year-round.
+
+// Geography Trivia
++ random geography fact
+- <get geography_facts>
+
++ geography trivia
+- <get geography_facts>
+
+! array geography_facts = Russia spans 11 time zones|The Pacific Ocean is larger than all land areas combined|Mount Everest grows about 4 millimeters taller each year|The Dead Sea is actually a lake and the lowest point on Earth's surface|Antarctica is the world's largest desert|Alaska is the only US state in both Eastern and Western Hemispheres|The Amazon River has no bridges crossing it|Canada has more lakes than the rest of the world combined|Istanbul is the only city on two continents|The Sahara Desert is expanding southward|Vatican City has its own postal system and issues its own euros|Singapore is both a city and a country|The Nile River flows north|Africa is splitting apart slowly along the Great Rift Valley
+
++ fun geography facts
+- Australia is wider than the Moon! Bangladesh has more people than Russia despite being 120 times smaller. Libya is 99% desert. The Netherlands has more museums per square mile than any other country. Chile is 2,600 miles long but averages only 110 miles wide.
+
++ geography records
+- Longest river: Nile (4,132 miles). Largest lake: Caspian Sea. Deepest point: Mariana Trench (36,200 feet deep). Highest waterfall: Angel Falls, Venezuela (3,212 feet). Driest place: Atacama Desert, Chile.
+
++ countries and borders  
+- China and Russia each border 14 countries (most of any country). Vatican City and San Marino are completely surrounded by Italy. Lesotho is completely surrounded by South Africa. France has the most time zones of any country (12).
+
++ island facts
+- Indonesia has over 17,000 islands. Only about 6,000 are inhabited. Great Britain is the largest European island. Greenland is the world's largest island (not counting Australia as a continent). Madagascar is the 4th largest island globally.

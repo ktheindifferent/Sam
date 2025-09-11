@@ -1,0 +1,1208 @@
+! version = 2.0
+
+// Mathematics Knowledge Base for SAM
+// Covers basic arithmetic, algebra, geometry, calculus, statistics, and mathematical concepts
+// Enhanced with Python object macros for mathematical calculations
+
+// Python Object Macros for Mathematical Operations
+
+> object calculate python
+    import math
+    import re
+    try:
+        # Join all arguments into a single expression
+        expression = " ".join(args)
+        # Replace common mathematical notation
+        expression = expression.replace("^", "**")  # exponentiation
+        expression = expression.replace("π", str(math.pi))
+        expression = expression.replace("pi", str(math.pi))
+        expression = expression.replace("e", str(math.e))
+        
+        # Security: only allow safe mathematical operations
+        allowed_chars = "0123456789+-*/().** "
+        allowed_funcs = ["sin", "cos", "tan", "sqrt", "log", "exp", "abs", "pow"]
+        
+        # Basic validation
+        if all(c in allowed_chars + "abcdefghijklmnopqrstuvwxyz" for c in expression.lower()):
+            result = eval(expression, {"__builtins__": {}, "math": math})
+            return f"{expression} = {result}"
+        else:
+            return "Invalid mathematical expression. Please use only numbers and basic operators."
+    except Exception as e:
+        return f"Error calculating: {expression}. Please check your syntax."
+< object
+
+> object solve_quadratic python
+    import math
+    try:
+        # Expects format: a b c (coefficients of ax² + bx + c = 0)
+        if len(args) != 3:
+            return "Please provide 3 coefficients: a, b, c for equation ax² + bx + c = 0"
+        
+        a, b, c = float(args[0]), float(args[1]), float(args[2])
+        
+        if a == 0:
+            return "This is not a quadratic equation (a cannot be 0)"
+        
+        discriminant = b**2 - 4*a*c
+        
+        if discriminant > 0:
+            x1 = (-b + math.sqrt(discriminant)) / (2*a)
+            x2 = (-b - math.sqrt(discriminant)) / (2*a)
+            return f"Two real solutions: x₁ = {x1:.4f}, x₂ = {x2:.4f}"
+        elif discriminant == 0:
+            x = -b / (2*a)
+            return f"One solution: x = {x:.4f}"
+        else:
+            real_part = -b / (2*a)
+            imag_part = math.sqrt(abs(discriminant)) / (2*a)
+            return f"Complex solutions: x₁ = {real_part:.4f} + {imag_part:.4f}i, x₂ = {real_part:.4f} - {imag_part:.4f}i"
+    except Exception as e:
+        return "Error solving quadratic equation. Please provide valid numeric coefficients."
+< object
+
+> object factorial python
+    import math
+    try:
+        if len(args) != 1:
+            return "Please provide one number for factorial calculation"
+        
+        n = int(args[0])
+        if n < 0:
+            return "Factorial is not defined for negative numbers"
+        elif n > 170:  # Prevent overflow
+            return "Number too large for factorial calculation (max 170)"
+        
+        result = math.factorial(n)
+        return f"{n}! = {result:,}"
+    except ValueError:
+        return "Please provide a valid integer"
+    except Exception as e:
+        return f"Error calculating factorial: {str(e)}"
+< object
+
+> object prime_check python
+    import math
+    try:
+        if len(args) != 1:
+            return "Please provide one number to check if it's prime"
+        
+        n = int(args[0])
+        if n < 2:
+            return f"{n} is not a prime number"
+        if n == 2:
+            return f"{n} is prime"
+        if n % 2 == 0:
+            return f"{n} is not prime (divisible by 2)"
+        
+        for i in range(3, int(math.sqrt(n)) + 1, 2):
+            if n % i == 0:
+                return f"{n} is not prime (divisible by {i})"
+        
+        return f"{n} is prime"
+    except ValueError:
+        return "Please provide a valid integer"
+    except Exception as e:
+        return f"Error checking primality: {str(e)}"
+< object
+
+> object convert_units python
+    try:
+        if len(args) < 3:
+            return "Usage: convert_units <value> <from_unit> <to_unit>"
+        
+        value = float(args[0])
+        from_unit = args[1].lower()
+        to_unit = args[2].lower()
+        
+        # Temperature conversions
+        if from_unit in ["celsius", "c"] and to_unit in ["fahrenheit", "f"]:
+            result = (value * 9/5) + 32
+            return f"{value}°C = {result:.2f}°F"
+        elif from_unit in ["fahrenheit", "f"] and to_unit in ["celsius", "c"]:
+            result = (value - 32) * 5/9
+            return f"{value}°F = {result:.2f}°C"
+        elif from_unit in ["celsius", "c"] and to_unit in ["kelvin", "k"]:
+            result = value + 273.15
+            return f"{value}°C = {result:.2f}K"
+        elif from_unit in ["kelvin", "k"] and to_unit in ["celsius", "c"]:
+            result = value - 273.15
+            return f"{value}K = {result:.2f}°C"
+        
+        # Length conversions
+        elif from_unit in ["meters", "m"] and to_unit in ["feet", "ft"]:
+            result = value * 3.28084
+            return f"{value}m = {result:.2f}ft"
+        elif from_unit in ["feet", "ft"] and to_unit in ["meters", "m"]:
+            result = value / 3.28084
+            return f"{value}ft = {result:.2f}m"
+        elif from_unit in ["kilometers", "km"] and to_unit in ["miles", "mi"]:
+            result = value * 0.621371
+            return f"{value}km = {result:.2f}mi"
+        elif from_unit in ["miles", "mi"] and to_unit in ["kilometers", "km"]:
+            result = value / 0.621371
+            return f"{value}mi = {result:.2f}km"
+        
+        else:
+            return f"Conversion from {from_unit} to {to_unit} not supported yet"
+            
+    except ValueError:
+        return "Please provide a valid numeric value"
+    except Exception as e:
+        return f"Error in unit conversion: {str(e)}"
+< object
+
+> object statistics python
+    import math
+    try:
+        if len(args) < 1:
+            return "Please provide at least one number for statistical analysis"
+        
+        numbers = [float(arg) for arg in args]
+        n = len(numbers)
+        
+        # Basic statistics
+        total = sum(numbers)
+        mean = total / n
+        
+        # Sort for median and quartiles
+        sorted_nums = sorted(numbers)
+        
+        # Median
+        if n % 2 == 0:
+            median = (sorted_nums[n//2 - 1] + sorted_nums[n//2]) / 2
+        else:
+            median = sorted_nums[n//2]
+        
+        # Mode (most frequent)
+        from collections import Counter
+        counts = Counter(numbers)
+        mode_count = max(counts.values())
+        modes = [num for num, count in counts.items() if count == mode_count]
+        
+        # Standard deviation
+        variance = sum((x - mean) ** 2 for x in numbers) / n
+        std_dev = math.sqrt(variance)
+        
+        # Range
+        data_range = max(numbers) - min(numbers)
+        
+        result = f"Statistics for {n} values:\n"
+        result += f"Mean: {mean:.4f}\n"
+        result += f"Median: {median:.4f}\n"
+        result += f"Mode: {modes[0]:.4f}" + (f" (and {len(modes)-1} others)" if len(modes) > 1 else "") + "\n"
+        result += f"Range: {data_range:.4f}\n"
+        result += f"Standard Deviation: {std_dev:.4f}\n"
+        result += f"Min: {min(numbers):.4f}, Max: {max(numbers):.4f}"
+        
+        return result
+        
+    except ValueError:
+        return "Please provide valid numeric values"
+    except Exception as e:
+        return f"Error in statistical calculation: {str(e)}"
+< object
+
+> object geometry python
+    import math
+    try:
+        if len(args) < 2:
+            return "Usage: geometry <shape> <parameters...>"
+        
+        shape = args[0].lower()
+        params = [float(x) for x in args[1:]]
+        
+        if shape == "circle":
+            if len(params) != 1:
+                return "Circle requires radius"
+            r = params[0]
+            area = math.pi * r * r
+            circumference = 2 * math.pi * r
+            return f"Circle (r={r}): Area = {area:.4f}, Circumference = {circumference:.4f}"
+            
+        elif shape == "rectangle":
+            if len(params) != 2:
+                return "Rectangle requires length and width"
+            l, w = params
+            area = l * w
+            perimeter = 2 * (l + w)
+            return f"Rectangle ({l}×{w}): Area = {area:.4f}, Perimeter = {perimeter:.4f}"
+            
+        elif shape == "triangle":
+            if len(params) == 2:  # base and height
+                b, h = params
+                area = 0.5 * b * h
+                return f"Triangle (base={b}, height={h}): Area = {area:.4f}"
+            elif len(params) == 3:  # three sides (Heron's formula)
+                a, b, c = params
+                s = (a + b + c) / 2  # semi-perimeter
+                area = math.sqrt(s * (s - a) * (s - b) * (s - c))
+                perimeter = a + b + c
+                return f"Triangle (sides {a},{b},{c}): Area = {area:.4f}, Perimeter = {perimeter:.4f}"
+            else:
+                return "Triangle requires either (base, height) or (side1, side2, side3)"
+                
+        elif shape == "sphere":
+            if len(params) != 1:
+                return "Sphere requires radius"
+            r = params[0]
+            volume = (4/3) * math.pi * r**3
+            surface_area = 4 * math.pi * r**2
+            return f"Sphere (r={r}): Volume = {volume:.4f}, Surface Area = {surface_area:.4f}"
+            
+        else:
+            return f"Shape '{shape}' not supported. Try: circle, rectangle, triangle, sphere"
+            
+    except ValueError:
+        return "Please provide valid numeric parameters"
+    except Exception as e:
+        return f"Error in geometry calculation: {str(e)}"
+< object
+
+// Basic Math Operations
++ what is math
+- Mathematics is the study of numbers, shapes, patterns, and logical reasoning. It's the universal language that describes relationships, quantities, and structures in our world. Math forms the foundation for science, engineering, and technology.
+
++ what is addition
+- Addition is combining quantities to find their total sum. It's represented by the + symbol. For example: 3 + 5 = 8. Addition is commutative, meaning order doesn't matter (3+5 = 5+3).
+
++ what is subtraction
+- Subtraction is finding the difference between quantities by taking one away from another. It's represented by the - symbol. For example: 8 - 3 = 5. Subtraction is not commutative (8-3 ≠ 3-8).
+
++ what is multiplication
+- Multiplication is repeated addition or finding the product of quantities. It's represented by × or *. For example: 4 × 3 = 12 (adding 4 three times). Multiplication is commutative (4×3 = 3×4).
+
++ what is division
+- Division is splitting a quantity into equal parts or finding how many times one number goes into another. It's represented by ÷ or /. For example: 12 ÷ 3 = 4. Division is not commutative (12÷3 ≠ 3÷12).
+
++ order of operations
+- The order of operations is PEMDAS: Parentheses, Exponents, Multiplication and Division (left to right), Addition and Subtraction (left to right). This ensures mathematical expressions are evaluated consistently. Some remember it as "Please Excuse My Dear Aunt Sally."
+
+// Number Types
++ what are integers
+- Integers are whole numbers that can be positive, negative, or zero: ...-3, -2, -1, 0, 1, 2, 3... They include natural numbers (counting numbers), their negatives, and zero. Integers are closed under addition, subtraction, and multiplication.
+
++ what are rational numbers
+- Rational numbers are numbers that can be expressed as a fraction a/b where a and b are integers and b ≠ 0. This includes integers, fractions, and terminating or repeating decimals. Examples: 1/2, -3/4, 0.25, 0.333...
+
++ what are irrational numbers
+- Irrational numbers cannot be expressed as fractions. Their decimal representations are non-terminating and non-repeating. Famous examples include π (pi ≈ 3.14159...), √2 ≈ 1.41421..., and e ≈ 2.71828...
+
++ what are real numbers
+- Real numbers include all rational and irrational numbers. They correspond to all points on the number line. Real numbers can be used to measure continuous quantities like distance, time, and temperature.
+
++ what are complex numbers
+- Complex numbers have the form a + bi, where a and b are real numbers and i is the imaginary unit (√-1). They extend the real numbers to include solutions to equations like x² + 1 = 0. Complex numbers are fundamental in advanced mathematics and engineering.
+
++ what is zero
+- Zero is the additive identity - adding zero to any number leaves it unchanged. It represents nothingness or the absence of quantity. Zero was a revolutionary concept that took centuries to develop and is crucial for our number system and algebra.
+
+// Algebra
++ what is algebra
+- Algebra is the branch of mathematics that uses letters and symbols to represent numbers and quantities in formulas and equations. It generalizes arithmetic by allowing us to work with unknown values and solve problems systematically.
+
++ what is a variable
+- A variable is a symbol (usually a letter like x, y, or z) that represents an unknown or changing quantity. Variables allow us to write general formulas and solve equations. For example, in y = 2x + 3, both x and y are variables.
+
++ what is an equation
+- An equation is a mathematical statement that two expressions are equal, connected by an equals sign (=). For example: 2x + 3 = 9. Equations can be solved to find the value of unknown variables.
+
++ solve for x in 2x plus 3 equals 9
+- To solve 2x + 3 = 9, subtract 3 from both sides: 2x = 6, then divide both sides by 2: x = 3. Always perform the same operation on both sides to maintain equality.
+
++ what is a function
+- A function is a relationship where each input has exactly one output. It's often written as f(x) = y, meaning function f takes input x and produces output y. Functions are fundamental tools for describing relationships between quantities.
+
++ what is the quadratic formula
+- The quadratic formula solves equations of the form ax² + bx + c = 0. The formula is x = (-b ± √(b² - 4ac)) / 2a. The discriminant (b² - 4ac) tells us how many real solutions exist: positive = 2 solutions, zero = 1 solution, negative = 0 real solutions.
+
++ what are exponents
+- Exponents indicate how many times to multiply a number by itself. In x^n, x is the base and n is the exponent. For example: 2³ = 2 × 2 × 2 = 8. Exponent rules include x^a × x^b = x^(a+b) and (x^a)^b = x^(ab).
+
+// Geometry
++ what is geometry
+- Geometry is the study of shapes, sizes, positions, angles, and dimensions. It includes plane geometry (2D shapes) and solid geometry (3D shapes). Geometry helps us understand spatial relationships and is essential for architecture, engineering, and art.
+
++ what is a triangle
+- A triangle is a polygon with three sides and three angles. The sum of interior angles always equals 180°. Types include equilateral (all sides equal), isosceles (two sides equal), and scalene (all sides different). The area formula is A = ½ × base × height.
+
++ what is the pythagorean theorem
+- The Pythagorean theorem states that in a right triangle, a² + b² = c², where c is the hypotenuse (longest side) and a and b are the other two sides. This fundamental relationship has countless applications in engineering, physics, and navigation.
+
++ what is a circle
+- A circle is a set of points equidistant from a center point. Key measurements include radius (center to edge), diameter (twice the radius), circumference (perimeter = 2πr), and area (πr²). Circles appear frequently in nature and technology.
+
++ what is pi
+- Pi (π) is the ratio of a circle's circumference to its diameter, approximately 3.14159. It's an irrational number with infinite non-repeating decimals. Pi appears in many formulas involving circles, spheres, and periodic phenomena. It's one of mathematics' most famous constants.
+
++ what are angles
+- Angles measure rotation between two lines or rays meeting at a point. They're measured in degrees (°) or radians. Types include acute (< 90°), right (90°), obtuse (90° < angle < 180°), straight (180°), and reflex (> 180°). A full rotation is 360°.
+
++ what is area
+- Area measures the amount of space inside a 2D shape. Common formulas: rectangle (length × width), triangle (½ × base × height), circle (πr²), and parallelogram (base × height). Area is measured in square units.
+
++ what is volume
+- Volume measures the amount of space inside a 3D object. Common formulas: cube (side³), rectangular prism (length × width × height), sphere (4/3 πr³), and cylinder (πr²h). Volume is measured in cubic units.
+
+// Calculus
++ what is calculus
+- Calculus is the mathematics of continuous change, developed by Newton and Leibniz. It has two main branches: differential calculus (rates of change/slopes) and integral calculus (accumulation/areas). Calculus is essential for physics, engineering, and economics.
+
++ what is a derivative
+- A derivative measures the rate of change of a function at any point - essentially the slope of the tangent line. If f(x) represents position, then f'(x) represents velocity. Derivatives have applications in optimization, physics, and understanding how quantities change.
+
++ what is an integral
+- An integral calculates the area under a curve or the accumulation of a quantity. If f'(x) is velocity, then ∫f'(x)dx gives total displacement. Integrals reverse differentiation and have applications in physics, probability, and economics.
+
++ what is a limit
+- A limit describes what value a function approaches as the input approaches some value. Limits are foundational to calculus, allowing us to handle infinity and points where functions aren't defined. They make derivatives and integrals rigorously defined.
+
+// Statistics and Probability
++ what is statistics
+- Statistics is the science of collecting, analyzing, and interpreting data. It helps us understand patterns, make predictions, and draw conclusions from information. Statistics is crucial in research, business, medicine, and social sciences.
+
++ what is probability
+- Probability measures the likelihood of events occurring, ranging from 0 (impossible) to 1 (certain). It's often expressed as percentages. Probability helps us understand uncertainty and make informed decisions under risk.
+
++ what is an average
+- Average typically refers to the arithmetic mean: add all values and divide by the count. Other measures include median (middle value) and mode (most frequent value). Each gives different insights into data distribution.
+
++ what is standard deviation
+- Standard deviation measures how spread out data points are from the average. A small standard deviation means data points are close to the mean; a large one means they're spread out. It's crucial for understanding data variability.
+
++ what is correlation
+- Correlation measures the strength and direction of a linear relationship between two variables. Values range from -1 (perfect negative correlation) to +1 (perfect positive correlation). Zero indicates no linear relationship. Remember: correlation doesn't imply causation.
+
+// Advanced Topics
++ what is infinity
+- Infinity (∞) represents unboundedness or endless quantity. It's not a number but a concept. In mathematics, we have different types of infinities and special rules for working with them. Infinity appears in limits, calculus, and set theory.
+
++ what are logarithms
+- Logarithms are the inverse of exponentials. If 2³ = 8, then log₂(8) = 3. They turn multiplication into addition and are useful for solving exponential equations. Natural logarithms (ln) use base e and appear frequently in calculus and science.
+
++ what is euler's number
+- Euler's number (e ≈ 2.71828) is a mathematical constant that appears in exponential growth and decay, compound interest, and probability. The function e^x has the unique property that its derivative equals itself, making it fundamental in calculus.
+
++ what are fractals
+- Fractals are geometric shapes that look similar at every scale of magnification. They have fractional dimensions and appear in nature (coastlines, clouds, trees). Famous examples include the Mandelbrot set and Sierpinski triangle.
+
+// Mathematical History
++ who was pythagoras
+- Pythagoras (570-495 BCE) was a Greek mathematician and philosopher best known for the Pythagorean theorem. He founded a school that believed "all is number" and made important contributions to geometry and number theory.
+
++ who was euclid
+- Euclid (300 BCE) was a Greek mathematician known as the "Father of Geometry." His work "Elements" systematically organized geometric knowledge and remained the standard geometry textbook for over 2000 years.
+
++ who was newton
+- Sir Isaac Newton (1643-1727) co-invented calculus (with Leibniz), formulated laws of motion and gravity, and revolutionized mathematics and physics. His "Principia" is one of the most important scientific works ever written.
+
++ who was gauss
+- Carl Friedrich Gauss (1777-1855) was called the "Prince of Mathematics." He made fundamental contributions to number theory, algebra, statistics, analysis, and geometry. Many concepts bear his name, including the Gaussian distribution (bell curve).
+
++ who was euler
+- Leonhard Euler (1707-1783) was one of the most prolific mathematicians in history. He introduced much of modern mathematical notation and made groundbreaking contributions to calculus, number theory, and graph theory. Euler's identity e^(iπ) + 1 = 0 is considered one of the most beautiful equations in mathematics.
+
+// Math in Daily Life
++ why is math important
+- Math develops logical thinking, problem-solving skills, and helps us understand patterns in the world. It's essential for technology, finance, science, and making informed decisions. Math literacy is crucial in our increasingly data-driven society.
+
++ math in everyday life
+- We use math constantly: calculating tips, understanding loans, measuring for recipes, managing budgets, interpreting statistics, and using GPS navigation. Math helps us make sense of quantities, relationships, and probabilities we encounter daily.
+
++ how is math used in computers
+- Computers use binary (base-2) math for all operations. Algorithms rely on logic, statistics powers machine learning, calculus optimizes processes, and cryptography protects data. Mathematics is the foundation of all computer science.
+
+// Fun Math Facts
++ random math fact
+- <get math_facts>
+
++ math trivia
+- <get math_facts>
+
++ interesting math fact
+- <get math_facts>
+
+// Additional Practical Math Functions
+
+> object compound_interest python
+    try:
+        if len(args) != 4:
+            return "Usage: compound_interest <principal> <rate> <time> <compounds_per_year>"
+        
+        P = float(args[0])  # Principal
+        r = float(args[1]) / 100  # Annual interest rate (convert percentage)
+        t = float(args[2])  # Time in years
+        n = float(args[3])  # Number of times compounded per year
+        
+        # A = P(1 + r/n)^(nt)
+        A = P * (1 + r/n) ** (n * t)
+        interest_earned = A - P
+        
+        return f"Principal: ${P:,.2f}, Rate: {args[1]}%, Time: {t} years, Compounded {n}x/year\nFinal Amount: ${A:,.2f}\nInterest Earned: ${interest_earned:,.2f}"
+        
+    except ValueError:
+        return "Please provide valid numeric values"
+    except Exception as e:
+        return f"Error calculating compound interest: {str(e)}"
+< object
+
+> object percentage python
+    try:
+        if len(args) == 2:
+            # What percent is X of Y?
+            part, whole = float(args[0]), float(args[1])
+            if whole == 0:
+                return "Cannot calculate percentage of zero"
+            percentage = (part / whole) * 100
+            return f"{part} is {percentage:.2f}% of {whole}"
+            
+        elif len(args) == 3:
+            operation = args[0].lower()
+            if operation in ["of", "percent"]:
+                # X percent of Y
+                percent, number = float(args[1]), float(args[2])
+                result = (percent / 100) * number
+                return f"{percent}% of {number} = {result:.2f}"
+            elif operation in ["increase", "plus"]:
+                # Increase X by Y%
+                number, percent = float(args[1]), float(args[2])
+                result = number * (1 + percent / 100)
+                return f"{number} increased by {percent}% = {result:.2f}"
+            elif operation in ["decrease", "minus"]:
+                # Decrease X by Y%
+                number, percent = float(args[1]), float(args[2])
+                result = number * (1 - percent / 100)
+                return f"{number} decreased by {percent}% = {result:.2f}"
+        
+        return "Usage: percentage <part> <whole> OR percentage <operation> <number> <percent>"
+        
+    except ValueError:
+        return "Please provide valid numeric values"
+    except Exception as e:
+        return f"Error calculating percentage: {str(e)}"
+< object
+
+> object equation_solver python
+    import math
+    try:
+        if len(args) < 1:
+            return "Please provide an equation to solve"
+        
+        equation = " ".join(args).replace(" ", "")
+        
+        # Simple linear equations: ax + b = c
+        if "x" in equation and equation.count("=") == 1:
+            left, right = equation.split("=")
+            
+            # Very basic linear equation solver
+            # This is a simplified version - could be expanded
+            if "x" in left and "x" not in right:
+                # Move everything to one side
+                try:
+                    # For equations like 2x + 3 = 7
+                    # This is a very basic implementation
+                    return "Linear equation solving is complex. Try using the quadratic solver for ax² + bx + c = 0 format."
+                except:
+                    return "Equation too complex for simple solver"
+            else:
+                return "Please use format like: 2x + 3 = 7"
+        else:
+            return "Please provide a linear equation with variable x"
+            
+    except Exception as e:
+        return f"Error solving equation: {str(e)}"
+< object
+
+> object random_math python
+    import random
+    try:
+        if len(args) == 0:
+            operation = "problem"
+        else:
+            operation = args[0].lower()
+        
+        if operation == "problem":
+            # Generate random math problems
+            ops = ["+", "-", "*"]
+            op = random.choice(ops)
+            a = random.randint(1, 100)
+            b = random.randint(1, 100)
+            
+            if op == "+":
+                answer = a + b
+                return f"Random problem: {a} + {b} = ?  (Answer: {answer})"
+            elif op == "-":
+                if a < b:  # Keep positive results
+                    a, b = b, a
+                answer = a - b
+                return f"Random problem: {a} - {b} = ?  (Answer: {answer})"
+            elif op == "*":
+                answer = a * b
+                return f"Random problem: {a} × {b} = ?  (Answer: {answer})"
+                
+        elif operation == "fact":
+            facts = [
+                "The word 'algebra' comes from the Arabic word 'al-jabr'",
+                "Zero was invented by ancient Indian mathematicians",
+                "The symbol π was first used by Welsh mathematician William Jones in 1706",
+                "A 'jiffy' is an actual unit of time: 1/60th of a second",
+                "The equal sign (=) was invented in 1557 by Welsh mathematician Robert Recorde",
+                "Negative numbers were first accepted in Europe in the 15th century",
+                "The word 'mathematics' comes from the Greek 'mathema' meaning 'learning'",
+                "A palindromic number reads the same forwards and backwards, like 121 or 1331",
+                "The golden ratio (φ ≈ 1.618) appears throughout art, architecture, and nature"
+            ]
+            return random.choice(facts)
+        
+        return "Try: 'random math problem' or 'random math fact'"
+        
+    except Exception as e:
+        return f"Error generating random math content: {str(e)}"
+< object
+
+! array math_facts = The number 0.999... equals exactly 1|There are more possible games of chess than atoms in the observable universe|A googol is 1 followed by 100 zeros, but a googolplex is 1 followed by a googol zeros|The sum of all positive integers (1+2+3+4+...) equals -1/12 in certain mathematical contexts|Banach-Tarski paradox proves you can decompose a sphere into pieces and reassemble them into two identical spheres|17×17 = 289, and 289 backwards is 982 = 17×58 (and 58 backwards is 85 = 17×5)|The number 2 is the only even prime number|π appears in probability and statistics, even when circles aren't involved|Every even number greater than 2 can be expressed as the sum of two primes (Goldbach's conjecture, unproven but verified for huge numbers)|The Fibonacci sequence appears frequently in nature: flower petals, pinecones, shells|A 'googolplex' is so large that you couldn't write it out even if you used every atom in the observable universe as ink|The mathematical constant e appears naturally when calculating continuous compound interest|There are exactly 177,147 ways to tie a tie|In a group of 23 people, there's a 50% chance that two share the same birthday|The word 'algorithm' comes from the 9th-century Persian mathematician Al-Khwarizmi|A hexagon is the most efficient shape for storing things (that's why bees use hexagonal honeycombs)
+
+// Problem Solving
++ how do i solve math problems
+- Start by understanding what's being asked, identify given information, choose appropriate methods, work step-by-step, check your answer, and reflect on whether it makes sense. Practice is key to developing mathematical problem-solving skills.
+
++ what if i'm bad at math
+- Math anxiety is common but can be overcome! Start with basics, practice regularly, ask questions, use visual aids, and remember that making mistakes is part of learning. Math is a skill that improves with practice, not a fixed talent.
+
++ math study tips
+- Practice regularly rather than cramming, work through problems step-by-step, explain concepts to others, use multiple resources, form study groups, and don't just memorize - understand the underlying concepts and their connections.
+
++ mental math tricks
+- For multiplication by 9: multiply by 10 and subtract the original number. To multiply by 11: for two-digit numbers, add the digits and put the sum in the middle. For squaring numbers ending in 5: multiply the first digit by the next number and append 25.
+
++ what is mathematical proof
+- A mathematical proof is a logical argument that establishes the truth of a mathematical statement beyond doubt. Proofs use established facts, definitions, and logical reasoning to demonstrate that conclusions must be true.
+
+// Interactive Math - Enhanced with Python Calculations
+
+// Basic Calculator
++ calculate *
+- <call>calculate <star></call>
+
++ calc *
+- <call>calculate <star></call>
+
++ what is *
+- <call>calculate <star></call>
+
++ * equals
+- <call>calculate <star></call>
+
++ solve *
+- <call>calculate <star></call>
+
+// Advanced Mathematical Functions
++ factorial of *
+- <call>factorial <star></call>
+
++ * factorial
+- <call>factorial <star></call>
+
++ is * prime
+- <call>prime_check <star></call>
+
++ check if * is prime
+- <call>prime_check <star></call>
+
++ prime check *
+- <call>prime_check <star></call>
+
+// Quadratic Equation Solver
++ solve quadratic * * *
+- <call>solve_quadratic <star></call>
+
++ quadratic equation * * *
+- <call>solve_quadratic <star></call>
+
++ solve (quadratic|quad) equation with coefficients * * *
+- <call>solve_quadratic <star></call>
+
+// Unit Conversions
++ convert * * to *
+- <call>convert_units <star></call>
+
++ * * in *
+- <call>convert_units <star></call>
+
++ how many * is * *
+- <call>convert_units <star2> <star1> <star3></call>
+
+// Statistics
++ statistics *
+- <call>statistics <star></call>
+
++ stats for *
+- <call>statistics <star></call>
+
++ analyze numbers *
+- <call>statistics <star></call>
+
++ mean of *
+- <call>statistics <star></call>
+
++ average of *
+- <call>statistics <star></call>
+
+// Geometry Calculations
++ geometry * *
+- <call>geometry <star></call>
+
++ calculate * area *
+- <call>geometry <star1> <star2></call>
+
++ area of * *
+- <call>geometry <star></call>
+
++ * volume *
+- <call>geometry <star></call>
+
++ circle area *
+- <call>geometry circle <star></call>
+
++ rectangle area * *
+- <call>geometry rectangle <star></call>
+
++ triangle area * *
+- <call>geometry triangle <star></call>
+
++ sphere volume *
+- <call>geometry sphere <star></call>
+
+// Legacy Simple Math (kept for compatibility)
++ what is 2 plus 2
+- <call>calculate 2 + 2</call>
+
++ what is 7 times 8
+- <call>calculate 7 * 8</call>
+
++ what is 144 divided by 12
+- <call>calculate 144 / 12</call>
+
++ what is the square root of 64
+- <call>calculate sqrt(64)</call>
+
++ what is 5 factorial
+- <call>factorial 5</call>
+
++ calculate the area of a circle with radius 5
+- <call>geometry circle 5</call>
+
+// Mathematical Constants and Functions
++ what is pi
+- π (pi) is approximately <call>calculate pi</call>. It's the ratio of a circle's circumference to its diameter.
+
++ what is euler's number
+- e (Euler's number) is approximately <call>calculate e</call>. It's the base of natural logarithms.
+
++ sine of *
+- <call>calculate sin(<star>)</call>
+
++ cosine of *
+- <call>calculate cos(<star>)</call>
+
++ tangent of *
+- <call>calculate tan(<star>)</call>
+
++ square root of *
+- <call>calculate sqrt(<star>)</call>
+
++ * squared
+- <call>calculate <star> ** 2</call>
+
++ * cubed
+- <call>calculate <star> ** 3</call>
+
++ * to the power of *
+- <call>calculate <star1> ** <star2></call>
+
++ log of *
+- <call>calculate log(<star>)</call>
+
++ natural log of *
+- <call>calculate log(<star>)</call>
+
+// Temperature Conversions
++ * (celsius|c) to (fahrenheit|f)
+- <call>convert_units <star1> celsius fahrenheit</call>
+
++ * (fahrenheit|f) to (celsius|c)
+- <call>convert_units <star1> fahrenheit celsius</call>
+
++ * (celsius|c) to (kelvin|k)
+- <call>convert_units <star1> celsius kelvin</call>
+
++ * degrees celsius to fahrenheit
+- <call>convert_units <star> celsius fahrenheit</call>
+
++ * degrees fahrenheit to celsius
+- <call>convert_units <star> fahrenheit celsius</call>
+
+// Distance Conversions
++ * (meters|m) to (feet|ft)
+- <call>convert_units <star1> meters feet</call>
+
++ * (feet|ft) to (meters|m)
+- <call>convert_units <star1> feet meters</call>
+
++ * (kilometers|km) to (miles|mi)
+- <call>convert_units <star1> kilometers miles</call>
+
++ * (miles|mi) to (kilometers|km)
+- <call>convert_units <star1> miles kilometers</call>
+
+// Advanced Mathematical Functions
+
+// Fibonacci Sequence
++ fibonacci *
+- <call>fibonacci <star></call>
+
++ first * fibonacci numbers
+- <call>fibonacci <star></call>
+
++ generate * fibonacci
+- <call>fibonacci <star></call>
+
++ fib *
+- <call>fibonacci <star></call>
+
+// GCD and LCM
++ gcd of * and *
+- <call>gcd_lcm <star></call>
+
++ lcm of * and *
+- <call>gcd_lcm <star></call>
+
++ greatest common divisor * *
+- <call>gcd_lcm <star></call>
+
++ least common multiple * *
+- <call>gcd_lcm <star></call>
+
++ gcd * *
+- <call>gcd_lcm <star></call>
+
++ lcm * *
+- <call>gcd_lcm <star></call>
+
+// Matrix Operations
++ matrix add * * * * * * * *
+- <call>matrix add <star></call>
+
++ matrix multiply * * * * * * * *
+- <call>matrix multiply <star></call>
+
++ matrix determinant * * * *
+- <call>matrix determinant <star></call>
+
++ determinant * * * *
+- <call>matrix determinant <star></call>
+
+// Number Theory
++ factors of *
+- <call>number_theory factors <star></call>
+
++ find factors *
+- <call>number_theory factors <star></call>
+
++ prime factors of *
+- <call>number_theory prime_factors <star></call>
+
++ prime factorization *
+- <call>number_theory prime_factors <star></call>
+
++ is * perfect
+- <call>number_theory perfect <star></call>
+
++ perfect number *
+- <call>number_theory perfect <star></call>
+
+// Combinatorics
++ permutation * *
+- <call>combinatorics permutation <star></call>
+
++ combination * *
+- <call>combinatorics combination <star></call>
+
++ p * *
+- <call>combinatorics permutation <star></call>
+
++ c * *
+- <call>combinatorics combination <star></call>
+
++ * choose *
+- <call>combinatorics combination <star></call>
+
++ how many ways to arrange * from *
+- <call>combinatorics permutation <star2> <star1></call>
+
++ how many ways to choose * from *
+- <call>combinatorics combination <star2> <star1></call>
+
+// Help and Examples
++ math help
+- I can help with mathematical calculations! Try:
+^ • Basic: "calculate 2 + 3 * 4"
+^ • Factorial: "factorial of 7"
+^ • Prime: "is 17 prime"
+^ • Quadratic: "solve quadratic 1 -5 6"
+^ • Statistics: "statistics 1 2 3 4 5"
+^ • Geometry: "circle area 5"
+^ • Fibonacci: "first 10 fibonacci"
+^ • Number theory: "factors of 24"
+^ • Combinatorics: "5 choose 3"
+^ • Matrix: "matrix add 1 2 3 4 5 6 7 8"
+^ • Conversions: "convert 100 celsius to fahrenheit"
+
++ advanced math help
+- Advanced mathematical functions available:
+^ • Fibonacci: "fibonacci 10" or "first 15 fibonacci numbers"
+^ • GCD/LCM: "gcd of 48 and 18" or "lcm 12 15"
+^ • Number Theory: "factors of 60", "prime factors of 84", "is 28 perfect"
+^ • Combinatorics: "permutation 5 3", "combination 10 4", "7 choose 3"
+^ • Matrix (2x2): "matrix add/multiply a11 a12 a21 a22 b11 b12 b21 b22"
+^ • Matrix determinant: "determinant a11 a12 a21 a22"
+
++ calculator help
+- My calculator supports: +, -, *, /, ^(or **), sqrt(), sin(), cos(), tan(), log(), abs(), and mathematical constants pi and e. Examples: "calculate 2^3", "calculate sqrt(16)", "calculate sin(30)"
+
++ math examples
+- Here are some examples:
+^ • Basic: "what is 15 * 23"
+^ • Advanced: "calculate sin(pi/2)"
+^ • Factorial: "factorial of 8"
+^ • Prime: "is 97 prime"
+^ • Quadratic: "solve quadratic 2 -7 3"
+^ • Stats: "statistics 10 20 30 40 50"
+^ • Geometry: "circle area 7"
+^ • Fibonacci: "fibonacci 8"
+^ • Factors: "factors of 36"
+^ • Combinatorics: "6 choose 2"
+^ • Conversion: "convert 32 fahrenheit to celsius"
+
+// Practical Math Functions
+
+// Compound Interest
++ compound interest * * * *
+- <call>compound_interest <star></call>
+
++ calculate compound interest * percent * years * times per year
+- <call>compound_interest <star1> <star2> <star3> <star4></call>
+
++ interest on * at * percent for * years compounded * times
+- <call>compound_interest <star1> <star2> <star3> <star4></call>
+
+// Percentage Calculations
++ what percent is * of *
+- <call>percentage <star></call>
+
++ * percent of *
+- <call>percentage of <star></call>
+
++ * of *
+- <call>percentage <star></call>
+
++ increase * by * percent
+- <call>percentage increase <star></call>
+
++ decrease * by * percent
+- <call>percentage decrease <star></call>
+
++ * plus * percent
+- <call>percentage increase <star></call>
+
++ * minus * percent
+- <call>percentage decrease <star></call>
+
+// Random Math Content
++ random math problem
+- <call>random_math problem</call>
+
++ give me a math problem
+- <call>random_math problem</call>
+
++ math practice
+- <call>random_math problem</call>
+
++ random math fact
+- <call>random_math fact</call>
+
++ math fact
+- <call>random_math fact</call>
+
+// Enhanced existing triggers
++ (tip|gratuity) calculator * * percent
+- <call>percentage of <star2> <star1></call>
+
++ * tip on *
+- <call>percentage of <star1> <star2></call>
+
++ sales tax * * percent
+- <call>percentage of <star2> <star1></call>
+
++ discount * percent off *
+- <call>percentage decrease <star2> <star1></call>
+
+// Mathematical Concepts with Examples
++ explain compound interest
+- Compound interest is interest calculated on both the initial principal and accumulated interest. Formula: A = P(1 + r/n)^(nt). Try: "compound interest 1000 5 10 12" for $1000 at 5% for 10 years, compounded monthly.
+
++ explain percentages
+- Percentages express a number as a fraction of 100. Use "what percent is X of Y" or "X percent of Y". Try: "what percent is 25 of 200" or "15 percent of 80".
+
++ what math can you do
+- I can perform a wide range of mathematical operations:
+^ 
+^ **Basic Calculator:** arithmetic, trigonometry, logarithms, square roots
+^ **Algebra:** quadratic equations, factorials, exponents
+^ **Statistics:** mean, median, mode, standard deviation
+^ **Geometry:** areas and volumes of circles, rectangles, triangles, spheres
+^ **Number Theory:** prime checking, factorization, GCD/LCM, perfect numbers
+^ **Sequences:** Fibonacci numbers
+^ **Combinatorics:** permutations and combinations
+^ **Matrix Math:** 2x2 addition, multiplication, determinants
+^ **Financial:** compound interest, percentage calculations
+^ **Unit Conversions:** temperature, distance
+^ **Practice:** random problems and math facts
+^ 
+^ Just ask naturally: "What is 15 + 23?", "Is 17 prime?", "Circle area 5", etc.
+
++ math capabilities
+- My mathematical capabilities include:
+^ 
+^ 🧮 **Calculator Functions**
+^ • Basic arithmetic: +, -, ×, ÷
+^ • Advanced: powers, roots, trigonometry, logarithms
+^ • Constants: π, e
+^ 
+^ 🔢 **Number Theory**
+^ • Prime checking and factorization
+^ • GCD, LCM calculations
+^ • Perfect number detection
+^ 
+^ 📊 **Statistics & Data**
+^ • Mean, median, mode, standard deviation
+^ • Data analysis for number sets
+^ 
+^ 📐 **Geometry**
+^ • Areas: circles, rectangles, triangles
+^ • Volumes: spheres, cylinders
+^ 
+^ 🧪 **Advanced Math**
+^ • Quadratic equation solver
+^ • Matrix operations (2×2)
+^ • Fibonacci sequences
+^ • Combinatorics (permutations, combinations)
+^ 
+^ 💰 **Practical Applications**
+^ • Compound interest calculations
+^ • Percentage operations
+^ • Unit conversions
+^ • Tip and tax calculations
+^ 
+^ Try asking: "Calculate 2^10", "Is 127 prime?", "Statistics 1 2 3 4 5", or "Compound interest 1000 5 10 12"!
+
++ what is the fibonacci sequence
+- The Fibonacci sequence starts with 0, 1, then each subsequent number is the sum of the two preceding numbers: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89... This sequence appears throughout nature and has fascinating mathematical properties.
+
+// Additional Python Objects for Advanced Math
+
+> object fibonacci python
+    try:
+        if len(args) != 1:
+            return "Please specify how many Fibonacci numbers to generate"
+        
+        n = int(args[0])
+        if n <= 0:
+            return "Please provide a positive number"
+        if n > 100:
+            return "Please request 100 or fewer numbers"
+        
+        fib_sequence = []
+        a, b = 0, 1
+        
+        for i in range(n):
+            fib_sequence.append(str(a))
+            a, b = b, a + b
+        
+        return f"First {n} Fibonacci numbers: {', '.join(fib_sequence)}"
+        
+    except ValueError:
+        return "Please provide a valid integer"
+    except Exception as e:
+        return f"Error generating Fibonacci sequence: {str(e)}"
+< object
+
+> object gcd_lcm python
+    import math
+    try:
+        if len(args) != 2:
+            return "Please provide exactly two numbers"
+        
+        a, b = int(args[0]), int(args[1])
+        
+        gcd = math.gcd(a, b)
+        lcm = abs(a * b) // gcd if gcd != 0 else 0
+        
+        return f"GCD({a}, {b}) = {gcd}, LCM({a}, {b}) = {lcm}"
+        
+    except ValueError:
+        return "Please provide valid integers"
+    except Exception as e:
+        return f"Error calculating GCD/LCM: {str(e)}"
+< object
+
+> object matrix python
+    try:
+        if len(args) < 1:
+            return "Usage: matrix <operation> <data...>"
+        
+        operation = args[0].lower()
+        
+        if operation == "add":
+            # Expects: add a11 a12 a21 a22 b11 b12 b21 b22 (2x2 matrices)
+            if len(args) != 9:
+                return "Matrix addition requires 8 values for two 2x2 matrices"
+            
+            vals = [float(x) for x in args[1:]]
+            a = [[vals[0], vals[1]], [vals[2], vals[3]]]
+            b = [[vals[4], vals[5]], [vals[6], vals[7]]]
+            
+            result = [[a[i][j] + b[i][j] for j in range(2)] for i in range(2)]
+            
+            return f"Matrix A + B = [[{result[0][0]}, {result[0][1]}], [{result[1][0]}, {result[1][1]}]]"
+            
+        elif operation == "multiply":
+            # 2x2 matrix multiplication
+            if len(args) != 9:
+                return "Matrix multiplication requires 8 values for two 2x2 matrices"
+            
+            vals = [float(x) for x in args[1:]]
+            a = [[vals[0], vals[1]], [vals[2], vals[3]]]
+            b = [[vals[4], vals[5]], [vals[6], vals[7]]]
+            
+            result = [[0, 0], [0, 0]]
+            for i in range(2):
+                for j in range(2):
+                    for k in range(2):
+                        result[i][j] += a[i][k] * b[k][j]
+            
+            return f"Matrix A × B = [[{result[0][0]}, {result[0][1]}], [{result[1][0]}, {result[1][1]}]]"
+            
+        elif operation == "determinant":
+            if len(args) != 5:
+                return "Determinant calculation requires 4 values for a 2x2 matrix"
+            
+            vals = [float(x) for x in args[1:]]
+            det = vals[0] * vals[3] - vals[1] * vals[2]
+            
+            return f"Determinant = {det}"
+            
+        else:
+            return "Supported operations: add, multiply, determinant"
+            
+    except ValueError:
+        return "Please provide valid numeric values"
+    except Exception as e:
+        return f"Error in matrix calculation: {str(e)}"
+< object
+
+> object number_theory python
+    import math
+    try:
+        if len(args) < 2:
+            return "Usage: number_theory <operation> <number(s)>"
+        
+        operation = args[0].lower()
+        
+        if operation == "factors":
+            n = int(args[1])
+            if n <= 0:
+                return "Please provide a positive integer"
+            
+            factors = []
+            for i in range(1, int(math.sqrt(n)) + 1):
+                if n % i == 0:
+                    factors.append(i)
+                    if i != n // i:
+                        factors.append(n // i)
+            
+            factors.sort()
+            return f"Factors of {n}: {factors}"
+            
+        elif operation == "prime_factors":
+            n = int(args[1])
+            if n <= 1:
+                return "Please provide an integer greater than 1"
+            
+            factors = []
+            d = 2
+            while d * d <= n:
+                while n % d == 0:
+                    factors.append(d)
+                    n //= d
+                d += 1
+            if n > 1:
+                factors.append(n)
+            
+            return f"Prime factorization: {' × '.join(map(str, factors))}"
+            
+        elif operation == "perfect":
+            n = int(args[1])
+            if n <= 1:
+                return f"{n} is not a perfect number"
+            
+            divisor_sum = sum(i for i in range(1, n) if n % i == 0)
+            
+            if divisor_sum == n:
+                return f"{n} is a perfect number!"
+            else:
+                return f"{n} is not a perfect number (sum of divisors = {divisor_sum})"
+                
+        else:
+            return "Supported operations: factors, prime_factors, perfect"
+            
+    except ValueError:
+        return "Please provide valid integers"
+    except Exception as e:
+        return f"Error in number theory calculation: {str(e)}"
+< object
+
+> object combinatorics python
+    import math
+    try:
+        if len(args) < 3:
+            return "Usage: combinatorics <operation> <n> <r>"
+        
+        operation = args[0].lower()
+        n, r = int(args[1]), int(args[2])
+        
+        if n < 0 or r < 0:
+            return "Please provide non-negative integers"
+        
+        if operation == "permutation" or operation == "p":
+            if r > n:
+                return "r cannot be greater than n for permutations"
+            
+            result = math.factorial(n) // math.factorial(n - r)
+            return f"P({n}, {r}) = {result}"
+            
+        elif operation == "combination" or operation == "c":
+            if r > n:
+                return "r cannot be greater than n for combinations"
+            
+            result = math.factorial(n) // (math.factorial(r) * math.factorial(n - r))
+            return f"C({n}, {r}) = {result}"
+            
+        else:
+            return "Supported operations: permutation (or p), combination (or c)"
+            
+    except ValueError:
+        return "Please provide valid integers"
+    except Exception as e:
+        return f"Error in combinatorics calculation: {str(e)}"
+< object

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::path::PathBuf;
 
 use tokio::sync::Mutex;
 use sysinfo::System;
@@ -27,12 +28,72 @@ pub async fn handle_version(output_lines: &Arc<Mutex<Vec<String>>>) {
 pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match crate::services::rivescript::query(cmd) {
         Ok(reply) => {
-            let text = reply.text.clone();
-            let output_lines = output_lines.clone();
-            tokio::spawn(crate::cli::helpers::append_and_tts(
-                output_lines,
-                format!("┌─[sam]─> {text}"),
-            ));
+            let mut response_text = reply.text.clone();
+            
+            // Check for embedded commands 
+            if response_text.contains(":::::") {
+                // Simple regex to extract commands - avoiding complex HTTP API to prevent recursion
+                let re = regex::Regex::new(r":::::(.+?):::::").unwrap();
+                let commands: Vec<String> = re.captures_iter(&response_text)
+                    .map(|cap| cap[1].trim().to_string())
+                    .collect();
+                
+                for command in commands {
+                    // Handle special TUI commands directly
+                    match command.as_str() {
+                        "clear" | "cls" => {
+                            // Clear the TUI output buffer
+                            output_lines.lock().await.clear();
+                            response_text = "Screen cleared.".to_string();
+                        }
+                        _ => {
+                            // For other safe commands, execute them directly (avoid recursion)
+                            if command.starts_with("ls") || command == "pwd" || command.starts_with("echo ") {
+                                let command_output = Arc::new(Mutex::new(Vec::<String>::new()));
+                                let mut current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+                                let mut scroll_offset = 0u16;
+                                
+                                let mut ctx = crate::cli::commands::CommandContext {
+                                    output_lines: &command_output,
+                                    current_dir: &mut current_dir,
+                                    human_name: "user",
+                                    output_height: 25,
+                                    scroll_offset: &mut scroll_offset,
+                                };
+                                
+                                // Execute specific safe commands to prevent recursion
+                                if command.starts_with("ls") {
+                                    crate::cli::commands::misc::handle_ls(&command_output, &current_dir).await;
+                                } else if command == "pwd" {
+                                    crate::cli::commands::misc::handle_pwd(&command_output, &current_dir).await;
+                                } else if command.starts_with("echo ") {
+                                    crate::cli::commands::misc::handle_echo(&command, &command_output).await;
+                                }
+                                
+                                let results = command_output.lock().await;
+                                if !results.is_empty() {
+                                    let mut out = output_lines.lock().await;
+                                    for line in results.iter() {
+                                        out.push(line.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Remove the command marker from response text
+                    response_text = response_text.replace(&format!(":::::{command}:::::"), "");
+                }
+            }
+            
+            // Only display response if it's not empty after processing
+            if !response_text.trim().is_empty() {
+                let output_lines = output_lines.clone();
+                tokio::spawn(crate::cli::helpers::append_and_tts(
+                    output_lines,
+                    format!("┌─[sam]─> {}", response_text),
+                ));
+            }
         }
         Err(e) => {
             let mut out = output_lines.lock().await;

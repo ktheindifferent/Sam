@@ -1,0 +1,186 @@
+// Python Object Macros for SAM
+
+! version = 2.0
+
+> object get_time python
+    import datetime
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+< object
+
+> object get_date python
+    import datetime
+    return datetime.datetime.now().strftime("%Y-%m-%d")
+< object
+
+> object calculate python
+    # Safe calculator - only allows basic math operations
+    import re
+    expression = " ".join(args)
+    # Remove any non-math characters for security
+    expression = re.sub(r'[^0-9+\-*/.() ]', '', expression)
+    try:
+        result = eval(expression)
+        return str(result)
+    except:
+        return "Invalid calculation"
+< object
+
+> object random_choice python
+    import random
+    choices = args
+    return random.choice(choices) if choices else "No choices provided"
+< object
+
+> object file_exists python
+    import os
+    filepath = " ".join(args)
+    return "yes" if os.path.exists(filepath) else "no"
+< object
+
+> object get_file_size python
+    import os
+    filepath = " ".join(args)
+    try:
+        size = os.path.getsize(filepath)
+        if size < 1024:
+            return f"{size} bytes"
+        elif size < 1024 * 1024:
+            return f"{size/1024:.1f} KB"
+        elif size < 1024 * 1024 * 1024:
+            return f"{size/(1024*1024):.1f} MB"
+        else:
+            return f"{size/(1024*1024*1024):.1f} GB"
+    except:
+        return "File not found"
+< object
+
+> object count_files python
+    import os
+    directory = " ".join(args) if args else "."
+    try:
+        count = len([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
+        return str(count)
+    except:
+        return "Directory not found"
+< object
+
+> object uptime_format python
+    # Format uptime in a readable way
+    try:
+        with open('/proc/uptime', 'r') as f:
+            uptime_seconds = float(f.readline().split()[0])
+        
+        days = int(uptime_seconds // 86400)
+        hours = int((uptime_seconds % 86400) // 3600)
+        minutes = int((uptime_seconds % 3600) // 60)
+        
+        if days > 0:
+            return f"{days} days, {hours} hours, {minutes} minutes"
+        elif hours > 0:
+            return f"{hours} hours, {minutes} minutes"
+        else:
+            return f"{minutes} minutes"
+    except:
+        return "Unable to determine uptime"
+< object
+
+> object weather python
+    # Simple weather placeholder - in real implementation would call weather API
+    import random
+    conditions = ["sunny", "cloudy", "rainy", "partly cloudy", "clear"]
+    temp = random.randint(60, 85)
+    condition = random.choice(conditions)
+    return f"{temp}°F and {condition}"
+< object
+
+> object system_load python
+    try:
+        import os
+        load1, load5, load15 = os.getloadavg()
+        return f"1min: {load1:.2f}, 5min: {load5:.2f}, 15min: {load15:.2f}"
+    except:
+        return "Load average not available"
+< object
+
+> object generate_password python
+    import random
+    import string
+    length = int(args[0]) if args and args[0].isdigit() else 12
+    chars = string.ascii_letters + string.digits + "!@#$%^&*"
+    password = ''.join(random.choice(chars) for _ in range(length))
+    return password
+< object
+
+> object hash_text python
+    import hashlib
+    text = " ".join(args)
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+< object
+
++ what time is it
+- The current time is <call>get_time</call>.
+
++ what date is it
+- Today's date is <call>get_date</call>.
+
++ (calculate|math|compute) *
+- <star> = <call>calculate <star></call>
+
++ what is # plus #
+- <star1> + <star3> = <call>calculate <star1> + <star3></call>
+
++ what is # minus #
+- <star1> - <star3> = <call>calculate <star1> - <star3></call>
+
++ what is # times #
+- <star1> * <star3> = <call>calculate <star1> * <star3></call>
+
++ what is # divided by #
+- <star1> / <star3> = <call>calculate <star1> / <star3></call>
+
++ (choose|pick) *
+- I choose: <call>random_choice <star></call>
+
++ does file * exist
+- <call>file_exists <star></call>, file <star> does <call>file_exists <star></call> exist.
+
++ how big is file *
+- File <star> is <call>get_file_size <star></call>.
+
++ how many files in *
+- There are <call>count_files <star></call> files in <star>.
+
++ how many files here
+- There are <call>count_files</call> files in the current directory.
+
++ system uptime
+- System has been running for <call>uptime_format</call>.
+
++ weather
+- Current weather appears to be <call>weather</call>.
+- Note: This is simulated weather data. For real weather, you'd need a weather service.
+
++ system load
+- Current system load: <call>system_load</call>
+
++ generate password
+- Here's a secure password: <call>generate_password</call>
+- Remember to store this safely!
+
++ generate password #
+- Here's a <star>-character password: <call>generate_password <star></call>
+
++ hash *
+- Hash of "<star>": <call>hash_text <star></call>
+
++ flip coin
+- <call>random_choice heads tails</call>
+
++ roll dice  
+- You rolled: <call>random_choice 1 2 3 4 5 6</call>
+
++ pick a number
+- I pick: <call>random_choice 1 2 3 4 5 6 7 8 9 10</call>
+
++ (yes or no|decide for me)
+- <call>random_choice Yes No</call>

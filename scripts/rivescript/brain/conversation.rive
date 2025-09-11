@@ -1,0 +1,201 @@
+// SAM Conversational Patterns
+
+// Question patterns
++ what *
+- That's an interesting question about <star>. Let me think about that.
+- Regarding <star>, I can help you explore that topic.
+- <star> is something I can assist you with. What would you like to know specifically?
+
++ how *
+- To <star>, there are usually several approaches. What's your specific goal?
+- <star> can be accomplished in different ways. What are you trying to achieve?
+- I can help you figure out how to <star>. Can you give me more context?
+
++ why *
+- That's a thoughtful question about <star>. There could be several reasons.
+- <star> often has multiple factors involved. What's prompting this question?
+- Good question about <star>. Let me help you understand this better.
+
++ when *
+- Timing for <star> can depend on various factors. What's your situation?
+- <star> timing is important. What are you planning?
+- The timing for <star> varies. Can you tell me more about your needs?
+
++ where *
+- Looking for information about <star>? I can help you locate what you need.
+- <star> location can vary. What specifically are you trying to find?
+- For <star>, location matters. What are you searching for?
+
++ who *
+- <star> involves different people or entities. What do you need to know?
+- That's a question about <star>. Can you be more specific?
+
++ which *
+- Choosing between options for <star> depends on your needs. What are you considering?
+- <star> selection involves several factors. What's most important to you?
+
+// Emotional responses
++ i am confused
+- I understand confusion can be frustrating. What can I help clarify for you?
+- No worries, I'm here to help clear things up. What's puzzling you?
+- Let's work through this together. What's confusing you?
+
++ i do not understand
+- That's completely okay! What part would you like me to explain better?
+- No problem - I can break it down differently. What needs clarification?
+- I'm here to help you understand. What should I explain more clearly?
+
++ this is hard
+- I get that this feels challenging. Let me help make it easier for you.
+- You're right, some things can be complex. Let's tackle it step by step.
+- I understand it seems difficult. How can I simplify this for you?
+
++ i am lost
+- Don't worry, I can help get you back on track. Where did you get stuck?
+- Being lost is temporary - let's figure this out together. What's the issue?
+- I'm here to help guide you. What do you need assistance with?
+
+// Affirmative responses
++ (yes|yeah|yep|sure|okay|ok|alright)
+- Great! How can I help you proceed?
+- Perfect! What would you like to do next?
+- Excellent! What can I assist you with?
+
++ (no|nah|nope|not really)
+- No problem! Is there something else I can help you with?
+- That's fine. What would you prefer to do instead?
+- Understood. How else can I assist you?
+
+// Common requests
++ can you *
+- I'd be happy to <star> for you. Let me help with that.
+- Absolutely, I can <star>. Let me get started on that.
+- Yes, I can help you <star>. Here we go!
+
++ could you *
+- Of course I can <star> for you!
+- Certainly! I'll <star> right away.
+- Yes, I'd be glad to <star>.
+
++ will you *
+- I will definitely <star> for you.
+- Absolutely, I'll <star>.
+- Yes, I'll <star> right now.
+
++ please *
+- Of course! I'll <star> for you right away.
+- My pleasure to <star> for you!
+- Certainly! Let me <star> immediately.
+
+// Expressions of need
++ i need *
+- I can help you get <star>. Let me assist with that.
+- I understand you need <star>. How can I help make that happen?
+- <star> is something I can help you with. What's the best approach?
+
++ i want *
+- I can help you achieve <star>. What's the first step?
+- <star> sounds like a good goal. How can I assist?
+- I'd be happy to help you get <star>. Let's work on it!
+
++ i would like *
+- I'd be pleased to help you with <star>. Let's get started!
+- <star> is definitely something I can assist with.
+- Great! I can help you <star>. What do you need?
+
+// Problem-solving patterns
++ i have a problem
+- I'm here to help solve problems! What's going on?
+- No worries, we can work through this together. What's the issue?
+- I'm great at problem-solving! Tell me what's happening.
+
++ something is wrong
+- Let's figure out what's wrong together. Can you describe the issue?
+- I can help troubleshoot this. What seems to be the problem?
+- No problem, I'll help you fix whatever's wrong. What's happening?
+
++ it is not working
+- I can help get things working again. What exactly isn't functioning?
+- Let's troubleshoot this together. What's not working as expected?
+- I'm here to help fix things. Can you tell me more about the problem?
+
+// Learning and teaching patterns
++ teach me *
+- I'd love to help you learn <star>! Where would you like to start?
+- Teaching you <star> would be great! What's your current level?
+- <star> is a wonderful thing to learn. How can I help you get started?
+
++ show me *
+- I'll gladly show you <star>. Let me demonstrate!
+- <star> is something I can definitely show you. Ready?
+- I'd be happy to show you <star>. Here's how it works!
+
++ explain *
+- I can explain <star> clearly for you. Let me break it down.
+- <star> explanation coming up! I'll make it easy to understand.
+- Happy to explain <star>! Here's what you need to know.
+
+// Compliments and criticism
++ you are helpful
+- Thank you! I really enjoy being useful to you.
+- That means a lot! I'm designed to be as helpful as possible.
+- I appreciate that! Making your tasks easier is my goal.
+
++ good work
+- Thank you! I'm glad I could help effectively.
+- I appreciate the feedback! I always try to do my best.
+- That's wonderful to hear! I enjoy helping you succeed.
+
++ that was wrong
+- I apologize for the mistake. Let me correct that for you.
+- Thank you for pointing that out. How can I fix this?
+- I'm sorry about the error. Let me get it right this time.
+
++ try again
+- Absolutely! Let me give it another try.
+- No problem, I'll approach this differently.
+- Sure thing! I'll work on improving my response.
+
+// System and technical queries
++ is * running
+- Let me check if <star> is currently running. ::::: ps aux | grep <star> :::::
+
++ is * installed
+- I can help you check if <star> is installed on your system.
+
++ how much * is used
+- I'll check the usage of <star> for you.
+
++ what is using *
+- Let me find out what's currently using <star>.
+
+// Time-related patterns
++ what time is it
+- I can help you check the current time, but I don't have direct access to it. You could run 'date' command.
+
++ how long *
+- Duration for <star> can vary. What are you timing?
+
+// Random conversation
++ tell me something interesting
+- Did you know that the first computer bug was literally a bug? Grace Hopper found an actual moth stuck in a computer relay in 1947!
+- Here's something cool: the term "debugging" comes from actually removing insects from early computer systems.
+- Interesting fact: SAM systems like me are designed to make computing more accessible and human-friendly!
+
++ random fact
+- Here's a random fact: The average person spends about 7 hours a day interacting with digital devices.
+- Fun fact: The first computer programmer was Ada Lovelace, who wrote the first algorithm in the 1840s.
+- Did you know? AI assistants like me process thousands of patterns to understand what you need.
+
++ surprise me
+- Here's a surprise: I can help you with over 50 different types of system commands and operations!
+- Surprise! I'm constantly learning from our interactions to better assist you.
+- Fun surprise: Every command I help you with makes both of us more efficient!
+
+// Fallback patterns for unknown inputs
++ *
+- I'm not sure I understand "<star>" completely. Could you rephrase that or ask for help?
+- Hmm, I didn't quite catch that about "<star>". Can you try asking differently?
+- I want to help with "<star>" but I need a bit more clarity. Could you elaborate?
+- That's interesting about "<star>". Could you tell me more about what you need?
+- I'm still learning about "<star>". How can I best assist you with this?

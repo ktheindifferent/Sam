@@ -198,6 +198,46 @@ function sendCommand(cmd){
 	}
 
 	$.get("/api/io?input="+cmd, function( data ) {
+		// Check for web actions first
+		var shouldClearScreen = false;
+		if (data.executed_actions) {
+			for (var i = 0; i < data.executed_actions.length; i++) {
+				var action = data.executed_actions[i];
+				if (action.result === "CLEAR_SCREEN") {
+					shouldClearScreen = true;
+					break;
+				}
+			}
+		}
+		
+		// Handle clear screen action
+		if (shouldClearScreen) {
+			$("#terminal__body").empty(); // Clear the terminal
+			
+			// Add a confirmation message
+			$("#terminal__body").append("<span id='terminal__prompt--sam'>Sam<span></span>:</span> Screen cleared.");
+			
+			// Reset terminal state
+			term_buffer = "";
+			term_cursor_location = 1;
+			cursor_margin = 0;
+			processing_command = false;
+			
+			// Add new prompt
+			var html = "<div id='terminal__prompt'>\
+						  <span id='terminal__prompt--user'>Caleb@<span id='term_host_name_body'></span>:</span>\
+						  <span class='terminal__prompt--location' id='terminal__prompt--location'>~</span>\
+						  <span id='terminal__prompt--bling'>$<span id='terminal__prompt__buffer'></span></span>\
+						  <span id='terminal__prompt--cursor'></span>\
+						</div>";
+			$("#terminal__body").append(html);
+			
+			var objDiv = document.getElementById("terminal__body");
+			objDiv.scrollTop = objDiv.scrollHeight;
+			return; // Skip normal processing
+		}
+		
+		// Normal response processing
 		speak(data.text).then(function () {
 			$("#terminal__body").append("<span id='terminal__prompt--sam'>Sam<span></span>:</span> "+data.text.replaceAll("\n", "<br/>"));
 

@@ -65,7 +65,7 @@ fn build_tokio_runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_workers)
         .thread_name("sam")
-        .thread_stack_size(4 * 1024 * 1024)
+        .thread_stack_size(8 * 1024 * 1024) // Increased from 4MB to 8MB to prevent stack overflow
         .enable_all()
         .build()
         .expect("Failed to build Tokio runtime")
@@ -160,13 +160,33 @@ async fn initialize_application() {
 
 /// Sets up the panic handler for the application
 fn setup_panic_handler() {
+    // Use atomic flag to prevent recursive panic handling
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static PANIC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+    
     // First set up Sentry's panic handler
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        // Log panic information
-        log::error!("Application panic occurred: {}", info);
+        // Check if we're already handling a panic to prevent infinite recursion
+        if PANIC_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            eprintln!("Recursive panic detected, aborting immediately");
+            std::process::abort();
+        }
         
-        // Report to Sentry
+        // Log panic information to stderr immediately
+        eprintln!("Application panic occurred: {}", info);
+        
+        // Try to log to file first (most reliable)
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/var/log/sam_panic.log")
+        {
+            use std::io::Write;
+            let _ = writeln!(file, "[{}] Panic: {}", chrono::Utc::now(), info);
+        }
+        
+        // Report to Sentry (may fail in stack overflow)
         sentry::capture_event(sentry::protocol::Event {
             message: Some(info.to_string()),
             level: sentry::Level::Fatal,
@@ -176,50 +196,69 @@ fn setup_panic_handler() {
         // Call the default panic handler (which includes Sentry's own handling)
         default_panic(info);
         
-        // Try to perform cleanup without creating a new runtime
-        // Use Handle::try_current() to check if we're in a runtime context
-        match tokio::runtime::Handle::try_current() {
-            Ok(handle) => {
-                // We're in a runtime context, spawn a task for cleanup
-                handle.spawn(async {
-                    // Clear Redis cache
-                    if let Err(e) = clear_redis_cache_on_panic().await {
-                        log::error!("Failed to clear Redis cache on panic: {}", e);
-                    }
-                    
-                    // Shutdown all services gracefully
-                    if let Err(e) = shutdown_services_on_panic().await {
-                        log::error!("Failed to shutdown services on panic: {}", e);
-                    }
-                });
-            },
-            Err(_) => {
-                // We're not in a runtime context, try to create one
-                if let Ok(runtime) = tokio::runtime::Runtime::new() {
-                    runtime.block_on(async {
-                        // Clear Redis cache
-                        if let Err(e) = clear_redis_cache_on_panic().await {
-                            log::error!("Failed to clear Redis cache on panic: {}", e);
-                        }
-                        
-                        // Shutdown all services gracefully
-                        if let Err(e) = shutdown_services_on_panic().await {
-                            log::error!("Failed to shutdown services on panic: {}", e);
-                        }
-                    });
-                }
-            }
+        // Skip cleanup if this looks like a stack overflow to prevent further issues
+        let panic_msg = info.to_string();
+        if panic_msg.contains("stack overflow") || panic_msg.contains("overflowed its stack") {
+            eprintln!("Stack overflow detected, skipping cleanup to prevent further issues");
+            PANIC_IN_PROGRESS.store(false, Ordering::SeqCst);
+            return;
         }
         
-        // Optionally log to a file
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/var/log/sam_panic.log")
-        {
-            use std::io::Write;
-            let _ = writeln!(file, "[{}] Panic: {}", chrono::Utc::now(), info);
-        }
+        // Try to perform cleanup with timeout
+        std::thread::spawn(move || {
+            // Set a timeout for cleanup operations
+            let cleanup_start = std::time::Instant::now();
+            const CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+            
+            // Use Handle::try_current() to check if we're in a runtime context
+            match tokio::runtime::Handle::try_current() {
+                Ok(handle) => {
+                    // We're in a runtime context, spawn a task for cleanup
+                    handle.spawn(async move {
+                        if cleanup_start.elapsed() < CLEANUP_TIMEOUT {
+                            // Clear Redis cache
+                            if let Err(e) = clear_redis_cache_on_panic().await {
+                                eprintln!("Failed to clear Redis cache on panic: {}", e);
+                            }
+                        }
+                        
+                        if cleanup_start.elapsed() < CLEANUP_TIMEOUT {
+                            // Shutdown all services gracefully
+                            if let Err(e) = shutdown_services_on_panic().await {
+                                eprintln!("Failed to shutdown services on panic: {}", e);
+                            }
+                        }
+                        
+                        PANIC_IN_PROGRESS.store(false, Ordering::SeqCst);
+                    });
+                },
+                Err(_) => {
+                    // We're not in a runtime context, try to create a minimal one
+                    if let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                        .thread_stack_size(1024 * 1024) // Small stack for cleanup
+                        .enable_all()
+                        .build() 
+                    {
+                        runtime.block_on(async {
+                            if cleanup_start.elapsed() < CLEANUP_TIMEOUT {
+                                // Clear Redis cache
+                                if let Err(e) = clear_redis_cache_on_panic().await {
+                                    eprintln!("Failed to clear Redis cache on panic: {}", e);
+                                }
+                            }
+                            
+                            if cleanup_start.elapsed() < CLEANUP_TIMEOUT {
+                                // Shutdown all services gracefully
+                                if let Err(e) = shutdown_services_on_panic().await {
+                                    eprintln!("Failed to shutdown services on panic: {}", e);
+                                }
+                            }
+                        });
+                    }
+                    PANIC_IN_PROGRESS.store(false, Ordering::SeqCst);
+                }
+            }
+        });
     }));
 }
 
@@ -294,22 +333,65 @@ fn setup_environment_variables() {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         // Skip sudo setup in Docker containers or when running as root
-        if env::var("DOCKER_CONTAINER").is_ok() || env::var("CAPROVER").is_ok() || unsafe { libc::geteuid() } == 0 {
-            log::info!("Running in container or as root, skipping sudo environment setup");
+        if env::var("DOCKER_CONTAINER").is_ok() || env::var("CAPROVER").is_ok() {
+            log::info!("Running in container, skipping sudo environment setup");
             return;
         }
         
-        match sudo::with_env(&[
-            "LIBTORCH",
-            "LD_LIBRARY_PATH",
-            "PG_DBNAME",
-            "PG_USER",
-            "PG_PASS",
-            "PG_ADDRESS",
-            "SAM_USER",
-        ]) {
-            Ok(_) => log::debug!("Sudo environment variables set up successfully"),
-            Err(e) => log::warn!("Failed to set up sudo environment variables: {}. This is expected in Docker.", e),
+        // Check if we're running under sudo
+        let is_sudo = unsafe { libc::geteuid() } == 0 && env::var("SUDO_USER").is_ok();
+        
+        if is_sudo {
+            log::info!("Running under sudo, ensuring required environment variables are preserved");
+            
+            // Preserve important environment variables that sudo might strip
+            // These are typically preserved automatically, but we ensure they're available
+            let important_vars = [
+                ("LIBTORCH", "Library path for PyTorch"),
+                ("LD_LIBRARY_PATH", "Dynamic library search path"),
+                ("PG_DBNAME", "PostgreSQL database name"),
+                ("PG_USER", "PostgreSQL user"),
+                ("PG_PASS", "PostgreSQL password"),
+                ("PG_ADDRESS", "PostgreSQL address"),
+                ("SAM_USER", "SAM application user"),
+                ("HOME", "User home directory"),
+                ("USER", "Current user"),
+                ("PATH", "System PATH"),
+            ];
+            
+            for (var_name, description) in important_vars.iter() {
+                if let Ok(value) = env::var(var_name) {
+                    log::debug!("Environment variable {} ({}) is set: {}", var_name, description, 
+                               if var_name.contains("PASS") { "[REDACTED]" } else { &value });
+                } else if var_name != &"LIBTORCH" && var_name != &"SAM_USER" {
+                    // These are optional, so only warn for critical ones
+                    if ["PG_DBNAME", "PG_USER", "PG_PASS", "PG_ADDRESS"].contains(var_name) {
+                        log::warn!("Critical environment variable {} ({}) not found", var_name, description);
+                    }
+                }
+            }
+            
+            // Set default values for missing PostgreSQL variables if needed
+            if env::var("PG_DBNAME").is_err() {
+                env::set_var("PG_DBNAME", "sam");
+                log::debug!("Set default PG_DBNAME=sam");
+            }
+            if env::var("PG_USER").is_err() {
+                env::set_var("PG_USER", "sam");
+                log::debug!("Set default PG_USER=sam");
+            }
+            if env::var("PG_PASS").is_err() {
+                env::set_var("PG_PASS", "sam");
+                log::debug!("Set default PG_PASS=[REDACTED]");
+            }
+            if env::var("PG_ADDRESS").is_err() {
+                env::set_var("PG_ADDRESS", "localhost");
+                log::debug!("Set default PG_ADDRESS=localhost");
+            }
+            
+            log::info!("Sudo environment setup completed successfully");
+        } else {
+            log::debug!("Not running under sudo, environment variables should be available normally");
         }
     }
 }

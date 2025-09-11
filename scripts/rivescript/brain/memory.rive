@@ -1,0 +1,161 @@
+// User Context and Memory Management
+
++ my name is *
+- <set name=<formal>>Nice to meet you, <get name>! I'll remember your name.
+- <set name=<formal>>Hello <get name>! I'm SAM, and I'll remember you from now on.
+- <set name=<formal>>Great to meet you, <get name>. I've saved your name in my memory.
+
++ call me *
+- <set name=<formal>>I'll call you <get name> from now on.
+- <set name=<formal>>Got it, <get name>! I'll remember that.
+
++ i am * years old
+- <set age=<star>>Thanks for telling me, <get name>. I'll remember you're <get age> years old.
+- <set age=<star>><get age> is a good age! I'll keep that in mind.
+
++ i work as *
+- <set job=<star>>Interesting! So you work as <get job>. That must be <star> work.
+- <set job=<star>>Thanks for sharing! Being <get job> sounds like important work.
+
++ i live in *
+- <set location=<star>>Nice! I'll remember you're in <get location>.
+- <set location=<star>><get location> sounds like a great place to live.
+
++ my favorite * is *
+- <set fav<star1>=<star2>>I'll remember that your favorite <star1> is <star2>.
+- <set fav<star1>=<star2>>Good to know! <star2> is your favorite <star1>.
+
++ i like *
+- <set likes=<star>>I'll note that you like <star>. That's good to remember!
+- <set likes=<star>>Thanks for sharing! I'll keep in mind that you enjoy <star>.
+
++ i do not like *
+- <set dislikes=<star>>Noted! I'll remember you don't like <star>.
+- <set dislikes=<star>>Good to know. I'll avoid suggesting <star> in the future.
+
++ i use * operating system
+- <set os=<star>>Thanks! I'll remember you're using <get os>.
+- <set os=<star>>Good to know you're on <get os>. I'll keep that in mind for my suggestions.
+
++ i prefer *
+- <set preference=<star>>I'll remember your preference for <star>.
+- <set preference=<star>>Noted! I'll keep your preference for <star> in mind.
+
++ remember *
+- I'll try to remember that <star>.
+- Noted! I'll keep <star> in mind for future conversations.
+
++ forget *
+- I'll try to forget about <star> for you.
+- Understood. I'll remove <star> from my active memory.
+
++ do you remember *
+- Let me think... I do try to remember details about our conversations regarding <star>.
+- I keep track of what we've discussed, including things about <star>.
+
++ what do you know about me
+* <get name> != undefined => I know your name is <get name>.
+* <get age> != undefined => I remember you're <get age> years old.
+* <get job> != undefined => You work as <get job>.
+* <get location> != undefined => You live in <get location>.
+* <get os> != undefined => You use <get os> operating system.
+- I'm still getting to know you! Feel free to tell me more about yourself.
+
++ (what is my name|who am i|do you know my name)
+* <get name> != undefined => Your name is <get name>.
+- I don't believe you've told me your name yet. What should I call you?
+
++ (how old am i|what is my age)
+* <get age> != undefined => You're <get age> years old.
+- I don't think you've mentioned your age. How old are you?
+
++ what is my job
+* <get job> != undefined => You work as <get job>.
+- You haven't told me about your job yet. What do you do for work?
+
++ where do i live
+* <get location> != undefined => You live in <get location>.
+- I don't know where you live yet. Where are you located?
+
++ what do i like
+* <get likes> != undefined => I remember you like <get likes>.
+- You haven't shared your interests with me yet. What do you enjoy?
+
++ what is my favorite *
+* <get fav<star>> != undefined => Your favorite <star> is <get fav<star>>.
+- I don't think you've told me about your favorite <star> yet.
+
++ what operating system do i use
+* <get os> != undefined => You use <get os> operating system.
+- I don't know what operating system you're using. Which one do you prefer?
+
+// Context-aware responses
++ i am working on *
+- <set current_project=<star>>Sounds interesting! Working on <star> must be engaging. How can I help?
+- <set current_project=<star>>I'll remember you're working on <star>. Is there anything I can do to assist?
+
++ i am learning *
+- <set learning=<star>>That's great! Learning <star> is valuable. I can help if you need any assistance.
+- <set learning=<star>>Wonderful! <star> is worth learning. How's it going so far?
+
++ how is my * project going
+* <get current_project> != undefined => I remember you're working on <get current_project>. How is that progressing?
+- I don't recall you mentioning a specific project. What are you working on?
+
++ help me with my project
+* <get current_project> != undefined => I'd be happy to help with your <get current_project> project! What do you need?
+- I'd love to help! What project are you working on?
+
+// Preferences and habits
++ i usually work in *
+- <set work_directory=<star>>I'll remember you typically work in <star> directory.
+
++ my main directory is *
+- <set main_directory=<star>>Got it! <star> is your main working directory.
+
++ i keep my files in *
+- <set file_location=<star>>I'll note that you store files in <star>.
+
++ where do i usually work
+* <get work_directory> != undefined => You usually work in <get work_directory>.
+- I don't know your usual working directory yet. Where do you typically work?
+
++ go to my usual directory
+* <get work_directory> != undefined => Going to your usual directory <get work_directory>. ::::: cd <get work_directory> :::::
+- I don't know your usual directory yet. Where would you like me to go?
+
++ show my files
+* <get file_location> != undefined => I'll show your files from <get file_location>. ::::: ls -la <get file_location> :::::
+- I'll show the files in the current directory. ::::: ls -la :::::
+
+// Session context
++ what were we talking about
+- We were discussing various topics. Is there something specific you'd like to continue?
+- Our conversation has covered several areas. What would you like to focus on?
+
++ what did i ask before
+- You've asked me about various things. Is there a particular previous question you want to revisit?
+
++ continue where we left off
+- I'm ready to continue! What would you like to work on next?
+
+// Time-based memory
++ what did we do today
+- Today we've been working together on various tasks. What would you like to accomplish next?
+
++ this is important
+- I'll make a note that this is important information.
+- Noted as important! I'll keep this in mind.
+
++ remind me *
+- I'll try to remind you about <star> in our future conversations.
+
+// Clear memory commands  
++ forget everything
+- I can start fresh if you'd like, but I'll keep basic helpful information.
+
++ reset my profile
+- I can reset what I know about you if that's what you prefer.
+
++ clear my data
+- I can clear the personal information I've stored if you want a fresh start.

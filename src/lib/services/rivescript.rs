@@ -33,10 +33,30 @@ pub enum RiveScriptError {
 
 #[allow(unexpected_cfgs)]
 pub fn query(input: &str) -> anyhow::Result<IOReply> {
-    let rivescript_reply = crate::tools::safe_cmd(
-        "python3",
-        &["/opt/sam/scripts/rivescript/brain.py", input],
-    )?;
+    // Try multiple paths for brain.py
+    let brain_paths = vec![
+        "./scripts/rivescript/brain.py",
+        "/opt/sam/scripts/rivescript/brain.py",
+        "/Users/calebsmith/Documents/ktheindifferent/Sam/scripts/rivescript/brain.py",
+    ];
+    
+    let mut rivescript_reply = String::new();
+    let mut success = false;
+    
+    for brain_path in brain_paths {
+        match crate::tools::safe_cmd("python3", &[brain_path, input]) {
+            Ok(reply) => {
+                rivescript_reply = reply;
+                success = true;
+                break;
+            }
+            Err(_) => continue,
+        }
+    }
+    
+    if !success {
+        return Err(anyhow::anyhow!("Brain script not found in any location"));
+    }
 
     if rivescript_reply.contains(":::::") {
         // TODO - Parse Command
@@ -46,6 +66,8 @@ pub fn query(input: &str) -> anyhow::Result<IOReply> {
         text: rivescript_reply,
         timestamp: 0,
         response_type: "io".to_string(),
+        executed_actions: Vec::new(),
+        context_updates: None,
     };
 
     Ok(io)

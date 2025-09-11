@@ -1,0 +1,399 @@
+! version = 2.0
+
+// Philosophy Knowledge Base for SAM
+// Covers major philosophical concepts, thinkers, schools of thought, and questions
+
+// Philosophy Basics
++ what is philosophy
+- Philosophy is the love of wisdom - the systematic study of fundamental questions about existence, knowledge, values, reason, mind, and language. It uses logical reasoning and critical thinking to examine basic assumptions about reality and human experience.
+
++ what do philosophers do
+- Philosophers analyze fundamental concepts, question assumptions, develop logical arguments, and explore big questions about life, knowledge, morality, and existence. They use reason and critical thinking to examine beliefs and ideas that most people take for granted.
+
++ why is philosophy important
+- Philosophy develops critical thinking skills, helps us examine our beliefs and values, provides frameworks for ethical decision-making, and addresses fundamental questions about human existence. It's the foundation for all other fields of knowledge and helps us live more thoughtful lives.
+
++ what are the main branches of philosophy
+- The main branches are metaphysics (nature of reality), epistemology (nature of knowledge), ethics (right and wrong), aesthetics (beauty and art), logic (valid reasoning), and political philosophy (government and society). Each examines different fundamental questions.
+
+// Ancient Philosophy
++ who was socrates
+- Socrates (470-399 BCE) was an ancient Greek philosopher known for the Socratic method of questioning to expose ignorance and seek truth. He claimed to know only that he knew nothing, and his examination of Athenian beliefs led to his execution for "corrupting youth."
+
++ tell me about plato
+- Plato (428-348 BCE) was Socrates' student who founded the Academy in Athens. His theory of Forms proposed that perfect ideals exist beyond our physical world. His dialogues, featuring Socrates, explore justice, truth, beauty, and the ideal state.
+
++ who was aristotle
+- Aristotle (384-322 BCE) was Plato's student who tutored Alexander the Great. He developed logic, virtue ethics, and systematic approaches to knowledge. Unlike Plato's idealism, Aristotle emphasized empirical observation and practical wisdom in living well.
+
++ what is stoicism
+- Stoicism was a Greek and Roman philosophy teaching that virtue is the only true good and that we should accept what we cannot control while focusing on our responses. Famous Stoics include Epictetus, Marcus Aurelius, and Seneca. It emphasizes emotional resilience and duty.
+
++ tell me about confucius
+- Confucius (551-479 BCE) was a Chinese philosopher who emphasized moral character, social harmony, and proper relationships. His teachings about virtue, respect for elders, education, and good government shaped Chinese culture for over 2,000 years.
+
++ who was lao tzu
+- Lao Tzu was a legendary Chinese philosopher traditionally credited with founding Taoism and writing the Tao Te Ching. Taoism emphasizes living in harmony with the Tao (the Way), balancing opposing forces (yin and yang), and wu wei (effortless action).
+
+// Medieval Philosophy
++ tell me about augustine
+- St. Augustine (354-430 CE) was a Christian philosopher who integrated Christian theology with classical philosophy. His "Confessions" explored the nature of time, memory, and the self, while "City of God" examined the relationship between church and state.
+
++ who was thomas aquinas
+- Thomas Aquinas (1225-1274) was a medieval philosopher who synthesized Aristotelian philosophy with Christian theology. His "Summa Theologica" presented rational arguments for God's existence and developed natural law theory, profoundly influencing Catholic thought.
+
++ what was scholasticism
+- Scholasticism was a medieval philosophical method that used reason to understand religious doctrine. Scholastic philosophers like Aquinas sought to reconcile faith and reason, creating systematic theologies that dominated European intellectual life for centuries.
+
+// Modern Philosophy
++ who was rene descartes
+- René Descartes (1596-1650) founded modern philosophy with methodical doubt - questioning everything until reaching certain knowledge. His famous "I think, therefore I am" established the thinking self as the foundation of knowledge. He also developed mind-body dualism.
+
++ tell me about john locke
+- John Locke (1632-1704) developed empiricism - the idea that knowledge comes from sensory experience. He argued the mind is a "blank slate" at birth and that governments derive authority from the consent of the governed, influencing democratic theory.
+
++ who was david hume
+- David Hume (1711-1776) was a Scottish philosopher who questioned causation, induction, and religious belief through radical skepticism. He argued we cannot prove cause and effect, only observe constant conjunction, challenging assumptions about knowledge and certainty.
+
++ tell me about immanuel kant
+- Immanuel Kant (1724-1804) revolutionized philosophy by arguing that the mind actively shapes experience through innate categories. His "Critique of Pure Reason" examined the limits of knowledge, while his categorical imperative provided a foundation for moral duty.
+
++ what is the categorical imperative
+- Kant's categorical imperative is a moral principle stating we should act only according to maxims we could will to be universal laws. It emphasizes treating people as ends in themselves, never merely as means, providing an objective foundation for ethics.
+
+// Ethics and Moral Philosophy
++ what is ethics
+- Ethics is the branch of philosophy concerned with what is morally right and wrong, good and bad. It examines principles for moral behavior, the nature of moral judgments, and how we should live. Major approaches include virtue ethics, deontology, and consequentialism.
+
++ what is utilitarianism
+- Utilitarianism, developed by Jeremy Bentham and John Stuart Mill, judges actions by their consequences - specifically, whether they maximize happiness and minimize suffering for the greatest number of people. It's a form of consequentialist ethics.
+
++ tell me about virtue ethics
+- Virtue ethics, traced to Aristotle, focuses on moral character rather than actions or consequences. It asks "What kind of person should I be?" rather than "What should I do?" Virtues are character traits that enable human flourishing.
+
++ what is deontological ethics
+- Deontological ethics, associated with Kant, judges actions by whether they follow moral rules or duties, regardless of consequences. It emphasizes the inherent rightness or wrongness of actions and treats moral principles as absolute obligations.
+
++ what is the trolley problem
+- The trolley problem is a thought experiment: would you divert a runaway trolley to kill one person instead of five? It explores the distinction between killing and letting die, and whether consequences justify harmful actions. Different ethical theories give different answers.
+
+// Existentialism
++ what is existentialism
+- Existentialism emphasizes individual existence, freedom, and choice. It argues that existence precedes essence - we exist first, then create our own meaning and identity through choices and actions. Key themes include authenticity, angst, and responsibility.
+
++ who was jean-paul sartre
+- Jean-Paul Sartre (1905-1980) was a French existentialist who argued that humans are "condemned to be free" and fully responsible for their choices. His famous phrase "hell is other people" explored how others' perceptions constrain our freedom and self-definition.
+
++ tell me about albert camus
+- Albert Camus (1913-1960) explored the absurd - the conflict between human desire for meaning and the universe's apparent meaninglessness. Rather than despair, he advocated embracing the absurd and creating meaning through rebellious affirmation of life.
+
++ who was simone de beauvoir
+- Simone de Beauvoir (1908-1986) was a French existentialist feminist who wrote "The Second Sex," analyzing women's oppression. She argued that women are made, not born, and that gender roles limit human freedom and authentic existence.
+
++ what is authenticity in philosophy
+- Authenticity means being true to one's own personality, values, and beliefs rather than conforming to external expectations. Existentialists like Heidegger and Sartre emphasized authentic existence as taking full responsibility for one's choices and creating one's own meaning.
+
+// Political Philosophy
++ what is political philosophy
+- Political philosophy examines questions about government, power, authority, rights, and justice. It asks: What makes political authority legitimate? What do we owe each other? How should society be organized? It provides theoretical foundations for political systems.
+
++ tell me about the social contract
+- Social contract theory, developed by philosophers like Hobbes, Locke, and Rousseau, explains political authority as arising from an implicit agreement among individuals to form society and government for mutual benefit and protection.
+
++ who was john rawls
+- John Rawls (1921-2002) wrote "A Theory of Justice," proposing the "veil of ignorance" thought experiment. He argued that just principles would be those chosen by people who don't know their position in society, leading to fairness and concern for the worst off.
+
++ what is libertarianism in philosophy
+- Philosophical libertarianism emphasizes individual liberty and minimal government. It argues that people should be free to do anything that doesn't harm others, opposing most government intervention in personal and economic affairs. Key figure: Robert Nozick.
+
++ tell me about marxist philosophy
+- Marxist philosophy, developed by Karl Marx and Friedrich Engels, analyzes society through class struggle and economic relations. It argues that capitalism creates alienation and exploitation, and that history progresses through conflicts between social classes.
+
+// Philosophy of Mind
++ what is the mind-body problem
+- The mind-body problem asks how mental states relate to physical brain states. Are they identical, separate substances, or different aspects of the same thing? This fundamental question explores consciousness, free will, and human nature.
+
++ what is consciousness
+- Consciousness is subjective, first-person awareness - what it feels like to experience sensations, thoughts, and emotions. Despite scientific advances, explaining how physical brain processes create subjective experience remains one of philosophy's hardest problems.
+
++ what is free will
+- Free will is the ability to make choices that are genuinely free from prior causes. The debate centers on whether determinism (all events are caused) is compatible with moral responsibility and genuine choice. Views include hard determinism, libertarianism, and compatibilism.
+
++ tell me about artificial intelligence philosophy
+- Philosophy of AI examines whether machines can think, be conscious, or have minds. The Turing Test asks if a machine that convincingly simulates human responses is actually thinking. This connects to broader questions about consciousness and intelligence.
+
+// Epistemology
++ what is epistemology
+- Epistemology is the study of knowledge - what it is, how we acquire it, and what makes beliefs justified or true. It examines the sources, nature, and limits of human knowledge, including perception, reason, memory, and testimony.
+
++ what is skepticism
+- Philosophical skepticism questions whether we can have genuine knowledge. Ancient skeptics like Sextus Empiricus argued for suspending judgment, while modern skeptics like Descartes used doubt methodically to find certain foundations for knowledge.
+
++ empiricism vs rationalism
+- Empiricism (Locke, Hume) holds that knowledge comes primarily from sensory experience. Rationalism (Descartes, Leibniz) argues that reason is the primary source of knowledge. Kant attempted to synthesize both approaches in his critical philosophy.
+
++ what is the problem of induction
+- The problem of induction, raised by David Hume, questions how we can justify beliefs about the future based on past experience. Just because the sun rose yesterday doesn't logically guarantee it will rise tomorrow. This challenges scientific reasoning.
+
+// Aesthetics
++ what is aesthetics
+- Aesthetics is the branch of philosophy concerned with beauty, art, and aesthetic experience. It asks: What makes something beautiful? What is art? How do we judge aesthetic value? It explores the nature of artistic creation and appreciation.
+
++ what is beauty
+- Beauty has been defined as harmony, proportion, or that which produces aesthetic pleasure. Philosophers debate whether beauty is objective (in the object) or subjective (in the perceiver's response). Kant argued beauty is subjective but universally valid.
+
++ philosophy of art
+- Philosophy of art examines the nature and value of artistic creation. It asks what distinguishes art from non-art, whether art must be beautiful, and how art relates to truth, emotion, and society. Major theories include formalism, expressivism, and institutionalism.
+
+// Logic
++ what is logic
+- Logic is the study of valid reasoning and argument structure. It provides rules for distinguishing good arguments from bad ones, helping us think clearly and avoid fallacies. Formal logic uses symbols to represent argument patterns.
+
++ what are logical fallacies
+- Logical fallacies are errors in reasoning that undermine argument validity. Examples include ad hominem (attacking the person), straw man (misrepresenting the opponent's position), and false dilemma (presenting only two options when more exist).
+
++ tell me about aristotelian logic
+- Aristotelian logic, developed by Aristotle, introduced the syllogism - a form of deductive reasoning with two premises and a conclusion. For example: "All humans are mortal. Socrates is human. Therefore, Socrates is mortal." This dominated logic for 2,000 years.
+
+// Contemporary Philosophy
++ what is analytic philosophy
+- Analytic philosophy, dominant in the English-speaking world, emphasizes clarity, logical rigor, and linguistic analysis. Philosophers like Bertrand Russell and Ludwig Wittgenstein developed formal methods to clarify concepts and solve philosophical problems.
+
++ tell me about continental philosophy
+- Continental philosophy, prominent in Europe, emphasizes interpretation, historical context, and human experience. It includes phenomenology, existentialism, hermeneutics, and post-structuralism. Key figures include Heidegger, Sartre, and Foucault.
+
++ what is postmodernism
+- Postmodernism questions grand narratives, objective truth, and universal reason. It emphasizes the role of power, language, and culture in shaping knowledge. Postmodernists like Derrida and Foucault argue that truth claims often serve political interests.
+
++ philosophy of science
+- Philosophy of science examines the nature of scientific knowledge, method, and reasoning. It asks: What makes science special? How do scientific theories relate to reality? Key issues include falsifiability, paradigm shifts, and the problem of induction.
+
+// Applied Philosophy
++ what is bioethics
+- Bioethics applies philosophical reasoning to medical and biological issues. It addresses questions about end-of-life care, genetic engineering, research ethics, and healthcare distribution. Principles include autonomy, beneficence, non-maleficence, and justice.
+
++ tell me about environmental philosophy
+- Environmental philosophy examines our relationship with nature and non-human life. It asks whether nature has intrinsic value, what we owe future generations, and how to balance human needs with environmental protection.
+
++ philosophy of technology
+- Philosophy of technology examines how technology shapes human life, society, and values. It asks whether technology is neutral, how it affects human agency, and what ethical responsibilities come with technological power.
+
+// Philosophy in Daily Life
++ how does philosophy help in life
+- Philosophy develops critical thinking, helps examine beliefs and values, provides frameworks for ethical decisions, and offers perspectives on life's meaning. It encourages questioning assumptions, reasoning carefully, and living more reflectively.
+
++ can philosophy answer life's big questions
+- Philosophy provides frameworks and tools for approaching big questions but rarely offers final answers. Different philosophical traditions offer different perspectives on meaning, morality, and existence. The value lies in the thinking process itself.
+
++ philosophical life advice
+- Philosophy suggests living examined lives, questioning assumptions, developing virtues, acting ethically, accepting what we cannot control, and creating meaning through our choices and relationships. Different traditions offer different approaches to flourishing.
+
+// Philosophy Facts
++ random philosophy fact
+- <get philosophy_facts>
+
++ philosophy trivia
+- <get philosophy_facts>
+
+! array philosophy_facts = Socrates never wrote anything down - all his ideas come from Plato's writings|Philosophers have been debating free will for over 2,000 years without reaching consensus|The word "philosophy" means "love of wisdom" in ancient Greek|Aristotle tutored Alexander the Great when Alexander was 13|René Descartes did his best thinking while lying in bed until 11 AM|John Stuart Mill learned Greek at age 3 and Latin at age 8|Nietzsche went insane after seeing a horse being beaten|Wittgenstein gave away his inherited fortune to become a philosopher|Sartre turned down the Nobel Prize in Literature in 1964|Simone de Beauvoir and Sartre had an open relationship for 50 years|Kant was so punctual that neighbors set their clocks by his daily walks|Diogenes lived in a barrel and told Alexander the Great to get out of his sunlight
+
++ philosophical thought experiments
+- Famous thought experiments include Plato's Cave (nature of reality), the Ship of Theseus (identity over time), the Chinese Room (consciousness and AI), the Experience Machine (what makes life valuable), and the Veil of Ignorance (principles of justice).
+
++ philosophy vs science
+- Philosophy and science both seek understanding but differ in methods. Science uses empirical observation and experimentation, while philosophy uses logical reasoning and conceptual analysis. Philosophy often examines questions science cannot answer empirically.
+
++ practical philosophy
+- Applied philosophy addresses real-world issues like medical ethics, environmental policy, artificial intelligence, and business practices. It brings philosophical reasoning to practical problems, helping create more thoughtful and ethical decisions.
+
+// Eastern Philosophy
++ what is buddhism philosophy
+- Buddhist philosophy centers on the Four Noble Truths: life contains suffering (dukkha), suffering arises from attachment/craving (tanha), suffering can end (nirvana), and there's a path to end it (Noble Eightfold Path). It emphasizes impermanence, no-self, and mindfulness.
+
++ tell me about hinduism philosophy
+- Hindu philosophy includes diverse schools like Vedanta, Yoga, and Samkhya. Core concepts include dharma (righteous duty), karma (action and consequence), samsara (cycle of rebirth), moksha (liberation), and the relationship between individual soul (atman) and universal reality (Brahman).
+
++ who was buddha
+- Siddhartha Gautama (563-483 BCE), the Buddha, was a prince who renounced luxury to seek enlightenment. After achieving awakening under the Bodhi tree, he taught the Middle Way - avoiding extremes of indulgence and asceticism while pursuing wisdom and compassion.
+
++ what is zen philosophy
+- Zen Buddhism, developed in China and Japan, emphasizes direct experience over scriptural study. It uses meditation, koans (paradoxical riddles), and mindfulness to achieve sudden enlightenment (satori). Key principle: "If you meet the Buddha on the road, kill him."
+
++ tell me about taoism
+- Taoism teaches living in harmony with the Tao (the Way) - the underlying principle of existence. Key concepts include wu wei (effortless action), yin-yang balance, naturalness over artifice, and the wisdom of water (soft overcoming hard).
+
++ who was zhuangzi
+- Zhuangzi (369-286 BCE) was a Taoist philosopher known for his wit, parables, and skepticism. His famous butterfly dream questioned the nature of identity and reality. He advocated spontaneity, relativism, and freedom from social conventions.
+
++ what is advaita vedanta
+- Advaita Vedanta, taught by Adi Shankara, asserts non-dualism - ultimate reality (Brahman) and individual consciousness (Atman) are one. Maya (illusion) creates apparent separation. Liberation comes through realizing this fundamental unity through knowledge and meditation.
+
+// German Idealism
++ who was georg hegel
+- G.W.F. Hegel (1770-1831) developed a system where reality unfolds through dialectical process - thesis, antithesis, synthesis. His philosophy of history sees Spirit realizing itself through human development. He influenced Marx, existentialists, and political theory.
+
++ what is hegelian dialectic
+- Hegelian dialectic is a process where opposing ideas (thesis and antithesis) conflict and resolve into a higher unity (synthesis), which becomes a new thesis. Hegel saw this as how thought, history, and reality itself develop progressively.
+
++ tell me about friedrich schelling
+- Friedrich Schelling (1775-1854) was a German Idealist who influenced Romanticism. He developed a philosophy of nature where mind and nature are aspects of one absolute reality. His work bridged Kant and Hegel while emphasizing art's role in revealing truth.
+
++ who was johann fichte
+- Johann Gottlieb Fichte (1762-1814) developed the first system of German Idealism. He argued that the self posits itself and the not-self through practical activity. His philosophy emphasized human freedom, moral action, and the active nature of consciousness.
+
+// 19th Century Philosophy
++ who was friedrich nietzsche
+- Friedrich Nietzsche (1844-1900) declared "God is dead" and critiqued traditional morality, religion, and philosophy. His concepts include the Übermensch (overman), eternal recurrence, will to power, and master-slave morality. He advocated creating one's own values.
+
++ what is nihilism
+- Nihilism is the belief that life lacks inherent meaning, moral values are baseless, and existence is fundamentally meaningless. Nietzsche diagnosed nihilism as a cultural crisis but sought to overcome it through value creation and affirmation of life.
+
++ tell me about arthur schopenhauer
+- Arthur Schopenhauer (1788-1860) argued that reality is driven by blind, irrational will that creates suffering. Influenced by Buddhism and Kant, he saw art, compassion, and asceticism as temporary escapes from will's tyranny. Pessimistic but influential.
+
++ who was soren kierkegaard
+- Søren Kierkegaard (1813-1855) is considered the father of existentialism. He emphasized individual existence, faith, anxiety, and the "leap" required for authentic living. His three stages of life (aesthetic, ethical, religious) explore human development.
+
++ what is the aesthetic stage kierkegaard
+- In Kierkegaard's aesthetic stage, people live for immediate pleasure and novelty, avoiding commitment and responsibility. The aesthetic individual seeks variety and stimulation but ultimately faces boredom and despair. This leads to crisis and potential progression.
+
++ what is the ethical stage kierkegaard
+- The ethical stage involves commitment to universal moral principles and social responsibilities like marriage, career, and civic duty. While more mature than aesthetic living, it can become rigid and ultimately insufficient for authentic existence.
+
++ what is the religious stage kierkegaard
+- The religious stage requires a "leap of faith" beyond rational ethics to personal relationship with God. It involves accepting paradox, uncertainty, and individual responsibility before the divine. This is Kierkegaard's highest form of existence.
+
+// Phenomenology
++ what is phenomenology
+- Phenomenology, founded by Edmund Husserl, studies consciousness and experience as experienced from the first-person point of view. It "brackets" assumptions about external reality to examine how things appear to consciousness itself.
+
++ who was edmund husserl
+- Edmund Husserl (1859-1938) founded phenomenology as a rigorous science of consciousness. His method of epoché (bracketing) suspends judgment about reality's existence to study pure phenomena. He influenced Heidegger, Sartre, and Merleau-Ponty.
+
++ tell me about martin heidegger
+- Martin Heidegger (1889-1976) examined the question of Being itself. His analysis of Dasein (being-there) explored authentic existence, thrownness, and being-toward-death. His later work examined technology's impact on human existence and language's relation to Being.
+
++ what is dasein
+- Dasein ("being-there") is Heidegger's term for human existence characterized by being thrown into the world, projecting toward possibilities, and existing in time. Unlike other beings, humans question their own existence and have unique relationship to Being.
+
++ who was maurice merleau ponty
+- Maurice Merleau-Ponty (1908-1961) emphasized embodied perception over abstract thought. He argued that we know the world primarily through our lived, bodily experience. His phenomenology of perception influenced psychology, cognitive science, and art theory.
+
+// Analytic Philosophy Expansion
++ who was bertrand russell
+- Bertrand Russell (1872-1970) co-founded analytic philosophy and mathematical logic. His work on paradoxes, definite descriptions, and logical atomism shaped 20th-century philosophy. He was also a prominent social activist and won the Nobel Prize in Literature.
+
++ tell me about ludwig wittgenstein
+- Ludwig Wittgenstein (1889-1951) revolutionized philosophy twice. His early work "Tractus" presented logical atomism, while his later "Philosophical Investigations" emphasized language games and ordinary language use. He argued many philosophical problems arise from language confusion.
+
++ what are language games
+- Wittgenstein's language games show how words get their meaning from use in specific contexts and activities, not from referring to fixed essences. Like games, language follows rules that participants understand through practice, not abstract definitions.
+
++ who was w v o quine
+- W.V.O. Quine (1908-2000) challenged the analytic/synthetic distinction and argued for holistic confirmation of beliefs. His "Two Dogmas of Empiricism" and theory of radical translation influenced philosophy of science and meaning. He advocated naturalized epistemology.
+
++ what is the principle of charity
+- The principle of charity, associated with Davidson and Quine, suggests interpreting others' statements in their strongest, most reasonable form. When understanding different cultures or translating languages, we should assume rationality and truth in their beliefs.
+
+// Philosophy of Language
++ what is philosophy of language
+- Philosophy of language examines meaning, reference, truth, communication, and language's relationship to thought and reality. Key questions: How do words refer to things? What makes statements true? How does language shape thought?
+
++ what is the meaning theory
+- Meaning theory attempts to explain how linguistic expressions have meaning. Approaches include reference theory (meaning is what words refer to), use theory (meaning is how words are used), and truth-conditional theory (meaning depends on truth conditions).
+
++ tell me about speech acts
+- Speech acts, theorized by Austin and Searle, are utterances that perform actions beyond mere communication. Examples: promises, commands, declarations ("I pronounce you married"). They show language doesn't just describe reality but creates it.
+
++ what is the sapir whorf hypothesis
+- The Sapir-Whorf hypothesis suggests language influences or determines thought. Strong version: language determines what we can think. Weak version: language influences how we think. Evidence is mixed, with some support for weak effects on perception and categorization.
+
+// Metaphysics Expansion  
++ what is the problem of universals
+- The problem of universals asks whether abstract properties (redness, triangularity) exist independently of particular things. Positions include Platonic realism (universals exist), nominalism (only names exist), and conceptualism (universals exist in minds).
+
++ what is personal identity
+- Personal identity examines what makes you "you" over time. Theories include psychological continuity (memory and personality), biological continuity (same body/brain), and soul theory (immaterial essence). Ship of Theseus parallels apply to persons.
+
++ tell me about possible worlds
+- Possible worlds are ways things could have been - used to analyze necessity, possibility, and counterfactuals. Modal realists like David Lewis argue possible worlds literally exist, while others treat them as useful abstractions for understanding modality.
+
++ what is determinism
+- Determinism holds that every event is the inevitable result of prior causes. If true, it raises questions about free will and moral responsibility. Types include causal determinism, logical determinism, and theological determinism (divine foreknowledge).
+
++ hard determinism vs compatibilism
+- Hard determinists argue that determinism eliminates free will and moral responsibility. Compatibilists argue that free will is compatible with determinism if our actions flow from our own desires and reasoning, even if those are themselves determined.
+
+// Philosophy of Religion
++ what is philosophy of religion
+- Philosophy of religion uses reason to examine religious concepts like God's existence, the problem of evil, faith and reason, religious experience, and afterlife. It differs from theology by using philosophical rather than scriptural methods.
+
++ what is the ontological argument
+- The ontological argument, developed by Anselm and refined by others, attempts to prove God's existence through reason alone. It argues that God, as the greatest conceivable being, must exist because existence is greater than non-existence.
+
++ what is the cosmological argument
+- The cosmological argument argues that everything that begins to exist has a cause, the universe began to exist, therefore the universe has a cause (God). Modern versions include the Kalam argument and arguments from contingency.
+
++ what is the teleological argument
+- The teleological argument (argument from design) points to apparent design in nature as evidence for God. Modern versions cite fine-tuning of physical constants. Critics argue natural selection explains apparent design without requiring a designer.
+
++ what is the problem of evil
+- The problem of evil challenges belief in an all-powerful, all-knowing, all-good God by noting the existence of suffering and evil. If God can prevent evil but doesn't, is God not good? If God can't prevent it, is God not omnipotent?
+
++ theodicy vs defense
+- Theodicy attempts to justify God's goodness despite evil's existence (Leibniz: "best of all possible worlds"). Defense merely shows that God and evil can logically coexist without claiming to know God's reasons (Plantinga's free will defense).
+
+// Contemporary Issues
++ what is transhumanism
+- Transhumanism advocates using technology to enhance human capabilities beyond typical biological limits. It supports genetic engineering, life extension, cognitive enhancement, and eventually uploading consciousness. Raises questions about human nature and equality.
+
++ philosophy of artificial intelligence
+- AI philosophy examines whether machines can think, be conscious, or have rights. The hard problem of consciousness makes it unclear if AI could be truly conscious or just simulate consciousness. This affects how we should treat advanced AI systems.
+
++ what is the simulation hypothesis
+- The simulation hypothesis, proposed by Nick Bostrom, suggests we might be living in a computer simulation run by advanced beings. If civilizations develop simulation technology, simulated beings would vastly outnumber "real" ones, making simulation more probable.
+
++ digital philosophy ethics
+- Digital ethics examines moral issues in technology: privacy rights, algorithmic bias, data ownership, surveillance, social media's psychological effects, and AI decision-making. How should we balance technological benefits with human dignity and autonomy?
+
++ climate change philosophy
+- Climate philosophy examines moral dimensions of environmental change: intergenerational justice, collective action problems, individual vs. systemic responsibility, and conflicts between economic growth and sustainability. What do we owe future generations?
+
+// Logic Extensions
++ what is formal logic
+- Formal logic uses symbolic systems to represent argument structures precisely. Propositional logic deals with compound statements using connectives (and, or, not, if-then). Predicate logic adds quantifiers (all, some) and predicates for more complex reasoning.
+
++ what is modal logic
+- Modal logic deals with necessity and possibility. It uses operators like "necessarily" and "possibly" to analyze statements about what must be true, could be true, or is true in possible worlds. Applications include metaphysics, ethics, and computer science.
+
++ tell me about fuzzy logic
+- Fuzzy logic, developed by Lotfi Zadeh, allows degrees of truth between 0 and 1 rather than strict true/false. It handles vague concepts like "tall" or "expensive" where boundaries are unclear. Used in AI, control systems, and decision-making.
+
++ what are paradoxes in logic
+- Logical paradoxes create contradictions from apparently valid reasoning. Russell's paradox (set of all sets not containing themselves), the liar paradox ("this statement is false"), and Zeno's paradoxes challenge our understanding of logic and infinity.
+
+// Feminist Philosophy
++ what is feminist philosophy
+- Feminist philosophy examines how gender affects philosophical questions and critiques male-dominated philosophical traditions. It explores concepts of equality, difference, care ethics, embodiment, and the gendered nature of reason and knowledge.
+
++ who was mary wollstonecraft
+- Mary Wollstonecraft (1759-1797) wrote "A Vindication of the Rights of Woman," arguing for women's equality and education. She challenged the notion that women are naturally inferior, arguing social conditions create apparent differences.
+
++ what is care ethics
+- Care ethics, developed by Carol Gilligan and Nel Noddings, emphasizes relationships, responsibility, and contextual moral reasoning over abstract principles. It values caring, attentiveness, and maintaining relationships as central to ethical life.
+
++ standpoint epistemology
+- Standpoint epistemology argues that marginalized groups may have epistemic advantages in understanding social reality due to their social position. Those experiencing oppression may better understand power structures than those who benefit from them.
+
+// Additional Philosophical Methods
++ what is conceptual analysis
+- Conceptual analysis examines the meaning and logical structure of concepts by breaking them into necessary and sufficient conditions. For example, analyzing "knowledge" as "justified true belief" reveals conditions something must meet to count as knowledge.
+
++ thought experiments philosophy
+- Philosophical thought experiments use hypothetical scenarios to test intuitions and theories. They isolate variables and explore implications of philosophical positions. Examples include trolley problems, brain in vat, experience machine, and ship of Theseus.
+
++ what is philosophical argumentation
+- Philosophical argumentation involves presenting premises that support conclusions, anticipating objections, and responding to counterarguments. Good philosophical arguments are valid (conclusion follows from premises) and sound (premises are true).
+
++ reductio ad absurdum
+- Reductio ad absurdum proves a position false by showing it leads to contradiction or absurd consequences. If accepting a claim forces us to accept something clearly false, we should reject the original claim. Commonly used in logic and ethics.

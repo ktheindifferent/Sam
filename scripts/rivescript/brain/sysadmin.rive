@@ -1,0 +1,234 @@
+// System Administration and Technical Tasks
+
+// System Information
++ (system info|system information|specs|system specs)
+- I'll gather system information for you. ::::: uname -a :::::
+
++ (uptime|how long running|system uptime)
+- Checking system uptime. ::::: uptime :::::
+
++ (load average|system load|cpu load)
+- Checking current system load. ::::: uptime :::::
+
++ (free memory|available memory|memory status)
+- Checking memory status. ::::: free -h :::::
+
++ (cpu usage|processor usage|cpu status)
+- Showing CPU usage information. ::::: top -n 1 :::::
+
+// Network Operations
++ (ip address|my ip|network address)
+- Getting your IP address information. ::::: ifconfig :::::
+
++ (network status|network info|connectivity)
+- Checking network connectivity. ::::: ping -c 3 google.com :::::
+
++ (wifi status|wireless status)
+- Checking wireless network status. ::::: iwconfig :::::
+
+// Process Management
++ (kill process *|stop process *|end process *)
+- Terminating process <star>. ::::: pkill <star> :::::
+
++ (kill pid *|kill process id *)
+- Killing process with PID <star>. ::::: kill <star> :::::
+
++ (force kill *|kill 9 *)
+- Force killing process <star>. ::::: kill -9 <star> :::::
+
++ (process list|running processes|ps)
+- Listing all running processes. ::::: ps aux :::::
+
++ (process tree|pstree)
+- Showing process tree. ::::: pstree :::::
+
++ (find process *|search process *)
+- Searching for process <star>. ::::: ps aux | grep <star> :::::
+
+// Package Management (macOS specific)
++ (install *|brew install *)
+- Installing <star> using Homebrew. ::::: brew install <star> :::::
+
++ (update brew|brew update)
+- Updating Homebrew package list. ::::: brew update :::::
+
++ (upgrade brew|brew upgrade)
+- Upgrading all Homebrew packages. ::::: brew upgrade :::::
+
++ (search brew *|brew search *)
+- Searching Homebrew for <star>. ::::: brew search <star> :::::
+
++ (brew list|installed packages)
+- Listing installed Homebrew packages. ::::: brew list :::::
+
+// Environment Variables
++ (show env|environment variables|env vars)
+- Displaying environment variables. ::::: env :::::
+
++ (show path|path variable)
+- Showing PATH environment variable. ::::: echo $PATH :::::
+
++ (set env *|export *)
+- Setting environment variable. ::::: export <star> :::::
+
+// Disk and File System
++ (disk usage|du|directory size)
+- Checking disk usage. ::::: du -sh * :::::
+
++ (free space|available space|disk free)
+- Checking available disk space. ::::: df -h :::::
+
++ (mount points|mounted drives)
+- Showing mounted file systems. ::::: mount :::::
+
++ (unmount *|umount *)
+- Unmounting <star>. ::::: umount <star> :::::
+
+// Archive and Compression
++ (extract *|unzip *|decompress *)
+- Extracting archive <star>. ::::: tar -xf <star> :::::
+
++ (create archive *|compress *|zip *)
+- Creating archive from <star>. ::::: tar -czf archive.tar.gz <star> :::::
+
++ (list archive *|tar contents *)
+- Listing contents of archive <star>. ::::: tar -tf <star> :::::
+
+// Permissions and Ownership
++ (fix permissions *|repair permissions *)
+- Fixing permissions for <star>. ::::: chmod -R 755 <star> :::::
+
++ (make executable *|chmod x *)
+- Making <star> executable. ::::: chmod +x <star> :::::
+
++ (remove write *|chmod w *)
+- Removing write permission from <star>. ::::: chmod -w <star> :::::
+
++ (show permissions *|ls l *)
+- Showing detailed permissions for <star>. ::::: ls -l <star> :::::
+
+// System Services (macOS)
++ (start service *|launchctl start *)
+- Starting service <star>. ::::: sudo launchctl start <star> :::::
+
++ (stop service *|launchctl stop *)
+- Stopping service <star>. ::::: sudo launchctl stop <star> :::::
+
++ (service status *|launchctl list *)
+- Checking status of service <star>. ::::: launchctl list | grep <star> :::::
+
++ (list services|launchctl list)
+- Listing all services. ::::: launchctl list :::::
+
+// Log Management
++ (show logs|system logs|console logs)
+- Showing system logs. ::::: log show --last 1h :::::
+
++ (error logs|show errors|system errors)
+- Showing error logs. ::::: log show --predicate 'eventType == logEvent && messageType >= 16' --last 1h :::::
+
++ (tail syslog|follow logs)
+- Following system logs. ::::: log stream :::::
+
++ (apache logs|web server logs)
+- Showing web server logs. ::::: tail -f /var/log/apache2/error.log :::::
+
+// Security
++ (check permissions *|security check *)
+- Checking security permissions for <star>. ::::: ls -la <star> :::::
+
++ (show users|list users|who)
+- Showing logged in users. ::::: who :::::
+
++ (user info *|id *)
+- Showing user information for <star>. ::::: id <star> :::::
+
++ (change password|passwd)
+- Starting password change process. ::::: passwd :::::
+
+// System Cleanup
++ (clean cache|clear cache)
+- Cleaning system cache. ::::: sudo purge :::::
+
++ (clean temp|clean temporary|clean tmp)
+- Cleaning temporary files. ::::: rm -rf /tmp/* :::::
+
++ (clean downloads|empty downloads)
+- Cleaning Downloads folder. ::::: rm -rf ~/Downloads/* :::::
+
++ (clean desktop|empty desktop)
+- Cleaning Desktop. ::::: rm -rf ~/Desktop/* :::::
+
++ (empty trash|clean trash)
+- Emptying trash. ::::: rm -rf ~/.Trash/* :::::
+
+// Development Tools
++ (git status|check git)
+- Checking git repository status. ::::: git status :::::
+
++ (git pull|update repo)
+- Pulling latest changes from git. ::::: git pull :::::
+
++ (git push|push changes)
+- Pushing changes to git repository. ::::: git push :::::
+
++ (git log|commit history)
+- Showing git commit history. ::::: git log --oneline -10 :::::
+
++ (node version|check node)
+- Checking Node.js version. ::::: node --version :::::
+
++ (python version|check python)
+- Checking Python version. ::::: python3 --version :::::
+
++ (ruby version|check ruby)
+- Checking Ruby version. ::::: ruby --version :::::
+
+// Database Operations
++ (mysql start|start mysql)
+- Starting MySQL server. ::::: brew services start mysql :::::
+
++ (mysql stop|stop mysql)
+- Stopping MySQL server. ::::: brew services stop mysql :::::
+
++ (postgres start|start postgres)
+- Starting PostgreSQL server. ::::: brew services start postgresql :::::
+
++ (postgres stop|stop postgres)
+- Stopping PostgreSQL server. ::::: brew services stop postgresql :::::
+
+// System Maintenance
++ (repair permissions|fix permissions)
+- Running permission repair (this might take a while). ::::: sudo diskutil resetUserPermissions / `id -u` :::::
+
++ (rebuild spotlight|reindex spotlight)
+- Rebuilding Spotlight index. ::::: sudo mdutil -E / :::::
+
++ (flush dns|clear dns|reset dns)
+- Flushing DNS cache. ::::: sudo dscacheutil -flushcache :::::
+
++ (restart networking|reset network)
+- Restarting network services. ::::: sudo ifconfig en0 down && sudo ifconfig en0 up :::::
+
+// Hardware Information
++ (battery status|battery info)
+- Checking battery status. ::::: pmset -g batt :::::
+
++ (temperature|cpu temp|system temp)
+- Checking system temperature (if available). ::::: sudo powermetrics -n 1 -s smc :::::
+
++ (hardware info|system hardware)
+- Showing hardware information. ::::: system_profiler SPHardwareDataType :::::
+
+// Help for complex tasks
++ how do i *
+- That's a great question about how to <star>. Let me help you with that step by step.
+
++ what is the best way to *
+- There are usually several approaches to <star>. What's your specific situation?
+
++ troubleshoot *
+- I can help troubleshoot <star>. What problems are you experiencing?
+
++ optimize *
+- Optimizing <star> is a good idea. What aspects would you like to improve?

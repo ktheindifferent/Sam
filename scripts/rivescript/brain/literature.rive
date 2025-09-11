@@ -1,0 +1,160 @@
+! version = 2.0
+
+// Literature Knowledge Base for SAM
+// Covers classic and modern literature, poetry, authors, and literary concepts
+
+// Literature Basics
++ what is literature
+- Literature is written works of artistic value that express human experiences, emotions, and ideas. It includes novels, poetry, drama, essays, and other forms that use language creatively to explore themes about life, society, and the human condition.
+
++ what are literary genres
+- Major literary genres include fiction (novels, short stories), poetry (various forms and styles), drama (plays for performance), and non-fiction (essays, biographies, memoirs). Each genre has unique characteristics and purposes.
+
++ what is fiction
+- Fiction consists of imaginative narratives that may be inspired by real events but are not bound by factual accuracy. It includes novels, short stories, and novellas that explore human nature through invented characters and situations.
+
++ what is poetry
+- Poetry is literature that uses compressed language, rhythm, imagery, and often rhyme to express emotions and ideas. It can be formal (following specific patterns) or free verse (without set structure). Poetry distills complex feelings into concentrated language.
+
++ what is drama
+- Drama is literature written for theatrical performance, including plays, screenplays, and radio scripts. It uses dialogue, action, and stagecraft to tell stories, explore conflicts, and examine human relationships through live performance.
+
+// Classic Literature
++ tell me about shakespeare
+- William Shakespeare (1564-1616) is widely regarded as the greatest writer in English literature. His 39 plays and 154 sonnets explore universal themes of love, power, jealousy, and mortality. Works include Hamlet, Romeo and Juliet, Macbeth, and King Lear.
+
++ what is hamlet about
+- Hamlet is Shakespeare's longest play about a Danish prince who seeks revenge for his father's murder by his uncle Claudius. The play explores themes of revenge, madness, mortality, and moral corruption through Hamlet's famous soliloquies and complex psychology.
+
++ tell me about pride and prejudice
+- Pride and Prejudice (1813) by Jane Austen follows Elizabeth Bennet and Mr. Darcy as they overcome their initial misunderstandings and social prejudices to find love. It's a witty commentary on marriage, class, and society in Regency England.
+
++ what is the great gatsby about
+- The Great Gatsby (1925) by F. Scott Fitzgerald tells the story of Jay Gatsby's pursuit of the American Dream and his obsession with Daisy Buchanan. Set in the Jazz Age, it critiques wealth, social class, and the corruption of the American Dream.
+
++ tell me about to kill a mockingbird
+- To Kill a Mockingbird (1960) by Harper Lee examines racial injustice through the eyes of Scout Finch, whose father defends a Black man falsely accused of rape in Depression-era Alabama. It addresses prejudice, morality, and loss of innocence.
+
++ what is 1984 about
+- 1984 (1949) by George Orwell depicts a totalitarian society where Big Brother monitors everything and controls truth through propaganda. It explores themes of surveillance, thought control, and individual freedom that remain relevant today.
+
+// Poetry and Poets
++ who was emily dickinson
+- Emily Dickinson (1830-1886) was an American poet who wrote nearly 1,800 poems, mostly in seclusion. Her unique style featured unconventional punctuation, slant rhyme, and profound insights into death, immortality, and nature. Most were published posthumously.
+
++ tell me about robert frost
+- Robert Frost (1874-1963) was an American poet famous for poems about rural New England. His accessible style and use of traditional forms made complex ideas understandable. Famous works include "The Road Not Taken" and "Stopping by Woods on a Snowy Evening."
+
++ who was maya angelou
+- Maya Angelou (1928-2014) was an American poet and memoirist whose powerful works addressed racism, trauma, and resilience. Her autobiography "I Know Why the Caged Bird Sings" and poem "On the Pulse of Morning" brought her international acclaim.
+
++ what is the road not taken about
+- "The Road Not Taken" by Robert Frost describes a speaker choosing between two paths in a wood. Often misinterpreted as celebrating nonconformity, it actually reflects on how we construct meaning from arbitrary choices and the stories we tell ourselves about our decisions.
+
++ tell me about langston hughes
+- Langston Hughes (1902-1967) was a leading figure of the Harlem Renaissance who wrote about African American life and struggles. His jazz-influenced poetry and social activism made him one of the most important voices in American literature.
+
+// World Literature
++ tell me about don quixote
+- Don Quixote (1605/1615) by Miguel de Cervantes follows an aging gentleman who becomes obsessed with chivalric romances and sets out as a knight-errant. Considered the first modern novel, it explores reality vs. fantasy and the power of imagination.
+
++ what is war and peace about
+- War and Peace (1869) by Leo Tolstoy follows Russian society during the Napoleonic Wars through the lives of several aristocratic families. This epic novel examines history, free will, love, and the meaning of life across 1,200+ pages.
+
++ tell me about gabriel garcia marquez
+- Gabriel García Márquez (1927-2014) was a Colombian author who popularized magical realism, blending fantasy with reality. His masterpiece "One Hundred Years of Solitude" chronicles the Buendía family and won him the Nobel Prize in Literature.
+
++ what is the metamorphosis about
+- The Metamorphosis (1915) by Franz Kafka tells of Gregor Samsa, who wakes up transformed into a giant insect. This surreal story explores alienation, family dynamics, and the dehumanizing effects of modern life through its bizarre central metaphor.
+
++ tell me about chinua achebe
+- Chinua Achebe (1930-2013) was a Nigerian author whose novel "Things Fall Apart" depicts the collision between traditional African culture and European colonialism. His works gave voice to postcolonial African literature and challenged Western literary perspectives.
+
+// Literary Movements
++ what was romanticism in literature
+- Romanticism (late 18th-19th century) emphasized emotion, nature, individualism, and imagination over reason and classical restraint. Romantic writers like Wordsworth, Coleridge, and Byron celebrated personal experience and the sublime power of nature.
+
++ tell me about modernism
+- Modernism (early-mid 20th century) broke from traditional forms and techniques, experimenting with stream of consciousness, fragmented narratives, and new perspectives. Writers like Joyce, Eliot, and Woolf revolutionized literary expression.
+
++ what is magical realism
+- Magical realism incorporates fantastical elements into otherwise realistic stories, presenting them as normal parts of the world. Writers like García Márquez and Isabel Allende use this technique to explore cultural identity and challenge Western rationalism.
+
++ tell me about the harlem renaissance
+- The Harlem Renaissance (1920s-1930s) was a cultural movement celebrating African American art, literature, and music. Writers like Langston Hughes, Zora Neale Hurston, and Claude McKay created works that affirmed Black identity and culture.
+
+// Literary Techniques
++ what is symbolism in literature
+- Symbolism uses objects, colors, or actions to represent deeper meanings beyond their literal sense. For example, a dove might symbolize peace, or a storm might represent internal turmoil. Symbols add layers of meaning to literary works.
+
++ what is foreshadowing
+- Foreshadowing is a literary device that hints at future events in a story. It creates suspense, builds tension, and helps unify the narrative by preparing readers for what's to come while maintaining the element of surprise.
+
++ what is irony
+- Irony involves contrast between appearance and reality, expectation and outcome, or literal and intended meaning. Types include verbal irony (saying one thing, meaning another), situational irony (unexpected outcomes), and dramatic irony (readers know more than characters).
+
++ what is point of view
+- Point of view determines who tells the story and how. First person uses "I" (narrator is a character), second person uses "you" (rare), and third person uses "he/she" (narrator outside the story). Each creates different relationships with readers.
+
++ what is theme in literature
+- Theme is the central message or meaning of a literary work - what it says about life, human nature, or society. Themes emerge through character actions, plot events, and symbols. Examples include love conquers all, power corrupts, or coming of age.
+
+// Contemporary Literature
++ tell me about toni morrison
+- Toni Morrison (1931-2019) was an American novelist who explored African American experience with lyrical prose and complex narratives. Her novel "Beloved" won the Pulitzer Prize, and she received the Nobel Prize in Literature in 1993.
+
++ what is beloved about
+- Beloved (1987) by Toni Morrison tells of Sethe, a former slave haunted by the ghost of her dead daughter. Set after the Civil War, it examines the psychological trauma of slavery and the struggle for freedom and identity.
+
++ tell me about salman rushdie
+- Salman Rushdie (born 1947) is a British-Indian author known for his magical realist novels that blend Eastern and Western cultures. His controversial novel "The Satanic Verses" led to a fatwa, but his works continue to explore identity, migration, and postcolonial themes.
+
++ what is literary fiction vs genre fiction
+- Literary fiction emphasizes character development, prose style, and thematic depth, often examining the human condition. Genre fiction (mystery, sci-fi, romance) follows established conventions and focuses on plot. The distinction is increasingly blurred.
+
++ tell me about young adult literature
+- Young Adult (YA) literature targets teenage readers but attracts adults too. It typically features adolescent protagonists facing coming-of-age challenges. Popular series like Harry Potter and The Hunger Games have made YA a significant literary category.
+
+// Reading and Analysis
++ how to analyze literature
+- Literary analysis examines how authors use literary devices to create meaning. Consider character development, plot structure, themes, symbolism, setting, and style. Ask what the author is trying to say and how they achieve their effects.
+
++ why read classic literature
+- Classic literature has endured because it addresses universal human experiences and themes that remain relevant. It provides cultural literacy, expands vocabulary, develops critical thinking, and offers insights into different time periods and perspectives.
+
++ how to read poetry
+- Read poetry slowly and multiple times. Pay attention to sound, rhythm, imagery, and word choice. Consider the speaker, tone, and emotional content. Don't worry about finding the "right" interpretation - poetry can have multiple valid meanings.
+
++ what makes good literature
+- Good literature typically demonstrates skillful use of language, complex characters, meaningful themes, and lasting relevance. It challenges readers, provides new perspectives, and achieves artistic excellence in its chosen form and style.
+
+// Book Recommendations
++ classic books to read
+- Essential classics include: Pride and Prejudice (Austen), 1984 (Orwell), To Kill a Mockingbird (Lee), The Great Gatsby (Fitzgerald), Hamlet (Shakespeare), Jane Eyre (Brontë), and The Catcher in the Rye (Salinger).
+
++ modern books to read
+- Excellent modern works include: Beloved (Morrison), The Handmaid's Tale (Atwood), One Hundred Years of Solitude (García Márquez), Middlesex (Eugenides), The Kite Runner (Hosseini), and Never Let Me Go (Ishiguro).
+
++ poetry collections to read
+- Great poetry collections include: Leaves of Grass (Whitman), The Complete Poems (Dickinson), The Waste Land (Eliot), Ariel (Plath), The Collected Poems (Hughes), and Diving into the Wreck (Rich).
+
+// Literature Facts
++ random literature fact
+- <get literature_facts>
+
++ literature trivia  
+- <get literature_facts>
+
+! array literature_facts = The word "bookworm" originally referred to actual insects that ate through books|J.K. Rowling wrote the first Harry Potter book on napkins in a café|Agatha Christie is the best-selling novelist of all time with over 2 billion copies sold|Dr. Seuss wrote Green Eggs and Ham using only 50 different words|The longest sentence in literature is in Les Misérables with 823 words|Shakespeare invented over 1,700 words still used today|The Great Gatsby was initially a commercial failure|Frankenstein was written by Mary Shelley when she was only 18|Ernest Hemingway wrote standing up at a chest-high bookshelf|The first novel ever written was The Tale of Genji by Murasaki Shikibu in 1010|Amazon.com was originally going to be called "Cadabra"|The most translated author in the world is Agatha Christie
+
++ famous first lines
+- Great opening lines include: "It was the best of times, it was the worst of times" (A Tale of Two Cities), "Call me Ishmael" (Moby Dick), "In a hole in the ground there lived a hobbit" (The Hobbit), and "It is a truth universally acknowledged..." (Pride and Prejudice).
+
++ banned books
+- Books have been banned for various reasons throughout history. Commonly challenged works include The Catcher in the Rye, To Kill a Mockingbird, 1984, Brave New World, and The Adventures of Huckleberry Finn. Censorship often reflects social tensions and fears.
+
++ book awards
+- Major literary awards include the Pulitzer Prize, Nobel Prize in Literature, Man Booker Prize, National Book Award, and Hugo Award (science fiction). These awards recognize outstanding achievement and help identify significant literary works.
+
++ literature movements timeline
+- Major literary movements: Medieval (500-1500), Renaissance (1500-1660), Neoclassicism (1660-1798), Romanticism (1798-1870), Realism (1870-1914), Modernism (1914-1945), Postmodernism (1945-present), Contemporary (1960s-present).
