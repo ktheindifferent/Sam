@@ -163,7 +163,7 @@ pub async fn handle_df(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         }
     }
 
-    let mut sys = System::new_all();
+    let sys = System::new_all();
     // sys.refresh_disks_list(); // Not available in current sysinfo version
 
     let mut out = output_lines.lock().await;

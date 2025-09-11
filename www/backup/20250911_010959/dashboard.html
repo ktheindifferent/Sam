@@ -1,0 +1,411 @@
+<!-- ███████     █████     ███    ███    
+     ██         ██   ██    ████  ████    
+     ███████    ███████    ██ ████ ██    
+          ██    ██   ██    ██  ██  ██    
+     ███████ ██ ██   ██ ██ ██      ██ ██ 
+Copyright 2021-2026 The Open Sam Foundation (OSF)
+Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
+Licensed under GPLv3....see LICENSE file. -->
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
+  <link rel="manifest" href="/assets/site.webmanifest">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <title>S.A.M. - Smart Artificial Mind Dashboard</title>
+  <meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no' name='viewport' />
+
+  <!-- CSS Files -->
+  <link href="/assets/vendor/fontawesome/css/all.css" rel="stylesheet">
+  <link href="/assets/css/vendor/bootstrap.min.css" rel="stylesheet" />
+  <link href="/assets/css/vendor/toastr.min.css" rel="stylesheet" />
+  <link href="/assets/css/vendor/black-dashboard.min.css?v=1.0.0" rel="stylesheet" />
+  <link href="/assets/css/core.css" rel="stylesheet" />
+  <style>
+    /* Enhanced Dashboard Styles */
+    .dashboard-card {
+      background: linear-gradient(135deg, #1e1e2d 0%, #2a2a3a 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 15px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+      margin-bottom: 20px;
+    }
+    
+    .dashboard-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.4);
+      border-color: #27a0b9;
+    }
+    
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    
+    .status-running { background-color: #27a745; }
+    .status-stopped { background-color: #dc3545; }
+    .status-unknown { background-color: #6c757d; }
+    .status-error { background-color: #fd7e14; }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(39, 167, 69, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(39, 167, 69, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(39, 167, 69, 0); }
+    }
+    
+    .metric-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #27a0b9;
+    }
+    
+    .metric-label {
+      color: #adb5bd;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .progress-custom {
+      height: 10px;
+      background-color: rgba(255, 255, 255, 0.1);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    
+    .progress-bar-custom {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 0.6s ease;
+    }
+    
+    .activity-log {
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+    }
+    
+    .activity-item {
+      padding: 8px 12px;
+      border-left: 3px solid #27a0b9;
+      margin-bottom: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 0 8px 8px 0;
+    }
+    
+    .activity-timestamp {
+      color: #6c757d;
+      font-size: 0.75rem;
+    }
+    
+    .service-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    
+    .quick-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    
+    .action-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #27a0b9, #1f8999);
+      color: white;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .action-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(39, 160, 185, 0.3);
+    }
+    
+    .notification-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: #dc3545;
+      color: white;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .chart-container {
+      height: 200px;
+      position: relative;
+    }
+  </style>
+</head>
+
+<body class="">
+  <div class="wrapper">
+    <!-- Enhanced Sidebar -->
+    <div class="sidebar" data-color="blue" data-background-color="black">
+      <div class="logo">
+        <a href="/" class="simple-text logo-normal">
+          <img src="/assets/img/icon.png" alt="S.A.M." style="width: 32px; height: 32px; margin-right: 10px;">
+          S.A.M. Dashboard
+        </a>
+      </div>
+      <div class="sidebar-wrapper">
+        <ul class="nav">
+          <li class="nav-item active">
+            <a class="nav-link" href="#dashboard">
+              <i class="fas fa-tachometer-alt"></i>
+              <p>Dashboard</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#services">
+              <i class="fas fa-cogs"></i>
+              <p>Services</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#system">
+              <i class="fas fa-server"></i>
+              <p>System Monitor</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#logs">
+              <i class="fas fa-file-alt"></i>
+              <p>Logs</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#database">
+              <i class="fas fa-database"></i>
+              <p>Database</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#settings">
+              <i class="fas fa-wrench"></i>
+              <p>Settings</p>
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+    
+    <div class="main-panel">
+      <!-- Enhanced Navbar -->
+      <nav class="navbar navbar-expand-lg navbar-absolute navbar-transparent">
+        <div class="container-fluid">
+          <div class="navbar-wrapper">
+            <div class="navbar-toggle">
+              <button type="button" class="navbar-toggler">
+                <span class="navbar-toggler-bar bar1"></span>
+                <span class="navbar-toggler-bar bar2"></span>
+                <span class="navbar-toggler-bar bar3"></span>
+              </button>
+            </div>
+            <a class="navbar-brand" href="javascript:void(0)">S.A.M. Comprehensive Dashboard</a>
+          </div>
+          <div class="navbar-nav ml-auto">
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownMenuLink" data-toggle="dropdown">
+                <i class="fas fa-bell"></i>
+                <span class="notification-badge" id="notification-count">3</span>
+              </a>
+              <div class="dropdown-menu dropdown-menu-right" id="notification-dropdown">
+                <!-- Notifications will be populated here -->
+              </div>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#profile">
+                <i class="fas fa-user"></i>
+                <span class="inject-human-name">User</span>
+              </a>
+            </li>
+          </div>
+        </div>
+      </nav>
+
+      <div class="content">
+        <!-- Clock Widget -->
+        <div class="row mb-3">
+          <div class="col-12">
+            <div class="dashboard-card p-3 text-center">
+              <div id="Clock" style="font-size: 2rem; color: #27a0b9;">00:00:00</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Quick Actions Bar -->
+        <div class="quick-actions">
+          <button class="action-btn" onclick="refreshAllData()">
+            <i class="fas fa-sync"></i> Refresh All
+          </button>
+          <button class="action-btn" onclick="showSystemInfo()">
+            <i class="fas fa-info-circle"></i> System Info
+          </button>
+          <button class="action-btn" onclick="openTerminal()">
+            <i class="fas fa-terminal"></i> Terminal
+          </button>
+          <button class="action-btn" onclick="exportLogs()">
+            <i class="fas fa-download"></i> Export Logs
+          </button>
+        </div>
+
+        <!-- Service Status Grid -->
+        <div class="service-grid">
+          <!-- Service Cards will be populated here -->
+        </div>
+
+        <!-- Main Dashboard Content -->
+        <div class="row">
+          <!-- System Metrics -->
+          <div class="col-xl-4 col-lg-6 col-md-6">
+            <div class="dashboard-card p-4">
+              <h5><i class="fas fa-microchip text-primary"></i> CPU Usage</h5>
+              <div class="metric-value" id="cpu-usage">0%</div>
+              <div class="progress-custom mt-2">
+                <div class="progress-bar-custom bg-primary" id="cpu-progress" style="width: 0%"></div>
+              </div>
+              <div class="metric-label mt-2">Real-time CPU utilization</div>
+            </div>
+          </div>
+
+          <div class="col-xl-4 col-lg-6 col-md-6">
+            <div class="dashboard-card p-4">
+              <h5><i class="fas fa-memory text-success"></i> Memory Usage</h5>
+              <div class="metric-value" id="memory-usage">0 MB</div>
+              <div class="progress-custom mt-2">
+                <div class="progress-bar-custom bg-success" id="memory-progress" style="width: 0%"></div>
+              </div>
+              <div class="metric-label mt-2">RAM utilization</div>
+            </div>
+          </div>
+
+          <div class="col-xl-4 col-lg-6 col-md-6">
+            <div class="dashboard-card p-4">
+              <h5><i class="fas fa-hdd text-warning"></i> Disk Usage</h5>
+              <div class="metric-value" id="disk-usage">0%</div>
+              <div class="progress-custom mt-2">
+                <div class="progress-bar-custom bg-warning" id="disk-progress" style="width: 0%"></div>
+              </div>
+              <div class="metric-label mt-2">Storage utilization</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity and Logs -->
+        <div class="row mt-4">
+          <div class="col-lg-8">
+            <div class="dashboard-card p-4">
+              <h5><i class="fas fa-chart-line text-info"></i> System Activity</h5>
+              <div class="chart-container" id="activity-chart">
+                <!-- Chart will be rendered here -->
+                <div class="d-flex align-items-center justify-content-center h-100">
+                  <div class="text-muted">
+                    <i class="fas fa-chart-line fa-3x mb-3"></i>
+                    <div>Real-time activity monitoring</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-4">
+            <div class="dashboard-card p-4">
+              <h5><i class="fas fa-list text-secondary"></i> Recent Activity</h5>
+              <div class="activity-log" id="activity-log">
+                <!-- Activity items will be populated here -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Database and Services Overview -->
+        <div class="row mt-4">
+          <div class="col-lg-6">
+            <div class="dashboard-card p-4">
+              <h5><i class="fas fa-database text-primary"></i> Database Status</h5>
+              <div id="database-info">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Connection:</span>
+                  <span class="status-indicator status-unknown" id="db-status"></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Tables:</span>
+                  <span id="table-count">-</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Active Connections:</span>
+                  <span id="active-connections">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="dashboard-card p-4">
+              <h5><i class="fas fa-network-wired text-success"></i> Network & Services</h5>
+              <div id="network-info">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>HTTP Server:</span>
+                  <span class="status-indicator status-running" id="http-status"></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Redis Cache:</span>
+                  <span class="status-indicator status-unknown" id="redis-status"></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span>Background Tasks:</span>
+                  <span id="background-tasks">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Animated Background -->
+      <div class="bg-animation">
+        <div id="stars"></div>
+        <div id="stars2"></div>
+        <div id="stars3"></div>
+        <div id="stars4"></div>
+      </div>
+    </div>
+  </div>
+
+  <!--   Core JS Files   -->
+  <script src="/assets/js/vendor/jquery.min.js"></script>
+  <script src="/assets/js/vendor/bootstrap.min.js"></script>
+  <script src="/assets/js/vendor/toastr.min.js"></script>
+  <script src="/assets/js/vendor/bootstrap-notify.js"></script>
+  <script src="/assets/js/core.js"></script>
+  <script src="/assets/js/widgets/clock_enhanced.js"></script>
+  
+  <!-- Enhanced Dashboard Script -->
+  <script src="/assets/js/dashboard.js"></script>
+</body>
+
+</html>

@@ -49,7 +49,7 @@ impl LlamaService {
 
         // Run cmake with configuration (matching CLI version)
         let cmake_config = Command::new("cmake")
-            .current_dir(llama_src.clone())
+            .current_dir(llama_src)
             .arg("-DLLAMA_CURL=OFF")
             .arg("-DGGML_CCACHE=OFF")
             .arg(".")
@@ -65,7 +65,7 @@ impl LlamaService {
 
         // Run cmake --build . (matching CLI version)
         let cmake_build = Command::new("cmake")
-            .current_dir(llama_src.clone())
+            .current_dir(llama_src)
             .arg("--build")
             .arg(".")
             .output()?;

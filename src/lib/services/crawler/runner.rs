@@ -1309,7 +1309,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
     let mut last_dns_save = std::time::Instant::now();
     
     loop {
-        log::debug!("run_crawler_service: Main loop iteration");
+        log::info!("run_crawler_service: Main loop iteration starting");
         if !CRAWLER_RUNNING.load(Ordering::SeqCst) {
             log::debug!("run_crawler_service: Crawler not running, sleeping");
             sleep(Duration::from_secs(1)).await;
@@ -1326,13 +1326,13 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         }
 
         // Find a pending job
-        log::debug!("Checking for pending crawl jobs...");
+        log::info!("Checking for pending crawl jobs...");
         let mut jobs = match tokio::time::timeout(
             Duration::from_secs(5),
             CrawlJob::select_async(Some(100), None, None, None)
         ).await {
             Ok(Ok(jobs)) => {
-                log::debug!("Found {} total crawl jobs", jobs.len());
+                log::info!("Found {} total crawl jobs", jobs.len());
                 jobs
                     .into_iter()
                     .filter(|j| j.status == "pending")
@@ -1349,62 +1349,71 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         };
 
         // If no jobs found, create some initial ones
-        // if jobs.is_empty() {
-        //     log::info!("No pending jobs found, generating initial URLs to crawl");
+        if jobs.is_empty() {
+            log::info!("No pending jobs found, generating initial URLs to crawl");
             
-        //     // Mix of popular sites and some randomness
-        //     let base_domains = vec![
-        //         "example.com",
-        //         "wikipedia.org", 
-        //         "github.com",
-        //         "stackoverflow.com",
-        //         "reddit.com",
-        //         "news.ycombinator.com",
-        //         "techcrunch.com",
-        //         "medium.com",
-        //         "dev.to",
-        //         "hackernews.com",
-        //     ];
+            // Conservative list for CapRover deployment
+            let base_domains = if std::env::var("CAPROVER").is_ok() {
+                vec![
+                    "example.com",
+                    "httpbin.org", // Good for testing
+                    "jsonplaceholder.typicode.com", // Small API endpoints
+                ]
+            } else {
+                vec![
+                    "example.com",
+                    "wikipedia.org", 
+                    "github.com",
+                    "stackoverflow.com",
+                    "reddit.com",
+                    "news.ycombinator.com",
+                    "techcrunch.com",
+                    "medium.com",
+                    "dev.to",
+                    "hackernews.com",
+                ]
+            };
             
-        //     // Pick 3 random domains to crawl
-        //     let selected: Vec<_> = {
-        //         let mut rng = rand::thread_rng();
-        //         base_domains.choose_multiple(&mut rng, 3).cloned().collect()
-        //     };
+            // Pick fewer domains for CapRover
+            let job_count = if std::env::var("CAPROVER").is_ok() { 1 } else { 3 };
+            let selected: Vec<_> = {
+                let mut rng = rand::thread_rng();
+                base_domains.choose_multiple(&mut rng, job_count).cloned().collect()
+            };
             
-        //     for domain in selected {
-        //         let url = format!("https://{}/", domain);
-        //         log::info!("Creating new crawl job for: {}", url);
+            for domain in selected {
+                let url = format!("https://{}/", domain);
+                log::info!("Creating new crawl job for: {}", url);
                 
-        //         let oid: String = rand::thread_rng()
-        //             .sample_iter(&Alphanumeric)
-        //             .take(15)
-        //             .map(char::from)
-        //             .collect();
+                let oid: String = rand::thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(15)
+                    .map(char::from)
+                    .collect();
                     
-        //         let mut job = CrawlJob::new();
-        //         job.oid = oid;
-        //         job.start_url = url;
-        //         job.status = "pending".to_string();
-        //         job.created_at = std::time::SystemTime::now()
-        //             .duration_since(std::time::UNIX_EPOCH)
-        //             .map(|d| d.as_secs() as i64)
-        //             .unwrap_or(0);
-        //         job.updated_at = job.created_at;
+                let mut job = CrawlJob::new();
+                job.oid = oid;
+                job.start_url = url;
+                job.status = "pending".to_string();
+                job.created_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                job.updated_at = job.created_at;
                 
-        //         // Try to save the job, but continue even if it fails
-        //         match job.save_async().await {
-        //             Ok(_) => {
-        //                 log::info!("Created crawl job: {}", job.oid);
-        //                 jobs.push(job);
-        //             }
-        //             Err(e) => {
-        //                 log::warn!("Failed to save crawl job to database: {}, using in-memory", e);
-        //                 jobs.push(job);
-        //             }
-        //         }
-        //     }
-        // }
+                // Try to save the job, but continue even if it fails
+                match job.save_async().await {
+                    Ok(_) => {
+                        log::info!("Created crawl job: {}", job.oid);
+                        jobs.push(job);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to save crawl job to database: {}, using in-memory", e);
+                        jobs.push(job);
+                    }
+                }
+            }
+        }
         
         jobs.shuffle(&mut rand::thread_rng());
         jobs.truncate(1);
@@ -1412,7 +1421,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         // If no jobs found, add delay to prevent CPU spinning
         if jobs.is_empty() {
             let no_jobs_delay = if std::env::var("CAPROVER").is_ok() { 5000 } else { 2000 };
-            log::debug!("No pending jobs found, sleeping for {}ms", no_jobs_delay);
+            log::info!("No pending jobs found after creation attempt, sleeping for {}ms", no_jobs_delay);
             tokio::time::sleep(Duration::from_millis(no_jobs_delay)).await;
             continue;
         }

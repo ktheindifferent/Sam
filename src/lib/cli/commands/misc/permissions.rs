@@ -300,8 +300,8 @@ fn chmod_file(_path: &PathBuf, _mode: u32, _recursive: bool) -> Result<(), Box<d
 /// Cross-platform chown implementation
 #[cfg(unix)]
 fn chown_file(path: &PathBuf, owner: Option<&str>, group: Option<&str>, recursive: bool) -> Result<(), Box<dyn std::error::Error>> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
+    
+    
     
     // This is a simplified implementation
     // In a real implementation, we'd use libc::chown() and resolve user/group names to IDs

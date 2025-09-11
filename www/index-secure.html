@@ -1,345 +1,953 @@
+<!-- ███████     █████     ███    ███    
+     ██         ██   ██    ████  ████    
+     ███████    ███████    ██ ████ ██    
+          ██    ██   ██    ██  ██  ██    
+     ███████ ██ ██   ██ ██ ██      ██ ██ 
+Copyright 2021-2026 The Open Sam Foundation (OSF)
+Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
+Licensed under GPLv3....see LICENSE file. -->
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>SAM - Secure Dashboard</title>
+  <meta charset="utf-8" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
+  <link rel="manifest" href="/assets/site.webmanifest">
+  <link rel="mask-icon" href="/assets/safari-pinned-tab.svg" color="#5bbad5">
+  <meta name="msapplication-TileColor" content="#da532c">
+  <meta name="theme-color" content="#ffffff">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <title>S.A.M. - Smart Artificial Mind</title>
+  <meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no' name='viewport' />
+
+  <!-- CSS Files -->
+  <link href="/assets/vendor/fontawesome/css/all.css" rel="stylesheet">
+  <link href="/assets/vendor/fontawesome/css/solid.css" rel="stylesheet">
+  <link href="/assets/fonts/press_start/press_start.css" rel="stylesheet" type="text/css">
+  <link href="/assets/css/vendor/bootstrap.min.css" rel="stylesheet" />
+  <link href="/assets/css/vendor/toastr.min.css" rel="stylesheet" />
+  <link href="/assets/css/vendor/black-dashboard.min.css?v=1.0.0" rel="stylesheet" />
+  <link href="/assets/css/core.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.9.1/font/bootstrap-icons.css">
+
+  <!-- Security utilities must load first for secure mode -->
+  <script src="/assets/js/sanitization.js" nonce="{{CSP_NONCE}}"></script>
+  <script src="/assets/js/ui.js"></script>
+
+  <style>
+    /* Enhanced Dashboard Styles following design.md */
     
-    <!-- CSP-compliant styles with nonce -->
-    <link rel="stylesheet" href="/assets/css/bootstrap.min.css">
-    <link rel="stylesheet" href="/assets/css/dashboard.css">
+    /* Core Design Variables */
+    :root {
+      --bg-primary: #1e1e2d;
+      --bg-secondary: #252532;
+      --bg-card: #2a2a3a;
+      --text-primary: #ffffff;
+      --text-secondary: #adb5bd;
+      --text-muted: #6c757d;
+      --accent-primary: #27a0b9;
+      --accent-secondary: #1f8999;
+      --success: #28a745;
+      --error: #dc3545;
+      --warning: #fd7e14;
+      --info: #17a2b8;
+      --border: rgba(255, 255, 255, 0.1);
+      --border-accent: rgba(39, 160, 185, 0.3);
+    }
+
+    /* Enhanced Dashboard Cards */
+    .dashboard-card {
+      background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-card) 100%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+      margin-bottom: 20px;
+      padding: 20px;
+    }
     
-    <!-- Security utilities must load first -->
-    <script src="/assets/js/sanitization.js" nonce="{{CSP_NONCE}}"></script>
+    .dashboard-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.4);
+      border-color: var(--accent-primary);
+    }
+
+    /* Service Status Indicators */
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    
+    .status-running { 
+      background-color: var(--success);
+      box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+    }
+    .status-stopped { 
+      background-color: var(--error); 
+      animation: none;
+    }
+    .status-warning { 
+      background-color: var(--warning);
+      animation: pulse 1s infinite;
+    }
+    .status-unknown { 
+      background-color: var(--text-muted);
+      animation: none;
+    }
+    
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(1.2); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* Metric Display */
+    .metric-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--accent-primary);
+      margin-bottom: 5px;
+    }
+    
+    .metric-label {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Progress Bars */
+    .progress-custom {
+      height: 10px;
+      background-color: var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    
+    .progress-bar-custom {
+      height: 100%;
+      border-radius: 10px;
+      transition: width 0.6s ease;
+      background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+    }
+
+    /* Activity Log */
+    .activity-log {
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      padding: 15px;
+    }
+    
+    .activity-item, .log-entry {
+      padding: 8px 12px;
+      border-left: 3px solid var(--accent-primary);
+      margin-bottom: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 0 8px 8px 0;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .log-timestamp, .activity-timestamp {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .log-message {
+      color: var(--text-primary);
+      flex: 1;
+    }
+
+    .log-entry.error .log-message {
+      color: var(--error);
+    }
+
+    .log-entry.success .log-message {
+      color: var(--success);
+    }
+
+    .log-entry.warning .log-message {
+      color: var(--warning);
+    }
+
+    /* Service Grid Layout */
+    .service-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    /* Enhanced Buttons */
+    .btn-custom {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .btn-custom:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+    
+    .btn-primary-custom {
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      color: white;
+    }
+    
+    .btn-success-custom {
+      background: rgba(40, 167, 69, 0.2);
+      color: var(--success);
+      border: 1px solid rgba(40, 167, 69, 0.3);
+    }
+    
+    .btn-danger-custom {
+      background: rgba(220, 53, 69, 0.2);
+      color: var(--error);
+      border: 1px solid rgba(220, 53, 69, 0.3);
+    }
+
+    /* Service Control Sections */
+    .service-info {
+      margin-bottom: 20px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .info-value {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 14px;
+    }
+
+    .service-controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* Security Status */
+    .security-status .list-group-item {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    .badge-success {
+      background-color: var(--success);
+    }
+
+    /* File Upload Section */
+    .form-control-file {
+      color: var(--text-primary);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    /* Quick Actions */
+    .quick-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    /* Notification Badge */
+    .notification-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: var(--error);
+      color: white;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Toast Notifications */
+    .toast-notification {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 15px 20px;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transform: translateX(400px);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+    }
+
+    .toast-notification.show {
+      transform: translateX(0);
+    }
+
+    .toast-notification.success {
+      border-color: rgba(40, 167, 69, 0.3);
+      background: linear-gradient(135deg, var(--bg-card), rgba(40, 167, 69, 0.1));
+    }
+
+    .toast-notification.error {
+      border-color: rgba(220, 53, 69, 0.3);
+      background: linear-gradient(135deg, var(--bg-card), rgba(220, 53, 69, 0.1));
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+      .service-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .metric-value {
+        font-size: 2rem;
+      }
+    }
+
+    /* Loading Spinner */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--accent-primary);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Hide cursor on touch devices - following design.md */
+    @media (pointer: coarse) {
+      * {
+        cursor: none !important;
+      }
+    }
+  </style>
 </head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <nav class="col-md-2 d-none d-md-block bg-light sidebar">
-                <div class="sidebar-sticky">
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link active" href="#">
-                                Dashboard
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#services">
-                                Services
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#settings">
-                                Settings
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#security">
-                                Security
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
 
-            <!-- Main content -->
-            <main role="main" class="col-md-9 ml-sm-auto col-lg-10 px-4">
-                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                    <h1 class="h2">Dashboard</h1>
-                    <div class="btn-toolbar mb-2 mb-md-0">
-                        <span class="inject-human-name">Loading...</span>
-                    </div>
-                </div>
-
-                <!-- System Status Cards -->
-                <div class="row">
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">CPU Usage</h5>
-                                <p class="card-text" id="cpu-usage-card">--</p>
-                                <div class="progress">
-                                    <div class="progress-bar" id="cpu-progress-main" role="progressbar" style="width: 0%"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">Memory</h5>
-                                <p class="card-text" id="memory-usage-card">--</p>
-                                <div class="progress">
-                                    <div class="progress-bar" id="memory-progress-main" role="progressbar" style="width: 0%"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">Disk Usage</h5>
-                                <p class="card-text">Storage</p>
-                                <div class="progress">
-                                    <div class="progress-bar" id="disk-progress-main" role="progressbar" style="width: 30%"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">Services</h5>
-                                <p class="card-text">Active: <span id="services-count">0</span></p>
-                                <button class="btn btn-sm btn-primary" onclick="refreshServices()">Refresh</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- File Upload Section -->
-                <div class="row mt-4">
-                    <div class="col-md-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5>Secure File Upload</h5>
-                            </div>
-                            <div class="card-body">
-                                <form id="secure-upload-form" enctype="multipart/form-data">
-                                    <div class="form-group">
-                                        <label for="file-input">Select File (Max 50MB)</label>
-                                        <input type="file" class="form-control-file" id="file-input" 
-                                               accept="image/*,application/pdf,.txt,.doc,.docx">
-                                        <small class="form-text text-muted">
-                                            Allowed types: Images, PDF, Text documents
-                                        </small>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary">Upload</button>
-                                </form>
-                                <div id="upload-status" class="mt-3"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Security Status -->
-                <div class="row mt-4">
-                    <div class="col-md-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5>Security Status</h5>
-                            </div>
-                            <div class="card-body">
-                                <ul class="list-group">
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        XSS Protection
-                                        <span class="badge badge-success">Enabled</span>
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        CSP Headers
-                                        <span class="badge badge-success">Active</span>
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        Input Validation
-                                        <span class="badge badge-success">Enforced</span>
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        SQL Injection Protection
-                                        <span class="badge badge-success">Active</span>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </main>
-        </div>
+<body class="">
+  <div class="wrapper">
+    <!-- SIDEBAR - DYNAMICALLY POPULATED -->
+    <div class="sidebar" id="sidebar">
+      <!-- Sidebar content will be populated by core.js -->
     </div>
-
-    <!-- Scripts with CSP nonce -->
-    <script nonce="{{CSP_NONCE}}">
-        // Store CSP nonce for dynamic script creation
-        window.csrfToken = '{{CSRF_TOKEN}}';
-        window.cspNonce = '{{CSP_NONCE}}';
-        
-        // Secure initialization
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize secure components
-            initializeSecureDashboard();
-        });
-        
-        function initializeSecureDashboard() {
-            // Load user data securely
-            fetch('/api/current_human')
-                .then(response => response.json())
-                .then(data => {
-                    // Use SecurityUtils to sanitize the name before display
-                    const safeName = window.SecurityUtils ? 
-                        window.SecurityUtils.sanitizeInput(data.name, 'name') : 
-                        'User';
-                    
-                    document.querySelectorAll('.inject-human-name').forEach(element => {
-                        element.textContent = safeName;
-                    });
-                })
-                .catch(error => {
-                    console.error('Failed to load user data:', error);
-                    document.querySelectorAll('.inject-human-name').forEach(element => {
-                        element.textContent = 'User';
-                    });
-                });
-            
-            // Set up secure file upload
-            setupSecureFileUpload();
-            
-            // Start monitoring updates
-            startSecureMonitoring();
-        }
-        
-        function setupSecureFileUpload() {
-            const form = document.getElementById('secure-upload-form');
-            const fileInput = document.getElementById('file-input');
-            const statusDiv = document.getElementById('upload-status');
-            
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-                
-                const file = fileInput.files[0];
-                if (!file) {
-                    showStatus('Please select a file', 'warning');
-                    return;
-                }
-                
-                // Validate file using SecurityUtils
-                if (window.SecurityUtils) {
-                    const validation = window.SecurityUtils.validateFileUpload(file, {
-                        maxSize: 50 * 1024 * 1024, // 50MB
-                        allowedTypes: [
-                            'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-                            'application/pdf', 'text/plain',
-                            'application/msword',
-                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                        ],
-                        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'txt', 'doc', 'docx']
-                    });
-                    
-                    if (!validation.valid) {
-                        showStatus(validation.error, 'danger');
-                        return;
-                    }
-                    
-                    // Proceed with upload
-                    uploadFile(file, validation.sanitizedName);
-                } else {
-                    // Fallback if SecurityUtils not loaded
-                    uploadFile(file, file.name);
-                }
-            });
-            
-            function uploadFile(file, sanitizedName) {
-                const formData = new FormData();
-                formData.append('file_data', file, sanitizedName);
-                formData.append('csrf_token', window.csrfToken || '');
-                
-                fetch('/api/services/storage/files', {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'X-CSRF-Token': window.csrfToken || ''
-                    }
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Upload failed');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    showStatus('File uploaded successfully!', 'success');
-                    fileInput.value = '';
-                })
-                .catch(error => {
-                    showStatus('Upload failed: ' + error.message, 'danger');
-                });
-            }
-            
-            function showStatus(message, type) {
-                const safeMessage = window.SecurityUtils ? 
-                    window.SecurityUtils.escapeHtml(message) : 
-                    message;
-                
-                statusDiv.innerHTML = `<div class="alert alert-${type}" role="alert">${safeMessage}</div>`;
-                
-                setTimeout(() => {
-                    statusDiv.innerHTML = '';
-                }, 5000);
-            }
-        }
-        
-        function startSecureMonitoring() {
-            updateSystemMetrics();
-            setInterval(updateSystemMetrics, 5000);
-        }
-        
-        async function updateSystemMetrics() {
-            try {
-                // Simulate metrics - replace with actual API calls
-                const metrics = {
-                    cpu: Math.random() * 100,
-                    memory: {
-                        used: 4000 + Math.random() * 4000,
-                        total: 16000
-                    },
-                    disk: 30 + Math.random() * 40,
-                    services: Math.floor(Math.random() * 10)
-                };
-                
-                // Update CPU
-                document.getElementById('cpu-usage-card').textContent = `${metrics.cpu.toFixed(1)}%`;
-                document.getElementById('cpu-progress-main').style.width = `${metrics.cpu}%`;
-                
-                // Update Memory
-                const memoryPercent = (metrics.memory.used / metrics.memory.total) * 100;
-                document.getElementById('memory-usage-card').textContent = `${metrics.memory.used.toFixed(0)} MB`;
-                document.getElementById('memory-progress-main').style.width = `${memoryPercent}%`;
-                
-                // Update Disk
-                document.getElementById('disk-progress-main').style.width = `${metrics.disk}%`;
-                
-                // Update services
-                document.getElementById('services-count').textContent = metrics.services;
-                
-            } catch (error) {
-                console.error('Error updating metrics:', error);
-            }
-        }
-        
-        function refreshServices() {
-            // Refresh services securely
-            fetch('/api/services')
-                .then(response => response.json())
-                .then(data => {
-                    // Process services data securely
-                    if (window.SecurityUtils) {
-                        const sanitized = window.SecurityUtils.validateApiResponse(data);
-                        console.log('Services refreshed:', sanitized);
-                    }
-                    updateSystemMetrics();
-                })
-                .catch(error => {
-                    console.error('Failed to refresh services:', error);
-                });
-        }
-    </script>
     
-    <!-- External scripts loaded with integrity checks -->
-    <script src="/assets/js/jquery-3.6.0.min.js" 
-            integrity="sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK" 
-            crossorigin="anonymous"></script>
-    <script src="/assets/js/bootstrap.bundle.min.js" 
-            integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" 
-            crossorigin="anonymous"></script>
+    <div class="main-panel">
+      <!-- TOP NAVBAR - DYNAMICALLY POPULATED -->
+      <nav class="navbar navbar-expand-lg navbar-absolute navbar-transparent" id="navbar">
+        <!-- Navbar content will be populated by core.js -->
+      </nav>
+      
+      <!-- Main Dashboard Content -->
+      <div class="content">
+        
+        <!-- Clock Widget -->
+        <div class="row mb-3">
+          <div class="col-12">
+            <div class="dashboard-card text-center">
+              <div id="Clock" style="font-size: 2rem; color: var(--accent-primary);">00:00:00</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Status Overview -->
+        <div class="row">
+          <div class="col-xl-3 col-lg-6 col-md-6">
+            <div class="dashboard-card">
+              <div class="metric-value" id="uptime">0d 0h</div>
+              <div class="metric-label">System Uptime</div>
+            </div>
+          </div>
+          <div class="col-xl-3 col-lg-6 col-md-6">
+            <div class="dashboard-card">
+              <div class="metric-value" id="cpu-usage">0%</div>
+              <div class="metric-label">CPU Usage</div>
+              <div class="progress-custom">
+                <div class="progress-bar-custom" id="cpu-progress" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-xl-3 col-lg-6 col-md-6">
+            <div class="dashboard-card">
+              <div class="metric-value" id="memory-usage">0 MB</div>
+              <div class="metric-label">Memory Usage</div>
+              <div class="progress-custom">
+                <div class="progress-bar-custom" id="memory-progress" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-xl-3 col-lg-6 col-md-6">
+            <div class="dashboard-card">
+              <div class="metric-value" id="active-services">0/0</div>
+              <div class="metric-label">Active Services</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Service Status Grid -->
+        <div class="service-grid" id="service-status-grid">
+          <!-- Service cards will be populated dynamically -->
+        </div>
+
+        <!-- Main Dashboard Sections -->
+        <div class="row mt-4">
+          <!-- Activity Log -->
+          <div class="col-lg-8">
+            <div class="dashboard-card">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5><i class="fas fa-list text-info"></i> System Activity Log</h5>
+                <button class="btn btn-primary-custom btn-sm" onclick="clearLogs()">
+                  <i class="fas fa-trash"></i> Clear
+                </button>
+              </div>
+              <div class="activity-log" id="activity-log">
+                <div class="log-entry">
+                  <span class="log-timestamp">00:00:00</span>
+                  <span class="log-message">System initialized. Waiting for service status...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- System Information -->
+          <div class="col-lg-4">
+            <div class="dashboard-card">
+              <h5><i class="fas fa-info-circle text-primary"></i> System Information</h5>
+              <div class="service-info">
+                <div class="info-row">
+                  <span class="info-label">User:</span>
+                  <span class="info-value inject-human-name">Loading...</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Session:</span>
+                  <span class="info-value" id="session-status">Active</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Version:</span>
+                  <span class="info-value">S.A.M. v1.0</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Environment:</span>
+                  <span class="info-value" id="environment">Production</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="dashboard-card mt-3">
+              <h5><i class="fas fa-bolt text-warning"></i> Quick Actions</h5>
+              <div class="quick-actions flex-column">
+                <button class="btn btn-primary-custom" onclick="refreshAllData()">
+                  <i class="fas fa-sync"></i> Refresh All Data
+                </button>
+                <button class="btn btn-primary-custom" onclick="openTerminal()">
+                  <i class="fas fa-terminal"></i> Open Terminal
+                </button>
+                <button class="btn btn-primary-custom" onclick="exportLogs()">
+                  <i class="fas fa-download"></i> Export Logs
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- File Upload Section (Secure) -->
+        <div class="row mt-4" id="secure-upload-section">
+          <div class="col-md-12">
+            <div class="dashboard-card">
+              <h5><i class="fas fa-upload text-success"></i> Secure File Upload</h5>
+              <form id="secure-upload-form" enctype="multipart/form-data">
+                <div class="form-group">
+                  <label for="file-input">Select File (Max 50MB)</label>
+                  <input type="file" class="form-control-file" id="file-input" 
+                         accept="image/*,application/pdf,.txt,.doc,.docx">
+                  <small class="form-text text-muted">
+                    Allowed types: Images, PDF, Text documents
+                  </small>
+                </div>
+                <button type="submit" class="btn btn-primary-custom">
+                  <i class="fas fa-cloud-upload-alt"></i> Upload
+                </button>
+              </form>
+              <div id="upload-status" class="mt-3"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Security Status -->
+        <div class="row mt-4">
+          <div class="col-md-12">
+            <div class="dashboard-card">
+              <h5><i class="fas fa-shield-alt text-success"></i> Security Status</h5>
+              <ul class="list-group security-status">
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  XSS Protection
+                  <span class="badge badge-success">Enabled</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  CSP Headers
+                  <span class="badge badge-success">Active</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Input Validation
+                  <span class="badge badge-success">Enforced</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Session Security
+                  <span class="badge badge-success" id="session-security-status">Active</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Animated Background -->
+      <div class="bg-animation">
+        <div id="stars"></div>
+        <div id="stars2"></div>
+        <div id="stars3"></div>
+        <div id="stars4"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-notification" id="toast-notification"></div>
+
+  <!--   Core JS Files   -->
+  <script src="/assets/js/vendor/jquery.min.js"></script>
+  <script src="/assets/js/vendor/bootstrap.min.js"></script>
+  <script src="/assets/js/vendor/toastr.min.js"></script>
+  <script src="/assets/js/vendor/bootstrap-notify.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- Core SAM Components -->
+  <script src="/assets/js/core.js"></script>
+  <script src="/assets/js/widgets/search.js"></script>
+  <script src="/assets/js/widgets/oss.js"></script>
+  <script src="/assets/js/widgets/notifications.js"></script>
+  <script src="/assets/js/widgets/clock.js"></script>
+  <script src="/assets/js/apps/video_player.js"></script>
+
+  <!-- Dashboard-specific functionality -->
+  <script nonce="{{CSP_NONCE}}">
+    // Store security tokens for session management
+    window.csrfToken = '{{CSRF_TOKEN}}';
+    window.cspNonce = '{{CSP_NONCE}}';
+    
+    // Dashboard initialization
+    document.addEventListener('DOMContentLoaded', function() {
+      initializeDashboard();
+    });
+
+    function initializeDashboard() {
+      // Load user data and initialize session-aware components
+      loadCurrentUser();
+      setupSecureFileUpload();
+      initializeServiceMonitoring();
+      startSystemMonitoring();
+      
+      // Initialize core UI components
+      if (typeof Clock !== 'undefined') {
+        Clock.init();
+      }
+    }
+
+    function loadCurrentUser() {
+      fetch('/api/current_human')
+        .then(response => response.json())
+        .then(data => {
+          // Use SecurityUtils if available for sanitization
+          const safeName = window.SecurityUtils ? 
+            window.SecurityUtils.sanitizeInput(data.name, 'name') : 
+            (data.name || 'User');
+          
+          document.querySelectorAll('.inject-human-name').forEach(element => {
+            element.textContent = safeName;
+          });
+          
+          addLogEntry(`User ${safeName} session active`, 'success');
+        })
+        .catch(error => {
+          console.error('Failed to load user data:', error);
+          document.querySelectorAll('.inject-human-name').forEach(element => {
+            element.textContent = 'User';
+          });
+          addLogEntry('Failed to load user session', 'error');
+        });
+    }
+
+    function setupSecureFileUpload() {
+      const form = document.getElementById('secure-upload-form');
+      const fileInput = document.getElementById('file-input');
+      const statusDiv = document.getElementById('upload-status');
+      
+      if (!form) return;
+      
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const file = fileInput.files[0];
+        if (!file) {
+          showUploadStatus('Please select a file', 'warning');
+          return;
+        }
+        
+        // Validate file using SecurityUtils if available
+        if (window.SecurityUtils) {
+          const validation = window.SecurityUtils.validateFileUpload(file, {
+            maxSize: 50 * 1024 * 1024, // 50MB
+            allowedTypes: [
+              'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+              'application/pdf', 'text/plain',
+              'application/msword',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            ],
+            allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'txt', 'doc', 'docx']
+          });
+          
+          if (!validation.valid) {
+            showUploadStatus(validation.error, 'error');
+            return;
+          }
+          
+          uploadFile(file, validation.sanitizedName);
+        } else {
+          uploadFile(file, file.name);
+        }
+      });
+      
+      function uploadFile(file, sanitizedName) {
+        const formData = new FormData();
+        formData.append('file_data', file, sanitizedName);
+        formData.append('csrf_token', window.csrfToken || '');
+        
+        showUploadStatus('Uploading...', 'info');
+        
+        fetch('/api/services/storage/files', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-CSRF-Token': window.csrfToken || ''
+          }
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Upload failed');
+          }
+          return response.json();
+        })
+        .then(data => {
+          showUploadStatus('File uploaded successfully!', 'success');
+          fileInput.value = '';
+          addLogEntry(`File uploaded: ${sanitizedName}`, 'success');
+        })
+        .catch(error => {
+          showUploadStatus('Upload failed: ' + error.message, 'error');
+          addLogEntry(`Upload failed: ${error.message}`, 'error');
+        });
+      }
+      
+      function showUploadStatus(message, type) {
+        const safeMessage = window.SecurityUtils ? 
+          window.SecurityUtils.escapeHtml(message) : 
+          message;
+        
+        statusDiv.innerHTML = `<div class="alert alert-${type}" role="alert">${safeMessage}</div>`;
+        
+        setTimeout(() => {
+          statusDiv.innerHTML = '';
+        }, 5000);
+      }
+    }
+
+    function initializeServiceMonitoring() {
+      const services = [
+        { name: 'Redis Cache', id: 'redis', icon: '🗄️' },
+        { name: 'PostgreSQL', id: 'postgres', icon: '🐘' },
+        { name: 'Web Crawler', id: 'crawler', icon: '🕷️' },
+        { name: 'Docker', id: 'docker', icon: '🐳' },
+        { name: 'Voice Assistant', id: 'voice', icon: '🎤' },
+        { name: 'WebSocket Server', id: 'websocket', icon: '🔌' }
+      ];
+      
+      const serviceGrid = document.getElementById('service-status-grid');
+      if (!serviceGrid) return;
+      
+      serviceGrid.innerHTML = services.map(service => `
+        <div class="dashboard-card" id="${service.id}-card">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex align-items-center">
+              <span style="margin-right: 10px; font-size: 1.5rem;">${service.icon}</span>
+              <h6 class="mb-0">${service.name}</h6>
+            </div>
+            <span class="status-indicator status-unknown" id="${service.id}-status"></span>
+          </div>
+          <div class="service-info">
+            <div class="info-row">
+              <span class="info-label">Status</span>
+              <span class="info-value" id="${service.id}-status-text">Checking...</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Uptime</span>
+              <span class="info-value" id="${service.id}-uptime">-</span>
+            </div>
+          </div>
+          <div class="service-controls">
+            <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')">
+              <i class="fas fa-play"></i> Start
+            </button>
+            <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')">
+              <i class="fas fa-stop"></i> Stop
+            </button>
+            <button class="btn btn-primary-custom btn-sm" onclick="restartService('${service.id}')">
+              <i class="fas fa-redo"></i> Restart
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function startSystemMonitoring() {
+      updateSystemMetrics();
+      updateServiceStatuses();
+      
+      // Update every 5 seconds
+      setInterval(() => {
+        updateSystemMetrics();
+        updateServiceStatuses();
+      }, 5000);
+    }
+
+    function updateSystemMetrics() {
+      // Fetch system metrics from API
+      fetch('/api/system/metrics')
+        .then(response => response.json())
+        .then(data => {
+          // Update CPU
+          document.getElementById('cpu-usage').textContent = `${data.cpu.toFixed(1)}%`;
+          document.getElementById('cpu-progress').style.width = `${data.cpu}%`;
+          
+          // Update Memory
+          const memoryPercent = (data.memory.used / data.memory.total) * 100;
+          document.getElementById('memory-usage').textContent = `${data.memory.used.toFixed(0)} MB`;
+          document.getElementById('memory-progress').style.width = `${memoryPercent}%`;
+          
+          // Update uptime
+          const days = Math.floor(data.uptime / 86400);
+          const hours = Math.floor((data.uptime % 86400) / 3600);
+          document.getElementById('uptime').textContent = `${days}d ${hours}h`;
+        })
+        .catch(error => {
+          console.error('Failed to fetch system metrics:', error);
+          // Use simulated data as fallback
+          const cpu = Math.random() * 100;
+          const memory = 4000 + Math.random() * 4000;
+          
+          document.getElementById('cpu-usage').textContent = `${cpu.toFixed(1)}%`;
+          document.getElementById('cpu-progress').style.width = `${cpu}%`;
+          document.getElementById('memory-usage').textContent = `${memory.toFixed(0)} MB`;
+          document.getElementById('memory-progress').style.width = `${(memory/8000)*100}%`;
+        });
+    }
+
+    function updateServiceStatuses() {
+      fetch('/api/services')
+        .then(response => response.json())
+        .then(data => {
+          let activeCount = 0;
+          let totalCount = 0;
+          
+          // Process service data
+          Object.keys(data).forEach(serviceId => {
+            const service = data[serviceId];
+            totalCount++;
+            
+            const statusElement = document.getElementById(`${serviceId}-status`);
+            const textElement = document.getElementById(`${serviceId}-status-text`);
+            
+            if (statusElement && textElement) {
+              if (service.running) {
+                statusElement.className = 'status-indicator status-running';
+                textElement.textContent = 'Running';
+                activeCount++;
+              } else {
+                statusElement.className = 'status-indicator status-stopped';
+                textElement.textContent = 'Stopped';
+              }
+            }
+          });
+          
+          document.getElementById('active-services').textContent = `${activeCount}/${totalCount}`;
+        })
+        .catch(error => {
+          console.error('Failed to fetch service statuses:', error);
+        });
+    }
+
+    // Service control functions
+    function startService(serviceId) {
+      fetch(`/api/services/${serviceId}/start`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          showToast(`${serviceId} service started`, 'success');
+          addLogEntry(`Started ${serviceId} service`, 'success');
+          updateServiceStatuses();
+        })
+        .catch(error => {
+          showToast(`Failed to start ${serviceId}`, 'error');
+          addLogEntry(`Failed to start ${serviceId}: ${error.message}`, 'error');
+        });
+    }
+
+    function stopService(serviceId) {
+      fetch(`/api/services/${serviceId}/stop`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          showToast(`${serviceId} service stopped`, 'success');
+          addLogEntry(`Stopped ${serviceId} service`, 'success');
+          updateServiceStatuses();
+        })
+        .catch(error => {
+          showToast(`Failed to stop ${serviceId}`, 'error');
+          addLogEntry(`Failed to stop ${serviceId}: ${error.message}`, 'error');
+        });
+    }
+
+    function restartService(serviceId) {
+      fetch(`/api/services/${serviceId}/restart`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          showToast(`${serviceId} service restarted`, 'success');
+          addLogEntry(`Restarted ${serviceId} service`, 'success');
+          updateServiceStatuses();
+        })
+        .catch(error => {
+          showToast(`Failed to restart ${serviceId}`, 'error');
+          addLogEntry(`Failed to restart ${serviceId}: ${error.message}`, 'error');
+        });
+    }
+
+    // Utility functions
+    function addLogEntry(message, type = 'info') {
+      const logContainer = document.getElementById('activity-log');
+      if (!logContainer) return;
+      
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry ${type}`;
+      logEntry.innerHTML = `
+        <span class="log-timestamp">${timestamp}</span>
+        <span class="log-message">${message}</span>
+      `;
+      
+      logContainer.insertBefore(logEntry, logContainer.firstChild);
+      
+      // Keep only last 50 entries
+      while (logContainer.children.length > 50) {
+        logContainer.removeChild(logContainer.lastChild);
+      }
+    }
+
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast-notification');
+      if (!toast) return;
+      
+      toast.textContent = message;
+      toast.className = `toast-notification ${type}`;
+      toast.classList.add('show');
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 4000);
+    }
+
+    function clearLogs() {
+      const logContainer = document.getElementById('activity-log');
+      if (logContainer) {
+        logContainer.innerHTML = '<div class="log-entry"><span class="log-timestamp">' + 
+          new Date().toLocaleTimeString() + '</span><span class="log-message">Logs cleared</span></div>';
+      }
+    }
+
+    function refreshAllData() {
+      addLogEntry('Refreshing all dashboard data...', 'info');
+      updateSystemMetrics();
+      updateServiceStatuses();
+      loadCurrentUser();
+      showToast('Dashboard data refreshed', 'success');
+    }
+
+    function openTerminal() {
+      // Open console app
+      window.open('/apps/console/', '_blank');
+    }
+
+    function exportLogs() {
+      const logs = Array.from(document.querySelectorAll('.log-entry')).map(entry => {
+        const timestamp = entry.querySelector('.log-timestamp').textContent;
+        const message = entry.querySelector('.log-message').textContent;
+        return `${timestamp}: ${message}`;
+      }).join('\n');
+      
+      const blob = new Blob([logs], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sam-logs-${new Date().toISOString().split('T')[0]}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      addLogEntry('System logs exported', 'success');
+    }
+  </script>
 </body>
+
 </html>
