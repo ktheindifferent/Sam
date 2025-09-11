@@ -1856,9 +1856,9 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             let _ = job.save_async().await;
             info!("Finished crawl job: oid={}", job.oid);
         } else {
-            // No jobs: scan common URLs and/or use DNS queries to find domains
-            info!("No pending crawl jobs found. Crawling common URLs.");
-            let mut urls_to_try: Vec<String> = COMMON_URLS.iter().map(|s| s.to_string()).collect();
+            // No jobs: generate random domains and find ones that respond
+            info!("No pending crawl jobs found. Generating random domains to crawl.");
+            let mut urls_to_try: Vec<String> = Vec::new();
             
 
             // Load retry URLs from the retry file and remove the file after loading
