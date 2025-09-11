@@ -31,6 +31,7 @@ pub struct CrawledContent {
     pub language: Option<String>,
     pub crawled_at: i64,
     pub updated_at: i64,
+    pub telemetry_shared: bool, // Flag indicating if data has been shared with OSF
 }
 
 impl CrawledContent {
@@ -67,6 +68,7 @@ impl CrawledContent {
             language: None,
             crawled_at: now,
             updated_at: now,
+            telemetry_shared: false, // Default to false for new content
         }
     }
     
@@ -188,7 +190,10 @@ impl CrawledContent {
     
     /// SQL migrations
     pub fn migrations() -> Vec<&'static str> {
-        vec![]
+        vec![
+            // Migration to add telemetry_shared column to existing tables
+            "ALTER TABLE crawled_content ADD COLUMN IF NOT EXISTS telemetry_shared BOOLEAN NOT NULL DEFAULT FALSE;",
+        ]
     }
     
     /// SQL table creation statement
@@ -208,6 +213,7 @@ impl CrawledContent {
             language VARCHAR(10),
             crawled_at BIGINT NOT NULL,
             updated_at BIGINT NOT NULL,
+            telemetry_shared BOOLEAN NOT NULL DEFAULT FALSE,
             UNIQUE(url),
             UNIQUE(content_hash)
         );"
@@ -221,6 +227,7 @@ impl CrawledContent {
             "CREATE INDEX IF NOT EXISTS idx_crawled_content_crawled_at ON crawled_content(crawled_at DESC);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_content_language ON crawled_content(language);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_content_content_type ON crawled_content(content_type);",
+            "CREATE INDEX IF NOT EXISTS idx_crawled_content_telemetry_shared ON crawled_content(telemetry_shared);",
             // Full-text search index on content_text
             "CREATE INDEX IF NOT EXISTS idx_crawled_content_fts ON crawled_content USING GIN(to_tsvector('english', content_text));",
             // Full-text search on title
@@ -245,6 +252,7 @@ impl CrawledContent {
             language: row.get("language"),
             crawled_at: row.get("crawled_at"),
             updated_at: row.get("updated_at"),
+            telemetry_shared: row.get("telemetry_shared"),
         })
     }
     
@@ -277,8 +285,8 @@ impl CrawledContent {
             "INSERT INTO crawled_content (
                 url, content_hash, title, description, content_text, content_html,
                 headers, status_code, content_type, content_length, language,
-                crawled_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                crawled_at, updated_at, telemetry_shared
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             ON CONFLICT (url) DO UPDATE SET
                 content_hash = EXCLUDED.content_hash,
                 title = EXCLUDED.title,
@@ -290,12 +298,13 @@ impl CrawledContent {
                 content_type = EXCLUDED.content_type,
                 content_length = EXCLUDED.content_length,
                 language = EXCLUDED.language,
-                updated_at = EXCLUDED.updated_at",
+                updated_at = EXCLUDED.updated_at,
+                telemetry_shared = EXCLUDED.telemetry_shared",
             &[
                 &self.url, &self.content_hash, &self.title, &self.description,
                 &self.content_text, &self.content_html, &self.headers,
                 &self.status_code, &self.content_type, &self.content_length,
-                &self.language, &self.crawled_at, &self.updated_at
+                &self.language, &self.crawled_at, &self.updated_at, &self.telemetry_shared
             ]
         ).await?;
         
@@ -383,6 +392,58 @@ impl CrawledContent {
                 0.0
             },
         })
+    }
+    
+    /// Get content that hasn't been shared for telemetry yet
+    pub async fn get_unshared_content(limit: usize) -> Result<Vec<Self>> {
+        let client = super::get_db_connection().await
+            .ok_or_else(|| anyhow::anyhow!("Failed to get database connection"))?;
+        
+        let rows = client.query(
+            "SELECT * FROM crawled_content 
+             WHERE telemetry_shared = FALSE 
+             ORDER BY crawled_at ASC 
+             LIMIT $1",
+            &[&(limit as i64)]
+        ).await?;
+        
+        rows.into_iter()
+            .map(|row| Self::from_row(&row))
+            .collect()
+    }
+    
+    /// Mark content as shared for telemetry
+    pub async fn mark_telemetry_shared(&mut self) -> Result<()> {
+        let client = super::get_db_connection().await
+            .ok_or_else(|| anyhow::anyhow!("Failed to get database connection"))?;
+        
+        client.execute(
+            "UPDATE crawled_content SET telemetry_shared = TRUE WHERE id = $1",
+            &[&self.id]
+        ).await?;
+        
+        self.telemetry_shared = true;
+        Ok(())
+    }
+    
+    /// Mark multiple content items as shared for telemetry by their IDs
+    pub async fn mark_batch_telemetry_shared(ids: Vec<i64>) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        
+        let client = super::get_db_connection().await
+            .ok_or_else(|| anyhow::anyhow!("Failed to get database connection"))?;
+        
+        let ids_str = ids.iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        
+        let query = format!("UPDATE crawled_content SET telemetry_shared = TRUE WHERE id = ANY(ARRAY[{}]::bigint[])", ids_str);
+        client.execute(&query, &[]).await?;
+        
+        Ok(())
     }
 }
 

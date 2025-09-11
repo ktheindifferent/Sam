@@ -47,6 +47,7 @@ dropbox-sdk = { git = "https://github.com/PixelCoda/dropbox-sdk-rust.git", versi
 invidious = "0.4.0"
 rustube = { version = "0.6.0", features = ["blocking"] }
 whoami = "1.6.0"
+gethostname = "0.4.3"
 anyhow = "1.0.66"
 titlecase = "2.2.1"
 opencl3 = "0.9.3"

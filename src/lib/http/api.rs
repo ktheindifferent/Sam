@@ -8,6 +8,7 @@ pub mod rooms;
 pub mod service_control;
 pub mod services;
 pub mod settings;
+pub mod telemetry;
 pub mod things;
 pub mod validation;
 
@@ -91,6 +92,11 @@ fn handle_prefix_routes(
         ("/api/settings", |s, r| settings::handle(s, r)),
         ("/api/things", |s, r| things::handle(s, r)),
     ];
+
+    // Handle public telemetry endpoints (no session required)
+    if url.contains("/api/telemetry") {
+        return telemetry::handle(request).map(Some);
+    }
 
     for (prefix, handler) in ROUTE_HANDLERS {
         if url.contains(prefix) {

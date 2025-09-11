@@ -1187,6 +1187,20 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         }
     }
     
+    // Process unshared content for telemetry
+    log::info!("run_crawler_service: Processing unshared content for telemetry");
+    match crate::services::telemetry::get_telemetry_service().process_unshared_content().await {
+        Ok(count) if count > 0 => {
+            log::info!("run_crawler_service: Sent {} items to telemetry", count);
+        }
+        Ok(_) => {
+            log::debug!("run_crawler_service: No unshared content to send to telemetry");
+        }
+        Err(e) => {
+            log::warn!("run_crawler_service: Failed to process telemetry: {}", e);
+        }
+    }
+    
     log::info!("run_crawler_service: Creating HTTP client");
     let client = match std::panic::catch_unwind(|| Arc::new(REQWEST_CLIENT.clone())) {
         Ok(c) => c,
