@@ -1880,70 +1880,36 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                 });
             }
 
-            // Metrics: log time to generate domain list
+            // Generate 100 random domains using static data from text files
             let domain_gen_start = tokio::time::Instant::now();
 
             let tlds = COMMON_TLDS.clone();
-            let prefixes = COMMON_PREFIXES.clone();
-            let mut words = COMMON_WORDS.clone();
-            let tokens = COMMON_TOKENS.clone();
-
-            // Use most common token list to extend the words list and dedupe
-            words.extend(tokens.clone());
-            words.sort();
-            words.dedup();
-
-            // Sample words and prefixes to generate domains
-            let _domains: Vec<String> = Vec::new();
-            use rayon::prelude::*;
-
+            let prefixes = COMMON_PREFIXES.clone(); 
+            let words = COMMON_WORDS.clone();
             let mut rng = SmallRng::from_entropy();
-            let mut sampled_words = words.clone();
-            sampled_words.shuffle(&mut rng);
-            // Use rayon's par_iter to efficiently take the first 1,000 elements in parallel
-            let sampled_words: Vec<_> = sampled_words.par_iter().take(1000).cloned().collect(); // Reduced for faster startup
 
-            let domain_gen_duration = domain_gen_start.elapsed();
-            log::info!("Domain generation took {:?}", domain_gen_duration);
+            let mut domains = Vec::new();
+            
+            // Generate 100 random domain combinations
+            for _ in 0..100 {
+                let word = &words[rng.gen_range(0..words.len())];
+                let tld = &tlds[rng.gen_range(0..tlds.len())];
+                
+                // 70% chance of simple word.tld, 30% chance of prefix.word.tld
+                if rng.gen_range(0..10) < 7 {
+                    domains.push(format!("{}.{}", word, tld));
+                } else {
+                    let prefix = &prefixes[rng.gen_range(0..prefixes.len())];
+                    domains.push(format!("{}.{}.{}", prefix, word, tld));
+                }
+            }
 
-            let mut domains: Vec<String> = tlds
-                .par_iter()
-                .flat_map_iter(|tld| {
-                    let mut local_domains = Vec::with_capacity(
-                        sampled_words.len()
-                            * (1 + prefixes.len() + sampled_words.len() * prefixes.len())
-                            + prefixes.len()
-                            + sampled_words.len(),
-                    );
-
-                    // word.tld and prefix.word.tld and prefix.word2.word.tld
-                    for word in &sampled_words {
-                        local_domains.push(format!("{word}.{tld}"));
-                        for prefix in &prefixes {
-                            local_domains.push(format!("{prefix}.{word}.{tld}"));
-                            for word2 in &sampled_words {
-                                local_domains.push(format!("{prefix}.{word2}.{word}.{tld}"));
-                            }
-                        }
-                    }
-                    // prefix.tld
-                    for prefix in &prefixes {
-                        local_domains.push(format!("{prefix}.{tld}"));
-                    }
-                    // word.tld (again, but dedup later)
-                    for word in &sampled_words {
-                        local_domains.push(format!("{word}.{tld}"));
-                    }
-                    local_domains
-                })
-                .collect();
-            let mut rng = SmallRng::from_entropy();
+            // Remove duplicates
             domains.sort();
             domains.dedup();
-            domains.shuffle(&mut rng);
 
-            let max_domains = 1000;
-            let domains = &domains[..std::cmp::min(domains.len(), max_domains)];
+            let domain_gen_duration = domain_gen_start.elapsed();
+            log::info!("Generated {} random domains in {:?}", domains.len(), domain_gen_duration);
 
             let mut urls_found = Vec::new();
 
@@ -2121,40 +2087,81 @@ async fn lookup_domain(
         {
             Ok(Ok(lookup)) if lookup.iter().next().is_some() => {
                 log::debug!("lookup_domain: DNS resolved {} in {:?}", domain, dns_start.elapsed());
-                // DNS exists, now check HTTP/HTTPS HEAD
+                // DNS exists, now check HTTP/HTTPS connectivity
                 let http_url = format!("http://{domain}/");
                 let https_url = format!("https://{domain}/");
 
                 let mut http_ok = false;
-                let https_ok = false;
-                for http_attempt in 0..3 {
-                    let http_fut = client.head(&http_url).send();
-                    let https_fut = client.head(&https_url).send();
-                    let result = tokio::time::timeout(
-                            Duration::from_secs(5),
-                            async {
-                                tokio::select! {
-                                    resp = http_fut => resp.ok().map(|r| r.status().is_success() || r.status().is_redirection()),
-                                    resp = https_fut => resp.ok().map(|r| r.status().is_success() || r.status().is_redirection()),
+                
+                // Try HTTPS first (more common now), then HTTP as fallback
+                for protocol_attempt in 0..2 {
+                    let test_url = if protocol_attempt == 0 { &https_url } else { &http_url };
+                    let protocol = if protocol_attempt == 0 { "HTTPS" } else { "HTTP" };
+                    
+                    // Try both HEAD and GET (some servers block HEAD)
+                    for method_attempt in 0..2 {
+                        let request_method = if method_attempt == 0 { "HEAD" } else { "GET" };
+                        
+                        let request_fut = if method_attempt == 0 {
+                            client.head(test_url).timeout(Duration::from_secs(8)).send()
+                        } else {
+                            // For GET, limit response size to avoid downloading large files
+                            client.get(test_url)
+                                .timeout(Duration::from_secs(8))
+                                .header("Range", "bytes=0-1023") // Only get first 1KB
+                                .send()
+                        };
+                        
+                        let result = tokio::time::timeout(
+                            Duration::from_secs(10),
+                            request_fut
+                        ).await;
+                        
+                        match result {
+                            Ok(Ok(response)) => {
+                                let status = response.status();
+                                if status.is_success() || status.is_redirection() {
+                                    log::debug!(
+                                        "lookup_domain: {} {} successful for {} (status: {})",
+                                        protocol, request_method, domain, status
+                                    );
+                                    http_ok = true;
+                                    break;
+                                } else if status == 405 && method_attempt == 0 {
+                                    // Method Not Allowed for HEAD, try GET
+                                    log::debug!(
+                                        "lookup_domain: {} HEAD returned 405 for {}, will try GET",
+                                        protocol, domain
+                                    );
+                                    continue;
+                                } else {
+                                    log::debug!(
+                                        "lookup_domain: {} {} returned status {} for {}",
+                                        protocol, request_method, status, domain
+                                    );
                                 }
                             }
-                        ).await;
-                    match result {
-                        Ok(Some(true)) => {
-                            http_ok = true;
-                            break;
+                            Ok(Err(e)) => {
+                                log::debug!(
+                                    "lookup_domain: {} {} error for {}: {}",
+                                    protocol, request_method, domain, e
+                                );
+                            }
+                            Err(_) => {
+                                log::debug!(
+                                    "lookup_domain: {} {} timeout for {}",
+                                    protocol, request_method, domain
+                                );
+                            }
                         }
-                        Ok(Some(false)) | Ok(None) | Err(_) => {
-                            log::warn!(
-                                "HEAD request timed out or failed (attempt {}): {}",
-                                http_attempt + 1,
-                                domain
-                            );
-                        }
+                        
+                        if http_ok { break; }
                     }
-                    sleep(Duration::from_millis(300)).await;
+                    
+                    if http_ok { break; }
                 }
-                if http_ok || https_ok {
+                
+                if http_ok {
                     found = true;
                     break;
                 }

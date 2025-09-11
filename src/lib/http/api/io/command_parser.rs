@@ -27,9 +27,19 @@ pub fn extract_commands(response: &str) -> Vec<String> {
 
 /// Removes command markers from response text
 pub fn remove_command_markers(response: &str, command: &str) -> String {
-    let marker_pattern = format!(":::::{}:::::", regex::escape(command));
-    let re = Regex::new(&marker_pattern).unwrap();
-    re.replace_all(response, "").to_string()
+    // Try to match the exact command first
+    let exact_pattern = format!(":::::{}:::::", regex::escape(command));
+    let re_exact = Regex::new(&exact_pattern).unwrap();
+    let result = re_exact.replace_all(response, "").to_string();
+    
+    // If no replacement happened, try with spaces around the command
+    if result == response {
+        let spaced_pattern = format!(r":::::\s*{}\s*:::::", regex::escape(command));
+        let re_spaced = Regex::new(&spaced_pattern).unwrap();
+        return re_spaced.replace_all(response, "").to_string();
+    }
+    
+    result
 }
 
 /// Parse natural language requests into structured commands
