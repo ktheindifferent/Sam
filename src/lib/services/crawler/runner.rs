@@ -1329,7 +1329,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         log::debug!("Checking for pending crawl jobs...");
         let mut jobs = match tokio::time::timeout(
             Duration::from_secs(5),
-            CrawlJob::select_async(Some(5000), None, None, None)
+            CrawlJob::select_async(Some(100), None, None, None)
         ).await {
             Ok(Ok(jobs)) => {
                 log::debug!("Found {} total crawl jobs", jobs.len());
@@ -1408,6 +1408,14 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         
         jobs.shuffle(&mut rand::thread_rng());
         jobs.truncate(1);
+        
+        // If no jobs found, add delay to prevent CPU spinning
+        if jobs.is_empty() {
+            let no_jobs_delay = if std::env::var("CAPROVER").is_ok() { 5000 } else { 2000 };
+            log::debug!("No pending jobs found, sleeping for {}ms", no_jobs_delay);
+            tokio::time::sleep(Duration::from_millis(no_jobs_delay)).await;
+            continue;
+        }
 
         if let Some(mut job) = jobs.into_iter().next() {
             let job_oid = job.oid.clone();
@@ -1434,36 +1442,82 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             // Initialize visited set with URLs from all CrawlJob entries in Postgres
             let mut visited_urls = HashSet::new();
             
-            log::info!("Loading existing crawled pages from database...");
-            match tokio::time::timeout(
-                Duration::from_secs(3),
-                CrawledPage::select_async(None, None, None, None)
-            ).await {
-                Ok(Ok(crawled_pages)) => {
-                    log::info!("Loaded {} existing crawled pages", crawled_pages.len());
-                    for page in crawled_pages {
-                        visited_urls.insert(page.url);
+            log::info!("Loading existing crawled pages from database (paginated)...");
+            let mut offset = 0;
+            let page_size = 1000;
+            let mut total_loaded = 0;
+            
+            loop {
+                match tokio::time::timeout(
+                    Duration::from_secs(3),
+                    CrawledPage::select_async(Some(page_size), Some(offset), None, None)
+                ).await {
+                    Ok(Ok(crawled_pages)) => {
+                        if crawled_pages.is_empty() {
+                            break;
+                        }
+                        
+                        total_loaded += crawled_pages.len();
+                        for page in crawled_pages {
+                            visited_urls.insert(page.url);
+                        }
+                        
+                        offset += page_size;
+                        log::debug!("Loaded batch of {} pages, total: {}", page_size, total_loaded);
+                        
+                        // Yield control to prevent blocking
+                        tokio::task::yield_now().await;
+                    }
+                    Ok(Err(e)) => {
+                        log::warn!("Failed to load crawled pages batch at offset {}: {}, stopping", offset, e);
+                        break;
+                    }
+                    Err(_) => {
+                        log::warn!("Timeout loading crawled pages batch at offset {}, stopping", offset);
+                        break;
                     }
                 }
-                Ok(Err(e)) => log::warn!("Failed to load crawled pages: {}, starting fresh", e),
-                Err(_) => log::warn!("Timeout loading crawled pages, starting fresh"),
             }
+            log::info!("Loaded {} total existing crawled pages", total_loaded);
 
             let mut job_urls = HashSet::new();
-            log::info!("Loading existing jobs from database...");
-            match tokio::time::timeout(
-                Duration::from_secs(3),
-                CrawlJob::select_async(None, None, None, None)
-            ).await {
-                Ok(Ok(all_jobs)) => {
-                    log::info!("Loaded {} existing jobs", all_jobs.len());
-                    for job in all_jobs {
-                        job_urls.insert(job.start_url);
+            log::info!("Loading existing jobs from database (paginated)...");
+            let mut job_offset = 0;
+            let job_page_size = 500;
+            let mut total_jobs_loaded = 0;
+            
+            loop {
+                match tokio::time::timeout(
+                    Duration::from_secs(3),
+                    CrawlJob::select_async(Some(job_page_size), Some(job_offset), None, None)
+                ).await {
+                    Ok(Ok(all_jobs)) => {
+                        if all_jobs.is_empty() {
+                            break;
+                        }
+                        
+                        total_jobs_loaded += all_jobs.len();
+                        for job in all_jobs {
+                            job_urls.insert(job.start_url);
+                        }
+                        
+                        job_offset += job_page_size;
+                        log::debug!("Loaded batch of {} jobs, total: {}", job_page_size, total_jobs_loaded);
+                        
+                        // Yield control to prevent blocking
+                        tokio::task::yield_now().await;
+                    }
+                    Ok(Err(e)) => {
+                        log::warn!("Failed to load jobs batch at offset {}: {}, continuing", job_offset, e);
+                        break;
+                    }
+                    Err(_) => {
+                        log::warn!("Timeout loading jobs batch at offset {}, continuing", job_offset);
+                        break;
                     }
                 }
-                Ok(Err(e)) => log::warn!("Failed to load jobs: {}, continuing", e),
-                Err(_) => log::warn!("Timeout loading jobs, continuing"),
             }
+            log::info!("Loaded {} total existing jobs", total_jobs_loaded);
 
             let visited = Arc::new(tokio::sync::Mutex::new(visited_urls));
             let all_job_urls = Arc::new(tokio::sync::Mutex::new(job_urls));
@@ -1477,12 +1531,17 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             .and_then(|s| s.parse().ok())
             .unwrap_or_else(|| {
                 let cores = num_cpus::get();
-                if cores >= 32 {
-                    cores * 2  // High-core systems: 2x multiplier (96 for you)
+                let is_caprover = std::env::var("CAPROVER").is_ok();
+                
+                if is_caprover {
+                    // Very conservative for CapRover to prevent resource exhaustion
+                    std::cmp::min(cores / 2, 8).max(2)
+                } else if cores >= 32 {
+                    cores / 2  // Reduced from 2x to 0.5x for high-core systems
                 } else if cores >= 16 {
-                    (cores as f64 * 1.5) as usize  // Mid-range: 1.5x multiplier
+                    cores / 2  // Reduced from 1.5x to 0.5x for mid-range
                 } else {
-                    cores + 4  // Low-core: cores + 4
+                    std::cmp::min(cores, 4)  // Cap at 4 for low-core systems
                 }
             });
             log::info!("Starting crawl loop with concurrency={}, max_depth={}", concurrency, max_depth);
@@ -1546,33 +1605,58 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                     }
                 }
 
-                // Crawl all URLs at this depth concurrently
-                log::info!("Starting concurrent crawl of {} URLs", batch.len());
-                use futures::stream;
-                let results = stream::iter(batch.into_iter())
-                    .map(|(url, depth)| {
-                        let job_oid = job_oid.clone();
-                        let client = client.clone();
+                // Crawl all URLs at this depth concurrently with CPU throttling
+                log::info!("Starting concurrent crawl of {} URLs with concurrency {}", batch.len(), concurrency);
+                
+                // Split batch into smaller chunks to prevent memory exhaustion
+                let chunk_size = std::cmp::min(concurrency * 2, 20);
+                let mut all_results = Vec::new();
+                
+                for chunk in batch.chunks(chunk_size) {
+                    log::debug!("Processing chunk of {} URLs", chunk.len());
+                    
+                    use futures::stream;
+                    let chunk_results = stream::iter(chunk.iter().cloned())
+                        .map(|(url, depth)| {
+                            let job_oid = job_oid.clone();
+                            let client = client.clone();
 
-                        async move {
-                            log::debug!("Crawling URL: {}", url);
-                            let start = tokio::time::Instant::now();
-                            let result = crawl_url(job_oid.clone(), url.clone(), client).await;
-                            let elapsed = start.elapsed();
-                            
-                            match &result {
-                                Ok(pages) => log::info!("✓ Crawled {} in {:.2}s, found {} pages", 
-                                    url, elapsed.as_secs_f32(), pages.len()),
-                                Err(e) => log::warn!("✗ Failed to crawl {} in {:.2}s: {}", 
-                                    url, elapsed.as_secs_f32(), e),
+                            async move {
+                                log::debug!("Crawling URL: {}", url);
+                                let start = tokio::time::Instant::now();
+                                
+                                // Add small delay to reduce CPU pressure
+                                let delay_ms = if std::env::var("CAPROVER").is_ok() { 100 } else { 50 };
+                                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                                
+                                let result = crawl_url(job_oid.clone(), url.clone(), client).await;
+                                let elapsed = start.elapsed();
+                                
+                                match &result {
+                                    Ok(pages) => log::info!("✓ Crawled {} in {:.2}s, found {} pages", 
+                                        url, elapsed.as_secs_f32(), pages.len()),
+                                    Err(e) => log::warn!("✗ Failed to crawl {} in {:.2}s: {}", 
+                                        url, elapsed.as_secs_f32(), e),
+                                }
+                                
+                                (url, depth, result)
                             }
-                            
-                            (url, depth, result)
-                        }
-                    })
-                    .buffer_unordered(concurrency)
-                    .collect::<Vec<_>>()
-                    .await;
+                        })
+                        .buffer_unordered(concurrency)
+                        .collect::<Vec<_>>()
+                        .await;
+                    
+                    all_results.extend(chunk_results);
+                    
+                    // Add inter-chunk delay for CPU throttling
+                    if chunk.len() == chunk_size {
+                        let inter_chunk_delay = if std::env::var("CAPROVER").is_ok() { 500 } else { 200 };
+                        log::debug!("Inter-chunk delay: {}ms", inter_chunk_delay);
+                        tokio::time::sleep(Duration::from_millis(inter_chunk_delay)).await;
+                    }
+                }
+                
+                let results = all_results;
                 
                 log::info!("Completed crawling batch, processing {} results", results.len());
 
@@ -1937,7 +2021,10 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                 );
             }
         }
-        sleep(Duration::from_secs(10)).await;
+        // Add longer delay for CapRover to prevent resource exhaustion
+        let main_loop_delay = if std::env::var("CAPROVER").is_ok() { 30 } else { 10 };
+        log::debug!("Main loop delay: {}s", main_loop_delay);
+        sleep(Duration::from_secs(main_loop_delay)).await;
     }
 }
 

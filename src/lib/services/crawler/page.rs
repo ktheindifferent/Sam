@@ -401,13 +401,30 @@ impl CrawledPage {
     pub async fn write_most_common_tokens_async(limit: usize) -> std::io::Result<()> {
         // Collect all tokens from all crawled pages asynchronously
 
-        let pages = match Self::select_async(None, None, None, None).await {
-            Ok(p) => p,
-            Err(e) => {
-                log::error!("Failed to select crawled pages: {}", e);
-                return Err(std::io::Error::other(e.to_string()));
+        // Use pagination to avoid loading all pages at once
+        let mut pages = Vec::new();
+        let mut offset = 0;
+        let page_size = 1000;
+        
+        loop {
+            let batch = match Self::select_async(Some(page_size), Some(offset), None, None).await {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("Failed to select crawled pages batch at offset {}: {}", offset, e);
+                    return Err(std::io::Error::other(e.to_string()));
+                }
+            };
+            
+            if batch.is_empty() {
+                break;
             }
-        };
+            
+            pages.extend(batch);
+            offset += page_size;
+            
+            // Yield control to prevent blocking
+            tokio::task::yield_now().await;
+        }
 
         let mut freq: HashMap<String, usize> = HashMap::new();
         for page in pages {
