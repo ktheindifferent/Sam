@@ -58,8 +58,10 @@ impl CrawledPage {
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE IF NOT EXISTS crawled_pages (
             id serial PRIMARY KEY,
+            crawl_job_oid varchar,
             url varchar NOT NULL UNIQUE,
             tokens text,
+            links text,
             timestamp BIGINT,
             telemetry_shared BOOLEAN NOT NULL DEFAULT FALSE
         );"
@@ -76,6 +78,10 @@ impl CrawledPage {
         vec![
             "DROP INDEX IF EXISTS idx_crawled_pages_tokens;",
             "CREATE INDEX idx_crawled_pages_tokens_gin ON crawled_pages USING GIN (tokens);",
+            "ALTER TABLE crawled_pages ADD COLUMN IF NOT EXISTS crawl_job_oid varchar;",
+            "ALTER TABLE crawled_pages ADD COLUMN IF NOT EXISTS links text;",
+            "ALTER TABLE crawled_pages ADD COLUMN IF NOT EXISTS telemetry_shared BOOLEAN DEFAULT FALSE;",
+            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_telemetry_shared ON crawled_pages (telemetry_shared);",
         ]
     }
 
@@ -84,12 +90,18 @@ impl CrawledPage {
         let tokens = tokens_str
             .map(|s| s.split('\n').map(|s| s.to_string()).collect())
             .unwrap_or_default();
+        
+        let links_str: Option<String> = row.get("links");
+        let links = links_str
+            .map(|s| s.split('\n').map(|s| s.to_string()).collect())
+            .unwrap_or_default();
+            
         Ok(Self {
             id: row.get("id"),
+            crawl_job_oid: row.get::<_, Option<String>>("crawl_job_oid").unwrap_or_default(),
             url: row.get("url"),
             tokens,
-            crawl_job_oid: String::new(),
-            links: Vec::new(),
+            links,
             timestamp: row.get("timestamp"),
             telemetry_shared: row.get("telemetry_shared"),
         })
@@ -100,12 +112,18 @@ impl CrawledPage {
         let tokens = tokens_str
             .map(|s| s.split('\n').map(|s| s.to_string()).collect())
             .unwrap_or_default();
+            
+        let links_str: Option<String> = row.get("links");
+        let links = links_str
+            .map(|s| s.split('\n').map(|s| s.to_string()).collect())
+            .unwrap_or_default();
+            
         Ok(Self {
             id: row.get("id"),
+            crawl_job_oid: row.get::<_, Option<String>>("crawl_job_oid").unwrap_or_default(),
             url: row.get("url"),
             tokens,
-            crawl_job_oid: String::new(),
-            links: Vec::new(),
+            links,
             timestamp: row.get("timestamp"),
             telemetry_shared: row.get("telemetry_shared"),
         })
@@ -205,23 +223,27 @@ impl CrawledPage {
         let mut values = Vec::new();
         let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = Vec::new();
         let mut tokens_strs: Vec<String> = Vec::new();
+        let mut links_strs: Vec<String> = Vec::new();
 
-        // First, collect all tokens_strs
+        // First, collect all tokens_strs and links_strs
         for page in pages_cleaned.iter() {
             tokens_strs.push(page.tokens.join("\n"));
+            links_strs.push(page.links.join("\n"));
         }
         // Then, build values and params
         for (i, page) in pages_cleaned.iter().enumerate() {
-            values.push(format!("(${}, ${}, ${}, ${})", i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4));
+            values.push(format!("(${}, ${}, ${}, ${}, ${}, ${})", i * 6 + 1, i * 6 + 2, i * 6 + 3, i * 6 + 4, i * 6 + 5, i * 6 + 6));
+            params.push(&page.crawl_job_oid);
             params.push(&page.url);
             params.push(&tokens_strs[i]);
+            params.push(&links_strs[i]);
             params.push(&page.timestamp);
             params.push(&page.telemetry_shared);
         }
 
         let sql = format!(
-            "INSERT INTO crawled_pages (url, tokens, timestamp, telemetry_shared) VALUES {} \
-            ON CONFLICT(url) DO UPDATE SET tokens = EXCLUDED.tokens, timestamp = EXCLUDED.timestamp, telemetry_shared = EXCLUDED.telemetry_shared",
+            "INSERT INTO crawled_pages (crawl_job_oid, url, tokens, links, timestamp, telemetry_shared) VALUES {} \
+            ON CONFLICT(url) DO UPDATE SET crawl_job_oid = EXCLUDED.crawl_job_oid, tokens = EXCLUDED.tokens, links = EXCLUDED.links, timestamp = EXCLUDED.timestamp, telemetry_shared = EXCLUDED.telemetry_shared",
             values.join(", ")
         );
 
@@ -234,6 +256,7 @@ impl CrawledPage {
 
     pub async fn save_async(&self) -> crate::memory::Result<Self> {
         let tokens_str = self.tokens.join("\n");
+        let links_str = self.links.join("\n");
         let mut pg_query = PostgresQueries::default();
         pg_query
             .queries
@@ -249,15 +272,15 @@ impl CrawledPage {
         if rows.is_empty() {
             client
                 .execute(
-                    "INSERT INTO crawled_pages (url, tokens, timestamp, telemetry_shared) VALUES ($1, $2, $3, $4)",
-                    &[&self.url, &tokens_str, &self.timestamp, &self.telemetry_shared],
+                    "INSERT INTO crawled_pages (crawl_job_oid, url, tokens, links, timestamp, telemetry_shared) VALUES ($1, $2, $3, $4, $5, $6)",
+                    &[&self.crawl_job_oid, &self.url, &tokens_str, &links_str, &self.timestamp, &self.telemetry_shared],
                 )
                 .await?;
         } else {
             client
                 .execute(
-                    "UPDATE crawled_pages SET tokens = $1, timestamp = $2, telemetry_shared = $3 WHERE url = $4",
-                    &[&tokens_str, &self.timestamp, &self.telemetry_shared, &self.url],
+                    "UPDATE crawled_pages SET crawl_job_oid = $1, tokens = $2, links = $3, timestamp = $4, telemetry_shared = $5 WHERE url = $6",
+                    &[&self.crawl_job_oid, &tokens_str, &links_str, &self.timestamp, &self.telemetry_shared, &self.url],
                 )
                 .await?;
         }
