@@ -1362,82 +1362,98 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             },
         };
 
-        // If no jobs found, create some initial ones
+        // If no jobs found, generate random domains and create jobs for valid ones
         if jobs.is_empty() {
-            log::info!("No pending jobs found, generating initial URLs to crawl");
+            log::info!("No pending jobs found, generating random domains to crawl");
             
-            // Conservative list for CapRover deployment
-            let base_domains = if std::env::var("CAPROVER").is_ok() {
-                vec![
-                    "example.com",
-                    "httpbin.org", // Good for testing
-                    "jsonplaceholder.typicode.com", // Small API endpoints
-                ]
-            } else {
-                vec![
-                    "example.com",
-                    "wikipedia.org", 
-                    "github.com",
-                    "stackoverflow.com",
-                    "reddit.com",
-                    "news.ycombinator.com",
-                    "techcrunch.com",
-                    "medium.com",
-                    "dev.to",
-                    "hackernews.com",
-                ]
-            };
+            // Generate 10 random domains (smaller number for job creation)
+            let tlds = COMMON_TLDS.clone();
+            let words = COMMON_WORDS.clone();
+            let prefixes = COMMON_PREFIXES.clone();
+            let mut rng = SmallRng::from_entropy();
             
-            // Pick fewer domains for CapRover
-            let job_count = if std::env::var("CAPROVER").is_ok() { 1 } else { 3 };
-            let selected: Vec<_> = {
-                let mut rng = rand::thread_rng();
-                base_domains.choose_multiple(&mut rng, job_count).cloned().collect()
-            };
+            let mut candidate_domains = Vec::new();
+            for _ in 0..10 {
+                let word = &words[rng.gen_range(0..words.len())];
+                let tld = &tlds[rng.gen_range(0..tlds.len())];
+                
+                // 70% simple domain, 30% with prefix
+                if rng.gen_range(0..10) < 7 {
+                    candidate_domains.push(format!("{}.{}", word, tld));
+                } else {
+                    let prefix = &prefixes[rng.gen_range(0..prefixes.len())];
+                    candidate_domains.push(format!("{}.{}.{}", prefix, word, tld));
+                }
+            }
             
-            for domain in selected {
+            log::info!("Testing connectivity for {} random domains", candidate_domains.len());
+            
+            // Test connectivity and create jobs for responsive domains
+            for domain in candidate_domains {
                 let url = format!("https://{}/", domain);
                 
-                // Check if this URL has been crawled recently (within the past month)
+                // Check if recently crawled first
                 match CrawlJob::is_recently_crawled(&url).await {
                     Ok(true) => {
-                        log::info!("Skipping recently crawled URL: {}", url);
+                        log::debug!("Skipping recently crawled domain: {}", domain);
                         continue;
                     }
                     Ok(false) => {
-                        log::info!("Creating new crawl job for: {}", url);
+                        log::debug!("Domain not recently crawled: {}", domain);
                     }
                     Err(e) => {
                         log::warn!("Failed to check recent crawls for {}: {}, proceeding anyway", url, e);
                     }
                 }
                 
-                let oid: String = rand::thread_rng()
-                    .sample_iter(&Alphanumeric)
-                    .take(15)
-                    .map(char::from)
-                    .collect();
-                    
-                let mut job = CrawlJob::new();
-                job.oid = oid;
-                job.start_url = url;
-                job.status = "pending".to_string();
-                job.created_at = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0);
-                job.updated_at = job.created_at;
+                // Quick connectivity test
+                let client = reqwest::Client::builder()
+                    .timeout(Duration::from_secs(5))
+                    .build()
+                    .unwrap_or_default();
                 
-                // Try to save the job, but continue even if it fails
-                match job.save_async().await {
-                    Ok(_) => {
-                        log::info!("Created crawl job: {}", job.oid);
-                        jobs.push(job);
+                let is_responsive = match client.head(&url).send().await {
+                    Ok(response) => response.status().is_success() || response.status().is_redirection(),
+                    Err(_) => false,
+                };
+                
+                if is_responsive {
+                    log::info!("Creating crawl job for responsive domain: {}", domain);
+                    
+                    let oid: String = rand::thread_rng()
+                        .sample_iter(&Alphanumeric)
+                        .take(15)
+                        .map(char::from)
+                        .collect();
+                        
+                    let mut job = CrawlJob::new();
+                    job.oid = oid;
+                    job.start_url = url;
+                    job.status = "pending".to_string();
+                    job.created_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    job.updated_at = job.created_at;
+                    
+                    // Try to save the job, but continue even if it fails
+                    match job.save_async().await {
+                        Ok(_) => {
+                            log::info!("Created crawl job: {}", job.oid);
+                            jobs.push(job);
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to save crawl job to database: {}, using in-memory", e);
+                            jobs.push(job);
+                        }
                     }
-                    Err(e) => {
-                        log::warn!("Failed to save crawl job to database: {}, using in-memory", e);
-                        jobs.push(job);
-                    }
+                } else {
+                    log::debug!("Domain {} not responsive, skipping", domain);
+                }
+                
+                // Limit to prevent too many jobs
+                if jobs.len() >= 3 {
+                    break;
                 }
             }
         }

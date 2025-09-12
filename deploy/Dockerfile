@@ -30,7 +30,7 @@ WORKDIR /usr/src/sam
 COPY Cargo.toml Cargo.lock build.rs ./
 
 # Cache bust to force rebuild with Rust nightly for edition2024 support
-RUN echo "Cache bust: 2025-09-12-0.01"
+RUN echo "Cache bust: 2025-09-12-0.02"
 
 # Create dummy source structure for dependency compilation
 RUN mkdir -p src/bin src/lib benches && \
