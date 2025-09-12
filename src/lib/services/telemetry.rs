@@ -10,6 +10,7 @@ use std::env;
 use std::time::Duration;
 use reqwest::Client;
 use crate::services::crawler::CrawledContent;
+use crate::services::crawler::page::CrawledPage;
 
 /// Telemetry configuration
 #[derive(Debug, Clone)]
@@ -40,6 +41,7 @@ pub struct TelemetryPayload {
     pub instance_id: String,
     pub timestamp: i64,
     pub content: Vec<TelemetryContent>,
+    pub pages: Vec<TelemetryPageContent>,
 }
 
 /// Simplified content structure for telemetry
@@ -55,6 +57,15 @@ pub struct TelemetryContent {
     pub content_length: i64,
     pub language: Option<String>,
     pub crawled_at: i64,
+}
+
+/// Simplified page structure for telemetry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryPageContent {
+    pub url: String,
+    pub tokens: Vec<String>, // Note: May be truncated for privacy/bandwidth
+    pub links: Vec<String>, // Note: May be truncated for privacy/bandwidth
+    pub timestamp: i64,
 }
 
 impl From<&CrawledContent> for TelemetryContent {
@@ -83,6 +94,34 @@ impl From<&CrawledContent> for TelemetryContent {
             content_length: content.content_length,
             language: content.language.clone(),
             crawled_at: content.crawled_at,
+        }
+    }
+}
+
+impl From<&CrawledPage> for TelemetryPageContent {
+    fn from(page: &CrawledPage) -> Self {
+        // Truncate tokens and links for bandwidth/privacy
+        let truncated_tokens = if page.tokens.len() > 1000 {
+            let mut tokens = page.tokens[..1000].to_vec();
+            tokens.push("[truncated]".to_string());
+            tokens
+        } else {
+            page.tokens.clone()
+        };
+
+        let truncated_links = if page.links.len() > 100 {
+            let mut links = page.links[..100].to_vec();
+            links.push("[truncated]".to_string());
+            links
+        } else {
+            page.links.clone()
+        };
+
+        Self {
+            url: page.url.clone(),
+            tokens: truncated_tokens,
+            links: truncated_links,
+            timestamp: page.timestamp,
         }
     }
 }
@@ -147,6 +186,7 @@ impl TelemetryService {
                 .unwrap_or_default()
                 .as_secs() as i64,
             content: telemetry_content,
+            pages: Vec::new(), // No pages in content batch
         };
         
         info!("Sending {} content items to OSF telemetry endpoint", content.len());
@@ -162,6 +202,59 @@ impl TelemetryService {
                     let content_ids: Vec<i64> = content.iter().map(|c| c.id).collect();
                     info!("Successfully sent {} items to OSF telemetry", content.len());
                     Ok(content_ids)
+                } else {
+                    let status = response.status();
+                    let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                    error!("OSF telemetry endpoint returned error {}: {}", status, error_text);
+                    Err(anyhow::anyhow!("Telemetry send failed: {} - {}", status, error_text))
+                }
+            }
+            Err(e) => {
+                error!("Failed to send telemetry data: {}", e);
+                Err(anyhow::anyhow!("Failed to send telemetry: {}", e))
+            }
+        }
+    }
+    
+    /// Send crawled pages to OSF telemetry endpoint
+    pub async fn send_page_batch(&self, pages: Vec<CrawledPage>) -> Result<Vec<i32>> {
+        if !self.should_send_telemetry() {
+            debug!("Telemetry disabled or running on OSF server, skipping send");
+            return Ok(Vec::new());
+        }
+        
+        if pages.is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        let telemetry_pages: Vec<TelemetryPageContent> = pages.iter()
+            .map(TelemetryPageContent::from)
+            .collect();
+        
+        let payload = TelemetryPayload {
+            version: "0.0.2".to_string(),
+            instance_id: self.instance_id.clone(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+            content: Vec::new(), // No content in page batch
+            pages: telemetry_pages,
+        };
+        
+        info!("Sending {} page items to OSF telemetry endpoint", pages.len());
+        
+        match self.client
+            .post(&format!("{}/submit", self.config.osf_endpoint))
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    let page_ids: Vec<i32> = pages.iter().map(|p| p.id).collect();
+                    info!("Successfully sent {} page items to OSF telemetry", pages.len());
+                    Ok(page_ids)
                 } else {
                     let status = response.status();
                     let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
@@ -200,6 +293,43 @@ impl TelemetryService {
                     CrawledContent::mark_batch_telemetry_shared(successful_ids.clone()).await?;
                     info!("Marked {} items as telemetry shared", successful_ids.len());
                     Box::pin(self.process_unshared_content()).await.map(|next_count| successful_ids.len() + next_count)
+                } else {
+                    Ok(0)
+                }
+            }
+            Err(e) => {
+                warn!("Failed to send telemetry batch: {}", e);
+                Err(e)
+            }
+        }
+    }
+    
+    /// Process and send unshared pages
+    pub async fn process_unshared_pages(&self) -> Result<usize> {
+        if !self.should_send_telemetry() {
+            debug!("Telemetry disabled or running on OSF server, skipping processing");
+            return Ok(0);
+        }
+        
+        info!("Processing unshared pages for telemetry");
+        
+        let unshared_pages = CrawledPage::get_unshared_content(self.config.batch_size).await
+            .map_err(|e| anyhow::anyhow!("Failed to get unshared pages: {}", e))?;
+        
+        if unshared_pages.is_empty() {
+            debug!("No unshared pages found");
+            return Ok(0);
+        }
+        
+        info!("Found {} unshared page items", unshared_pages.len());
+        
+        match self.send_page_batch(unshared_pages).await {
+            Ok(successful_ids) => {
+                if !successful_ids.is_empty() {
+                    CrawledPage::mark_batch_telemetry_shared(successful_ids.clone()).await
+                        .map_err(|e| anyhow::anyhow!("Failed to mark pages as shared: {}", e))?;
+                    info!("Marked {} page items as telemetry shared", successful_ids.len());
+                    Box::pin(self.process_unshared_pages()).await.map(|next_count| successful_ids.len() + next_count)
                 } else {
                     Ok(0)
                 }
@@ -390,5 +520,44 @@ mod tests {
         
         // Verify the string is still valid UTF-8
         assert!(telemetry_content.content_text.is_ascii() || !telemetry_content.content_text.is_empty());
+    }
+    
+    #[test]
+    fn test_telemetry_page_content_conversion() {
+        let mut page = CrawledPage::new();
+        page.id = 1;
+        page.url = "https://example.com".to_string();
+        page.tokens = vec!["token1".to_string(), "token2".to_string(), "token3".to_string()];
+        page.links = vec!["https://link1.com".to_string(), "https://link2.com".to_string()];
+        
+        let telemetry_page = TelemetryPageContent::from(&page);
+        
+        assert_eq!(telemetry_page.url, "https://example.com");
+        assert_eq!(telemetry_page.tokens.len(), 3);
+        assert_eq!(telemetry_page.links.len(), 2);
+        assert_eq!(telemetry_page.tokens[0], "token1");
+        assert_eq!(telemetry_page.links[0], "https://link1.com");
+    }
+    
+    #[test]
+    fn test_page_token_truncation() {
+        let mut page = CrawledPage::new();
+        page.id = 1;
+        page.url = "https://example.com".to_string();
+        // Create a large number of tokens
+        page.tokens = (0..1500).map(|i| format!("token{}", i)).collect();
+        page.links = (0..150).map(|i| format!("https://link{}.com", i)).collect();
+        
+        let telemetry_page = TelemetryPageContent::from(&page);
+        
+        // Should be truncated to 1000 tokens + truncation marker
+        assert_eq!(telemetry_page.tokens.len(), 1001);
+        assert_eq!(telemetry_page.tokens[1000], "[truncated]");
+        assert_eq!(telemetry_page.tokens[999], "token999");
+        
+        // Should be truncated to 100 links + truncation marker
+        assert_eq!(telemetry_page.links.len(), 101);
+        assert_eq!(telemetry_page.links[100], "[truncated]");
+        assert_eq!(telemetry_page.links[99], "https://link99.com");
     }
 }

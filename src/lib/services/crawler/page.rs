@@ -26,6 +26,7 @@ pub struct CrawledPage {
     pub tokens: Vec<String>,
     pub links: Vec<String>,
     pub timestamp: i64,
+    pub telemetry_shared: bool, // Flag indicating if data has been shared with OSF
 }
 
 impl Default for CrawledPage {
@@ -48,6 +49,7 @@ impl CrawledPage {
                     0
                 }
             },
+            telemetry_shared: false, // Default to false for new pages
         }
     }
     pub fn sql_table_name() -> String {
@@ -58,7 +60,8 @@ impl CrawledPage {
             id serial PRIMARY KEY,
             url varchar NOT NULL UNIQUE,
             tokens text,
-            timestamp BIGINT
+            timestamp BIGINT,
+            telemetry_shared BOOLEAN NOT NULL DEFAULT FALSE
         );"
     }
     pub fn sql_indexes() -> Vec<&'static str> {
@@ -66,6 +69,7 @@ impl CrawledPage {
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_url ON crawled_pages (url);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_timestamp ON crawled_pages (timestamp);",
             "CREATE INDEX IF NOT EXISTS idx_crawled_pages_tokens ON crawled_pages (tokens);",
+            "CREATE INDEX IF NOT EXISTS idx_crawled_pages_telemetry_shared ON crawled_pages (telemetry_shared);",
         ]
     }
     pub fn migrations() -> Vec<&'static str> {
@@ -87,6 +91,7 @@ impl CrawledPage {
             crawl_job_oid: String::new(),
             links: Vec::new(),
             timestamp: row.get("timestamp"),
+            telemetry_shared: row.get("telemetry_shared"),
         })
     }
 
@@ -102,6 +107,7 @@ impl CrawledPage {
             crawl_job_oid: String::new(),
             links: Vec::new(),
             timestamp: row.get("timestamp"),
+            telemetry_shared: row.get("telemetry_shared"),
         })
     }
 
@@ -206,15 +212,16 @@ impl CrawledPage {
         }
         // Then, build values and params
         for (i, page) in pages_cleaned.iter().enumerate() {
-            values.push(format!("(${}, ${}, ${})", i * 3 + 1, i * 3 + 2, i * 3 + 3));
+            values.push(format!("(${}, ${}, ${}, ${})", i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4));
             params.push(&page.url);
             params.push(&tokens_strs[i]);
             params.push(&page.timestamp);
+            params.push(&page.telemetry_shared);
         }
 
         let sql = format!(
-            "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES {} \
-            ON CONFLICT(url) DO UPDATE SET tokens = EXCLUDED.tokens, timestamp = EXCLUDED.timestamp",
+            "INSERT INTO crawled_pages (url, tokens, timestamp, telemetry_shared) VALUES {} \
+            ON CONFLICT(url) DO UPDATE SET tokens = EXCLUDED.tokens, timestamp = EXCLUDED.timestamp, telemetry_shared = EXCLUDED.telemetry_shared",
             values.join(", ")
         );
 
@@ -242,15 +249,15 @@ impl CrawledPage {
         if rows.is_empty() {
             client
                 .execute(
-                    "INSERT INTO crawled_pages (url, tokens, timestamp) VALUES ($1, $2, $3)",
-                    &[&self.url, &tokens_str, &self.timestamp],
+                    "INSERT INTO crawled_pages (url, tokens, timestamp, telemetry_shared) VALUES ($1, $2, $3, $4)",
+                    &[&self.url, &tokens_str, &self.timestamp, &self.telemetry_shared],
                 )
                 .await?;
         } else {
             client
                 .execute(
-                    "UPDATE crawled_pages SET tokens = $1, timestamp = $2 WHERE url = $3",
-                    &[&tokens_str, &self.timestamp, &self.url],
+                    "UPDATE crawled_pages SET tokens = $1, timestamp = $2, telemetry_shared = $3 WHERE url = $4",
+                    &[&tokens_str, &self.timestamp, &self.telemetry_shared, &self.url],
                 )
                 .await?;
         }
@@ -450,6 +457,63 @@ impl CrawledPage {
             Ok(())
         })
         .await?
+    }
+
+    /// Get pages that haven't been shared for telemetry yet
+    pub async fn get_unshared_content(limit: usize) -> crate::memory::Result<Vec<Self>> {
+        let config = crate::memory::Config::new();
+        let client = config.connect_pool().await?;
+        
+        let rows = client.query(
+            "SELECT * FROM crawled_pages 
+             WHERE telemetry_shared = FALSE 
+             ORDER BY timestamp ASC 
+             LIMIT $1",
+            &[&(limit as i64)]
+        ).await?;
+        
+        let mut pages = Vec::new();
+        for row in rows {
+            match Self::from_row(&row) {
+                Ok(page) => pages.push(page),
+                Err(e) => log::warn!("Failed to parse page from row: {}", e),
+            }
+        }
+        Ok(pages)
+    }
+
+    /// Mark page as shared for telemetry
+    pub async fn mark_telemetry_shared(&mut self) -> crate::memory::Result<()> {
+        let config = crate::memory::Config::new();
+        let client = config.connect_pool().await?;
+        
+        client.execute(
+            "UPDATE crawled_pages SET telemetry_shared = TRUE WHERE id = $1",
+            &[&self.id]
+        ).await?;
+        
+        self.telemetry_shared = true;
+        Ok(())
+    }
+
+    /// Mark multiple pages as shared for telemetry by their IDs
+    pub async fn mark_batch_telemetry_shared(ids: Vec<i32>) -> crate::memory::Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        
+        let config = crate::memory::Config::new();
+        let client = config.connect_pool().await?;
+        
+        let ids_str = ids.iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        
+        let query = format!("UPDATE crawled_pages SET telemetry_shared = TRUE WHERE id = ANY(ARRAY[{}]::int[])", ids_str);
+        client.execute(&query, &[]).await?;
+        
+        Ok(())
     }
 
     /// Serialize this CrawledPage to a JSON string for P2P sharing.
