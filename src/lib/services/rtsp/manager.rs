@@ -13,9 +13,9 @@ use std::sync::atomic::Ordering;
 use tokio::sync::mpsc;
 use crate::services::thread_manager::{self, ThreadConfig};
 
-// Import deep learning and recording modules from services root
-use crate::services::rtsp_dl_simple::{Alert, start_deep_learning_processor};
-use crate::services::rtsp_recording::{
+// Import deep learning and recording modules from rtsp submodule
+use crate::services::rtsp::dl_simple::{Alert, start_deep_learning_processor};
+use crate::services::rtsp::recording::{
     RecordingManager, RecordingConfig, RecordingTrigger, VideoEncoding, 
     VideoCodec, AudioCodec, Resolution, create_recording_tables
 };
@@ -78,7 +78,7 @@ pub fn init() {
                                 rtsp_http_thing.password,
                                 rtsp_http_thing.ip_address
                             );
-                            let script = crate::services::rtsp::gen_rtsp_to_http_stream_script(
+                            let script = crate::services::rtsp::manager::gen_rtsp_to_http_stream_script(
                                 rtsp_address,
                                 rtsp_http_thing.oid.clone(),
                             );
@@ -126,7 +126,7 @@ pub fn init() {
                                 rtsp_wav_thing.password,
                                 rtsp_wav_thing.ip_address
                             );
-                            let script = crate::services::rtsp::gen_rtsp_to_wav_script(
+                            let script = crate::services::rtsp::manager::gen_rtsp_to_wav_script(
                                 rtsp_address,
                                 rtsp_wav_thing.oid.clone(),
                             );

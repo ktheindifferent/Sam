@@ -197,6 +197,13 @@ function sendCommand(cmd){
 		}
 	}
 
+	// Check if this is an Ollama command
+	if (cmd_parts[0] === "ollama") {
+		console.log("Detected Ollama command:", cmd);
+		handleOllamaCommand(cmd, cmd_parts);
+		return;
+	}
+
 	$.get("/api/io?input="+cmd, function( data ) {
 		// Check for web actions first
 		var shouldClearScreen = false;
@@ -239,7 +246,7 @@ function sendCommand(cmd){
 		
 		// Normal response processing
 		speak(data.text).then(function () {
-			$("#terminal__body").append("<span id='terminal__prompt--sam'>Sam<span></span>:</span> "+data.text.replaceAll("\n", "<br/>"));
+			$("#terminal__body").append("<span id='terminal__prompt--sam'>Sam<span></span>:</span> "+data.text.replaceAll("\n", "<br/>") + "<br/>");
 
 			term_buffer = "";
 			term_cursor_location = 1;
@@ -262,4 +269,590 @@ function sendCommand(cmd){
 
 	
 	});
+}
+
+function handleOllamaCommand(cmd, cmd_parts) {
+	var subcommand = cmd_parts[1] || "";
+	
+	console.log("Handling Ollama command:", cmd, "parts:", cmd_parts);
+	
+	// Handle shorthand: "ollama <model> <prompt>" should be "ollama run <model> <prompt>"
+	if (subcommand && !["help", "status", "install", "start", "stop", "list", "models", "pull", "remove", "run", "search", "info", "install-recommended"].includes(subcommand)) {
+		// Treat as "ollama run <model> <prompt>"
+		var model = cmd_parts[1];
+		var prompt = cmd_parts.slice(2).join(" ");
+		console.log("Treating as ollama run:", model, prompt);
+		if (model && prompt) {
+			runOllamaGeneration(model, prompt);
+			return;
+		}
+	}
+	
+	switch(subcommand) {
+		case "":
+		case "help":
+			showOllamaHelp();
+			break;
+		case "status":
+			getOllamaStatus();
+			break;
+		case "install":
+			installOllama();
+			break;
+		case "start":
+			startOllama();
+			break;
+		case "stop":
+			stopOllama();
+			break;
+		case "list":
+		case "models":
+			listOllamaModels();
+			break;
+		case "pull":
+			var model = cmd_parts[2];
+			if (!model) {
+				appendTerminalOutput("Usage: ollama pull <model_name>");
+				appendTerminalOutput("Example: ollama pull llama3.2");
+				finishCommand();
+			} else {
+				pullOllamaModel(model);
+			}
+			break;
+		case "remove":
+			var model = cmd_parts[2];
+			if (!model) {
+				appendTerminalOutput("Usage: ollama remove <model_name>");
+				appendTerminalOutput("Example: ollama remove llama3.2");
+				finishCommand();
+			} else {
+				removeOllamaModel(model);
+			}
+			break;
+		case "run":
+			var model = cmd_parts[2];
+			var prompt = cmd_parts.slice(3).join(" ");
+			if (!model || !prompt) {
+				appendTerminalOutput("Usage: ollama run <model_name> <prompt>");
+				appendTerminalOutput("Example: ollama run llama3.2 \"Hello, how are you?\"");
+				finishCommand();
+			} else {
+				runOllamaGeneration(model, prompt);
+			}
+			break;
+		case "search":
+			var query = cmd_parts.slice(2).join(" ");
+			searchOllamaModels(query);
+			break;
+		case "info":
+			var model = cmd_parts[2];
+			if (!model) {
+				appendTerminalOutput("Usage: ollama info <model_name>");
+				finishCommand();
+			} else {
+				getOllamaModelInfo(model);
+			}
+			break;
+		case "install-recommended":
+			installRecommendedModels();
+			break;
+		default:
+			appendTerminalOutput("Unknown ollama command: " + subcommand);
+			appendTerminalOutput("Type 'ollama help' to see available commands");
+			finishCommand();
+			break;
+	}
+}
+
+function showOllamaHelp() {
+	var helpText = [
+		"Ollama AI Commands:",
+		"",
+		"  ollama help                    - Show this help",
+		"  ollama status                  - Check Ollama service status",
+		"  ollama install                 - Install Ollama if not present",
+		"  ollama start                   - Start Ollama service",
+		"  ollama stop                    - Stop Ollama service",
+		"",
+		"Model Management:",
+		"  ollama list                    - List installed models",
+		"  ollama pull <model>            - Download a model (e.g., llama3.2)",
+		"  ollama remove <model>          - Remove a model",
+		"  ollama search [query]          - Search available models",
+		"  ollama info <model>            - Show model information",
+		"  ollama install-recommended     - Install recommended models",
+		"",
+		"AI Generation:",
+		"  ollama run <model> <prompt>    - Generate text with a model",
+		"",
+		"Examples:",
+		"  ollama pull llama3.2",
+		"  ollama run llama3.2 \"Explain quantum computing\"",
+		"  ollama search code"
+	];
+	
+	for (var i = 0; i < helpText.length; i++) {
+		appendTerminalOutput(helpText[i]);
+	}
+	finishCommand();
+}
+
+function getOllamaStatus() {
+	appendTerminalOutput("⠋ Checking Ollama status...", true);
+	
+	$.get("/api/ollama/status")
+		.done(function(data) {
+			console.log("Ollama status response:", data);
+			replaceLastSpinner();
+			
+			appendTerminalOutput("Ollama Status:");
+			appendTerminalOutput("  Installed: " + (data.installed ? "✓ Yes" : "✗ No"));
+			appendTerminalOutput("  Running:   " + (data.running ? "✓ Yes" : "✗ No"));
+			
+			if (data.version) {
+				appendTerminalOutput("  Version:   " + data.version);
+			}
+			
+			if (data.models && data.models.length > 0) {
+				appendTerminalOutput("  Models:    " + data.models.length + " installed");
+			}
+			
+			if (!data.installed) {
+				appendTerminalOutput("");
+				appendTerminalOutput("Run 'ollama install' to install Ollama.");
+			} else if (!data.running) {
+				appendTerminalOutput("");
+				appendTerminalOutput("Run 'ollama start' to start the service.");
+			}
+			
+			finishCommand();
+		})
+		.fail(function(xhr, status, error) {
+			console.log("Ollama status error:", xhr, status, error);
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Failed to get Ollama status: " + (xhr.responseText || error));
+			finishCommand();
+		});
+}
+
+function installOllama() {
+	appendTerminalOutput("⠋ Installing Ollama...", true);
+	
+	$.ajax({
+		url: "/api/ollama/install",
+		type: "POST",
+		contentType: "application/json",
+		data: JSON.stringify({}),
+		success: function(data) {
+			replaceLastSpinner();
+			
+			if (data.success) {
+				appendTerminalOutput("✓ " + data.message);
+			} else {
+				appendTerminalOutput("✗ " + data.message);
+			}
+			
+			finishCommand();
+		},
+		error: function() {
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Installation failed");
+			finishCommand();
+		}
+	});
+}
+
+function startOllama() {
+	appendTerminalOutput("⠋ Starting Ollama service...", true);
+	
+	$.ajax({
+		url: "/api/ollama/start",
+		type: "POST",
+		contentType: "application/json",
+		data: JSON.stringify({}),
+		success: function(data) {
+			replaceLastSpinner();
+			
+			if (data.success) {
+				appendTerminalOutput("✓ " + data.message);
+			} else {
+				appendTerminalOutput("✗ " + data.message);
+			}
+			
+			finishCommand();
+		},
+		error: function() {
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Failed to start Ollama service");
+			finishCommand();
+		}
+	});
+}
+
+function stopOllama() {
+	appendTerminalOutput("⠋ Stopping Ollama service...", true);
+	
+	$.ajax({
+		url: "/api/ollama/stop",
+		type: "POST",
+		contentType: "application/json",
+		data: JSON.stringify({}),
+		success: function(data) {
+			replaceLastSpinner();
+			
+			if (data.success) {
+				appendTerminalOutput("✓ " + data.message);
+			} else {
+				appendTerminalOutput("✗ " + data.message);
+			}
+			
+			finishCommand();
+		},
+		error: function() {
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Failed to stop Ollama service");
+			finishCommand();
+		}
+	});
+}
+
+function listOllamaModels() {
+	appendTerminalOutput("⠋ Loading models...", true);
+	
+	$.get("/api/ollama/models")
+		.done(function(data) {
+			console.log("Ollama models response:", data);
+			replaceLastSpinner();
+			
+			if (data.success && data.data && data.data.models) {
+				var models = data.data.models;
+				if (models.length === 0) {
+					appendTerminalOutput("No models installed.");
+					appendTerminalOutput("Run 'ollama pull <model>' to install a model.");
+				} else {
+					appendTerminalOutput("Installed Models (" + models.length + "):");
+					appendTerminalOutput("");
+					
+					for (var i = 0; i < models.length; i++) {
+						var model = models[i];
+						var sizeGB = (model.size / (1024 * 1024 * 1024)).toFixed(1);
+						appendTerminalOutput("  " + model.name + " (" + sizeGB + " GB)");
+					}
+				}
+			} else {
+				appendTerminalOutput("✗ " + (data.message || "Failed to list models"));
+				if (data.message && data.message.includes("connection")) {
+					appendTerminalOutput("Make sure Ollama service is running: 'ollama start'");
+				}
+			}
+			
+			finishCommand();
+		})
+		.fail(function(xhr, status, error) {
+			console.log("Ollama models error:", xhr, status, error);
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Failed to list models: " + (xhr.responseText || error));
+			finishCommand();
+		});
+}
+
+function pullOllamaModel(model) {
+	appendTerminalOutput("This may take several minutes depending on model size.");
+	appendTerminalOutput("⠋ Pulling model: " + model + "...", true);
+	
+	var requestData = { model: model };
+	
+	$.ajax({
+		url: "/api/ollama/models/pull",
+		type: "POST",
+		contentType: "application/json",
+		data: JSON.stringify(requestData),
+		success: function(data) {
+			replaceLastSpinner();
+			
+			if (data.success) {
+				appendTerminalOutput("✓ " + data.message);
+			} else {
+				appendTerminalOutput("✗ " + data.message);
+				if (data.message && data.message.includes("connection")) {
+					appendTerminalOutput("Make sure Ollama service is running: 'ollama start'");
+				}
+			}
+			
+			finishCommand();
+		},
+		error: function() {
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Failed to pull model: " + model);
+			finishCommand();
+		}
+	});
+}
+
+function removeOllamaModel(model) {
+	appendTerminalOutput("⠋ Removing model: " + model + "...", true);
+	
+	$.ajax({
+		url: "/api/ollama/models/" + encodeURIComponent(model),
+		type: "DELETE",
+		success: function(data) {
+			replaceLastSpinner();
+			
+			if (data.success) {
+				appendTerminalOutput("✓ " + data.message);
+			} else {
+				appendTerminalOutput("✗ " + data.message);
+			}
+			
+			finishCommand();
+		},
+		error: function() {
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Failed to remove model: " + model);
+			finishCommand();
+		}
+	});
+}
+
+function runOllamaGeneration(model, prompt) {
+	appendTerminalOutput("Prompt: " + prompt);
+	appendTerminalOutput("");
+	appendTerminalOutput("⠋ Generating with model '" + model + "'...", true);
+	
+	var requestData = {
+		model: model,
+		prompt: prompt,
+		options: null
+	};
+	
+	console.log("Making generate request with data:", requestData);
+	
+	$.ajax({
+		url: "/api/ollama/generate",
+		type: "POST",
+		contentType: "application/json",
+		data: JSON.stringify(requestData),
+		success: function(data) {
+			console.log("Generate response:", data);
+			replaceLastSpinner();
+			
+			if (data.success && data.data) {
+				var response = data.data;
+				
+				appendTerminalOutput("Response:");
+				appendTerminalOutput("");
+				
+				// Split response into lines for better display
+				var responseLines = response.response.split('\n');
+				for (var i = 0; i < responseLines.length; i++) {
+					if (responseLines[i].trim().length > 0) {
+						appendTerminalOutput("  " + responseLines[i]);
+					} else if (i < responseLines.length - 1) {
+						// Add empty line for spacing
+						appendTerminalOutput("");
+					}
+				}
+				
+				appendTerminalOutput("");
+				if (response.total_duration) {
+					var durationSec = (response.total_duration / 1000000000).toFixed(2);
+					appendTerminalOutput("Generated in " + durationSec + "s");
+				}
+			} else {
+				appendTerminalOutput("✗ " + (data.message || "Failed to generate text"));
+				if (data.message && data.message.includes("connection")) {
+					appendTerminalOutput("Make sure Ollama service is running: 'ollama start'");
+				} else if (data.message && data.message.includes("not found")) {
+					appendTerminalOutput("Model '" + model + "' not found. Use 'ollama pull " + model + "' to install it.");
+				}
+			}
+			
+			finishCommand();
+		},
+		error: function(xhr, status, error) {
+			console.log("Generate error:", xhr, status, error);
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Failed to generate text: " + (xhr.responseText || error));
+			finishCommand();
+		}
+	});
+}
+
+function searchOllamaModels(query) {
+	var searchUrl = query ? "/api/ollama/models/available/" + encodeURIComponent(query) : "/api/ollama/models/available";
+	appendTerminalOutput("⠋ Searching models...", true);
+	
+	$.get(searchUrl, function(data) {
+		replaceLastSpinner();
+		
+		if (data.success && data.data) {
+			var models = data.data;
+			
+			if (models.length === 0) {
+				if (query) {
+					appendTerminalOutput("No models found matching '" + query + "'");
+				} else {
+					appendTerminalOutput("No models available");
+				}
+			} else {
+				if (query) {
+					appendTerminalOutput("Models matching '" + query + "' (" + models.length + "):");
+				} else {
+					appendTerminalOutput("Popular models available:");
+				}
+				appendTerminalOutput("");
+				
+				for (var i = 0; i < models.length; i++) {
+					appendTerminalOutput("  " + models[i]);
+				}
+				
+				appendTerminalOutput("");
+				appendTerminalOutput("Use 'ollama pull <model>' to install a model.");
+			}
+		} else {
+			appendTerminalOutput("✗ " + (data.message || "Failed to search models"));
+		}
+		
+		finishCommand();
+	}).fail(function() {
+		replaceLastSpinner();
+		appendTerminalOutput("✗ Failed to search models");
+		finishCommand();
+	});
+}
+
+function getOllamaModelInfo(model) {
+	appendTerminalOutput("⠋ Getting model information...", true);
+	
+	$.get("/api/ollama/models/" + encodeURIComponent(model) + "/info", function(data) {
+		replaceLastSpinner();
+		
+		if (data.success && data.data) {
+			appendTerminalOutput("Model Information: " + model);
+			appendTerminalOutput("");
+			
+			// Pretty print the JSON information
+			var jsonStr = JSON.stringify(data.data, null, 2);
+			var lines = jsonStr.split('\n');
+			for (var i = 0; i < lines.length; i++) {
+				appendTerminalOutput("  " + lines[i]);
+			}
+		} else {
+			appendTerminalOutput("✗ " + (data.message || "Failed to get model info"));
+			if (data.message && data.message.includes("connection")) {
+				appendTerminalOutput("Make sure Ollama service is running: 'ollama start'");
+			}
+		}
+		
+		finishCommand();
+	}).fail(function() {
+		replaceLastSpinner();
+		appendTerminalOutput("✗ Failed to get model info for '" + model + "'");
+		finishCommand();
+	});
+}
+
+function installRecommendedModels() {
+	appendTerminalOutput("This will install: llama3.2, codellama, and mistral");
+	appendTerminalOutput("This may take several minutes.");
+	appendTerminalOutput("⠋ Installing recommended models...", true);
+	
+	$.ajax({
+		url: "/api/ollama/models/install-recommended",
+		type: "POST",
+		contentType: "application/json",
+		data: JSON.stringify({}),
+		success: function(data) {
+			replaceLastSpinner();
+			
+			if (data.success) {
+				appendTerminalOutput("");
+				appendTerminalOutput("Installation Results:");
+				
+				var lines = data.message.split('\n');
+				for (var i = 0; i < lines.length; i++) {
+					if (lines[i].trim()) {
+						appendTerminalOutput("  " + lines[i]);
+					}
+				}
+			} else {
+				appendTerminalOutput("✗ " + data.message);
+			}
+			
+			finishCommand();
+		},
+		error: function() {
+			replaceLastSpinner();
+			appendTerminalOutput("✗ Failed to install recommended models");
+			finishCommand();
+		}
+	});
+}
+
+// Helper functions for terminal output management
+var spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+var spinnerIndex = 0;
+var spinnerInterval = null;
+
+function appendTerminalOutput(text, isSpinner = false) {
+	var outputElement;
+	if (isSpinner) {
+		// Start with first spinner character
+		outputElement = "<span class='spinner-line' id='current-spinner'><span id='terminal__prompt--sam'>Sam:</span> <span class='spinner-char'>" + spinnerChars[0] + "</span> " + text.replace(/^⠋\s*/, "") + "</span>";
+		$("#terminal__body").append(outputElement);
+		
+		// Start spinner animation
+		startSpinner();
+	} else {
+		outputElement = "<span id='terminal__prompt--sam'>Sam:</span> " + text.replaceAll("\n", "<br/>");
+		$("#terminal__body").append(outputElement + "<br/>");
+	}
+	
+	scrollToBottom();
+}
+
+function startSpinner() {
+	spinnerIndex = 0;
+	
+	if (spinnerInterval) {
+		clearInterval(spinnerInterval);
+	}
+	
+	spinnerInterval = setInterval(function() {
+		spinnerIndex = (spinnerIndex + 1) % spinnerChars.length;
+		$('#current-spinner .spinner-char').text(spinnerChars[spinnerIndex]);
+	}, 80);
+}
+
+function replaceLastSpinner() {
+	// Stop spinner animation
+	if (spinnerInterval) {
+		clearInterval(spinnerInterval);
+		spinnerInterval = null;
+	}
+	
+	// Remove the last spinner line
+	$("#terminal__body").find('#current-spinner').remove();
+}
+
+function finishCommand() {
+	term_buffer = "";
+	term_cursor_location = 1;
+	cursor_margin = 0;
+	processing_command = false;
+
+	var html = "<div id='terminal__prompt'>\
+				  <span id='terminal__prompt--user'>Caleb@<span id='term_host_name_body'></span>:</span>\
+				  <span class='terminal__prompt--location' id='terminal__prompt--location'>~</span>\
+				  <span id='terminal__prompt--bling'>$<span id='terminal__prompt__buffer'></span></span>\
+				  <span id='terminal__prompt--cursor'></span>\
+				</div>";
+	$("#terminal__body").append(html);
+	
+	scrollToBottom();
+}
+
+function scrollToBottom() {
+	var objDiv = document.getElementById("terminal__body");
+	objDiv.scrollTop = objDiv.scrollHeight;
 }

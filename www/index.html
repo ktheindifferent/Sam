@@ -58,6 +58,37 @@ Licensed under GPLv3....see LICENSE file. -->
       --border-accent: rgba(39, 160, 185, 0.3);
     }
 
+    /* Model Management Styles */
+    .model-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .model-item {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border) !important;
+      transition: all 0.2s ease;
+    }
+    
+    .model-item:hover {
+      background: var(--bg-primary);
+      border-color: var(--accent-primary) !important;
+    }
+    
+    .btn-info-custom, .btn-warning-custom {
+      margin-left: 5px;
+    }
+    
+    .btn-info-custom {
+      background-color: var(--info);
+      border-color: var(--info);
+    }
+    
+    .btn-warning-custom {
+      background-color: var(--warning);
+      border-color: var(--warning);
+    }
+
     /* Enhanced Dashboard Cards */
     .dashboard-card {
       background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-card) 100%);
@@ -381,6 +412,9 @@ Licensed under GPLv3....see LICENSE file. -->
       <!-- TOP NAVBAR - DYNAMICALLY POPULATED -->
       <nav class="navbar navbar-expand-lg navbar-absolute navbar-transparent" id="navbar">
         <!-- Navbar content will be populated by core.js -->
+        <div class="navbar-brand">
+          <div id="Clock" class="glow" style="font-size: 1.5rem; color: #27a0b9; font-weight: 600;">00:00</div>
+        </div>
       </nav>
       
       <!-- Main Dashboard Content -->
@@ -705,6 +739,7 @@ Licensed under GPLv3....see LICENSE file. -->
         { name: 'PostgreSQL', id: 'postgres', icon: '🐘' },
         { name: 'Web Crawler', id: 'crawler', icon: '🕷️' },
         { name: 'Docker', id: 'docker', icon: '🐳' },
+        { name: 'Ollama AI', id: 'ollama', icon: '🤖' },
         { name: 'Voice Assistant', id: 'voice', icon: '🎤' },
         { name: 'WebSocket Server', id: 'websocket', icon: '🔌' }
       ];
@@ -712,38 +747,85 @@ Licensed under GPLv3....see LICENSE file. -->
       const serviceGrid = document.getElementById('service-status-grid');
       if (!serviceGrid) return;
       
-      serviceGrid.innerHTML = services.map(service => `
-        <div class="dashboard-card" id="${service.id}-card">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="d-flex align-items-center">
-              <span style="margin-right: 10px; font-size: 1.5rem;">${service.icon}</span>
-              <h6 class="mb-0">${service.name}</h6>
+      serviceGrid.innerHTML = services.map(service => {
+        if (service.id === 'ollama') {
+          return `
+            <div class="dashboard-card" id="${service.id}-card">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center">
+                  <span style="margin-right: 10px; font-size: 1.5rem;">${service.icon}</span>
+                  <h6 class="mb-0">${service.name}</h6>
+                </div>
+                <span class="status-indicator status-unknown" id="${service.id}-status"></span>
+              </div>
+              <div class="service-info">
+                <div class="info-row">
+                  <span class="info-label">Status</span>
+                  <span class="info-value" id="${service.id}-status-text">Checking...</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Models</span>
+                  <span class="info-value" id="${service.id}-models">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Version</span>
+                  <span class="info-value" id="${service.id}-version">-</span>
+                </div>
+              </div>
+              <div class="service-controls">
+                <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')">
+                  <i class="fas fa-play"></i> Start
+                </button>
+                <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')">
+                  <i class="fas fa-stop"></i> Stop
+                </button>
+                <button class="btn btn-primary-custom btn-sm" onclick="restartService('${service.id}')">
+                  <i class="fas fa-redo"></i> Restart
+                </button>
+                <button class="btn btn-info-custom btn-sm" onclick="manageOllamaModels()">
+                  <i class="fas fa-cog"></i> Models
+                </button>
+                <button class="btn btn-warning-custom btn-sm" onclick="installOllama()">
+                  <i class="fas fa-download"></i> Install
+                </button>
+              </div>
             </div>
-            <span class="status-indicator status-unknown" id="${service.id}-status"></span>
-          </div>
-          <div class="service-info">
-            <div class="info-row">
-              <span class="info-label">Status</span>
-              <span class="info-value" id="${service.id}-status-text">Checking...</span>
+          `;
+        } else {
+          return `
+            <div class="dashboard-card" id="${service.id}-card">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center">
+                  <span style="margin-right: 10px; font-size: 1.5rem;">${service.icon}</span>
+                  <h6 class="mb-0">${service.name}</h6>
+                </div>
+                <span class="status-indicator status-unknown" id="${service.id}-status"></span>
+              </div>
+              <div class="service-info">
+                <div class="info-row">
+                  <span class="info-label">Status</span>
+                  <span class="info-value" id="${service.id}-status-text">Checking...</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Uptime</span>
+                  <span class="info-value" id="${service.id}-uptime">-</span>
+                </div>
+              </div>
+              <div class="service-controls">
+                <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')">
+                  <i class="fas fa-play"></i> Start
+                </button>
+                <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')">
+                  <i class="fas fa-stop"></i> Stop
+                </button>
+                <button class="btn btn-primary-custom btn-sm" onclick="restartService('${service.id}')">
+                  <i class="fas fa-redo"></i> Restart
+                </button>
+              </div>
             </div>
-            <div class="info-row">
-              <span class="info-label">Uptime</span>
-              <span class="info-value" id="${service.id}-uptime">-</span>
-            </div>
-          </div>
-          <div class="service-controls">
-            <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')">
-              <i class="fas fa-play"></i> Start
-            </button>
-            <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')">
-              <i class="fas fa-stop"></i> Stop
-            </button>
-            <button class="btn btn-primary-custom btn-sm" onclick="restartService('${service.id}')">
-              <i class="fas fa-redo"></i> Restart
-            </button>
-          </div>
-        </div>
-      `).join('');
+          `;
+        }
+      }).join('');
     }
 
     function startSystemMonitoring() {
@@ -762,18 +844,27 @@ Licensed under GPLv3....see LICENSE file. -->
       fetch('/api/system/metrics')
         .then(response => response.json())
         .then(data => {
-          // Update CPU
-          document.getElementById('cpu-usage').textContent = `${data.cpu.toFixed(1)}%`;
-          document.getElementById('cpu-progress').style.width = `${data.cpu}%`;
+          // Debug: log the actual data structure
+          console.log('System metrics data structure:', data);
           
-          // Update Memory
-          const memoryPercent = (data.memory.used / data.memory.total) * 100;
-          document.getElementById('memory-usage').textContent = `${data.memory.used.toFixed(0)} MB`;
+          // Update CPU - safely check if data.cpu exists and has usage_percent
+          if (data.cpu && typeof data.cpu.usage_percent === 'number') {
+            document.getElementById('cpu-usage').textContent = `${data.cpu.usage_percent.toFixed(1)}%`;
+            document.getElementById('cpu-progress').style.width = `${data.cpu.usage_percent}%`;
+          } else {
+            console.error('Invalid CPU data structure:', data.cpu);
+          }
+          
+          // Update Memory - convert bytes to MB
+          const memoryUsedMB = data.memory.used_bytes / (1024 * 1024);
+          const memoryTotalMB = data.memory.total_bytes / (1024 * 1024);
+          const memoryPercent = data.memory.usage_percent;
+          document.getElementById('memory-usage').textContent = `${memoryUsedMB.toFixed(0)} MB`;
           document.getElementById('memory-progress').style.width = `${memoryPercent}%`;
           
           // Update uptime
-          const days = Math.floor(data.uptime / 86400);
-          const hours = Math.floor((data.uptime % 86400) / 3600);
+          const days = Math.floor(data.uptime_seconds / 86400);
+          const hours = Math.floor((data.uptime_seconds % 86400) / 3600);
           document.getElementById('uptime').textContent = `${days}d ${hours}h`;
         })
         .catch(error => {
@@ -866,6 +957,229 @@ Licensed under GPLv3....see LICENSE file. -->
         });
     }
 
+    // Ollama-specific functions
+    async function installOllama() {
+      showToast('Installing Ollama...', 'info');
+      try {
+        const response = await fetch('/api/ollama/install', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast('Ollama installed successfully', 'success');
+          addLogEntry('Ollama installation completed', 'success');
+          updateServiceStatuses();
+        } else {
+          showToast(`Ollama installation failed: ${data.message}`, 'error');
+          addLogEntry(`Ollama installation failed: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        showToast('Failed to install Ollama', 'error');
+        addLogEntry(`Ollama installation error: ${error.message}`, 'error');
+      }
+    }
+
+    async function manageOllamaModels() {
+      try {
+        // Get current status and models
+        const response = await fetch('/api/ollama/status');
+        const data = await response.json();
+        
+        if (!data.running) {
+          showToast('Ollama service is not running. Please start it first.', 'warning');
+          return;
+        }
+
+        // Create modal for model management
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.id = 'ollamaModelsModal';
+        modal.innerHTML = `
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content" style="background-color: var(--bg-card); color: var(--text-primary);">
+              <div class="modal-header">
+                <h5 class="modal-title">Ollama Model Management</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                <div class="row">
+                  <div class="col-md-6">
+                    <h6>Installed Models</h6>
+                    <div id="installed-models-list" class="model-list">
+                      Loading...
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <h6>Available Models</h6>
+                    <div class="mb-3">
+                      <input type="text" id="model-search" class="form-control" placeholder="Search models...">
+                    </div>
+                    <div id="available-models-list" class="model-list">
+                      Loading...
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-3">
+                  <div class="col-12">
+                    <h6>Quick Install</h6>
+                    <div class="d-flex gap-2 flex-wrap">
+                      <button class="btn btn-primary btn-sm" onclick="installModel('llama3.2')">Llama 3.2</button>
+                      <button class="btn btn-primary btn-sm" onclick="installModel('codellama')">CodeLlama</button>
+                      <button class="btn btn-primary btn-sm" onclick="installModel('mistral')">Mistral</button>
+                      <button class="btn btn-warning btn-sm" onclick="installRecommendedModels()">Install Recommended</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Initialize Bootstrap modal
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+        
+        // Load models data
+        loadInstalledModels();
+        loadAvailableModels();
+        
+        // Clean up modal when closed
+        modal.addEventListener('hidden.bs.modal', () => {
+          document.body.removeChild(modal);
+        });
+        
+      } catch (error) {
+        showToast('Failed to open model management', 'error');
+        console.error('Error:', error);
+      }
+    }
+
+    async function loadInstalledModels() {
+      try {
+        const response = await fetch('/api/ollama/models');
+        const data = await response.json();
+        
+        const container = document.getElementById('installed-models-list');
+        if (data.success && data.data && data.data.models) {
+          container.innerHTML = data.data.models.map(model => `
+            <div class="model-item d-flex justify-content-between align-items-center p-2 border rounded mb-2">
+              <div>
+                <strong>${model.name}</strong><br>
+                <small class="text-muted">Size: ${(model.size / (1024*1024*1024)).toFixed(1)} GB</small>
+              </div>
+              <button class="btn btn-danger btn-sm" onclick="removeModel('${model.name}')">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = '<p class="text-muted">No models installed</p>';
+        }
+      } catch (error) {
+        document.getElementById('installed-models-list').innerHTML = '<p class="text-danger">Failed to load models</p>';
+      }
+    }
+
+    async function loadAvailableModels(query = '') {
+      try {
+        const response = await fetch(`/api/ollama/models/available${query ? '/' + encodeURIComponent(query) : ''}`);
+        const data = await response.json();
+        
+        const container = document.getElementById('available-models-list');
+        if (data.success && data.data) {
+          container.innerHTML = data.data.map(model => `
+            <div class="model-item d-flex justify-content-between align-items-center p-2 border rounded mb-2">
+              <div>
+                <strong>${model}</strong>
+              </div>
+              <button class="btn btn-success btn-sm" onclick="installModel('${model}')">
+                <i class="fas fa-download"></i>
+              </button>
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = '<p class="text-muted">No models found</p>';
+        }
+        
+        // Add search functionality
+        const searchInput = document.getElementById('model-search');
+        if (searchInput) {
+          searchInput.addEventListener('input', (e) => {
+            loadAvailableModels(e.target.value);
+          });
+        }
+      } catch (error) {
+        document.getElementById('available-models-list').innerHTML = '<p class="text-danger">Failed to load available models</p>';
+      }
+    }
+
+    async function installModel(modelName) {
+      showToast(`Installing model: ${modelName}...`, 'info');
+      try {
+        const response = await fetch('/api/ollama/models/pull', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelName })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast(`Model ${modelName} installed successfully`, 'success');
+          loadInstalledModels(); // Refresh installed models list
+        } else {
+          showToast(`Failed to install ${modelName}: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        showToast(`Error installing ${modelName}`, 'error');
+      }
+    }
+
+    async function removeModel(modelName) {
+      if (!confirm(`Are you sure you want to remove model "${modelName}"?`)) {
+        return;
+      }
+      
+      showToast(`Removing model: ${modelName}...`, 'info');
+      try {
+        const response = await fetch(`/api/ollama/models/${encodeURIComponent(modelName)}`, {
+          method: 'DELETE'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast(`Model ${modelName} removed successfully`, 'success');
+          loadInstalledModels(); // Refresh installed models list
+        } else {
+          showToast(`Failed to remove ${modelName}: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        showToast(`Error removing ${modelName}`, 'error');
+      }
+    }
+
+    async function installRecommendedModels() {
+      showToast('Installing recommended models...', 'info');
+      try {
+        const response = await fetch('/api/ollama/models/install-recommended', {
+          method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast('Recommended models installation started', 'success');
+          loadInstalledModels(); // Refresh models list
+        } else {
+          showToast(`Failed to install recommended models: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        showToast('Error installing recommended models', 'error');
+      }
+    }
+
     // Utility functions
     function addLogEntry(message, type = 'info') {
       const logContainer = document.getElementById('activity-log');
@@ -874,9 +1188,13 @@ Licensed under GPLv3....see LICENSE file. -->
       const timestamp = new Date().toLocaleTimeString();
       const logEntry = document.createElement('div');
       logEntry.className = `log-entry ${type}`;
+      
+      // Convert newlines to HTML line breaks for proper display
+      const formattedMessage = message.replace(/\n/g, '<br>');
+      
       logEntry.innerHTML = `
         <span class="log-timestamp">${timestamp}</span>
-        <span class="log-message">${message}</span>
+        <span class="log-message">${formattedMessage}</span>
       `;
       
       logContainer.insertBefore(logEntry, logContainer.firstChild);

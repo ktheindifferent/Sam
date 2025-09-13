@@ -85,6 +85,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get autoremove -y \
     && apt-get clean
 
+# Install Ollama
+RUN curl -fsSL https://ollama.ai/install.sh | sh
+
 # Install Python packages required for brain.py
 # Use --break-system-packages for Docker environment where this is safe
 RUN pip3 install --no-cache-dir --break-system-packages \

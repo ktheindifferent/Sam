@@ -18,29 +18,34 @@ pub fn handle(
     current_session: crate::memory::cache::WebSessions,
     request: &Request,
 ) -> Result<Response, crate::http::Error> {
+    
     if request.url() == "/api/services/notifications/unseen" && request.method() == "GET" {
+        
         let mut pg_query = crate::memory::PostgresQueries::default();
         pg_query
             .queries
             .push(crate::memory::PGCol::Boolean(false));
-        pg_query.query_columns.push("seen =".to_string());
+        pg_query.query_columns.push("seen".to_string());
 
         pg_query
             .queries
-            .push(crate::memory::PGCol::String(current_session.human_oid));
-        pg_query.query_columns.push(" AND human_oid =".to_string());
+            .push(crate::memory::PGCol::String(current_session.human_oid.clone()));
+        pg_query.query_columns.push("human_oid".to_string());
 
         pg_query
             .queries
-            .push(crate::memory::PGCol::String(current_session.sid));
-        pg_query.query_columns.push(" AND sid =".to_string());
+            .push(crate::memory::PGCol::String(current_session.sid.clone()));
+        pg_query.query_columns.push("sid".to_string());
 
-        let notifications = crate::memory::human::Notification::select(
+        let notifications = match crate::memory::human::Notification::select(
             None,
             None,
             Some("timestamp DESC".to_string()),
             Some(pg_query),
-        )?;
+        ) {
+            Ok(notifs) => notifs,
+            Err(e) => return Err(e.into()),
+        };
 
         return Ok(Response::json(&notifications));
     }
@@ -53,7 +58,7 @@ pub fn handle(
         pg_query
             .queries
             .push(crate::memory::PGCol::String(input.oid.clone()));
-        pg_query.query_columns.push("oid =".to_string());
+        pg_query.query_columns.push("oid".to_string());
 
         let notifications = crate::memory::human::Notification::select(
             Some(20),
@@ -75,7 +80,7 @@ pub fn handle(
             pg_query
                 .queries
                 .push(crate::memory::PGCol::String(current_session.human_oid));
-            pg_query.query_columns.push("human_oid =".to_string());
+            pg_query.query_columns.push("human_oid".to_string());
 
             let notifications = crate::memory::human::Notification::select(
                 Some(20),

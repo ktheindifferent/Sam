@@ -131,24 +131,24 @@ async fn run_command_stream_lines(cmd: Command, output_lines: Option<&Arc<Mutex<
         let reader = tokio::io::BufReader::new(stdout);
         let mut lines_stream = reader.lines();
         while let Some(line) = lines_stream.next_line().await.map_err(|e| format!("{} stdout error: {}", prefix, e))? {
-            let msg = format!("{}: {}", prefix, line);
-            crate::println(output_lines, msg.clone()).await;
+            crate::println(output_lines, line.clone()).await;
             if output_lines.is_none() {
+                let msg = format!("{}: {}", prefix, line);
                 println!("{}", msg);
             }
-            lines.push(msg);
+            lines.push(line);
         }
     }
     if let Some(stderr) = stderr {
         let reader = tokio::io::BufReader::new(stderr);
         let mut lines_stream = reader.lines();
         while let Some(line) = lines_stream.next_line().await.map_err(|e| format!("{} stderr error: {}", prefix, e))? {
-            let msg = format!("{}: {}", prefix, line);
-            crate::println(output_lines, msg.clone()).await;
+            crate::println(output_lines, line.clone()).await;
             if output_lines.is_none() {
+                let msg = format!("{}: {}", prefix, line);
                 println!("{}", msg);
             }
-            lines.push(msg);
+            lines.push(line);
         }
     }
     let status = child.wait().await.map_err(|e| format!("{} wait error: {}", prefix, e))?;

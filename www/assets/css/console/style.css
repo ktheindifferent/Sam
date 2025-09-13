@@ -166,3 +166,13 @@ body {
     width: 100%;
   }
 }
+
+/* Ollama spinner styling */
+.spinner-line {
+  color: #4878c0;
+}
+
+.spinner-char {
+  color: #7eda28;
+  font-weight: bold;
+}

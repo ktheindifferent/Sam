@@ -66,6 +66,7 @@ impl Default for AlertThresholds {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceMetrics {
     pub timestamp: DateTime<Utc>,
+    pub uptime_seconds: u64,
     pub memory: MemoryMetrics,
     pub cpu: CpuMetrics,
     pub disk: DiskMetrics,
@@ -80,6 +81,7 @@ impl Default for ResourceMetrics {
     fn default() -> Self {
         ResourceMetrics {
             timestamp: Utc::now(),
+            uptime_seconds: 0,
             memory: MemoryMetrics::default(),
             cpu: CpuMetrics::default(),
             disk: DiskMetrics::default(),
@@ -330,7 +332,7 @@ impl ResourceMonitor {
     }
     
     /// Collect current metrics
-    async fn collect_metrics() -> ResourceMetrics {
+    pub async fn collect_metrics() -> ResourceMetrics {
         use sysinfo::System;
         
         let mut sys = System::new_all();
@@ -437,6 +439,7 @@ impl ResourceMonitor {
         
         ResourceMetrics {
             timestamp: Utc::now(),
+            uptime_seconds: sysinfo::System::uptime(),
             memory,
             cpu,
             disk,

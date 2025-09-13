@@ -831,6 +831,132 @@ async fn process_command(
             }
         }
         
+        // Ollama commands
+        "ollama_install" => {
+            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            match service.install().await {
+                Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+            }
+        }
+        
+        "ollama_start" => {
+            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            match service.start_service().await {
+                Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+            }
+        }
+        
+        "ollama_stop" => {
+            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            match service.stop_service().await {
+                Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+            }
+        }
+        
+        "ollama_status" => {
+            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            let installed = service.is_installed().await;
+            let running = if installed { service.is_running().await } else { false };
+            
+            let version = if running {
+                service.get_version().await.ok()
+            } else {
+                None
+            };
+            
+            let models = if running {
+                service.get_installed_model_names().await.unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            
+            Ok(serde_json::json!({
+                "installed": installed,
+                "running": running,
+                "version": version,
+                "models": models
+            }))
+        }
+        
+        "ollama_list_models" => {
+            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            match service.list_models().await {
+                Ok(models) => Ok(serde_json::to_value(models)?),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+            }
+        }
+        
+        "ollama_pull_model" => {
+            if let Some(model_name) = args.get("model").and_then(|m| m.as_str()) {
+                let service = crate::services::ollama::OllamaService::new_with_defaults();
+                match service.pull_model(model_name).await {
+                    Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                }
+            } else {
+                Err("Missing model name".into())
+            }
+        }
+        
+        "ollama_remove_model" => {
+            if let Some(model_name) = args.get("model").and_then(|m| m.as_str()) {
+                let service = crate::services::ollama::OllamaService::new_with_defaults();
+                match service.remove_model(model_name).await {
+                    Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                }
+            } else {
+                Err("Missing model name".into())
+            }
+        }
+        
+        "ollama_generate" => {
+            if let (Some(model), Some(prompt)) = (
+                args.get("model").and_then(|m| m.as_str()),
+                args.get("prompt").and_then(|p| p.as_str())
+            ) {
+                let service = crate::services::ollama::OllamaService::new_with_defaults();
+                let options = args.get("options").and_then(|o| {
+                    if let serde_json::Value::Object(map) = o {
+                        let mut options = std::collections::HashMap::new();
+                        for (k, v) in map {
+                            options.insert(k.clone(), v.clone());
+                        }
+                        Some(options)
+                    } else {
+                        None
+                    }
+                });
+                
+                match service.generate(model, prompt, options).await {
+                    Ok(response) => Ok(serde_json::to_value(response)?),
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                }
+            } else {
+                Err("Missing model or prompt".into())
+            }
+        }
+        
+        "ollama_search_models" => {
+            let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
+            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            match service.search_models(query).await {
+                Ok(models) => Ok(serde_json::json!({ "success": true, "models": models })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+            }
+        }
+        
+        "ollama_install_recommended" => {
+            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            match service.install_recommended_models().await {
+                Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+            }
+        }
+        
         _ => Err(format!("Unknown command: {}", command).into()),
     }
 }

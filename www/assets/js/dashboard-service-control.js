@@ -374,6 +374,9 @@ function updateServiceMetrics(service, status) {
         updateElement('websocket-messages', status.metrics.messages_per_sec || '0');
     } else if (service === 'voice' && status.metrics) {
         updateElement('voice-sessions', status.metrics.sessions || '0');
+    } else if (service === 'ollama' && status.metrics) {
+        updateElement('ollama-models', status.metrics.models_count || '0');
+        updateElement('ollama-version', status.metrics.version || '-');
     }
 }
 
@@ -546,10 +549,13 @@ function addLog(message, level = 'info') {
     const entry = document.createElement('div');
     entry.className = `log-entry ${level}`;
     
+    // Convert newlines to HTML line breaks for proper display
+    const formattedMessage = message.replace(/\n/g, '<br>');
+    
     const timestamp = new Date().toLocaleTimeString();
     entry.innerHTML = `
         <span class="log-timestamp">${timestamp}</span>
-        <span class="log-message">${message}</span>
+        <span class="log-message">${formattedMessage}</span>
     `;
     
     container.appendChild(entry);

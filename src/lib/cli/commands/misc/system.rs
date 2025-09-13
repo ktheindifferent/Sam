@@ -48,7 +48,7 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                         }
                         _ => {
                             // For other safe commands, execute them directly (avoid recursion)
-                            if command.starts_with("ls") || command == "pwd" || command.starts_with("echo ") {
+                            if command.starts_with("ls") || command == "pwd" || command.starts_with("echo ") || command == "date" {
                                 let command_output = Arc::new(Mutex::new(Vec::<String>::new()));
                                 let mut current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
                                 let mut scroll_offset = 0u16;
@@ -68,6 +68,8 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                                     crate::cli::commands::misc::handle_pwd(&command_output, &current_dir).await;
                                 } else if command.starts_with("echo ") {
                                     crate::cli::commands::misc::handle_echo(&command, &command_output).await;
+                                } else if command == "date" {
+                                    crate::cli::commands::misc::handle_date(&command, &command_output).await;
                                 }
                                 
                                 let results = command_output.lock().await;
@@ -81,8 +83,9 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                         }
                     }
                     
-                    // Remove the command marker from response text
-                    response_text = response_text.replace(&format!(":::::{command}:::::"), "");
+                    // Remove the command marker from response text using robust pattern matching
+                    use crate::http::api::io::command_parser;
+                    response_text = command_parser::remove_command_markers(&response_text, &command);
                 }
             }
             

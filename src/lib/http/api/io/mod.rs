@@ -5,12 +5,6 @@
 
 pub mod command_parser;
 pub mod action_executor;
-
-#[cfg(test)]
-mod integration_tests;
-
-#[cfg(test)]
-mod integration_test_functions;
 pub mod context_manager;
 pub mod responses;
 

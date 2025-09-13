@@ -255,10 +255,12 @@ class SAMDashboard {
         
         this.activityData.slice(0, 10).forEach(activity => {
             const iconClass = this.getActivityIcon(activity.type);
+            // Convert newlines to HTML line breaks for proper display
+            const formattedMessage = activity.message.replace(/\n/g, '<br>');
             const itemHtml = `
                 <div class="activity-item">
                     <i class="${iconClass} text-${this.getActivityColor(activity.type)}"></i>
-                    <span class="ml-2">${activity.message}</span>
+                    <span class="ml-2">${formattedMessage}</span>
                     <div class="activity-timestamp">${activity.timeStr}</div>
                 </div>
             `;

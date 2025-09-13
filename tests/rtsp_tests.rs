@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod rtsp_dl_tests {
-    use libsam::services::rtsp_dl_test::{
+    use libsam::services::rtsp::dl_test::{
         MotionDetector, FaceRecognizer, AnomalyDetector, Detection, BoundingBox,
         Alert, AlertType, AlertSeverity, AlertManager
     };
@@ -108,7 +108,7 @@ mod rtsp_dl_tests {
 #[cfg(test)]
 mod rtsp_recording_tests {
     use tokio::test;
-    use libsam::services::rtsp_recording::{
+    use libsam::services::rtsp::recording::{
         RecordingConfig, ScheduleTrigger, RecordingSession, RecordingTrigger,
         RecordingMetadata, NetworkStorage, StorageType, StorageManager,
         RetentionPolicy, ExportFormat, RecordingEvent, VideoEncoding,
@@ -258,10 +258,10 @@ mod rtsp_recording_tests {
 
 #[cfg(test)]
 mod rtsp_performance_tests {
-    use libsam::services::rtsp_dl_test::{
+    use libsam::services::rtsp::dl_test::{
         Alert, AlertType, AlertSeverity, AlertManager, Detection, BoundingBox
     };
-    use libsam::services::rtsp_recording::{
+    use libsam::services::rtsp::recording::{
         RecordingManager, RecordingConfig, VideoEncoding, VideoCodec, AudioCodec,
         Resolution, RecordingTrigger
     };
@@ -363,8 +363,8 @@ mod rtsp_performance_tests {
 #[cfg(test)]
 mod rtsp_integration_tests {
     use libsam::memory::{Observation, ObservationType, ObservationObjects};
-    use libsam::services::rtsp_dl_test::{DetectionResult, Detection, BoundingBox, FaceDetection};
-    use libsam::services::rtsp_recording::{RecordingTrigger, ScheduleTrigger};
+    use libsam::services::rtsp::dl_test::{DetectionResult, Detection, BoundingBox, FaceDetection};
+    use libsam::services::rtsp::recording::{RecordingTrigger, ScheduleTrigger};
     
     #[test]
     fn test_observation_creation_from_detection() {

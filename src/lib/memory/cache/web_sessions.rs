@@ -89,6 +89,15 @@ impl WebSessions {
             ).unwrap();
 
             return Ok(self);
+        } else {
+            // Update existing session
+            client.execute("UPDATE cache_web_sessions SET human_oid = $1, ip_address = $2, authenticated = $3, timestamp = $4 WHERE sid = $5",
+                &[&self.human_oid,
+                &self.ip_address.to_string(),
+                &self.authenticated,
+                &self.timestamp,
+                &self.sid]
+            ).unwrap();
         }
 
         Ok(self)

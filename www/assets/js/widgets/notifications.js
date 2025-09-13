@@ -11,40 +11,58 @@ class Notifications {
 
     refreshUnseen(){
         var ref = this;
-        $.get("/api/services/notifications/unseen", function( data ) {
+        $.get("/api/services/notifications/unseen")
+            .done(function( data ) {
+                var reversed = data.reverse();
+                $(reversed).each(function(i, obj) {
+                    console.log(obj.message);
+                    if(!obj.seen && !ref.toasted_notifications.includes(obj.oid)){
 
-            var reversed = data.reverse();
-            $(reversed).each(function(i, obj) {
-                console.log(obj.message);
-                if(!obj.seen && !ref.toasted_notifications.includes(obj.oid)){
-
-                    ref.toasted_notifications.push(obj.oid);
-                    setTimeout(() => { 
+                        ref.toasted_notifications.push(obj.oid);
+                        setTimeout(() => { 
+                            
+                            toastr.info(obj.message, '', 
+                                {onclick: function() {
+                                    ref.markAsSeen(obj.oid);
+                                }}
+                            );
                         
-                        toastr.info(obj.message, '', 
-                            {onclick: function() {
-                                ref.markAsSeen(obj.oid);
-                            }}
-                        );
-                    
-                    }, 100);
+                        }, 100);
 
 
                     
                     
                 }
             });
+        })
+        .fail(function(xhr, status, error) {
+            // Gracefully handle notifications service unavailable
+            if (xhr.status === 404 || xhr.status === 302) {
+                // Likely authentication issue - user may need to log in
+                console.debug('Notifications service unavailable - authentication required:', status);
+            } else {
+                console.debug('Notifications service unavailable:', status, error);
+            }
         });
     }
 
     refresh(){
         var ref = this;
-        $.get("/api/services/notifications", function( data ) {
-            ref.notifications = data;
-            if(ref.is_open){
-                $("#notifications_container").html(ref.genHtml());
-            }
-        });
+        $.get("/api/services/notifications")
+            .done(function( data ) {
+                ref.notifications = data;
+                if(ref.is_open){
+                    $("#notifications_container").html(ref.genHtml());
+                }
+            })
+            .fail(function(xhr, status, error) {
+                if (xhr.status === 404 || xhr.status === 302) {
+                    // Likely authentication issue - user may need to log in
+                    console.debug('Notifications service unavailable - authentication required:', status);
+                } else {
+                    console.debug('Notifications service unavailable:', status, error);
+                }
+            });
 
 
     }

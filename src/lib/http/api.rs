@@ -3,6 +3,7 @@ pub mod io;
 pub mod jobs;
 pub mod locations;
 pub mod observations;
+pub mod ollama;
 pub mod pets;
 pub mod rooms;
 pub mod service_control;
@@ -42,6 +43,7 @@ fn handle_exact_routes(
         "/api/sid" => Ok(Some(Response::text(session.sid.clone()))),
         "/api/current_session" => Ok(Some(Response::json(session))),
         "/api/current_human" => handle_current_human(session),
+        "/api/system/metrics" => handle_system_metrics(),
         _ => Ok(None),
     }
 }
@@ -76,6 +78,11 @@ fn handle_prefix_routes(
         return service_control::handle(request).map(Some);
     }
     
+    // Handle Ollama API endpoints
+    if url.contains("/api/ollama") {
+        return ollama::handle(request).map(Some);
+    }
+    
     const ROUTE_HANDLERS: &[(
         &str,
         fn(
@@ -105,4 +112,17 @@ fn handle_prefix_routes(
     }
 
     Ok(None)
+}
+
+fn handle_system_metrics() -> Result<Option<Response>, crate::http::Error> {
+    use crate::resource_management::monitoring::ResourceMonitor;
+    
+    // Create a simple runtime block to handle async call
+    let rt = tokio::runtime::Runtime::new()?;
+    
+    let metrics = rt.block_on(async {
+        ResourceMonitor::collect_metrics().await
+    });
+    
+    Ok(Some(Response::json(&metrics).with_additional_header("Cache-Control", "no-cache")))
 }

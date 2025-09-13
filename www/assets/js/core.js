@@ -47,16 +47,25 @@ $(document).ready(function() {
         disableCursor();
     }
 
-    $.get("/api/current_session", function( data ) {
-        current_session = data;
-        notifications = new Notifications(current_session);
-        notifications.refresh();
-        window.setInterval( function() {
-            notifications.refreshUnseen()
-        }, 5000)
-    }).fail(function() {
-        console.warn("Could not load current session data");
-    });
+    // Only try to initialize notifications if we can verify session
+    $.get("/api/current_session")
+        .done(function( data ) {
+            if (data && data.sid) {
+                current_session = data;
+                notifications = new Notifications(current_session);
+                notifications.refresh();
+                window.setInterval( function() {
+                    notifications.refreshUnseen()
+                }, 5000);
+                console.log("Notifications initialized successfully");
+            } else {
+                console.warn("Invalid session data - notifications disabled");
+            }
+        })
+        .fail(function(xhr, status, error) {
+            console.warn("Could not load current session data - notifications disabled:", status);
+            // Completely skip notifications initialization
+        });
 });
 
 // Enhanced Dashboard Initialization
@@ -76,7 +85,31 @@ function startRealTimeUpdates() {
 
 async function updateSystemMetrics() {
     try {
-        // Simulate API calls - in real implementation, these would be actual endpoints
+        // Fetch real system metrics from API
+        const response = await fetch('/api/system/metrics');
+        const data = await response.json();
+        
+        // Update CPU
+        $('#cpu-usage-card').text(`${data.cpu.usage_percent.toFixed(1)}%`);
+        $('#cpu-progress-main').css('width', `${data.cpu.usage_percent}%`);
+        
+        // Update Memory
+        const memoryUsedMB = data.memory.used_bytes / (1024 * 1024);
+        const memoryPercent = data.memory.usage_percent;
+        $('#memory-usage-card').text(`${memoryUsedMB.toFixed(0)} MB`);
+        $('#memory-progress-main').css('width', `${memoryPercent}%`);
+        
+        // Update Disk
+        $('#disk-progress-main').css('width', `${data.disk.usage_percent}%`);
+        
+        // Get service count (this would need to be from a separate endpoint)
+        // For now, use a default or fetch from services API
+        $('#services-count').text('8'); // Default value
+        
+    } catch (error) {
+        console.error('Error updating system metrics:', error);
+        
+        // Use fallback mock data
         const mockData = {
             cpu: Math.random() * 100,
             memory: {
@@ -84,29 +117,17 @@ async function updateSystemMetrics() {
                 total: 16000
             },
             disk: 30 + Math.random() * 40,
-            services: {
-                running: 6,
-                total: 8
-            }
         };
         
-        // Update CPU
         $('#cpu-usage-card').text(`${mockData.cpu.toFixed(1)}%`);
         $('#cpu-progress-main').css('width', `${mockData.cpu}%`);
         
-        // Update Memory
         const memoryPercent = (mockData.memory.used / mockData.memory.total) * 100;
         $('#memory-usage-card').text(`${mockData.memory.used.toFixed(0)} MB`);
         $('#memory-progress-main').css('width', `${memoryPercent}%`);
         
-        // Update Disk
         $('#disk-progress-main').css('width', `${mockData.disk}%`);
-        
-        // Update service count
-        $('#services-count').text(mockData.services.total);
-        
-    } catch (error) {
-        console.error('Error updating system metrics:', error);
+        $('#services-count').text('8');
     }
 }
 

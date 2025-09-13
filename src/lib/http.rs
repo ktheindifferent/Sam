@@ -219,7 +219,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                 .as_secs() as i64;
     let mut pg_query = crate::memory::PostgresQueries::default();
     pg_query.queries.push(crate::memory::PGCol::Timestamp(right_now - 86400)); // 24 hours ago
-    pg_query.query_columns.push("timestamp <".to_string());
+    pg_query.query_columns.push("timestamp >".to_string());
 
     // Fetch sessions
     let sessions = crate::memory::cache::WebSessions::select(None, None, None, Some(pg_query))?;
@@ -408,11 +408,13 @@ pub fn handle_with_session(
     }
 
     // Is Authenticated?
-    // Skip authentication check for login page, auth endpoint, and setup pages
+    // Skip authentication check for login page, auth endpoint, setup pages, and service status endpoints
     if request.url() != "/login.html" && 
        request.url() != "/auth" &&
        request.url() != "/setup.html" &&
        request.url() != "/setup" &&
+       !request.url().starts_with("/api/services/") &&  // Allow service status API calls
+       !request.url().starts_with("/health") &&          // Allow health checks
        !current_session.authenticated {
         let response = Response::redirect_302("/login.html");
         return Ok(response);

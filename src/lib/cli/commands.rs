@@ -12,6 +12,7 @@ pub mod mdns;
 pub mod migrate;
 pub mod misc;
 pub mod nano;
+pub mod ollama;
 pub mod p2p;
 pub mod pg;
 pub mod redis;

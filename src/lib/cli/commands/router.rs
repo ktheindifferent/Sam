@@ -36,6 +36,7 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if is_spotify_command(cmd) => spotify::handle_spotify(cmd, ctx.output_lines).await,
         _ if is_lifx_command(cmd) => lifx::handle_lifx(cmd, ctx.output_lines).await,
         _ if is_sms_command(cmd) => sms::handle_sms(cmd, ctx.output_lines).await,
+        _ if is_ollama_command(cmd) => ollama::handle_ollama(cmd, ctx.output_lines).await,
         
         // Migrate command (special handling)
         _ if is_migrate_command(cmd) => {
@@ -139,6 +140,10 @@ fn is_sms_command(cmd: &str) -> bool {
     matches!(cmd, "sms start" | "sms stop" | "sms status")
 }
 
+fn is_ollama_command(cmd: &str) -> bool {
+    cmd == "ollama" || cmd.starts_with("ollama ")
+}
+
 // Handle piped commands
 async fn handle_pipe_command(cmd: &str, ctx: &mut CommandContext<'_>) {
     let pipe_parts: Vec<&str> = cmd.split(" | ").collect();
@@ -219,6 +224,7 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if is_spotify_command(cmd) => spotify::handle_spotify(cmd, ctx.output_lines).await,
         _ if is_lifx_command(cmd) => lifx::handle_lifx(cmd, ctx.output_lines).await,
         _ if is_sms_command(cmd) => sms::handle_sms(cmd, ctx.output_lines).await,
+        _ if is_ollama_command(cmd) => ollama::handle_ollama(cmd, ctx.output_lines).await,
         
         // Migrate command (special handling)
         _ if is_migrate_command(cmd) => {

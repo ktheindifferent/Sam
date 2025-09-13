@@ -53,6 +53,7 @@ struct ServiceStatus {
     postgres: String,
     lifx: String,
     http_server: String,
+    ollama: String,
     memory_usage: String,
     cpu_usage: String,
     disk_usage: String,
@@ -200,6 +201,12 @@ fn render_command_mode(
                 ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
             ),
             Span::styled(&status.postgres, get_status_color(&status.postgres)),
+            Span::raw("  "),
+            Span::styled(
+                "Ollama: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(&status.ollama, get_status_color(&status.ollama)),
         ]),
         Line::from(vec![
             Span::styled(
@@ -468,6 +475,13 @@ fn render_system_info_mode(
             ),
             Span::styled(&status.http_server, get_status_color(&status.http_server)),
         ]),
+        Line::from(vec![
+            Span::styled(
+                "Ollama AI: ",
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
+            ),
+            Span::styled(&status.ollama, get_status_color(&status.ollama)),
+        ]),
     ];
 
     let service_widget = Paragraph::new(service_lines).block(
@@ -681,6 +695,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         postgres: "unknown".to_string(),
         lifx: "unknown".to_string(),
         http_server: "unknown".to_string(),
+        ollama: "unknown".to_string(),
         memory_usage: "0 MB".to_string(),
         cpu_usage: "0%".to_string(),
         disk_usage: "0%".to_string(),
@@ -739,6 +754,20 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             // Check LIFX service
             let lifx = "unknown".to_string(); // TODO: Add LIFX status check
 
+            // Check Ollama service
+            let ollama = {
+                let service = crate::services::ollama::OllamaService::new_with_defaults();
+                if service.is_installed().await {
+                    if service.is_running().await {
+                        "running".to_string()
+                    } else {
+                        "stopped".to_string()
+                    }
+                } else {
+                    "not installed".to_string()
+                }
+            };
+
             // Check HTTP server (assume running if we got here)
             let http_server = "running".to_string();
 
@@ -791,6 +820,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     status.postgres = postgres;
                     status.lifx = lifx;
                     status.http_server = http_server;
+                    status.ollama = ollama;
                     status.memory_usage = memory_usage;
                     status.cpu_usage = cpu_usage;
                     status.disk_usage = disk_usage;

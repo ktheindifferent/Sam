@@ -42,6 +42,30 @@ if [ "${REDIS_DISABLED:-false}" != "true" ] && [ -z "$REDIS_URL" ]; then
     echo "Redis started at $REDIS_URL"
 fi
 
+# Start Ollama service if not disabled
+if [ "${OLLAMA_DISABLED:-false}" != "true" ]; then
+    echo "Starting Ollama service..."
+    mkdir -p /var/lib/sam/ollama
+    export OLLAMA_MODELS="/var/lib/sam/ollama"
+    export OLLAMA_HOST="127.0.0.1"
+    export OLLAMA_PORT="${OLLAMA_PORT:-11434}"
+    
+    # Start Ollama in background
+    ollama serve &
+    OLLAMA_PID=$!
+    echo "Ollama started with PID $OLLAMA_PID on port $OLLAMA_PORT"
+    
+    # Give Ollama a moment to start
+    sleep 3
+    
+    # Verify Ollama is running
+    if curl -f "http://127.0.0.1:$OLLAMA_PORT/api/version" > /dev/null 2>&1; then
+        echo "Ollama is running successfully"
+    else
+        echo "Warning: Ollama may not be running properly"
+    fi
+fi
+
 # Run database migrations if requested
 if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     echo "Running database migrations..."
