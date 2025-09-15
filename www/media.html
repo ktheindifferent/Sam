@@ -58,6 +58,25 @@ Licensed under GPLv3....see LICENSE file. -->
           </li>
 
           <li>
+            <a href="#nextcloud" data-toggle="tab" data-target="#nextcloud" class="controller-btn tab-btn">
+              <i class="fas fa-cloud"></i>
+              <p>NextCloud</p>
+            </a>
+          </li>
+          <li>
+            <a href="#dropbox" data-toggle="tab" data-target="#dropbox" class="controller-btn tab-btn">
+              <i class="fab fa-dropbox"></i>
+              <p>Dropbox</p>
+            </a>
+          </li>
+          <li>
+            <a href="#seaweedfs" data-toggle="tab" data-target="#seaweedfs" class="controller-btn tab-btn">
+              <i class="fas fa-database"></i>
+              <p>SeaweedFS</p>
+            </a>
+          </li>
+
+          <li>
             <a href="#games" data-toggle="tab" data-target="#games" class="controller-btn tab-btn">
               <i class="fas fa-gamepad"></i>
               <p>Games</p>
@@ -132,11 +151,235 @@ Licensed under GPLv3....see LICENSE file. -->
 
             <!-- Files Tab Content -->
             <div class="tab-pane fade show active" id="files" role="tabpanel" aria-labelledby="home-tab" style="width: 100%;">
-     
+
               <table id="stored-files-table" style="width: 100%; color: white; border: none;">
 
               </table>
-            
+
+            </div>
+
+            <!-- NextCloud Tab Content -->
+            <div class="tab-pane fade" id="nextcloud" role="tabpanel" aria-labelledby="nextcloud-tab" style="width: 100%; padding: 20px;">
+
+              <!-- NextCloud Connection Panel -->
+              <div class="nextcloud-connection-panel" id="nextcloud-connection-panel" style="background: rgba(39, 160, 185, 0.1); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                <h4 style="color: #27a0b9; margin-bottom: 20px;"><i class="fas fa-cloud"></i> Connect to NextCloud</h4>
+                <div class="row">
+                  <div class="col-md-4">
+                    <div class="form-group">
+                      <label for="nc-server">Server URL</label>
+                      <input type="url" class="form-control" id="nc-server" placeholder="https://cloud.example.com" style="background: rgba(42, 42, 58, 0.8); border: 1px solid #27a0b9; color: white;">
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="form-group">
+                      <label for="nc-username">Username</label>
+                      <input type="text" class="form-control" id="nc-username" placeholder="username" style="background: rgba(42, 42, 58, 0.8); border: 1px solid #27a0b9; color: white;">
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="form-group">
+                      <label for="nc-password">Password</label>
+                      <input type="password" class="form-control" id="nc-password" placeholder="password" style="background: rgba(42, 42, 58, 0.8); border: 1px solid #27a0b9; color: white;">
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <div class="form-group">
+                      <label>&nbsp;</label><br>
+                      <button class="btn btn-primary controller-btn" onclick="connectToNextCloud()" style="background: #27a0b9; border-color: #27a0b9;">
+                        <i class="fas fa-plug"></i> Connect
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- NextCloud Media Browser -->
+              <div class="nextcloud-media-browser" id="nextcloud-media-browser" style="display: none;">
+
+                <!-- Controls Bar -->
+                <div class="media-controls" style="background: rgba(42, 42, 58, 0.5); border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                  <div class="row align-items-center">
+                    <div class="col-md-6">
+                      <div class="breadcrumb-nav" id="nc-breadcrumb" style="color: #adb5bd; font-family: monospace;">
+                        <i class="fas fa-folder"></i> <span id="nc-current-path">/</span>
+                      </div>
+                    </div>
+                    <div class="col-md-6 text-right">
+                      <button class="btn btn-success btn-sm controller-btn" onclick="uploadMediaFiles()" style="margin-right: 10px;">
+                        <i class="fas fa-upload"></i> Upload
+                      </button>
+                      <button class="btn btn-info btn-sm controller-btn" onclick="createMediaFolder()" style="margin-right: 10px;">
+                        <i class="fas fa-folder-plus"></i> New Folder
+                      </button>
+                      <button class="btn btn-secondary btn-sm controller-btn" onclick="refreshNextCloudMedia()">
+                        <i class="fas fa-sync"></i> Refresh
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Media Filter Tabs -->
+                <div class="media-filter-tabs" style="margin-bottom: 20px;">
+                  <div class="btn-group" role="group">
+                    <button class="btn btn-outline-primary controller-btn active" onclick="filterMediaType('all')" data-filter="all">
+                      <i class="fas fa-th"></i> All
+                    </button>
+                    <button class="btn btn-outline-primary controller-btn" onclick="filterMediaType('image')" data-filter="image">
+                      <i class="fas fa-image"></i> Images
+                    </button>
+                    <button class="btn btn-outline-primary controller-btn" onclick="filterMediaType('video')" data-filter="video">
+                      <i class="fas fa-video"></i> Videos
+                    </button>
+                    <button class="btn btn-outline-primary controller-btn" onclick="filterMediaType('audio')" data-filter="audio">
+                      <i class="fas fa-music"></i> Audio
+                    </button>
+                    <button class="btn btn-outline-primary controller-btn" onclick="filterMediaType('document')" data-filter="document">
+                      <i class="fas fa-file-alt"></i> Documents
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Media Grid -->
+                <div class="nextcloud-media-grid" id="nextcloud-media-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; max-height: 600px; overflow-y: auto;">
+                  <div class="text-center" style="color: #adb5bd; grid-column: 1 / -1;">
+                    <i class="fas fa-spinner fa-spin"></i> Loading media files...
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            <!-- Dropbox Tab Content -->
+            <div class="tab-pane fade" id="dropbox" role="tabpanel" aria-labelledby="dropbox-tab" style="width: 100%; padding: 20px;">
+              <!-- Dropbox Connection Panel -->
+              <div class="dropbox-connection-panel" id="dropbox-connection-panel" style="background: rgba(0, 123, 255, 0.1); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                <h4 style="color: #007bff; margin-bottom: 20px;"><i class="fab fa-dropbox"></i> Connect to Dropbox</h4>
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label for="dropbox-access-token">Access Token</label>
+                      <input type="text" class="form-control" id="dropbox-access-token" placeholder="Enter Dropbox Access Token" style="background: rgba(42, 42, 58, 0.8); border: 1px solid #007bff; color: white;">
+                    </div>
+                  </div>
+                  <div class="col-md-6" style="display: flex; align-items: flex-end;">
+                    <button class="btn btn-primary controller-btn me-2" onclick="authenticateDropbox()" style="background: #007bff; border: 1px solid #007bff;">
+                      <i class="fab fa-dropbox"></i> Authenticate
+                    </button>
+                    <button class="btn btn-info controller-btn" onclick="connectToDropbox()" style="background: #17a2b8; border: 1px solid #17a2b8;">
+                      <i class="fas fa-plug"></i> Connect
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Dropbox Media Browser -->
+              <div class="dropbox-media-browser" id="dropbox-media-browser" style="display: none;">
+                <!-- Controls Bar -->
+                <div class="media-controls-bar" style="background: rgba(0, 123, 255, 0.1); border-radius: 10px; padding: 15px; margin-bottom: 20px;">
+                  <div class="row align-items-center">
+                    <div class="col-md-6">
+                      <!-- Media Type Filter -->
+                      <div class="btn-group controller-btn-group" role="group">
+                        <button type="button" class="btn btn-outline-primary controller-btn active" onclick="filterDropboxMedia('all')" id="dropbox-filter-all">All</button>
+                        <button type="button" class="btn btn-outline-primary controller-btn" onclick="filterDropboxMedia('image')" id="dropbox-filter-image">Images</button>
+                        <button type="button" class="btn btn-outline-primary controller-btn" onclick="filterDropboxMedia('video')" id="dropbox-filter-video">Videos</button>
+                        <button type="button" class="btn btn-outline-primary controller-btn" onclick="filterDropboxMedia('audio')" id="dropbox-filter-audio">Audio</button>
+                        <button type="button" class="btn btn-outline-primary controller-btn" onclick="filterDropboxMedia('document')" id="dropbox-filter-document">Documents</button>
+                      </div>
+                    </div>
+                    <div class="col-md-6 text-right">
+                      <!-- Upload and Refresh Controls -->
+                      <button class="btn btn-success controller-btn me-2" onclick="uploadDropboxFiles()" style="background: #28a745; border: 1px solid #28a745;">
+                        <i class="fas fa-upload"></i> Upload
+                      </button>
+                      <button class="btn btn-secondary controller-btn" onclick="refreshDropboxFiles()" style="background: #6c757d; border: 1px solid #6c757d;">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Media Grid -->
+                <div class="media-grid" id="dropbox-media-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; max-height: 500px; overflow-y: auto;">
+                  <!-- Media files will be populated here -->
+                </div>
+              </div>
+            </div>
+
+            <!-- SeaweedFS Tab Content -->
+            <div class="tab-pane fade" id="seaweedfs" role="tabpanel" aria-labelledby="seaweedfs-tab" style="width: 100%; padding: 20px;">
+              <!-- SeaweedFS Connection Panel -->
+              <div class="seaweedfs-connection-panel" id="seaweedfs-connection-panel" style="background: rgba(255, 193, 7, 0.1); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                <h4 style="color: #ffc107; margin-bottom: 20px;"><i class="fas fa-database"></i> Connect to SeaweedFS</h4>
+                <div class="row">
+                  <div class="col-md-4">
+                    <div class="form-group">
+                      <label for="seaweedfs-master">Master URL</label>
+                      <input type="url" class="form-control" id="seaweedfs-master" placeholder="http://localhost:9333" style="background: rgba(42, 42, 58, 0.8); border: 1px solid #ffc107; color: white;">
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="form-group">
+                      <label for="seaweedfs-filer">Filer URL</label>
+                      <input type="url" class="form-control" id="seaweedfs-filer" placeholder="http://localhost:8888" style="background: rgba(42, 42, 58, 0.8); border: 1px solid #ffc107; color: white;">
+                    </div>
+                  </div>
+                  <div class="col-md-4" style="display: flex; align-items: flex-end;">
+                    <button class="btn btn-warning controller-btn" onclick="connectToSeaweedFS()" style="background: #ffc107; border: 1px solid #ffc107; color: #212529;">
+                      <i class="fas fa-plug"></i> Connect
+                    </button>
+                  </div>
+                </div>
+                <div class="row mt-3">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label for="seaweedfs-collection">Collection</label>
+                      <input type="text" class="form-control" id="seaweedfs-collection" placeholder="sam" style="background: rgba(42, 42, 58, 0.8); border: 1px solid #ffc107; color: white;">
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label for="seaweedfs-replication">Replication</label>
+                      <input type="text" class="form-control" id="seaweedfs-replication" placeholder="000" style="background: rgba(42, 42, 58, 0.8); border: 1px solid #ffc107; color: white;">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SeaweedFS Media Browser -->
+              <div class="seaweedfs-media-browser" id="seaweedfs-media-browser" style="display: none;">
+                <!-- Controls Bar -->
+                <div class="media-controls-bar" style="background: rgba(255, 193, 7, 0.1); border-radius: 10px; padding: 15px; margin-bottom: 20px;">
+                  <div class="row align-items-center">
+                    <div class="col-md-6">
+                      <!-- Media Type Filter -->
+                      <div class="btn-group controller-btn-group" role="group">
+                        <button type="button" class="btn btn-outline-warning controller-btn active" onclick="filterSeaweedFSMedia('all')" id="seaweedfs-filter-all">All</button>
+                        <button type="button" class="btn btn-outline-warning controller-btn" onclick="filterSeaweedFSMedia('image')" id="seaweedfs-filter-image">Images</button>
+                        <button type="button" class="btn btn-outline-warning controller-btn" onclick="filterSeaweedFSMedia('video')" id="seaweedfs-filter-video">Videos</button>
+                        <button type="button" class="btn btn-outline-warning controller-btn" onclick="filterSeaweedFSMedia('audio')" id="seaweedfs-filter-audio">Audio</button>
+                        <button type="button" class="btn btn-outline-warning controller-btn" onclick="filterSeaweedFSMedia('document')" id="seaweedfs-filter-document">Documents</button>
+                      </div>
+                    </div>
+                    <div class="col-md-6 text-right">
+                      <!-- Upload and Refresh Controls -->
+                      <button class="btn btn-success controller-btn me-2" onclick="uploadSeaweedFSFiles()" style="background: #28a745; border: 1px solid #28a745;">
+                        <i class="fas fa-upload"></i> Upload
+                      </button>
+                      <button class="btn btn-secondary controller-btn" onclick="refreshSeaweedFSFiles()" style="background: #6c757d; border: 1px solid #6c757d;">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Media Grid -->
+                <div class="media-grid" id="seaweedfs-media-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; max-height: 500px; overflow-y: auto;">
+                  <!-- Media files will be populated here -->
+                </div>
+              </div>
             </div>
 
             <!-- Games Tab Content -->
@@ -170,6 +413,82 @@ Licensed under GPLv3....see LICENSE file. -->
     </div>
   </div>
 
+  <!-- Media Player Modal -->
+  <div class="modal fade" id="mediaPlayerModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl" role="document">
+      <div class="modal-content" style="background: #1e1e2d; border: 1px solid #27a0b9;">
+        <div class="modal-header" style="border-bottom: 1px solid #27a0b9;">
+          <h5 class="modal-title" id="mediaPlayerTitle" style="color: #27a0b9;">
+            <i class="fas fa-play"></i> Media Player
+          </h5>
+          <button type="button" class="close" data-dismiss="modal" style="color: white;">
+            <span>&times;</span>
+          </button>
+        </div>
+        <div class="modal-body" style="padding: 0;">
+          <!-- Video Player -->
+          <video id="nextcloudVideoPlayer" class="video-js vjs-default-skin"
+                 controls preload="auto" width="100%" height="400"
+                 style="display: none; background: black;"
+                 data-setup="{}">
+            <p class="vjs-no-js">
+              To view this video please enable JavaScript, and consider upgrading to a web browser that
+              <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>.
+            </p>
+          </video>
+
+          <!-- Audio Player -->
+          <div id="nextcloudAudioPlayer" style="display: none; padding: 40px; text-align: center;">
+            <div class="audio-player-info" style="margin-bottom: 20px;">
+              <h4 id="audioTitle" style="color: white; margin-bottom: 10px;"></h4>
+              <p id="audioInfo" style="color: #adb5bd;"></p>
+            </div>
+            <audio controls style="width: 100%; max-width: 500px;">
+              <source id="audioSource" src="" type="">
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+
+          <!-- Image Viewer -->
+          <div id="nextcloudImageViewer" style="display: none; text-align: center; padding: 20px;">
+            <img id="viewerImage" src="" style="max-width: 100%; max-height: 70vh; border-radius: 8px;">
+            <div class="image-info" style="margin-top: 20px; color: #adb5bd;">
+              <h5 id="imageTitle" style="color: white;"></h5>
+              <p id="imageDetails"></p>
+            </div>
+          </div>
+
+          <!-- Document Viewer -->
+          <div id="nextcloudDocumentViewer" style="display: none; padding: 20px; text-align: center;">
+            <div class="document-info" style="margin-bottom: 20px;">
+              <h4 id="documentTitle" style="color: white;"></h4>
+              <p id="documentInfo" style="color: #adb5bd;"></p>
+            </div>
+            <div class="document-actions">
+              <button class="btn btn-primary controller-btn" onclick="downloadCurrentMedia()">
+                <i class="fas fa-download"></i> Download
+              </button>
+              <button class="btn btn-info controller-btn" onclick="openInNewTab()">
+                <i class="fas fa-external-link-alt"></i> Open in New Tab
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top: 1px solid #27a0b9;">
+          <button class="btn btn-danger controller-btn" onclick="deleteCurrentMedia()">
+            <i class="fas fa-trash"></i> Delete
+          </button>
+          <button class="btn btn-success controller-btn" onclick="downloadCurrentMedia()">
+            <i class="fas fa-download"></i> Download
+          </button>
+          <button class="btn btn-secondary controller-btn" data-dismiss="modal">
+            <i class="fas fa-times"></i> Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!--   Core JS Files   -->
   <script src="/assets/js/vendor/jquery.min.js"></script>
 
@@ -199,6 +518,9 @@ Licensed under GPLv3....see LICENSE file. -->
   <script src="/assets/js/apps/video_player.js"></script>
 
   <script src="/assets/js/media.js"></script>
+  <script src="/assets/js/nextcloud-media.js"></script>
+  <script src="/assets/js/dropbox-media.js"></script>
+  <script src="/assets/js/seaweedfs-media.js"></script>
 </body>
 
 </html>

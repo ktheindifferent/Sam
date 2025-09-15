@@ -18,7 +18,9 @@ pub fn init() {
         .name("storage_init".to_string())
         .spawn(move || {
             init_cache();
-            crate::services::dropbox::create_folder("/Sam");
+            crate::services::fs::dropbox_create_folder("/Sam").unwrap_or_else(|e| {
+                log::error!("Failed to create Sam folder in Dropbox: {}", e);
+            });
         });
 
     match storage_init_thread {

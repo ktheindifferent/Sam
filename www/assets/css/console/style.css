@@ -11,8 +11,11 @@ Licensed under GPLv3....see LICENSE file. */
 @import url('https://fonts.googleapis.com/css?family=Ubuntu+Mono');
 
 body {
-  background: linear-gradient(90deg, #182848 0%, #4b6cb7 100%);
-  font-family: Ubuntu;
+  background: #380428;
+  font-family: 'Ubuntu Mono', monospace;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* custom scrollbar */
@@ -44,12 +47,20 @@ body {
   right: 0;
   bottom: 0;
   position: fixed;
+  padding: 10px;
+  box-sizing: border-box;
 }
 
 #terminal {
   width: 100%;
   height: 100%;
   box-shadow: 2px 4px 10px rgba(0,0,0,0.5);
+  background: rgba(56, 4, 40, 0.95);
+  border: 1px solid #333;
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 #terminal__bar {
@@ -103,15 +114,404 @@ body {
   line-height: 15px;
 }
 
-#terminal__body {
-  background: rgba(56, 4, 40, 0.9);
-  font-family: 'Ubuntu Mono';
-  height: 100%;
-  /* height: calc(100% - 30px); */
-  padding-top: 2px;
-  margin-top: -1px;
+/* Navigation Bar Styles */
+#navigation-bar {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #7eda28;
+  border-bottom: none;
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+#nav-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px;
+}
+
+.nav-tab {
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #dddd00;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  font-family: 'Ubuntu Mono', monospace;
+  transition: all 0.2s;
+}
+
+.nav-tab:hover {
+  background: rgba(125, 218, 40, 0.2);
+}
+
+.nav-tab.active {
+  background: #dddd00;
+  color: #000;
+}
+
+/* TUI Mode Containers */
+.tui-mode {
+  display: none;
+  flex: 1;
+  padding: 10px;
+  padding-top: 0;
   color: white;
-  overflow-y: scroll;
+  overflow: hidden;
+}
+
+.tui-mode.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Block Styles */
+.status-block, .output-block, .input-block, .log-block, .controls-block, .placeholder-content, .help-content-block {
+  border: 1px solid #7eda28;
+  border-radius: 3px;
+  margin-bottom: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.block-title {
+  background: #7eda28;
+  color: #000;
+  padding: 4px 8px;
+  font-weight: bold;
+  font-size: 12px;
+  font-family: 'Ubuntu Mono', monospace;
+}
+
+.status-content, .input-content, .controls-content {
+  padding: 8px;
+}
+
+/* Status Block Specific */
+.status-block {
+  flex-shrink: 0;
+  max-height: 120px;
+}
+
+.status-row {
+  margin: 4px 0;
+}
+
+.label {
+  color: #4b9cd3;
+  font-weight: normal;
+}
+
+.service-item, .system-item {
+  margin-right: 15px;
+  display: inline-block;
+}
+
+.service-label, .system-label {
+  color: #dddd00;
+  margin-right: 5px;
+  font-weight: normal;
+}
+
+.service-status {
+  font-weight: bold;
+}
+
+.service-status.running, .service-status.connected, .service-status.online {
+  color: #7eda28;
+}
+
+.service-status.stopped, .service-status.disconnected, .service-status.offline {
+  color: #ff4444;
+}
+
+.service-status.unknown, .service-status.error {
+  color: #888;
+}
+
+.system-value {
+  color: white;
+  font-weight: normal;
+}
+
+/* Output Block Specific */
+.output-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+#terminal__body {
+  background: transparent;
+  font-family: 'Ubuntu Mono';
+  flex: 1;
+  padding: 8px;
+  color: white;
+  overflow-y: auto;
+  line-height: 1.4;
+}
+
+/* Input Block Specific */
+.input-block {
+  flex-shrink: 0;
+}
+
+.input-content {
+  display: flex;
+  align-items: center;
+  font-family: 'Ubuntu Mono';
+}
+
+#command-prompt {
+  color: #dddd00;
+  margin-right: 5px;
+  font-weight: normal;
+}
+
+#command-buffer {
+  color: white;
+  font-weight: normal;
+}
+
+#command-cursor {
+  background: white;
+  width: 8px;
+  height: 16px;
+  display: inline-block;
+  animation: blink 1200ms linear infinite;
+}
+
+/* Services Mode */
+.services-layout {
+  display: flex;
+  gap: 15px;
+  height: 100%;
+}
+
+.services-list-block {
+  flex: 0 0 40%;
+  border: 1px solid #7eda28;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.services-list {
+  padding: 8px;
+  max-height: calc(100% - 40px);
+  overflow-y: auto;
+}
+
+.service-list-item {
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  margin: 2px 0;
+  transition: background 0.2s;
+}
+
+.service-list-item:hover {
+  background: rgba(125, 218, 40, 0.2);
+}
+
+.service-list-item.selected {
+  background: #dddd00;
+  color: #000;
+}
+
+.service-details-block {
+  flex: 1;
+  border: 1px solid #7eda28;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.service-details-content {
+  padding: 8px;
+}
+
+.detail-row {
+  margin: 8px 0;
+}
+
+.detail-label {
+  color: #dddd00;
+  font-weight: normal;
+  margin-right: 8px;
+}
+
+.detail-value {
+  color: white;
+}
+
+.actions-section {
+  color: #4b9cd3;
+  font-weight: normal;
+}
+
+.action-item {
+  color: #ddd;
+  margin: 4px 0;
+  padding-left: 10px;
+}
+
+/* System Mode */
+.system-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  height: 100%;
+}
+
+.system-metrics-block, .service-overview-block {
+  flex: 1;
+  border: 1px solid #7eda28;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.system-metrics-content, .service-overview-content {
+  padding: 8px;
+}
+
+.metric-row {
+  margin: 8px 0;
+}
+
+.metric-label {
+  color: #dddd00;
+  font-weight: normal;
+  margin-right: 8px;
+  display: inline-block;
+  min-width: 120px;
+}
+
+.metric-value {
+  color: white;
+  font-weight: normal;
+}
+
+/* Logs Mode */
+#mode-logs {
+  gap: 10px;
+}
+
+#log-filter-input {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #555;
+  color: white;
+  padding: 4px 8px;
+  font-family: 'Ubuntu Mono';
+  border-radius: 2px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#log-filter-input:focus {
+  outline: none;
+  border-color: #7eda28;
+}
+
+.log-content {
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  font-family: 'Ubuntu Mono';
+  line-height: 1.3;
+}
+
+.log-entry {
+  margin: 2px 0;
+  padding: 2px 0;
+}
+
+.log-timestamp {
+  color: #888;
+  margin-right: 8px;
+}
+
+.log-target {
+  color: #888;
+  margin-right: 5px;
+}
+
+.log-level-error {
+  color: #ff4444;
+  margin-right: 5px;
+}
+
+.log-level-warn {
+  color: #dddd00;
+  margin-right: 5px;
+}
+
+.log-level-info {
+  color: #4b9cd3;
+  margin-right: 5px;
+}
+
+.log-level-debug {
+  color: #4b9cd3;
+  margin-right: 5px;
+}
+
+/* Help Mode */
+.help-content {
+  padding: 15px;
+  overflow-y: auto;
+}
+
+.help-header {
+  color: #4b9cd3;
+  font-weight: normal;
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.help-subheader {
+  color: #dddd00;
+  font-weight: normal;
+  margin: 10px 0 5px 0;
+}
+
+.help-item {
+  color: #ddd;
+  margin: 3px 0;
+  padding-left: 10px;
+}
+
+/* Placeholder Content */
+.placeholder-text {
+  padding: 20px;
+  color: #ddd;
+  line-height: 1.6;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .services-layout {
+    flex-direction: column;
+  }
+  
+  .services-list-block {
+    flex: 0 0 auto;
+    max-height: 200px;
+  }
+  
+  .system-layout {
+    gap: 10px;
+  }
+  
+  #nav-tabs {
+    flex-wrap: wrap;
+  }
+  
+  .nav-tab {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
 }
 
 #terminal__prompt {
@@ -119,12 +519,12 @@ body {
 }
 #terminal__prompt--user {
   color: #7eda28;
+  font-weight: normal;
 }
 
 #terminal__prompt--sam {
   color: #4878c0;
 }
-
 
 #terminal__prompt--location {
   color: #4878c0;

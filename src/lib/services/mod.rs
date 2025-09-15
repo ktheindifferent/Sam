@@ -35,10 +35,10 @@ pub mod crawler;
 pub mod darknet;
 pub mod database;
 pub mod docker;
-pub mod dropbox;
 pub mod emulators;
 pub mod error_handling;
-pub mod file_storage;
+// File storage services moved to fs/ submodule
+pub mod fs;
 pub mod git;
 pub mod github;
 pub mod http;
@@ -50,6 +50,7 @@ pub mod ollama;
 pub mod mdns;
 pub mod media;
 pub mod monitoring;
+// Nextcloud moved to fs/ submodule
 pub mod notifications;
 pub mod openai;
 pub mod orchestrator;
@@ -58,6 +59,7 @@ pub mod package_managers;
 pub mod restart;
 #[cfg(test)]
 pub mod restart_test;
+// SeaweedFS moved to fs/ submodule
 pub mod p2p;
 pub mod password_manager;
 pub mod pg;

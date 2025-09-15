@@ -165,7 +165,7 @@ pub fn destroy_empty_directories() {
     let dropbox_destroy_empty_directories = thread::Builder::new()
         .name("dropbox_destroy_empty_directories".to_string())
         .spawn(move || {
-            let empties = crate::services::dropbox::empty_directories();
+            let empties = crate::services::fs::dropbox::empty_directories();
             for e in empties {
                 if is_path_empty(&e.clone()) {
                     if let Err(err) = delete(&e.clone()) {

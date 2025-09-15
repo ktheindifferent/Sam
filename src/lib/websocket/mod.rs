@@ -18,6 +18,7 @@ mod tests;
 use crate::network_monitor::NetworkMonitor;
 use security::{WebSocketLimits, WebSocketSecurityConfig, WsSecurityError, SessionInfo};
 use error::{safe_ops};
+use base64::{Engine as _, engine::general_purpose};
 
 // Type alias for Send + Sync errors
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -780,6 +781,11 @@ async fn process_command(
                         crate::services::docker::start().await;
                         Ok(serde_json::json!({ "success": true, "message": "Docker service started" }))
                     }
+                    "nextcloud" => {
+                        crate::services::fs::nextcloud::initialize().await
+                            .map_err(|e| format!("Failed to start NextCloud service: {}", e))?;
+                        Ok(serde_json::json!({ "success": true, "message": "NextCloud service started" }))
+                    }
                     _ => Err(format!("Unknown service: {}", service_name).into())
                 }
             } else {
@@ -802,6 +808,10 @@ async fn process_command(
                         crate::services::docker::stop().await;
                         Ok(serde_json::json!({ "success": true, "message": "Docker service stopped" }))
                     }
+                    "nextcloud" => {
+                        // NextCloud service doesn't have a persistent daemon to stop
+                        Ok(serde_json::json!({ "success": true, "message": "NextCloud service stopped" }))
+                    }
                     _ => Err(format!("Unknown service: {}", service_name).into())
                 }
             } else {
@@ -823,6 +833,12 @@ async fn process_command(
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                         crate::services::crawler::start_service_async().await;
                         Ok(serde_json::json!({ "success": true, "message": "Crawler service restarted" }))
+                    }
+                    "nextcloud" => {
+                        // NextCloud is stateless, so restart is just a reinitialize
+                        crate::services::fs::nextcloud::initialize().await
+                            .map_err(|e| format!("Failed to restart NextCloud service: {}", e))?;
+                        Ok(serde_json::json!({ "success": true, "message": "NextCloud service restarted" }))
                     }
                     _ => Err(format!("Unknown service: {}", service_name).into())
                 }
@@ -956,7 +972,225 @@ async fn process_command(
                 Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
             }
         }
-        
+
+        // NextCloud commands
+        "nextcloud_test_connection" => {
+            if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
+                if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
+                    if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
+                        let config = crate::services::fs::nextcloud::NextCloudConfig {
+                            server_url: server_url.to_string(),
+                            username: username.to_string(),
+                            password: password.to_string(),
+                            ..Default::default()
+                        };
+
+                        match crate::services::fs::nextcloud::NextCloudService::new(config) {
+                            Ok(service) => {
+                                match service.test_connection().await {
+                                    Ok(true) => Ok(serde_json::json!({ "success": true, "message": "Connection successful" })),
+                                    Ok(false) => Ok(serde_json::json!({ "success": false, "error": "Connection failed" })),
+                                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                                }
+                            }
+                            Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                        }
+                    } else {
+                        Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
+                    }
+                } else {
+                    Ok(serde_json::json!({ "success": false, "error": "Missing username" }))
+                }
+            } else {
+                Ok(serde_json::json!({ "success": false, "error": "Missing server_url" }))
+            }
+        }
+
+        "nextcloud_list_files" => {
+            if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
+                if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
+                    if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
+                        let path = args.get("path").and_then(|s| s.as_str()).unwrap_or("");
+
+                        let config = crate::services::fs::nextcloud::NextCloudConfig {
+                            server_url: server_url.to_string(),
+                            username: username.to_string(),
+                            password: password.to_string(),
+                            ..Default::default()
+                        };
+
+                        match crate::services::fs::nextcloud::NextCloudService::new(config) {
+                            Ok(service) => {
+                                match service.list_files(path).await {
+                                    Ok(files) => Ok(serde_json::json!({ "success": true, "files": files })),
+                                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                                }
+                            }
+                            Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                        }
+                    } else {
+                        Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
+                    }
+                } else {
+                    Ok(serde_json::json!({ "success": false, "error": "Missing username" }))
+                }
+            } else {
+                Ok(serde_json::json!({ "success": false, "error": "Missing server_url" }))
+            }
+        }
+
+        "nextcloud_upload_file" => {
+            if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
+                if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
+                    if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
+                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str()) {
+                            if let Some(content_base64) = args.get("content").and_then(|s| s.as_str()) {
+                                match general_purpose::STANDARD.decode(content_base64) {
+                                    Ok(content) => {
+                                        let config = crate::services::fs::nextcloud::NextCloudConfig {
+                                            server_url: server_url.to_string(),
+                                            username: username.to_string(),
+                                            password: password.to_string(),
+                                            ..Default::default()
+                                        };
+
+                                        match crate::services::fs::nextcloud::NextCloudService::new(config) {
+                                            Ok(service) => {
+                                                match service.upload_file(std::path::Path::new(""), remote_path, &content).await {
+                                                    Ok(file_info) => Ok(serde_json::json!({ "success": true, "file": file_info })),
+                                                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                                                }
+                                            }
+                                            Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                                        }
+                                    }
+                                    Err(_) => Ok(serde_json::json!({ "success": false, "error": "Invalid base64 content" }))
+                                }
+                            } else {
+                                Ok(serde_json::json!({ "success": false, "error": "Missing content" }))
+                            }
+                        } else {
+                            Ok(serde_json::json!({ "success": false, "error": "Missing remote_path" }))
+                        }
+                    } else {
+                        Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
+                    }
+                } else {
+                    Ok(serde_json::json!({ "success": false, "error": "Missing username" }))
+                }
+            } else {
+                Ok(serde_json::json!({ "success": false, "error": "Missing server_url" }))
+            }
+        }
+
+        "nextcloud_download_file" => {
+            if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
+                if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
+                    if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
+                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str()) {
+                            let config = crate::services::fs::nextcloud::NextCloudConfig {
+                                server_url: server_url.to_string(),
+                                username: username.to_string(),
+                                password: password.to_string(),
+                                ..Default::default()
+                            };
+
+                            match crate::services::fs::nextcloud::NextCloudService::new(config) {
+                                Ok(service) => {
+                                    match service.download_file(remote_path).await {
+                                        Ok(content) => {
+                                            let content_base64 = general_purpose::STANDARD.encode(&content);
+                                            Ok(serde_json::json!({ "success": true, "content": content_base64, "size": content.len() }))
+                                        }
+                                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                                    }
+                                }
+                                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                            }
+                        } else {
+                            Ok(serde_json::json!({ "success": false, "error": "Missing remote_path" }))
+                        }
+                    } else {
+                        Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
+                    }
+                } else {
+                    Ok(serde_json::json!({ "success": false, "error": "Missing username" }))
+                }
+            } else {
+                Ok(serde_json::json!({ "success": false, "error": "Missing server_url" }))
+            }
+        }
+
+        "nextcloud_delete_file" => {
+            if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
+                if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
+                    if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
+                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str()) {
+                            let config = crate::services::fs::nextcloud::NextCloudConfig {
+                                server_url: server_url.to_string(),
+                                username: username.to_string(),
+                                password: password.to_string(),
+                                ..Default::default()
+                            };
+
+                            match crate::services::fs::nextcloud::NextCloudService::new(config) {
+                                Ok(service) => {
+                                    match service.delete_file(remote_path).await {
+                                        Ok(_) => Ok(serde_json::json!({ "success": true, "message": "File deleted successfully" })),
+                                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                                    }
+                                }
+                                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                            }
+                        } else {
+                            Ok(serde_json::json!({ "success": false, "error": "Missing remote_path" }))
+                        }
+                    } else {
+                        Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
+                    }
+                } else {
+                    Ok(serde_json::json!({ "success": false, "error": "Missing username" }))
+                }
+            } else {
+                Ok(serde_json::json!({ "success": false, "error": "Missing server_url" }))
+            }
+        }
+
+        "nextcloud_create_directory" => {
+            if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
+                if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
+                    if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
+                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str()) {
+                            let config = crate::services::fs::nextcloud::NextCloudConfig {
+                                server_url: server_url.to_string(),
+                                username: username.to_string(),
+                                password: password.to_string(),
+                                ..Default::default()
+                            };
+
+                            match crate::services::fs::nextcloud::NextCloudService::new(config) {
+                                Ok(service) => {
+                                    match service.create_directory(remote_path).await {
+                                        Ok(_) => Ok(serde_json::json!({ "success": true, "message": "Directory created successfully" })),
+                                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                                    }
+                                }
+                                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                            }
+                        } else {
+                            Ok(serde_json::json!({ "success": false, "error": "Missing remote_path" }))
+                        }
+                    } else {
+                        Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
+                    }
+                } else {
+                    Ok(serde_json::json!({ "success": false, "error": "Missing username" }))
+                }
+            } else {
+                Ok(serde_json::json!({ "success": false, "error": "Missing server_url" }))
+            }
+        }
+
         _ => Err(format!("Unknown command: {}", command).into()),
     }
 }

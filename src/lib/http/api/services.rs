@@ -16,7 +16,7 @@ pub fn handle(
     request: &Request,
 ) -> Result<Response, crate::http::Error> {
     if request.url().contains("/api/services/dropbox") {
-        return crate::services::dropbox::handle(current_session, request);
+        return crate::services::fs::dropbox::handle(current_session, request);
     }
 
     if request.url().contains("/api/services/lifx") {

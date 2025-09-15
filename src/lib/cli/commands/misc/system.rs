@@ -91,16 +91,22 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             
             // Only display response if it's not empty after processing
             if !response_text.trim().is_empty() {
-                let output_lines = output_lines.clone();
-                tokio::spawn(crate::cli::helpers::append_and_tts(
-                    output_lines,
-                    format!("┌─[sam]─> {}", response_text),
-                ));
+                // Clean up the response text by removing extra whitespace and blank lines
+                let cleaned_response = response_text
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .collect::<Vec<&str>>()
+                    .join("\n");
+
+                if !cleaned_response.trim().is_empty() {
+                    let mut out = output_lines.lock().await;
+                    out.push(cleaned_response);
+                }
             }
         }
         Err(e) => {
             let mut out = output_lines.lock().await;
-            out.push(format!("┌─[sam]─> [error: {e}]"));
+            out.push(format!("Error: {e}"));
         }
     }
 }

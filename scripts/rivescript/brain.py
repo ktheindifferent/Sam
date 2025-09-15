@@ -6,10 +6,13 @@ import json
 import re
 import os
 from rivescript import RiveScript
-import sentry_sdk
-
-# Initialize Sentry for error tracking
-sentry_sdk.init("http://2f7ca9e40bcc42589eb9c01e0a8696ea@sentry.alpha.opensam.foundation/5")
+# Optional Sentry SDK for error tracking
+try:
+    import sentry_sdk
+    sentry_sdk.init("http://2f7ca9e40bcc42589eb9c01e0a8696ea@sentry.alpha.opensam.foundation/5")
+    SENTRY_ENABLED = True
+except ImportError:
+    SENTRY_ENABLED = False
 
 rs = RiveScript()
 
@@ -25,8 +28,9 @@ try:
     rs.load_directory(brain_dir)
     rs.sort_replies()
 except Exception as e:
-    # Log the syntax error to Sentry silently
-    sentry_sdk.capture_exception(e)
+    # Log the syntax error to Sentry silently if available
+    if SENTRY_ENABLED:
+        sentry_sdk.capture_exception(e)
     # Exit gracefully without printing errors
     sys.exit(1)
 

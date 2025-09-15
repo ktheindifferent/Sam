@@ -39,7 +39,7 @@ Licensed under GPLv3....see LICENSE file. -->
 
   <style>
     /* Enhanced Dashboard Styles following design.md */
-    
+
     /* Core Design Variables */
     :root {
       --bg-primary: #1e1e2d;
@@ -398,6 +398,99 @@ Licensed under GPLv3....see LICENSE file. -->
         cursor: none !important;
       }
     }
+
+    /* NextCloud Integration Styles */
+    .nextcloud-config {
+      background: rgba(39, 160, 185, 0.05);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .nextcloud-config .form-group {
+      margin-bottom: 10px;
+    }
+
+    .nextcloud-config label {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      margin-bottom: 5px;
+      display: block;
+    }
+
+    .nextcloud-config .form-control {
+      background: var(--bg-secondary);
+      border: 1px solid rgba(39, 160, 185, 0.3);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      padding: 8px 12px;
+    }
+
+    .nextcloud-config .form-control:focus {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 0.2rem rgba(39, 160, 185, 0.25);
+      outline: 0;
+    }
+
+    .nextcloud-file-manager {
+      background: rgba(42, 42, 58, 0.3);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .nextcloud-path {
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+
+    .nextcloud-files {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid rgba(39, 160, 185, 0.2);
+      border-radius: 4px;
+      padding: 5px;
+    }
+
+    .file-item {
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+
+    .file-item:hover {
+      background: var(--bg-card) !important;
+      border-color: rgba(39, 160, 185, 0.3);
+    }
+
+    .file-actions .btn-group-sm .btn {
+      padding: 0.2rem 0.4rem;
+      font-size: 0.7rem;
+    }
+
+    /* Scrollbar styling for NextCloud file list */
+    .nextcloud-files::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .nextcloud-files::-webkit-scrollbar-track {
+      background: var(--bg-secondary);
+      border-radius: 3px;
+    }
+
+    .nextcloud-files::-webkit-scrollbar-thumb {
+      background: var(--accent-primary);
+      border-radius: 3px;
+    }
+
+    .nextcloud-files::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-secondary);
+    }
   </style>
 </head>
 
@@ -741,7 +834,8 @@ Licensed under GPLv3....see LICENSE file. -->
         { name: 'Docker', id: 'docker', icon: '🐳' },
         { name: 'Ollama AI', id: 'ollama', icon: '🤖' },
         { name: 'Voice Assistant', id: 'voice', icon: '🎤' },
-        { name: 'WebSocket Server', id: 'websocket', icon: '🔌' }
+        { name: 'WebSocket Server', id: 'websocket', icon: '🔌' },
+        { name: 'NextCloud', id: 'nextcloud', icon: '☁️' }
       ];
       
       const serviceGrid = document.getElementById('service-status-grid');
@@ -787,6 +881,78 @@ Licensed under GPLv3....see LICENSE file. -->
                 </button>
                 <button class="btn btn-warning-custom btn-sm" onclick="installOllama()">
                   <i class="fas fa-download"></i> Install
+                </button>
+              </div>
+            </div>
+          `;
+        } else if (service.id === 'nextcloud') {
+          return `
+            <div class="dashboard-card" id="${service.id}-card">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center">
+                  <span style="margin-right: 10px; font-size: 1.5rem;">${service.icon}</span>
+                  <h6 class="mb-0">${service.name}</h6>
+                </div>
+                <span class="status-indicator status-unknown" id="${service.id}-status"></span>
+              </div>
+
+              <div class="nextcloud-config" id="nextcloud-config">
+                <div class="form-group">
+                  <label for="nextcloud-server">Server URL</label>
+                  <input type="url" class="form-control" id="nextcloud-server" placeholder="https://cloud.example.com">
+                </div>
+                <div class="form-group">
+                  <label for="nextcloud-username">Username</label>
+                  <input type="text" class="form-control" id="nextcloud-username" placeholder="username">
+                </div>
+                <div class="form-group">
+                  <label for="nextcloud-password">Password</label>
+                  <input type="password" class="form-control" id="nextcloud-password" placeholder="password">
+                </div>
+                <button class="btn btn-primary-custom btn-sm" onclick="testNextCloudConnection()">
+                  <i class="fas fa-plug"></i> Test Connection
+                </button>
+                <button class="btn btn-success-custom btn-sm" onclick="connectNextCloud()">
+                  <i class="fas fa-link"></i> Connect
+                </button>
+              </div>
+
+              <div class="nextcloud-file-manager" id="nextcloud-file-manager" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h6 class="mb-0">File Manager</h6>
+                  <div class="btn-group">
+                    <button class="btn btn-info-custom btn-sm" onclick="refreshNextCloudFiles()">
+                      <i class="fas fa-sync"></i> Refresh
+                    </button>
+                    <button class="btn btn-success-custom btn-sm" onclick="showUploadDialog()">
+                      <i class="fas fa-upload"></i> Upload
+                    </button>
+                    <button class="btn btn-primary-custom btn-sm" onclick="showCreateFolderDialog()">
+                      <i class="fas fa-folder-plus"></i> New Folder
+                    </button>
+                  </div>
+                </div>
+
+                <div class="nextcloud-path" id="nextcloud-path">
+                  <span class="text-muted">Path: /</span>
+                </div>
+
+                <div class="nextcloud-files" id="nextcloud-files">
+                  <div class="text-center text-muted">
+                    <i class="fas fa-spinner fa-spin"></i> Loading files...
+                  </div>
+                </div>
+              </div>
+
+              <div class="service-controls">
+                <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')">
+                  <i class="fas fa-play"></i> Start
+                </button>
+                <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')">
+                  <i class="fas fa-stop"></i> Stop
+                </button>
+                <button class="btn btn-warning-custom btn-sm" onclick="disconnectNextCloud()">
+                  <i class="fas fa-unlink"></i> Disconnect
                 </button>
               </div>
             </div>
@@ -1255,6 +1421,435 @@ Licensed under GPLv3....see LICENSE file. -->
       URL.revokeObjectURL(url);
       
       addLogEntry('System logs exported', 'success');
+    }
+
+    // NextCloud Integration Functions
+    let nextCloudCredentials = null;
+    let nextCloudCurrentPath = '';
+
+    async function testNextCloudConnection() {
+      const serverUrl = document.getElementById('nextcloud-server').value;
+      const username = document.getElementById('nextcloud-username').value;
+      const password = document.getElementById('nextcloud-password').value;
+
+      if (!serverUrl || !username || !password) {
+        showToast('Please fill in all NextCloud credentials', 'error');
+        return;
+      }
+
+      showToast('Testing NextCloud connection...', 'info');
+
+      try {
+        const message = {
+          type: 'command',
+          id: generateId(),
+          command: 'nextcloud_test_connection',
+          args: {
+            server_url: serverUrl,
+            username: username,
+            password: password
+          }
+        };
+
+        // Send via WebSocket if available
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify(message));
+        } else {
+          showToast('WebSocket connection required for NextCloud operations', 'error');
+        }
+      } catch (error) {
+        showToast('Error testing connection: ' + error.message, 'error');
+      }
+    }
+
+    async function connectNextCloud() {
+      const serverUrl = document.getElementById('nextcloud-server').value;
+      const username = document.getElementById('nextcloud-username').value;
+      const password = document.getElementById('nextcloud-password').value;
+
+      if (!serverUrl || !username || !password) {
+        showToast('Please fill in all NextCloud credentials', 'error');
+        return;
+      }
+
+      // Store credentials
+      nextCloudCredentials = { serverUrl, username, password };
+
+      // Hide config panel and show file manager
+      document.getElementById('nextcloud-config').style.display = 'none';
+      document.getElementById('nextcloud-file-manager').style.display = 'block';
+
+      // Load files from root directory
+      refreshNextCloudFiles();
+
+      showToast('Connected to NextCloud', 'success');
+    }
+
+    async function disconnectNextCloud() {
+      nextCloudCredentials = null;
+      nextCloudCurrentPath = '';
+
+      // Show config panel and hide file manager
+      document.getElementById('nextcloud-config').style.display = 'block';
+      document.getElementById('nextcloud-file-manager').style.display = 'none';
+
+      // Clear form
+      document.getElementById('nextcloud-server').value = '';
+      document.getElementById('nextcloud-username').value = '';
+      document.getElementById('nextcloud-password').value = '';
+
+      showToast('Disconnected from NextCloud', 'info');
+    }
+
+    async function refreshNextCloudFiles() {
+      if (!nextCloudCredentials) {
+        showToast('Please connect to NextCloud first', 'error');
+        return;
+      }
+
+      const filesContainer = document.getElementById('nextcloud-files');
+      filesContainer.innerHTML = '<div class="text-center text-muted"><i class="fas fa-spinner fa-spin"></i> Loading files...</div>';
+
+      try {
+        const message = {
+          type: 'command',
+          id: generateId(),
+          command: 'nextcloud_list_files',
+          args: {
+            server_url: nextCloudCredentials.serverUrl,
+            username: nextCloudCredentials.username,
+            password: nextCloudCredentials.password,
+            path: nextCloudCurrentPath
+          }
+        };
+
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify(message));
+        } else {
+          showToast('WebSocket connection required for NextCloud operations', 'error');
+        }
+      } catch (error) {
+        showToast('Error loading files: ' + error.message, 'error');
+        filesContainer.innerHTML = '<div class="text-center text-danger">Error loading files</div>';
+      }
+    }
+
+    function renderNextCloudFiles(files) {
+      const filesContainer = document.getElementById('nextcloud-files');
+      const pathContainer = document.getElementById('nextcloud-path');
+
+      // Update path display
+      pathContainer.innerHTML = `<span class="text-muted">Path: /${nextCloudCurrentPath}</span>`;
+
+      if (!files || files.length === 0) {
+        filesContainer.innerHTML = '<div class="text-center text-muted">No files found</div>';
+        return;
+      }
+
+      const fileList = files.map(file => {
+        const isDirectory = file.is_directory;
+        const icon = isDirectory ? 'fas fa-folder' : getFileIcon(file.name);
+        const size = isDirectory ? '' : formatFileSize(file.size);
+
+        return `
+          <div class="file-item d-flex justify-content-between align-items-center py-2 px-3 mb-1 rounded"
+               style="background: var(--bg-secondary);"
+               onclick="${isDirectory ? `navigateToFolder('${file.path}')` : ''}">
+            <div class="d-flex align-items-center">
+              <i class="${icon}" style="margin-right: 10px; color: ${isDirectory ? '#ffc107' : '#17a2b8'};"></i>
+              <span>${file.name}</span>
+            </div>
+            <div class="file-actions d-flex align-items-center">
+              <small class="text-muted mr-3">${size}</small>
+              <div class="btn-group btn-group-sm">
+                ${!isDirectory ? `<button class="btn btn-outline-info btn-sm" onclick="downloadNextCloudFile('${file.path}')" title="Download">
+                  <i class="fas fa-download"></i>
+                </button>` : ''}
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteNextCloudFile('${file.path}')" title="Delete">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Add back navigation if not at root
+      let backButton = '';
+      if (nextCloudCurrentPath) {
+        backButton = `
+          <div class="file-item d-flex justify-content-between align-items-center py-2 px-3 mb-2 rounded"
+               style="background: var(--bg-card); cursor: pointer;"
+               onclick="navigateBack()">
+            <div class="d-flex align-items-center">
+              <i class="fas fa-arrow-left" style="margin-right: 10px; color: #6c757d;"></i>
+              <span>.. (Back)</span>
+            </div>
+          </div>
+        `;
+      }
+
+      filesContainer.innerHTML = backButton + fileList;
+    }
+
+    function navigateToFolder(path) {
+      nextCloudCurrentPath = path;
+      refreshNextCloudFiles();
+    }
+
+    function navigateBack() {
+      const parts = nextCloudCurrentPath.split('/').filter(p => p);
+      parts.pop();
+      nextCloudCurrentPath = parts.join('/');
+      refreshNextCloudFiles();
+    }
+
+    async function downloadNextCloudFile(path) {
+      if (!nextCloudCredentials) {
+        showToast('Please connect to NextCloud first', 'error');
+        return;
+      }
+
+      showToast('Downloading file...', 'info');
+
+      try {
+        const message = {
+          type: 'command',
+          id: generateId(),
+          command: 'nextcloud_download_file',
+          args: {
+            server_url: nextCloudCredentials.serverUrl,
+            username: nextCloudCredentials.username,
+            password: nextCloudCredentials.password,
+            remote_path: path
+          }
+        };
+
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify(message));
+        } else {
+          showToast('WebSocket connection required for NextCloud operations', 'error');
+        }
+      } catch (error) {
+        showToast('Error downloading file: ' + error.message, 'error');
+      }
+    }
+
+    async function deleteNextCloudFile(path) {
+      if (!confirm(`Are you sure you want to delete "${path}"?`)) {
+        return;
+      }
+
+      if (!nextCloudCredentials) {
+        showToast('Please connect to NextCloud first', 'error');
+        return;
+      }
+
+      showToast('Deleting file...', 'info');
+
+      try {
+        const message = {
+          type: 'command',
+          id: generateId(),
+          command: 'nextcloud_delete_file',
+          args: {
+            server_url: nextCloudCredentials.serverUrl,
+            username: nextCloudCredentials.username,
+            password: nextCloudCredentials.password,
+            remote_path: path
+          }
+        };
+
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify(message));
+        } else {
+          showToast('WebSocket connection required for NextCloud operations', 'error');
+        }
+      } catch (error) {
+        showToast('Error deleting file: ' + error.message, 'error');
+      }
+    }
+
+    function showUploadDialog() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.onchange = async (event) => {
+        const files = event.target.files;
+        for (let file of files) {
+          await uploadNextCloudFile(file);
+        }
+      };
+      input.click();
+    }
+
+    async function uploadNextCloudFile(file) {
+      if (!nextCloudCredentials) {
+        showToast('Please connect to NextCloud first', 'error');
+        return;
+      }
+
+      showToast(`Uploading ${file.name}...`, 'info');
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+        const remotePath = nextCloudCurrentPath ? `${nextCloudCurrentPath}/${file.name}` : file.name;
+
+        const message = {
+          type: 'command',
+          id: generateId(),
+          command: 'nextcloud_upload_file',
+          args: {
+            server_url: nextCloudCredentials.serverUrl,
+            username: nextCloudCredentials.username,
+            password: nextCloudCredentials.password,
+            remote_path: remotePath,
+            content: base64
+          }
+        };
+
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify(message));
+        } else {
+          showToast('WebSocket connection required for NextCloud operations', 'error');
+        }
+      } catch (error) {
+        showToast(`Error uploading ${file.name}: ` + error.message, 'error');
+      }
+    }
+
+    function showCreateFolderDialog() {
+      const folderName = prompt('Enter folder name:');
+      if (folderName) {
+        createNextCloudFolder(folderName);
+      }
+    }
+
+    async function createNextCloudFolder(folderName) {
+      if (!nextCloudCredentials) {
+        showToast('Please connect to NextCloud first', 'error');
+        return;
+      }
+
+      showToast(`Creating folder ${folderName}...`, 'info');
+
+      try {
+        const remotePath = nextCloudCurrentPath ? `${nextCloudCurrentPath}/${folderName}` : folderName;
+
+        const message = {
+          type: 'command',
+          id: generateId(),
+          command: 'nextcloud_create_directory',
+          args: {
+            server_url: nextCloudCredentials.serverUrl,
+            username: nextCloudCredentials.username,
+            password: nextCloudCredentials.password,
+            remote_path: remotePath
+          }
+        };
+
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify(message));
+        } else {
+          showToast('WebSocket connection required for NextCloud operations', 'error');
+        }
+      } catch (error) {
+        showToast(`Error creating folder: ` + error.message, 'error');
+      }
+    }
+
+    function getFileIcon(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const iconMap = {
+        'pdf': 'fas fa-file-pdf',
+        'doc': 'fas fa-file-word', 'docx': 'fas fa-file-word',
+        'xls': 'fas fa-file-excel', 'xlsx': 'fas fa-file-excel',
+        'ppt': 'fas fa-file-powerpoint', 'pptx': 'fas fa-file-powerpoint',
+        'txt': 'fas fa-file-alt',
+        'jpg': 'fas fa-file-image', 'jpeg': 'fas fa-file-image', 'png': 'fas fa-file-image', 'gif': 'fas fa-file-image',
+        'mp4': 'fas fa-file-video', 'avi': 'fas fa-file-video', 'mov': 'fas fa-file-video',
+        'mp3': 'fas fa-file-audio', 'wav': 'fas fa-file-audio', 'flac': 'fas fa-file-audio',
+        'zip': 'fas fa-file-archive', 'rar': 'fas fa-file-archive', '7z': 'fas fa-file-archive',
+        'html': 'fas fa-file-code', 'js': 'fas fa-file-code', 'css': 'fas fa-file-code', 'json': 'fas fa-file-code'
+      };
+      return iconMap[ext] || 'fas fa-file';
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function handleNextCloudWebSocketResponse(data) {
+      if (data.command_response) {
+        const response = data.command_response;
+
+        if (response.command === 'nextcloud_test_connection') {
+          if (response.success) {
+            showToast('NextCloud connection successful!', 'success');
+          } else {
+            showToast('NextCloud connection failed: ' + response.error, 'error');
+          }
+        } else if (response.command === 'nextcloud_list_files') {
+          if (response.success && response.files) {
+            renderNextCloudFiles(response.files);
+          } else {
+            showToast('Failed to load files: ' + response.error, 'error');
+          }
+        } else if (response.command === 'nextcloud_upload_file') {
+          if (response.success) {
+            showToast('File uploaded successfully', 'success');
+            refreshNextCloudFiles();
+          } else {
+            showToast('Upload failed: ' + response.error, 'error');
+          }
+        } else if (response.command === 'nextcloud_download_file') {
+          if (response.success && response.content) {
+            // Convert base64 to blob and download
+            const byteCharacters = atob(response.content);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray]);
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = response.filename || 'download';
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showToast('File downloaded successfully', 'success');
+          } else {
+            showToast('Download failed: ' + response.error, 'error');
+          }
+        } else if (response.command === 'nextcloud_delete_file') {
+          if (response.success) {
+            showToast('File deleted successfully', 'success');
+            refreshNextCloudFiles();
+          } else {
+            showToast('Delete failed: ' + response.error, 'error');
+          }
+        } else if (response.command === 'nextcloud_create_directory') {
+          if (response.success) {
+            showToast('Folder created successfully', 'success');
+            refreshNextCloudFiles();
+          } else {
+            showToast('Create folder failed: ' + response.error, 'error');
+          }
+        }
+      }
+    }
+
+    function generateId() {
+      return Math.random().toString(36).substr(2, 9);
     }
   </script>
 </body>

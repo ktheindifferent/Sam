@@ -405,7 +405,7 @@ impl ServiceOrchestrator {
 
     async fn start_file_storage(&self) -> Result<()> {
         info!("Initializing file storage service");
-        crate::services::file_storage::initialize().await
+        crate::services::fs::initialize().await
             .context("Failed to initialize file storage")
     }
 
@@ -933,7 +933,7 @@ impl ServiceOrchestrator {
                 }
             }
             ServiceName::Docker => crate::services::docker::ensure_running().await,
-            ServiceName::FileStorage => crate::services::file_storage::initialize().await,
+            ServiceName::FileStorage => crate::services::fs::initialize().await,
             ServiceName::Backup => crate::services::backup::start_scheduler().await,
             ServiceName::SSH => Ok(()),
             ServiceName::Crawler => {

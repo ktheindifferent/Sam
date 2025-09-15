@@ -46,28 +46,11 @@ pub fn handle(
                 
                 // Update brain.py to include context
                 let context_str = context_manager::serialize_context(&context);
-                
-                // Try multiple paths for brain.py
-                let brain_paths = vec![
-                    "./scripts/rivescript/brain.py",
-                    "/opt/sam/scripts/rivescript/brain.py",
-                    "/Users/calebsmith/Documents/ktheindifferent/Sam/scripts/rivescript/brain.py",
-                ];
-                
-                let mut rivescript_reply = Err("Brain script not found".to_string());
-                
-                for brain_path in brain_paths {
-                    let cmd_result = crate::tools::cmd(
-                        format!("python3 {} \"{}\" \"{}\"", brain_path, iput, context_str).as_str(),
-                    );
-                    if let Ok(reply) = cmd_result {
-                        rivescript_reply = Ok(reply);
-                        break;
-                    }
-                }
 
-                match rivescript_reply {
-                    Ok(rs) => {
+                // Use the centralized RiveScript service (same as TUI)
+                match crate::services::rivescript::query(&iput) {
+                    Ok(rivescript_response) => {
+                        let rs = rivescript_response.text;
                         let mut executed_actions = Vec::new();
                         let mut modified_response = rs.clone();
 

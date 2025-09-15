@@ -185,6 +185,9 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                 let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
                 return Ok(xresponse
                     .with_additional_header("Access-Control-Allow-Origin", origin)
+                    .with_additional_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                    .with_additional_header("Pragma", "no-cache")
+                    .with_additional_header("Expires", "0")
                     .with_no_cache());
             }
         }
