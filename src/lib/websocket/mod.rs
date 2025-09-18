@@ -849,7 +849,7 @@ async fn process_command(
         
         // Ollama commands
         "ollama_install" => {
-            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.install().await {
                 Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
                 Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
@@ -857,7 +857,7 @@ async fn process_command(
         }
         
         "ollama_start" => {
-            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.start_service().await {
                 Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
                 Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
@@ -865,7 +865,7 @@ async fn process_command(
         }
         
         "ollama_stop" => {
-            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.stop_service().await {
                 Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
                 Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
@@ -873,7 +873,7 @@ async fn process_command(
         }
         
         "ollama_status" => {
-            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             let installed = service.is_installed().await;
             let running = if installed { service.is_running().await } else { false };
             
@@ -898,7 +898,7 @@ async fn process_command(
         }
         
         "ollama_list_models" => {
-            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.list_models().await {
                 Ok(models) => Ok(serde_json::to_value(models)?),
                 Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
@@ -907,7 +907,7 @@ async fn process_command(
         
         "ollama_pull_model" => {
             if let Some(model_name) = args.get("model").and_then(|m| m.as_str()) {
-                let service = crate::services::ollama::OllamaService::new_with_defaults();
+                let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
                 match service.pull_model(model_name).await {
                     Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
                     Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
@@ -919,7 +919,7 @@ async fn process_command(
         
         "ollama_remove_model" => {
             if let Some(model_name) = args.get("model").and_then(|m| m.as_str()) {
-                let service = crate::services::ollama::OllamaService::new_with_defaults();
+                let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
                 match service.remove_model(model_name).await {
                     Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
                     Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
@@ -934,7 +934,7 @@ async fn process_command(
                 args.get("model").and_then(|m| m.as_str()),
                 args.get("prompt").and_then(|p| p.as_str())
             ) {
-                let service = crate::services::ollama::OllamaService::new_with_defaults();
+                let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
                 let options = args.get("options").and_then(|o| {
                     if let serde_json::Value::Object(map) = o {
                         let mut options = std::collections::HashMap::new();
@@ -958,7 +958,7 @@ async fn process_command(
         
         "ollama_search_models" => {
             let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
-            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.search_models(query).await {
                 Ok(models) => Ok(serde_json::json!({ "success": true, "models": models })),
                 Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
@@ -966,7 +966,7 @@ async fn process_command(
         }
         
         "ollama_install_recommended" => {
-            let service = crate::services::ollama::OllamaService::new_with_defaults();
+            let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.install_recommended_models().await {
                 Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
                 Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
@@ -1360,6 +1360,22 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
         ServiceStatus {
             state: "healthy".to_string(),
             message: Some("WebSocket server is running".to_string()),
+            progress: None,
+            last_check: Utc::now(),
+        },
+    );
+    
+    // Check SSH server
+    let ssh_server_running = crate::services::ssh::server::is_ssh_server_running().await;
+    statuses.insert(
+        "ssh_server".to_string(),
+        ServiceStatus {
+            state: if ssh_server_running { "healthy" } else { "stopped" }.to_string(),
+            message: Some(if ssh_server_running {
+                "SSH server running on port 2222".to_string()
+            } else {
+                "SSH server not running".to_string()
+            }),
             progress: None,
             last_check: Utc::now(),
         },

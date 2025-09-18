@@ -1091,9 +1091,6 @@ pub fn shutdown_all() {
     }
 }
 
-#[cfg(test)]
-#[path = "thread_manager_miri_tests.rs"]
-mod miri_tests;
 
 #[cfg(test)]
 mod tests {

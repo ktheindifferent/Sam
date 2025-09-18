@@ -1,0 +1,3024 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use log::{info, debug, warn};
+use crate::services::llms::ollama::{OllamaService, OllamaConfig};
+use async_trait::async_trait;
+
+// Phase 5: Universal LLM provider trait
+#[async_trait]
+pub trait LLMProvider: Send + Sync {
+    async fn generate_response(&self, prompt: &str, model: &str) -> Result<String>;
+    async fn is_available(&self) -> bool;
+    fn provider_name(&self) -> &str;
+    async fn list_models(&self) -> Result<Vec<String>>;
+}
+
+// Phase 5: Ollama provider wrapper
+pub struct OllamaProvider {
+    service: OllamaService,
+}
+
+impl OllamaProvider {
+    pub fn new(config: OllamaConfig) -> Self {
+        Self {
+            service: OllamaService::new(config),
+        }
+    }
+}
+
+#[async_trait]
+impl LLMProvider for OllamaProvider {
+    async fn generate_response(&self, prompt: &str, model: &str) -> Result<String> {
+        let response = self.service.generate(model, prompt, None).await?;
+        Ok(response.response)
+    }
+
+    async fn is_available(&self) -> bool {
+        self.service.is_running().await
+    }
+
+    fn provider_name(&self) -> &str {
+        "Ollama"
+    }
+
+    async fn list_models(&self) -> Result<Vec<String>> {
+        let response = self.service.list_models().await?;
+        Ok(response.models.into_iter().map(|m| m.name).collect())
+    }
+}
+
+// Phase 5: OpenAI provider wrapper (placeholder for future implementation)
+pub struct OpenAIProvider {
+    api_key: String,
+    base_url: String,
+}
+
+impl OpenAIProvider {
+    pub fn new(api_key: String, base_url: Option<String>) -> Self {
+        Self {
+            api_key,
+            base_url: base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+        }
+    }
+}
+
+#[async_trait]
+impl LLMProvider for OpenAIProvider {
+    async fn generate_response(&self, prompt: &str, model: &str) -> Result<String> {
+        // TODO: Implement OpenAI API integration
+        warn!("OpenAI provider not yet implemented");
+        Ok("OpenAI provider not yet implemented. Please configure an Ollama model.".to_string())
+    }
+
+    async fn is_available(&self) -> bool {
+        // TODO: Implement OpenAI availability check
+        false
+    }
+
+    fn provider_name(&self) -> &str {
+        "OpenAI"
+    }
+
+    async fn list_models(&self) -> Result<Vec<String>> {
+        // TODO: Implement OpenAI model listing
+        Ok(vec!["gpt-4".to_string(), "gpt-3.5-turbo".to_string()])
+    }
+}
+
+// Phase 5: Local model provider wrapper (for llamafile, LM Studio, etc.)
+pub struct LocalProvider {
+    base_url: String,
+    provider_name: String,
+}
+
+impl LocalProvider {
+    pub fn new(base_url: String, provider_name: Option<String>) -> Self {
+        Self {
+            base_url,
+            provider_name: provider_name.unwrap_or_else(|| "Local".to_string()),
+        }
+    }
+}
+
+#[async_trait]
+impl LLMProvider for LocalProvider {
+    async fn generate_response(&self, prompt: &str, model: &str) -> Result<String> {
+        // TODO: Implement local model API integration (OpenAI-compatible)
+        warn!("Local provider not yet implemented");
+        Ok("Local provider not yet implemented. Please configure an Ollama model.".to_string())
+    }
+
+    async fn is_available(&self) -> bool {
+        // TODO: Implement local provider availability check
+        false
+    }
+
+    fn provider_name(&self) -> &str {
+        &self.provider_name
+    }
+
+    async fn list_models(&self) -> Result<Vec<String>> {
+        // TODO: Implement local model listing
+        Ok(vec![])
+    }
+}
+
+// Phase 5: Multi-model provider support
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ModelProvider {
+    Ollama,
+    OpenAI,
+    Local,      // For llamafile, LM Studio, etc.
+    Custom(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelConfig {
+    pub provider: ModelProvider,
+    pub model_name: String,
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodingAgentConfig {
+    pub default_model: String,
+    pub max_context_lines: usize,
+    pub safe_commands: Vec<String>,
+    pub require_confirmation: bool,
+    pub system_prompt_template: String,
+    pub available_models: Vec<ModelConfig>,
+    pub fallback_models: Vec<String>,
+    pub enable_model_switching: bool,
+    pub workspace_integration: bool,
+}
+
+impl Default for CodingAgentConfig {
+    fn default() -> Self {
+        Self {
+            default_model: "codellama:latest".to_string(),
+            max_context_lines: 50,
+            available_models: vec![
+                ModelConfig {
+                    provider: ModelProvider::Ollama,
+                    model_name: "codellama:latest".to_string(),
+                    api_key: None,
+                    base_url: Some("http://localhost:11434".to_string()),
+                    temperature: Some(0.3),
+                    max_tokens: Some(4096),
+                },
+                ModelConfig {
+                    provider: ModelProvider::Ollama,
+                    model_name: "llama3.2:latest".to_string(),
+                    api_key: None,
+                    base_url: Some("http://localhost:11434".to_string()),
+                    temperature: Some(0.3),
+                    max_tokens: Some(4096),
+                },
+            ],
+            fallback_models: vec!["llama3.2:latest".to_string()],
+            enable_model_switching: true,
+            workspace_integration: true,
+            safe_commands: vec![
+                "ls".to_string(),
+                "pwd".to_string(),
+                "cat".to_string(),
+                "head".to_string(),
+                "tail".to_string(),
+                "grep".to_string(),
+                "find".to_string(),
+                "tree".to_string(),
+                "du".to_string(),
+                "df".to_string(),
+                "ps".to_string(),
+                "top".to_string(),
+                "clear".to_string(),
+                "echo".to_string(),
+                "date".to_string(),
+                "whoami".to_string(),
+                "id".to_string(),
+                "uname".to_string(),
+                "which".to_string(),
+                "wc".to_string(),
+                "sort".to_string(),
+                "uniq".to_string(),
+                "less".to_string(),
+                "more".to_string(),
+                "file".to_string(),
+                "stat".to_string(),
+                "history".to_string(),
+                "env".to_string(),
+                "printenv".to_string(),
+                "basename".to_string(),
+                "dirname".to_string(),
+                "realpath".to_string(),
+                "readlink".to_string(),
+                // Essential development commands
+                "mkdir".to_string(),
+                "cd".to_string(),
+                "touch".to_string(),
+                "cp".to_string(),
+                "mv".to_string(),
+                "cargo".to_string(),
+                "git".to_string(),
+                // Text editing and file manipulation
+                "sed".to_string(),
+                "awk".to_string(),
+                "tee".to_string(),
+                "nano".to_string(),
+                "vim".to_string(),
+                "vi".to_string(),
+                "emacs".to_string(),
+                // Code formatting and linting
+                "rustfmt".to_string(),
+                "clippy".to_string(),
+            ],
+            require_confirmation: true,
+            system_prompt_template: r#"You are SAM's intelligent coding assistant with deep understanding of software development workflows.
+
+CURRENT CONTEXT:
+- Working Directory: {current_dir}
+- System: {system_info}
+- Available Code Models: {available_models}
+
+SESSION HISTORY (last {context_lines} lines):
+{session_context}
+
+SAFE COMMANDS: {safe_commands}
+
+CORE CAPABILITIES:
+1. **File Operations**: Read, edit, create, and manipulate files
+2. **Code Generation**: Write, modify, and improve code in any language
+3. **Project Management**: Create projects, manage dependencies, run builds
+4. **Development Workflow**: Git operations, testing, debugging, formatting
+
+COMMAND EXECUTION RULES:
+1. Always suggest specific commands in backticks: `command`
+2. For file modifications, use appropriate tools:
+   - `sed` for simple text replacements
+   - `cat > filename` for creating new files
+   - `tee` for appending content
+   - Text editors for complex changes
+3. Break complex tasks into logical steps
+4. Read existing files first before modifying them
+5. Always verify changes after making them
+
+FILE MODIFICATION STRATEGIES:
+- **Read First**: `cat filename` to understand current content
+- **Simple Changes**: `sed -i 's/old/new/g' filename` for replacements
+- **Add Content**: `echo "new content" >> filename` for appending
+- **Create Files**: `cat > filename << 'EOF'` for new content
+- **Verify**: `cat filename` to confirm changes
+
+RUST-SPECIFIC GUIDANCE:
+- Use `cargo new` for new projects
+- Use `cargo build` and `cargo run` for compilation and execution
+- Use `rustfmt` for code formatting
+- Use `cargo clippy` for linting
+- Understand main.rs structure and Rust syntax
+
+EXAMPLES:
+- User: "add a random number after hello world" →
+  Response: "I'll read the current file first: `cat src/main.rs`
+  Then modify it to add random number generation: `sed -i 's/println!("Hello, world!");/println!("Hello, world!"); println!("Random number: {}", rand::random::<u32>());/' src/main.rs`
+  And add the rand dependency: `cargo add rand`"
+
+- User: "create a function to calculate fibonacci" →
+  Response: "I'll add a fibonacci function to your Rust file:
+  ```rust
+  fn fibonacci(n: u32) -> u32 {
+      match n {
+          0 => 0,
+          1 => 1,
+          _ => fibonacci(n-1) + fibonacci(n-2)
+      }
+  }
+  ```
+  Let me add this to your main.rs: `cat src/main.rs` first to see the current content."
+
+Always provide working, executable commands and explain the reasoning behind each step."#.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeExecutionRequest {
+    pub command: String,
+    pub require_confirmation: bool,
+    pub explanation: String,
+    pub risk_level: RiskLevel,
+    pub estimated_duration: Option<u32>, // seconds
+    pub prerequisites: Vec<String>,
+    pub expected_outputs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RiskLevel {
+    Safe,      // No risk operations (ls, cat, etc.)
+    Low,       // Minor modifications (formatting, simple edits)
+    Medium,    // Significant changes (dependency additions, file creation)
+    High,      // Potentially destructive (file deletion, major refactoring)
+    Critical,  // System-level operations (chmod, rm -rf, etc.)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodingAgentResponse {
+    pub response_text: String,
+    pub suggested_commands: Vec<CodeExecutionRequest>,
+    pub model_used: String,
+    pub context_used: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandHistoryEntry {
+    pub command: String,
+    pub timestamp: u64,
+    pub success: bool,
+    pub output: String,
+    pub working_directory: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectStructure {
+    pub project_type: ProjectType,
+    pub root_directory: String,
+    pub source_files: Vec<String>,
+    pub config_files: Vec<String>,
+    pub test_files: Vec<String>,
+    pub dependencies: Vec<String>,
+    pub git_repository: bool,
+    pub build_system: BuildSystem,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProjectType {
+    Rust,
+    Python,
+    JavaScript,
+    TypeScript,
+    Go,
+    Java,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BuildSystem {
+    Cargo,
+    Npm,
+    Yarn,
+    Make,
+    Gradle,
+    Maven,
+    Poetry,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeTemplate {
+    pub name: String,
+    pub description: String,
+    pub language: ProjectType,
+    pub template_content: String,
+    pub variables: Vec<TemplateVariable>,
+    pub dependencies: Vec<String>,
+    pub use_cases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateVariable {
+    pub name: String,
+    pub description: String,
+    pub default_value: Option<String>,
+    pub required: bool,
+    pub variable_type: VariableType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum VariableType {
+    String,
+    Integer,
+    Boolean,
+    List,
+    Enum(Vec<String>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefactoringSuggestion {
+    pub suggestion_type: RefactoringType,
+    pub description: String,
+    pub affected_files: Vec<String>,
+    pub commands: Vec<CodeExecutionRequest>,
+    pub confidence_score: f32, // 0.0 to 1.0
+    pub impact_assessment: ImpactAssessment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RefactoringType {
+    ExtractFunction,
+    ExtractVariable,
+    RenameSymbol,
+    MoveFunction,
+    SplitFile,
+    MergeFiles,
+    AddError,
+    OptimizeImports,
+    UpdateDependencies,
+    AddDocumentation,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImpactAssessment {
+    pub lines_affected: usize,
+    pub files_affected: usize,
+    pub breaking_changes: bool,
+    pub test_updates_required: bool,
+    pub documentation_updates_required: bool,
+}
+
+// Manual Debug implementation since we can't derive it with trait objects
+impl std::fmt::Debug for CodingAgentService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CodingAgentService")
+            .field("current_provider", &self.current_provider)
+            .field("provider_count", &self.providers.len())
+            .field("config", &self.config)
+            .finish()
+    }
+}
+
+pub struct CodingAgentService {
+    config: CodingAgentConfig,
+    // Phase 5: Multi-provider support
+    providers: HashMap<String, Box<dyn LLMProvider>>,
+    current_provider: String,
+    // Phase 5: Enhanced workspace integration
+    workspace_context: Arc<tokio::sync::Mutex<WorkspaceContext>>,
+    // Phase 5: Learning and adaptation
+    learning_metrics: Arc<tokio::sync::Mutex<LearningMetrics>>,
+    // Existing fields
+    command_history: Arc<tokio::sync::Mutex<Vec<CommandHistoryEntry>>>,
+    project_cache: Arc<tokio::sync::Mutex<Option<ProjectStructure>>>,
+    code_templates: Arc<tokio::sync::Mutex<Vec<CodeTemplate>>>,
+    performance_metrics: Arc<tokio::sync::Mutex<PerformanceMetrics>>,
+}
+
+// Phase 5: Workspace awareness for better context management
+#[derive(Debug, Clone, Default)]
+pub struct WorkspaceContext {
+    pub current_workspace: Option<PathBuf>,
+    pub open_files: Vec<String>,
+    pub recent_commands: Vec<String>,
+    pub active_git_branch: Option<String>,
+    pub running_services: Vec<String>,
+    pub environment_variables: HashMap<String, String>,
+}
+
+// Phase 5: Learning and adaptation features
+#[derive(Debug, Clone, Default)]
+pub struct LearningMetrics {
+    pub command_success_patterns: HashMap<String, f32>, // command -> success rate
+    pub user_preferences: HashMap<String, String>,     // preference -> value
+    pub task_completion_times: HashMap<String, Vec<u64>>, // task_type -> [completion_times]
+    pub model_performance: HashMap<String, ModelPerformanceMetrics>, // provider -> metrics
+    pub error_resolution_patterns: HashMap<String, Vec<String>>, // error_pattern -> [successful_resolutions]
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ModelPerformanceMetrics {
+    pub avg_response_time: f64,
+    pub success_rate: f32,
+    pub user_satisfaction_score: f32, // Based on follow-up actions
+    pub task_type_performance: HashMap<String, f32>, // task_type -> performance_score
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PerformanceMetrics {
+    pub total_commands_executed: u64,
+    pub average_execution_time: f64,
+    pub success_rate: f64,
+    pub most_used_commands: std::collections::HashMap<String, u32>,
+    pub error_patterns: std::collections::HashMap<String, u32>,
+}
+
+impl CodingAgentService {
+    pub fn new(config: CodingAgentConfig) -> Self {
+        // Phase 5: Initialize multi-provider system
+        let mut providers: HashMap<String, Box<dyn LLMProvider>> = HashMap::new();
+        let mut current_provider = "ollama".to_string();
+
+        // Initialize providers based on configuration
+        for model_config in &config.available_models {
+            match &model_config.provider {
+                ModelProvider::Ollama => {
+                    let base_url = model_config.base_url.clone().unwrap_or_else(|| "http://localhost:11434".to_string());
+                    let url_parts: Vec<&str> = base_url.trim_start_matches("http://").trim_start_matches("https://").split(':').collect();
+                    let host = url_parts[0].to_string();
+                    let port = if url_parts.len() > 1 {
+                        url_parts[1].parse().unwrap_or(11434)
+                    } else {
+                        11434
+                    };
+
+                    let ollama_config = OllamaConfig {
+                        host,
+                        port,
+                        ..Default::default()
+                    };
+                    let provider = Box::new(OllamaProvider::new(ollama_config));
+                    providers.insert("ollama".to_string(), provider);
+                }
+                ModelProvider::OpenAI => {
+                    if let Some(api_key) = &model_config.api_key {
+                        let provider = Box::new(OpenAIProvider::new(
+                            api_key.clone(),
+                            model_config.base_url.clone(),
+                        ));
+                        providers.insert("openai".to_string(), provider);
+                    }
+                }
+                ModelProvider::Local => {
+                    if let Some(base_url) = &model_config.base_url {
+                        let provider = Box::new(LocalProvider::new(
+                            base_url.clone(),
+                            Some("local".to_string()),
+                        ));
+                        providers.insert("local".to_string(), provider);
+                    }
+                }
+                ModelProvider::Custom(name) => {
+                    if let Some(base_url) = &model_config.base_url {
+                        let provider = Box::new(LocalProvider::new(
+                            base_url.clone(),
+                            Some(name.clone()),
+                        ));
+                        providers.insert(name.clone(), provider);
+                    }
+                }
+            }
+        }
+
+        // Fallback to default Ollama if no providers configured
+        if providers.is_empty() {
+            let ollama_config = OllamaConfig::default();
+            let provider = Box::new(OllamaProvider::new(ollama_config));
+            providers.insert("ollama".to_string(), provider);
+            current_provider = "ollama".to_string();
+        }
+
+        Self {
+            config,
+            providers,
+            current_provider,
+            workspace_context: Arc::new(tokio::sync::Mutex::new(WorkspaceContext::default())),
+            learning_metrics: Arc::new(tokio::sync::Mutex::new(LearningMetrics::default())),
+            command_history: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            project_cache: Arc::new(tokio::sync::Mutex::new(None)),
+            code_templates: Arc::new(tokio::sync::Mutex::new(Self::initialize_default_templates())),
+            performance_metrics: Arc::new(tokio::sync::Mutex::new(PerformanceMetrics::default())),
+        }
+    }
+
+    pub fn new_with_defaults() -> Self {
+        Self::new(CodingAgentConfig::default())
+    }
+
+    /// Phase 5: Multi-provider availability check
+    pub async fn is_available(&self) -> bool {
+        if let Some(provider) = self.providers.get(&self.current_provider) {
+            provider.is_available().await
+        } else {
+            false
+        }
+    }
+
+    /// Phase 5: Switch to a different model provider
+    pub async fn switch_provider(&mut self, provider_name: &str) -> Result<()> {
+        if self.providers.contains_key(provider_name) {
+            self.current_provider = provider_name.to_string();
+            info!("Switched to provider: {}", provider_name);
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Provider '{}' not available", provider_name))
+        }
+    }
+
+    /// Phase 5: List available providers
+    pub fn list_providers(&self) -> Vec<String> {
+        self.providers.keys().cloned().collect()
+    }
+
+    /// Phase 5: Get current provider status
+    pub async fn get_provider_status(&self) -> HashMap<String, bool> {
+        let mut status = HashMap::new();
+        for (name, provider) in &self.providers {
+            status.insert(name.clone(), provider.is_available().await);
+        }
+        status
+    }
+
+    /// Phase 5: Get available models from current provider
+    pub async fn list_available_models(&self) -> Result<Vec<String>> {
+        if let Some(provider) = self.providers.get(&self.current_provider) {
+            provider.list_models().await
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    /// Phase 5: Update workspace context with SAM ecosystem integration
+    pub async fn update_workspace_context(&self, current_dir: &PathBuf) -> Result<()> {
+        let mut context = self.workspace_context.lock().await;
+
+        // Update current workspace
+        context.current_workspace = Some(current_dir.clone());
+
+        // Get Git branch information
+        if let Ok(output) = std::process::Command::new("git")
+            .arg("branch")
+            .arg("--show-current")
+            .current_dir(current_dir)
+            .output()
+        {
+            if output.status.success() {
+                context.active_git_branch = Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
+            }
+        }
+
+        // Get environment variables relevant to development
+        for (key, value) in std::env::vars() {
+            if key.starts_with("RUST_") || key.starts_with("CARGO_") ||
+               key.starts_with("NODE_") || key.starts_with("NPM_") ||
+               key == "PATH" || key == "HOME" || key == "USER" {
+                context.environment_variables.insert(key, value);
+            }
+        }
+
+        // TODO: Integrate with SAM service registry to get running services
+        // This would require access to the SAM service orchestrator
+        context.running_services = vec![
+            "coding_agent".to_string(),
+            "ollama".to_string(), // Placeholder - should query actual service status
+        ];
+
+        info!("Updated workspace context for: {:?}", current_dir);
+        Ok(())
+    }
+
+    /// Phase 5: Get enhanced context for better AI responses
+    pub async fn get_enhanced_context(&self, current_dir: &PathBuf, session_lines: &[String]) -> Result<String> {
+        // Update workspace context first
+        self.update_workspace_context(current_dir).await?;
+
+        let context = self.workspace_context.lock().await;
+        let project_context = self.get_project_context(current_dir).await;
+
+        let mut enhanced_context = String::new();
+
+        // Workspace information
+        enhanced_context.push_str(&format!("## Workspace Context\n"));
+        enhanced_context.push_str(&format!("- Current Directory: {:?}\n", current_dir));
+        if let Some(branch) = &context.active_git_branch {
+            enhanced_context.push_str(&format!("- Git Branch: {}\n", branch));
+        }
+
+        // Running services
+        if !context.running_services.is_empty() {
+            enhanced_context.push_str(&format!("- Running SAM Services: {}\n", context.running_services.join(", ")));
+        }
+
+        // Project context
+        enhanced_context.push_str(&format!("\n## Project Context\n{}\n", project_context));
+
+        // Recent session context
+        enhanced_context.push_str(&format!("\n## Recent Session\n"));
+        for line in session_lines.iter().rev().take(self.config.max_context_lines) {
+            enhanced_context.push_str(&format!("{}\n", line));
+        }
+
+        Ok(enhanced_context)
+    }
+
+    /// Phase 5: SAM ecosystem integration - get service status
+    pub async fn get_sam_service_status(&self) -> HashMap<String, String> {
+        let mut status = HashMap::new();
+
+        // Basic service status checks
+        status.insert("coding_agent".to_string(), "running".to_string());
+
+        // Check Ollama provider specifically
+        if let Some(provider) = self.providers.get("ollama") {
+            if provider.is_available().await {
+                status.insert("ollama".to_string(), "running".to_string());
+            } else {
+                status.insert("ollama".to_string(), "stopped".to_string());
+            }
+        }
+
+        // TODO: Integrate with actual SAM service orchestrator
+        // This would require dependency injection of the service registry
+
+        status
+    }
+
+    /// Phase 5: Adaptive model selection based on task type
+    pub async fn select_optimal_provider(&self, task_type: &str) -> Result<String> {
+        let available_providers = self.get_provider_status().await;
+
+        // Strategy: prefer local models for code tasks, cloud models for complex reasoning
+        match task_type.to_lowercase().as_str() {
+            "code" | "programming" | "debug" | "refactor" => {
+                // Prefer local models for code tasks
+                if *available_providers.get("ollama").unwrap_or(&false) {
+                    Ok("ollama".to_string())
+                } else if *available_providers.get("local").unwrap_or(&false) {
+                    Ok("local".to_string())
+                } else if *available_providers.get("openai").unwrap_or(&false) {
+                    Ok("openai".to_string())
+                } else {
+                    Err(anyhow::anyhow!("No suitable providers available for code tasks"))
+                }
+            }
+            "analysis" | "planning" | "documentation" => {
+                // Prefer more capable models for complex reasoning
+                if *available_providers.get("openai").unwrap_or(&false) {
+                    Ok("openai".to_string())
+                } else if *available_providers.get("ollama").unwrap_or(&false) {
+                    Ok("ollama".to_string())
+                } else if *available_providers.get("local").unwrap_or(&false) {
+                    Ok("local".to_string())
+                } else {
+                    Err(anyhow::anyhow!("No suitable providers available for analysis tasks"))
+                }
+            }
+            _ => {
+                // Default to current provider
+                Ok(self.current_provider.clone())
+            }
+        }
+    }
+
+    /// Phase 5: Learning and adaptation - record command execution outcome
+    pub async fn record_learning_data(&self, command: &str, success: bool, execution_time: u64, task_type: &str) -> Result<()> {
+        let mut learning = self.learning_metrics.lock().await;
+
+        // Update command success patterns
+        let current_success_rate = learning.command_success_patterns.get(command).unwrap_or(&0.0);
+        let new_success_rate = if success {
+            (current_success_rate + 1.0) / 2.0 // Simple moving average
+        } else {
+            current_success_rate * 0.9 // Decay on failure
+        };
+        learning.command_success_patterns.insert(command.to_string(), new_success_rate);
+
+        // Record task completion times
+        learning.task_completion_times
+            .entry(task_type.to_string())
+            .or_insert_with(Vec::new)
+            .push(execution_time);
+
+        // Update model performance
+        let provider_metrics = learning.model_performance
+            .entry(self.current_provider.clone())
+            .or_insert_with(ModelPerformanceMetrics::default);
+
+        provider_metrics.avg_response_time = (provider_metrics.avg_response_time + execution_time as f64) / 2.0;
+
+        let current_success = provider_metrics.success_rate;
+        provider_metrics.success_rate = if success {
+            (current_success + 1.0) / 2.0
+        } else {
+            current_success * 0.9
+        };
+
+        // Update task-specific performance
+        let task_performance = provider_metrics.task_type_performance
+            .entry(task_type.to_string())
+            .or_insert(0.5);
+        *task_performance = if success {
+            (*task_performance + 1.0) / 2.0
+        } else {
+            *task_performance * 0.9
+        };
+
+        debug!("Recorded learning data: command={}, success={}, time={}ms", command, success, execution_time);
+        Ok(())
+    }
+
+    /// Phase 5: Get personalized recommendations based on learning
+    pub async fn get_personalized_recommendations(&self, task_type: &str) -> Result<Vec<String>> {
+        let learning = self.learning_metrics.lock().await;
+        let mut recommendations = Vec::new();
+
+        // Recommend commands with high success rates for this task type
+        let successful_commands: Vec<(&String, &f32)> = learning.command_success_patterns
+            .iter()
+            .filter(|(_, &rate)| rate > 0.7)
+            .collect();
+
+        if !successful_commands.is_empty() {
+            recommendations.push("Based on your usage patterns, these commands have high success rates:".to_string());
+            for (command, rate) in successful_commands.iter().take(3) {
+                recommendations.push(format!("  • {} ({}% success rate)", command, (**rate * 100.0) as u32));
+            }
+        }
+
+        // Recommend optimal provider for task type
+        let best_provider = learning.model_performance
+            .iter()
+            .max_by(|(_, a), (_, b)| {
+                let a_score = a.task_type_performance.get(task_type).unwrap_or(&0.0);
+                let b_score = b.task_type_performance.get(task_type).unwrap_or(&0.0);
+                a_score.partial_cmp(b_score).unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+        if let Some((provider, _)) = best_provider {
+            if provider != &self.current_provider {
+                recommendations.push(format!("Consider switching to '{}' provider for {} tasks", provider, task_type));
+            }
+        }
+
+        Ok(recommendations)
+    }
+
+    /// Phase 5: Adaptive behavior based on user patterns
+    pub async fn adapt_to_user_patterns(&mut self) -> Result<()> {
+        let learning = self.learning_metrics.lock().await;
+
+        // Auto-switch to best performing provider for code tasks
+        if let Some((best_provider, _)) = learning.model_performance
+            .iter()
+            .max_by(|(_, a), (_, b)| {
+                let a_score = a.task_type_performance.get("code").unwrap_or(&0.0);
+                let b_score = b.task_type_performance.get("code").unwrap_or(&0.0);
+                a_score.partial_cmp(b_score).unwrap_or(std::cmp::Ordering::Equal)
+            })
+        {
+            if self.providers.contains_key(best_provider) && best_provider != &self.current_provider {
+                info!("Auto-switching to best performing provider: {}", best_provider);
+                self.current_provider = best_provider.clone();
+            }
+        }
+
+        // Update user preferences based on command patterns
+        let mut preferences = HashMap::new();
+        if let Some(most_used_cmd) = learning.command_success_patterns
+            .iter()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        {
+            preferences.insert("preferred_command_style".to_string(), most_used_cmd.0.clone());
+        }
+
+        drop(learning);
+        let mut learning_mut = self.learning_metrics.lock().await;
+        learning_mut.user_preferences = preferences;
+
+        Ok(())
+    }
+
+    /// Phase 5: Get learning insights for user
+    pub async fn get_learning_insights(&self) -> Result<HashMap<String, serde_json::Value>> {
+        let learning = self.learning_metrics.lock().await;
+        let mut insights = HashMap::new();
+
+        // Most successful commands
+        let mut successful_commands: Vec<_> = learning.command_success_patterns
+            .iter()
+            .filter(|(_, &rate)| rate > 0.5)
+            .collect();
+        successful_commands.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        insights.insert("successful_commands".to_string(),
+            serde_json::Value::Array(successful_commands.into_iter().take(5)
+                .map(|(cmd, rate)| serde_json::json!({
+                    "command": cmd,
+                    "success_rate": rate
+                }))
+                .collect()));
+
+        // Provider performance
+        insights.insert("provider_performance".to_string(),
+            serde_json::Value::Object(learning.model_performance
+                .iter()
+                .map(|(provider, metrics)| (provider.clone(), serde_json::json!({
+                    "avg_response_time": metrics.avg_response_time,
+                    "success_rate": metrics.success_rate,
+                    "satisfaction_score": metrics.user_satisfaction_score
+                })))
+                .collect()));
+
+        // Task completion trends
+        let avg_completion_times: HashMap<String, f64> = learning.task_completion_times
+            .iter()
+            .map(|(task, times)| {
+                let avg = times.iter().sum::<u64>() as f64 / times.len() as f64;
+                (task.clone(), avg)
+            })
+            .collect();
+
+        insights.insert("task_completion_times".to_string(),
+            serde_json::Value::Object(avg_completion_times.into_iter()
+                .map(|(task, time)| (task, serde_json::Value::Number(
+                    serde_json::Number::from_f64(time).unwrap_or_else(|| serde_json::Number::from(0))
+                )))
+                .collect()));
+
+        Ok(insights)
+    }
+
+    /// Get available code models from current provider (legacy method for compatibility)
+    pub async fn get_available_code_models(&self) -> Result<Vec<String>> {
+        // Phase 5: Use multi-provider system
+        let all_models = self.list_available_models().await?;
+
+        // Filter for code-specific models
+        let code_models: Vec<String> = all_models
+            .into_iter()
+            .filter(|model_name| {
+                let name = model_name.to_lowercase();
+                name.contains("code") ||
+                name.contains("deepseek-coder") ||
+                name.contains("wizardcoder") ||
+                name.starts_with("codellama") ||
+                name.starts_with("codegemma") ||
+                name.starts_with("codeqwen") ||
+                name.contains("gpt-4") ||  // OpenAI models
+                name.contains("gpt-3.5")
+            })
+            .collect();
+
+        Ok(code_models)
+    }
+
+    /// Install recommended code models (Phase 5: provider-aware)
+    pub async fn install_code_models(&self) -> Result<String> {
+        // Phase 5: Only support model installation for Ollama provider
+        if self.current_provider != "ollama" {
+            return Ok(format!("Model installation only supported for Ollama provider. Current provider: {}", self.current_provider));
+        }
+
+        // Get Ollama provider and attempt model installation
+        let recommended_models = vec![
+            "codellama:latest",
+            "codegemma:2b",
+            "deepseek-coder:1.3b",
+        ];
+
+        let mut results = Vec::new();
+        for model in recommended_models {
+            info!("Installing code model: {}", model);
+            // TODO: Implement provider-specific model installation
+            results.push(format!("⚠ Model installation for {} requires direct Ollama setup", model));
+        }
+
+        Ok(results.join("\n"))
+    }
+
+    /// Build context from session history
+    fn build_context(&self, session_lines: &[String]) -> String {
+        let max_lines = self.config.max_context_lines;
+        let context_lines = if session_lines.len() > max_lines {
+            &session_lines[session_lines.len() - max_lines..]
+        } else {
+            session_lines
+        };
+
+        context_lines.join("\n")
+    }
+
+    /// Build system prompt with current context and project awareness
+    async fn build_system_prompt(
+        &self,
+        current_dir: &PathBuf,
+        session_lines: &[String]
+    ) -> Result<String> {
+        let context = self.build_context(session_lines);
+        let available_models = self.get_available_code_models().await
+            .unwrap_or_else(|_| vec!["No code models available".to_string()]);
+
+        let system_info = format!(
+            "{} - Rust {} - SAM AI Assistant",
+            std::env::consts::OS,
+            env!("CARGO_PKG_VERSION")
+        );
+
+        // Get project context for enhanced awareness
+        let project_context = self.get_project_context(current_dir).await;
+
+        // Enhanced template with project context
+        let enhanced_template = format!(
+            "{}\n\n{}\n\nUse the project context above to provide more targeted suggestions, appropriate commands for the project type, and better file navigation.",
+            self.config.system_prompt_template,
+            project_context
+        );
+
+        let prompt = enhanced_template
+            .replace("{current_dir}", &current_dir.display().to_string())
+            .replace("{system_info}", &system_info)
+            .replace("{available_models}", &available_models.join(", "))
+            .replace("{context_lines}", &self.config.max_context_lines.to_string())
+            .replace("{session_context}", &context)
+            .replace("{safe_commands}", &self.config.safe_commands.join(", "));
+
+        Ok(prompt)
+    }
+
+    /// Preprocess user input to handle direct command execution
+    fn preprocess_user_input(&self, input: &str) -> (String, Vec<CodeExecutionRequest>) {
+        let mut direct_commands = Vec::new();
+        let mut processed_input = input.to_string();
+
+        // Handle RiveScript-style commands: ::::: command :::::
+        if let Ok(regex) = regex::Regex::new(r":::::(.+?):::::") {
+            for captures in regex.captures_iter(input) {
+                if let Some(command_match) = captures.get(1) {
+                    let command = command_match.as_str().trim().to_string();
+                    if !command.is_empty() {
+                        let is_safe = self.is_safe_command(&command);
+                        direct_commands.push(self.create_execution_request(
+                            &command,
+                            &format!("Direct command: {}", command),
+                            self.assess_command_risk(&command),
+                            Some(10),
+                        ));
+                    }
+                }
+            }
+            // Remove the RiveScript syntax from the input
+            processed_input = regex.replace_all(&processed_input, "$1").to_string();
+        }
+
+        // Handle direct command requests
+        let direct_command_patterns = [
+            r"^(?:execute|run|do)\s+(.+)$",
+            r"^(pwd|ls|clear|date|whoami|id|uname)(?:\s+(.*))?$",
+        ];
+
+        for pattern in &direct_command_patterns {
+            if let Ok(regex) = regex::Regex::new(pattern) {
+                if let Some(captures) = regex.captures(input) {
+                    let mut command = captures.get(1).map(|m| m.as_str().trim()).unwrap_or("").to_string();
+                    if let Some(args) = captures.get(2) {
+                        let args = args.as_str().trim();
+                        if !args.is_empty() {
+                            command = format!("{} {}", command, args);
+                        }
+                    }
+
+                    if !command.is_empty() {
+                        let is_safe = self.is_safe_command(&command);
+                        direct_commands.push(self.create_execution_request(
+                            &command,
+                            &format!("Direct command: {}", command),
+                            self.assess_command_risk(&command),
+                            Some(10),
+                        ));
+
+                        // Transform the input to be more AI-friendly
+                        processed_input = format!("Execute this command: {}", command);
+                    }
+                    break;
+                }
+            }
+        }
+
+        (processed_input, direct_commands)
+    }
+
+    /// Parse agent response for command suggestions with improved reliability
+    fn parse_commands_from_response(&self, response: &str) -> Vec<CodeExecutionRequest> {
+        let mut commands = Vec::new();
+
+        // Enhanced command patterns with multi-line support
+        let command_patterns = [
+            // Multi-line code blocks
+            r"```(?:bash|shell|sh|console|terminal)?\s*\n((?:[^\n]*\n?)+?)\n?```",
+            // Single backtick commands
+            r"`([^`\n]+)`",
+            // Command: prefix pattern
+            r"(?:^|\n)\s*(?:Command|Run|Execute):\s*([^\n]+)",
+            // $ prefix pattern (common in terminal examples)
+            r"(?:^|\n)\s*\$\s*([^\n]+)",
+        ];
+
+        for pattern in &command_patterns {
+            if let Ok(regex) = regex::Regex::new(pattern) {
+                for captures in regex.captures_iter(response) {
+                    if let Some(command_match) = captures.get(1) {
+                        let command_block = command_match.as_str().trim();
+
+                        // Process each line in the command block
+                        for line in command_block.lines() {
+                            let command = line.trim();
+
+                            // Skip empty lines, comments, and output-like lines
+                            if command.is_empty()
+                                || command.starts_with('#')
+                                || command.starts_with("//")
+                                || command.starts_with("--")
+                                || command.contains("output:")
+                                || command.contains("result:")
+                                || command.len() > 200 // Skip very long lines (likely explanations)
+                            {
+                                continue;
+                            }
+
+                            // Remove common prefixes
+                            let cleaned_command = command
+                                .strip_prefix("$ ")
+                                .or_else(|| command.strip_prefix("> "))
+                                .or_else(|| command.strip_prefix("# "))
+                                .unwrap_or(command)
+                                .trim();
+
+                            if cleaned_command.is_empty() {
+                                continue;
+                            }
+
+                            // Split compound commands (but keep track for execution order)
+                            let individual_commands = if cleaned_command.contains(" && ") {
+                                cleaned_command.split(" && ").map(|s| s.trim()).collect::<Vec<_>>()
+                            } else if cleaned_command.contains(" ; ") {
+                                cleaned_command.split(" ; ").map(|s| s.trim()).collect::<Vec<_>>()
+                            } else {
+                                vec![cleaned_command]
+                            };
+
+                            for cmd in individual_commands {
+                                if cmd.is_empty() {
+                                    continue;
+                                }
+
+                                // Check if it's a recognizable command
+                                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                                if parts.is_empty() {
+                                    continue;
+                                }
+
+                                let base_cmd = parts[0];
+                                let is_safe = self.is_safe_command(cmd);
+                                let is_recognizable = self.is_recognizable_command(base_cmd);
+
+                                if is_recognizable {
+                                    commands.push(self.create_execution_request(
+                                        cmd,
+                                        &format!("Suggested command: {}", cmd),
+                                        self.assess_command_risk(cmd),
+                                        Some(30),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove duplicates while preserving order
+        let mut seen = std::collections::HashSet::new();
+        commands.retain(|cmd| seen.insert(cmd.command.clone()));
+
+        commands
+    }
+
+    /// Check if a command is recognizable (not just safe)
+    fn is_recognizable_command(&self, base_cmd: &str) -> bool {
+        let common_commands = [
+            // File operations
+            "ls", "pwd", "cd", "mkdir", "rmdir", "rm", "cp", "mv", "touch", "find", "locate",
+            "chmod", "chown", "ln", "stat", "file", "du", "df", "tree",
+
+            // Text processing
+            "cat", "less", "more", "head", "tail", "grep", "egrep", "fgrep", "sed", "awk",
+            "cut", "sort", "uniq", "wc", "diff", "comm", "join", "tr", "tee",
+
+            // System info
+            "ps", "top", "htop", "kill", "killall", "jobs", "bg", "fg", "nohup",
+            "which", "whereis", "whoami", "who", "w", "id", "groups", "su", "sudo",
+            "uname", "hostname", "uptime", "date", "cal", "env", "printenv", "export",
+
+            // Network
+            "ping", "wget", "curl", "ssh", "scp", "rsync", "netstat", "ss", "lsof",
+
+            // Development tools
+            "git", "cargo", "npm", "yarn", "pip", "python", "node", "java", "javac",
+            "gcc", "g++", "make", "cmake", "docker", "kubectl",
+
+            // Archive operations
+            "tar", "gzip", "gunzip", "zip", "unzip", "7z",
+
+            // System management
+            "systemctl", "service", "mount", "umount", "fdisk", "lsblk", "free",
+
+            // Text editors
+            "nano", "vim", "vi", "emacs", "code", "subl",
+
+            // Other common utilities
+            "echo", "printf", "clear", "history", "alias", "unalias", "type", "help", "man",
+            "sleep", "watch", "timeout", "xargs", "basename", "dirname", "realpath", "readlink"
+        ];
+
+        common_commands.contains(&base_cmd)
+    }
+
+    /// Detect and handle file modification requests
+    async fn detect_and_handle_file_modification(
+        &self,
+        user_input: &str,
+        current_dir: &PathBuf,
+        session_lines: &[String],
+    ) -> Result<Option<CodingAgentResponse>> {
+        let input_lower = user_input.to_lowercase();
+
+        // File modification patterns
+        let modification_patterns = [
+            "modify", "edit", "change", "update", "add", "insert", "append",
+            "replace", "fix", "improve", "refactor", "rewrite"
+        ];
+
+        // File-related keywords
+        let file_keywords = [
+            "file", "main.rs", "src/", "cargo.toml", "lib.rs", "mod.rs",
+            ".rs", ".toml", ".md", ".txt", ".json", ".yaml", ".yml"
+        ];
+
+        // Code-specific patterns
+        let code_patterns = [
+            "function", "method", "struct", "enum", "impl", "trait",
+            "variable", "constant", "import", "use", "dependency",
+            "random number", "hello world", "print", "println"
+        ];
+
+        let is_file_modification = modification_patterns.iter().any(|&pattern| input_lower.contains(pattern)) &&
+                                 (file_keywords.iter().any(|&keyword| input_lower.contains(keyword)) ||
+                                  code_patterns.iter().any(|&pattern| input_lower.contains(pattern)));
+
+        if !is_file_modification {
+            return Ok(None);
+        }
+
+        // Try to detect the target file
+        let target_file = self.detect_target_file(user_input, current_dir);
+
+        match target_file {
+            Some(file_path) => {
+                // We found a likely target file, use the specialized method
+                let response = self.read_file_for_modification(
+                    &file_path,
+                    user_input,
+                    current_dir,
+                    session_lines
+                ).await?;
+                Ok(Some(response))
+            }
+            None => {
+                // No specific file detected, but it's still a modification request
+                // Use enhanced prompting for file modification
+                let enhanced_prompt = format!(
+                    "This appears to be a file modification request: {}\n\nPlease:\n1. First identify which file(s) need to be modified\n2. Read the current content with `cat filename`\n3. Provide specific commands to make the changes\n4. Verify the changes were applied correctly\n\nCurrent directory: {}",
+                    user_input,
+                    current_dir.display()
+                );
+
+                let response = self.generate_enhanced_response_internal(&enhanced_prompt, current_dir, session_lines, None).await?;
+                Ok(Some(response))
+            }
+        }
+    }
+
+    /// Detect target file from user input
+    fn detect_target_file(&self, user_input: &str, current_dir: &PathBuf) -> Option<String> {
+        // Common file patterns
+        let file_patterns = [
+            r"main\.rs",
+            r"src/main\.rs",
+            r"lib\.rs",
+            r"src/lib\.rs",
+            r"Cargo\.toml",
+            r"[a-zA-Z_][a-zA-Z0-9_]*\.rs",
+        ];
+
+        // Check for explicit file mentions
+        for pattern in &file_patterns {
+            if let Ok(regex) = regex::Regex::new(pattern) {
+                if let Some(matched) = regex.find(user_input) {
+                    return Some(matched.as_str().to_string());
+                }
+            }
+        }
+
+        // Check for common project files that likely exist
+        let common_files = ["src/main.rs", "main.rs", "src/lib.rs", "lib.rs"];
+        for file in &common_files {
+            let full_path = current_dir.join(file);
+            if full_path.exists() {
+                return Some(file.to_string());
+            }
+        }
+
+        None
+    }
+
+    /// Generate enhanced response for complex requests (internal, bypasses file detection)
+    async fn generate_enhanced_response_internal(
+        &self,
+        enhanced_prompt: &str,
+        current_dir: &PathBuf,
+        session_lines: &[String],
+        model_override: Option<&str>,
+    ) -> Result<CodingAgentResponse> {
+        // This is the same as generate_response but with enhanced prompting
+        let model = model_override.unwrap_or(&self.config.default_model);
+
+        // Check if model is available
+        let available_models = self.get_available_code_models().await?;
+        if !available_models.contains(&model.to_string()) {
+            return Err(anyhow::anyhow!(
+                "Code model '{}' not available. Available models: {}",
+                model,
+                available_models.join(", ")
+            ));
+        }
+
+        // Build system prompt with context
+        let system_prompt = self.build_system_prompt(current_dir, session_lines).await?;
+
+        // Use enhanced prompt
+        let full_prompt = format!("{}\n\nUser: {}\n\nAssistant:", system_prompt, enhanced_prompt);
+
+        debug!("Enhanced coding agent prompt length: {} chars", full_prompt.len());
+
+        // Generate response using Ollama
+        let generation_options = {
+            let mut options = HashMap::new();
+            options.insert("temperature".to_string(), serde_json::Value::from(0.3)); // Lower temperature for more precise code
+            options.insert("top_p".to_string(), serde_json::Value::from(0.9));
+            options.insert("max_tokens".to_string(), serde_json::Value::from(2048));
+            Some(options)
+        };
+
+        // Phase 5: Use multi-provider system
+        let response_text = if let Some(provider) = self.providers.get(&self.current_provider) {
+            provider.generate_response(&full_prompt, model).await
+                .context("Failed to generate response from current provider")?
+        } else {
+            return Err(anyhow::anyhow!("No provider available: {}", self.current_provider));
+        };
+
+        // Parse suggested commands from the response
+        let suggested_commands = self.parse_commands_from_response(&response_text);
+
+        Ok(CodingAgentResponse {
+            response_text,
+            suggested_commands,
+            model_used: model.to_string(),
+            context_used: session_lines.len().min(self.config.max_context_lines),
+        })
+    }
+
+    /// Check if a command is in the safe list
+    pub fn is_safe_command(&self, command: &str) -> bool {
+        let cmd_parts: Vec<&str> = command.split_whitespace().collect();
+        if cmd_parts.is_empty() {
+            return false;
+        }
+
+        let base_command = cmd_parts[0];
+        self.config.safe_commands.contains(&base_command.to_string())
+    }
+
+    /// Generate response using the coding agent
+    pub async fn generate_response(
+        &self,
+        user_input: &str,
+        current_dir: &PathBuf,
+        session_lines: &[String],
+        model_override: Option<&str>,
+    ) -> Result<CodingAgentResponse> {
+        // Preprocess input to handle direct commands
+        let (processed_input, direct_commands) = self.preprocess_user_input(user_input);
+
+        // If we have direct commands, return them immediately
+        if !direct_commands.is_empty() {
+            return Ok(CodingAgentResponse {
+                response_text: format!("Executing command(s): {}",
+                    direct_commands.iter().map(|c| c.command.as_str()).collect::<Vec<_>>().join(", ")),
+                suggested_commands: direct_commands,
+                model_used: "direct".to_string(),
+                context_used: 0,
+            });
+        }
+
+        // Check if this is a file modification request
+        if let Some(file_modification_response) = self.detect_and_handle_file_modification(user_input, current_dir, session_lines).await? {
+            return Ok(file_modification_response);
+        }
+
+        // Determine which model to use
+        let model = model_override.unwrap_or(&self.config.default_model);
+
+        // Check if model is available
+        let available_models = self.get_available_code_models().await?;
+        if !available_models.contains(&model.to_string()) {
+            return Err(anyhow::anyhow!(
+                "Code model '{}' not available. Available models: {}",
+                model,
+                available_models.join(", ")
+            ));
+        }
+
+        // Build system prompt with context
+        let system_prompt = self.build_system_prompt(current_dir, session_lines).await?;
+
+        // Combine system prompt with processed user input
+        let full_prompt = format!("{}\n\nUser: {}\n\nAssistant:", system_prompt, processed_input);
+
+        debug!("Coding agent prompt length: {} chars", full_prompt.len());
+
+        // Generate response using Ollama
+        let generation_options = {
+            let mut options = HashMap::new();
+            options.insert("temperature".to_string(), serde_json::Value::from(0.7));
+            options.insert("top_p".to_string(), serde_json::Value::from(0.9));
+            options.insert("max_tokens".to_string(), serde_json::Value::from(2048));
+            Some(options)
+        };
+
+        // Phase 5: Use multi-provider system
+        let response_text = if let Some(provider) = self.providers.get(&self.current_provider) {
+            provider.generate_response(&full_prompt, model).await
+                .context("Failed to generate response from current provider")?
+        } else {
+            return Err(anyhow::anyhow!("No provider available: {}", self.current_provider));
+        };
+
+        // Parse suggested commands from the response
+        let suggested_commands = self.parse_commands_from_response(&response_text);
+
+        Ok(CodingAgentResponse {
+            response_text,
+            suggested_commands,
+            model_used: model.to_string(),
+            context_used: session_lines.len().min(self.config.max_context_lines),
+        })
+    }
+
+    /// Execute a command safely with optional confirmation
+    pub async fn execute_command(
+        &self,
+        command: &str,
+        require_confirmation: bool,
+    ) -> Result<String> {
+        // Validate command safety
+        if !self.is_safe_command(command) && self.config.require_confirmation {
+            return Err(anyhow::anyhow!(
+                "Command '{}' is not in the safe command list. Use with caution.",
+                command
+            ));
+        }
+
+        info!("Coding agent executing command: {}", command);
+
+        let start_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let current_dir = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .display()
+            .to_string();
+
+        // Execute the command
+        let output = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .output()
+            .await
+            .context("Failed to execute command")?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let success = output.status.success();
+
+        let result = if success {
+            if stderr.is_empty() {
+                stdout.to_string()
+            } else {
+                format!("{}\nWarnings:\n{}", stdout, stderr)
+            }
+        } else {
+            format!("Command failed with exit code {:?}:\n{}", output.status.code(), stderr)
+        };
+
+        // Record in command history
+        let history_entry = CommandHistoryEntry {
+            command: command.to_string(),
+            timestamp: start_time,
+            success,
+            output: result.clone(),
+            working_directory: current_dir,
+        };
+
+        {
+            let mut history = self.command_history.lock().await;
+            history.push(history_entry);
+
+            // Keep only the last 100 commands to prevent unbounded growth
+            if history.len() > 100 {
+                history.remove(0);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Get status of the coding agent service (Phase 5: multi-provider)
+    pub async fn get_status(&self) -> HashMap<String, serde_json::Value> {
+        let mut status = HashMap::new();
+
+        // Phase 5: Multi-provider status
+        let provider_status = self.get_provider_status().await;
+        status.insert("providers".to_string(),
+                     serde_json::Value::Object(provider_status.into_iter()
+                         .map(|(k, v)| (k, serde_json::Value::Bool(v)))
+                         .collect()));
+
+        status.insert("current_provider".to_string(),
+                     serde_json::Value::String(self.current_provider.clone()));
+
+        status.insert("service_available".to_string(),
+                     serde_json::Value::Bool(self.is_available().await));
+
+        let code_models = self.get_available_code_models().await
+            .unwrap_or_else(|_| Vec::new());
+        status.insert("available_code_models".to_string(),
+                     serde_json::Value::Array(
+                         code_models.into_iter()
+                             .map(serde_json::Value::String)
+                             .collect()
+                     ));
+
+        status.insert("default_model".to_string(),
+                     serde_json::Value::String(self.config.default_model.clone()));
+
+        status.insert("safe_commands_count".to_string(),
+                     serde_json::Value::Number(self.config.safe_commands.len().into()));
+
+        status
+    }
+
+    /// Update configuration
+    pub fn update_config(&mut self, new_config: CodingAgentConfig) {
+        self.config = new_config;
+    }
+
+    /// Get current configuration
+    pub fn get_config(&self) -> &CodingAgentConfig {
+        &self.config
+    }
+}
+
+// Convenience functions for quick interactions
+impl CodingAgentService {
+    /// Quick code question without command execution
+    pub async fn ask_question(
+        &self,
+        question: &str,
+        current_dir: &PathBuf,
+        session_context: &[String],
+    ) -> Result<String> {
+        let response = self.generate_response(
+            question,
+            current_dir,
+            session_context,
+            None,
+        ).await?;
+
+        Ok(response.response_text)
+    }
+
+    /// Analyze a file with the coding agent
+    pub async fn analyze_file(
+        &self,
+        file_path: &str,
+        current_dir: &PathBuf,
+        session_context: &[String],
+    ) -> Result<String> {
+        // First, try to read the file content
+        let file_content = match tokio::fs::read_to_string(file_path).await {
+            Ok(content) => content,
+            Err(_) => {
+                // If we can't read directly, suggest using cat command
+                return self.generate_response(
+                    &format!("I need to read the file '{}' first. Let me do that: `cat {}`", file_path, file_path),
+                    current_dir,
+                    session_context,
+                    None
+                ).await.map(|r| r.response_text);
+            }
+        };
+
+        let question = format!(
+            "Please analyze the file '{}' with the following content:\n\n```\n{}\n```\n\nProvide insights about its code structure, purpose, and any potential improvements.",
+            file_path,
+            file_content
+        );
+
+        self.ask_question(&question, current_dir, session_context).await
+    }
+
+    /// Read and analyze file content for context-aware modifications
+    pub async fn read_file_for_modification(
+        &self,
+        file_path: &str,
+        modification_request: &str,
+        current_dir: &PathBuf,
+        session_context: &[String],
+    ) -> Result<CodingAgentResponse> {
+        // Try to read the file content
+        let file_content = match tokio::fs::read_to_string(file_path).await {
+            Ok(content) => content,
+            Err(_) => {
+                // If we can't read directly, return commands to read it first
+                return Ok(CodingAgentResponse {
+                    response_text: format!("I need to read the file '{}' first to understand its current content.", file_path),
+                    suggested_commands: vec![self.create_execution_request(
+                        &format!("cat {}", file_path),
+                        &format!("Reading file {} to understand current content", file_path),
+                        RiskLevel::Safe,
+                        Some(5),
+                    )],
+                    model_used: "file_analysis".to_string(),
+                    context_used: 0,
+                });
+            }
+        };
+
+        let detailed_prompt = format!(
+            "I need to modify the file '{}' based on this request: {}\n\nCurrent file content:\n```\n{}\n```\n\nPlease provide specific commands to make the requested changes. Consider:\n1. Reading the file first with `cat {}`\n2. Making the specific modifications needed\n3. Verifying the changes\n4. Adding any necessary dependencies\n\nFor Rust projects, remember to:\n- Add dependencies with `cargo add` if needed\n- Use proper Rust syntax\n- Maintain existing code structure\n- Format with `rustfmt` if appropriate",
+            file_path,
+            modification_request,
+            file_content,
+            file_path
+        );
+
+        self.generate_enhanced_response_internal(&detailed_prompt, current_dir, session_context, None).await
+    }
+
+    /// Get coding suggestions for a specific task
+    pub async fn get_coding_suggestions(
+        &self,
+        task_description: &str,
+        current_dir: &PathBuf,
+        session_context: &[String],
+    ) -> Result<CodingAgentResponse> {
+        let prompt = format!(
+            "I need help with the following coding task: {}\n\nPlease provide step-by-step guidance and suggest any commands I should run to accomplish this task.",
+            task_description
+        );
+
+        self.generate_response(&prompt, current_dir, session_context, None).await
+    }
+
+    /// Get command history
+    pub async fn get_command_history(&self) -> Vec<CommandHistoryEntry> {
+        let history = self.command_history.lock().await;
+        history.clone()
+    }
+
+    /// Get recent command history (last N commands)
+    pub async fn get_recent_command_history(&self, limit: usize) -> Vec<CommandHistoryEntry> {
+        let history = self.command_history.lock().await;
+        let start_index = if history.len() > limit {
+            history.len() - limit
+        } else {
+            0
+        };
+        history[start_index..].to_vec()
+    }
+
+    /// Clear command history
+    pub async fn clear_command_history(&self) {
+        let mut history = self.command_history.lock().await;
+        history.clear();
+    }
+
+    /// Get formatted command history for display
+    pub async fn get_formatted_command_history(&self, limit: Option<usize>) -> Vec<String> {
+        let history = self.command_history.lock().await;
+        let entries = if let Some(limit) = limit {
+            let start_index = if history.len() > limit {
+                history.len() - limit
+            } else {
+                0
+            };
+            &history[start_index..]
+        } else {
+            &history[..]
+        };
+
+        entries
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| {
+                let status = if entry.success { "✅" } else { "❌" };
+                let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(entry.timestamp);
+                let datetime = time.duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| format!("{:02}:{:02}:{:02}",
+                        (d.as_secs() / 3600) % 24,
+                        (d.as_secs() / 60) % 60,
+                        d.as_secs() % 60))
+                    .unwrap_or_else(|_| "??:??:??".to_string());
+
+                format!(
+                    "{} [{}] {} ({}): {}",
+                    status,
+                    datetime,
+                    entry.working_directory,
+                    i + 1,
+                    entry.command
+                )
+            })
+            .collect()
+    }
+
+    /// Replay a command from history by index
+    pub async fn replay_command(&self, index: usize) -> Result<String> {
+        let history = self.command_history.lock().await;
+        if let Some(entry) = history.get(index) {
+            let command = entry.command.clone();
+            drop(history); // Release the lock before executing
+            self.execute_command(&command, false).await
+        } else {
+            Err(anyhow::anyhow!("Command history index {} not found", index))
+        }
+    }
+
+    /// Get command suggestions based on history patterns
+    pub async fn get_history_based_suggestions(&self, context: &str) -> Vec<String> {
+        let history = self.command_history.lock().await;
+        let mut suggestions = Vec::new();
+        let mut command_freq = HashMap::new();
+
+        // Count command frequency
+        for entry in history.iter() {
+            if entry.success {
+                let base_cmd = entry.command.split_whitespace().next().unwrap_or("");
+                *command_freq.entry(base_cmd.to_string()).or_insert(0) += 1;
+            }
+        }
+
+        // Get most common commands
+        let mut sorted_commands: Vec<_> = command_freq.into_iter().collect();
+        sorted_commands.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Add relevant suggestions based on context
+        let context_lower = context.to_lowercase();
+        for (cmd, _freq) in sorted_commands.into_iter().take(5) {
+            if context_lower.contains("file") && ["ls", "cat", "find", "grep"].contains(&cmd.as_str()) {
+                suggestions.push(cmd);
+            } else if context_lower.contains("git") && cmd.starts_with("git") {
+                suggestions.push(cmd);
+            } else if context_lower.contains("cargo") && cmd.starts_with("cargo") {
+                suggestions.push(cmd);
+            } else if context_lower.contains("directory") && ["mkdir", "cd", "ls"].contains(&cmd.as_str()) {
+                suggestions.push(cmd);
+            }
+        }
+
+        suggestions
+    }
+
+    /// Analyze project structure and cache results
+    pub async fn analyze_project_structure(&self, current_dir: &PathBuf) -> Result<ProjectStructure> {
+        // Check cache first
+        {
+            let cache = self.project_cache.lock().await;
+            if let Some(ref structure) = *cache {
+                if structure.root_directory == current_dir.display().to_string() {
+                    return Ok(structure.clone());
+                }
+            }
+        }
+
+        // Analyze project structure
+        let structure = self.analyze_project_structure_impl(current_dir).await?;
+
+        // Cache the result
+        {
+            let mut cache = self.project_cache.lock().await;
+            *cache = Some(structure.clone());
+        }
+
+        Ok(structure)
+    }
+
+    async fn analyze_project_structure_impl(&self, current_dir: &PathBuf) -> Result<ProjectStructure> {
+        let root_dir = current_dir.display().to_string();
+
+        // Detect project type and build system
+        let (project_type, build_system) = self.detect_project_type(current_dir).await;
+
+        // Scan for files
+        let (source_files, config_files, test_files) = self.scan_project_files(current_dir, &project_type).await?;
+
+        // Detect dependencies
+        let dependencies = self.detect_dependencies(current_dir, &build_system).await?;
+
+        // Check for git repository
+        let git_repository = current_dir.join(".git").exists();
+
+        Ok(ProjectStructure {
+            project_type,
+            root_directory: root_dir,
+            source_files,
+            config_files,
+            test_files,
+            dependencies,
+            git_repository,
+            build_system,
+        })
+    }
+
+    async fn detect_project_type(&self, current_dir: &PathBuf) -> (ProjectType, BuildSystem) {
+        // Check for Rust project
+        if current_dir.join("Cargo.toml").exists() {
+            return (ProjectType::Rust, BuildSystem::Cargo);
+        }
+
+        // Check for Node.js projects
+        if current_dir.join("package.json").exists() {
+            if current_dir.join("yarn.lock").exists() {
+                return (ProjectType::JavaScript, BuildSystem::Yarn);
+            }
+            return (ProjectType::JavaScript, BuildSystem::Npm);
+        }
+
+        // Check for Python projects
+        if current_dir.join("pyproject.toml").exists() || current_dir.join("setup.py").exists() {
+            if current_dir.join("poetry.lock").exists() {
+                return (ProjectType::Python, BuildSystem::Poetry);
+            }
+            return (ProjectType::Python, BuildSystem::Unknown);
+        }
+
+        // Check for Go projects
+        if current_dir.join("go.mod").exists() {
+            return (ProjectType::Go, BuildSystem::Make);
+        }
+
+        // Check for Java projects
+        if current_dir.join("pom.xml").exists() {
+            return (ProjectType::Java, BuildSystem::Maven);
+        }
+        if current_dir.join("build.gradle").exists() || current_dir.join("build.gradle.kts").exists() {
+            return (ProjectType::Java, BuildSystem::Gradle);
+        }
+
+        (ProjectType::Unknown, BuildSystem::Unknown)
+    }
+
+    async fn scan_project_files(&self, current_dir: &PathBuf, project_type: &ProjectType) -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
+        let mut source_files = Vec::new();
+        let mut config_files = Vec::new();
+        let mut test_files = Vec::new();
+
+        let extensions = match project_type {
+            ProjectType::Rust => (vec!["rs"], vec!["toml", "lock"], vec!["rs"]),
+            ProjectType::Python => (vec!["py"], vec!["toml", "cfg", "ini", "txt"], vec!["py"]),
+            ProjectType::JavaScript => (vec!["js", "jsx"], vec!["json", "lock"], vec!["js", "jsx"]),
+            ProjectType::TypeScript => (vec!["ts", "tsx"], vec!["json", "lock"], vec!["ts", "tsx"]),
+            ProjectType::Go => (vec!["go"], vec!["mod", "sum"], vec!["go"]),
+            ProjectType::Java => (vec!["java"], vec!["xml", "gradle", "properties"], vec!["java"]),
+            ProjectType::Unknown => (vec![], vec![], vec![]),
+        };
+
+        if let Ok(entries) = tokio::fs::read_dir(current_dir).await {
+            let mut entries = entries;
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let path = entry.path();
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    // Skip hidden files and directories
+                    if file_name.starts_with('.') && file_name != ".gitignore" {
+                        continue;
+                    }
+
+                    if path.is_file() {
+                        if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
+                            let relative_path = path.strip_prefix(current_dir)
+                                .unwrap_or(&path)
+                                .display()
+                                .to_string();
+
+                            if extensions.0.contains(&extension) {
+                                if file_name.contains("test") || path.parent().and_then(|p| p.file_name()).map_or(false, |n| n.to_str().unwrap_or("").contains("test")) {
+                                    test_files.push(relative_path);
+                                } else {
+                                    source_files.push(relative_path);
+                                }
+                            } else if extensions.1.contains(&extension) {
+                                config_files.push(relative_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively scan src/ and tests/ directories
+        self.scan_directory_recursive(current_dir, &PathBuf::from("src"), &mut source_files, &extensions.0).await?;
+        self.scan_directory_recursive(current_dir, &PathBuf::from("tests"), &mut test_files, &extensions.2).await?;
+        self.scan_directory_recursive(current_dir, &PathBuf::from("test"), &mut test_files, &extensions.2).await?;
+
+        Ok((source_files, config_files, test_files))
+    }
+
+    async fn scan_directory_recursive(&self, base_dir: &PathBuf, dir: &PathBuf, files: &mut Vec<String>, extensions: &[&str]) -> Result<()> {
+        let full_path = base_dir.join(dir);
+        if !full_path.exists() || !full_path.is_dir() {
+            return Ok(());
+        }
+
+        if let Ok(entries) = tokio::fs::read_dir(&full_path).await {
+            let mut entries = entries;
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
+                        if extensions.contains(&extension) {
+                            if let Ok(relative_path) = path.strip_prefix(base_dir) {
+                                files.push(relative_path.display().to_string());
+                            }
+                        }
+                    }
+                } else if path.is_dir() {
+                    if let Ok(relative_dir) = path.strip_prefix(base_dir) {
+                        Box::pin(self.scan_directory_recursive(base_dir, &relative_dir.to_path_buf(), files, extensions)).await?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn detect_dependencies(&self, current_dir: &PathBuf, build_system: &BuildSystem) -> Result<Vec<String>> {
+        let mut dependencies = Vec::new();
+
+        match build_system {
+            BuildSystem::Cargo => {
+                let cargo_path = current_dir.join("Cargo.toml");
+                if let Ok(content) = tokio::fs::read_to_string(cargo_path).await {
+                    // Parse Cargo.toml for dependencies
+                    for line in content.lines() {
+                        if line.trim().starts_with("[dependencies]") {
+                            continue;
+                        }
+                        if line.contains('=') && !line.trim().starts_with('#') && !line.contains('[') {
+                            if let Some(dep_name) = line.split('=').next() {
+                                dependencies.push(dep_name.trim().trim_matches('"').to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            BuildSystem::Npm | BuildSystem::Yarn => {
+                let package_path = current_dir.join("package.json");
+                if let Ok(content) = tokio::fs::read_to_string(package_path).await {
+                    // Simple JSON parsing for dependencies
+                    let lines: Vec<&str> = content.lines().collect();
+                    let mut in_deps = false;
+                    for line in lines {
+                        if line.contains("\"dependencies\"") || line.contains("\"devDependencies\"") {
+                            in_deps = true;
+                            continue;
+                        }
+                        if in_deps && line.contains('}') {
+                            in_deps = false;
+                            continue;
+                        }
+                        if in_deps && line.contains(':') {
+                            if let Some(dep_name) = line.split(':').next() {
+                                let clean_name = dep_name.trim().trim_matches('"').trim_matches(' ');
+                                if !clean_name.is_empty() {
+                                    dependencies.push(clean_name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        Ok(dependencies)
+    }
+
+    /// Get project-aware context for better code suggestions
+    pub async fn get_project_context(&self, current_dir: &PathBuf) -> String {
+        match self.analyze_project_structure(current_dir).await {
+            Ok(structure) => {
+                format!(
+                    "PROJECT CONTEXT:\n\
+                    - Type: {:?}\n\
+                    - Build System: {:?}\n\
+                    - Source Files: {} files\n\
+                    - Test Files: {} files\n\
+                    - Dependencies: {}\n\
+                    - Git Repository: {}\n\
+                    - Key Files: {}\n",
+                    structure.project_type,
+                    structure.build_system,
+                    structure.source_files.len(),
+                    structure.test_files.len(),
+                    structure.dependencies.join(", "),
+                    structure.git_repository,
+                    structure.source_files.iter().take(5).cloned().collect::<Vec<_>>().join(", ")
+                )
+            }
+            Err(_) => "PROJECT CONTEXT: Unable to analyze project structure".to_string(),
+        }
+    }
+
+    /// Clear project cache when directory changes
+    pub async fn clear_project_cache(&self) {
+        let mut cache = self.project_cache.lock().await;
+        *cache = None;
+    }
+
+    /// Get Git repository status and context
+    pub async fn get_git_context(&self, current_dir: &PathBuf) -> String {
+        if !current_dir.join(".git").exists() {
+            return "Git: Not a git repository".to_string();
+        }
+
+        let mut git_info = Vec::new();
+
+        // Get current branch
+        if let Ok(output) = tokio::process::Command::new("git")
+            .args(&["branch", "--show-current"])
+            .current_dir(current_dir)
+            .output()
+            .await
+        {
+            if output.status.success() {
+                let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !branch.is_empty() {
+                    git_info.push(format!("Branch: {}", branch));
+                }
+            }
+        }
+
+        // Get status
+        if let Ok(output) = tokio::process::Command::new("git")
+            .args(&["status", "--porcelain"])
+            .current_dir(current_dir)
+            .output()
+            .await
+        {
+            if output.status.success() {
+                let status_lines = String::from_utf8_lossy(&output.stdout);
+                let modified_files = status_lines.lines().count();
+                if modified_files > 0 {
+                    git_info.push(format!("Modified files: {}", modified_files));
+                } else {
+                    git_info.push("Working tree clean".to_string());
+                }
+            }
+        }
+
+        // Get recent commits
+        if let Ok(output) = tokio::process::Command::new("git")
+            .args(&["log", "--oneline", "-3"])
+            .current_dir(current_dir)
+            .output()
+            .await
+        {
+            if output.status.success() {
+                let commits = String::from_utf8_lossy(&output.stdout);
+                if !commits.trim().is_empty() {
+                    git_info.push("Recent commits:".to_string());
+                    for (i, line) in commits.lines().take(3).enumerate() {
+                        git_info.push(format!("  {}. {}", i + 1, line));
+                    }
+                }
+            }
+        }
+
+        format!("GIT CONTEXT:\n{}", git_info.join("\n"))
+    }
+
+    /// Generate Git-aware suggestions based on repository state
+    pub async fn get_git_suggestions(&self, current_dir: &PathBuf, task: &str) -> Vec<String> {
+        if !current_dir.join(".git").exists() {
+            return vec![];
+        }
+
+        let mut suggestions = Vec::new();
+        let task_lower = task.to_lowercase();
+
+        // Check for uncommitted changes
+        if let Ok(output) = tokio::process::Command::new("git")
+            .args(&["status", "--porcelain"])
+            .current_dir(current_dir)
+            .output()
+            .await
+        {
+            if output.status.success() {
+                let status = String::from_utf8_lossy(&output.stdout);
+                let has_changes = !status.trim().is_empty();
+
+                if has_changes && task_lower.contains("commit") {
+                    suggestions.push("git add .".to_string());
+                    suggestions.push("git commit -m \"your message\"".to_string());
+                }
+
+                if task_lower.contains("push") {
+                    if has_changes {
+                        suggestions.push("git add . && git commit -m \"update\" && git push".to_string());
+                    } else {
+                        suggestions.push("git push".to_string());
+                    }
+                }
+
+                if task_lower.contains("branch") {
+                    suggestions.push("git checkout -b new-branch".to_string());
+                    suggestions.push("git branch".to_string());
+                }
+
+                if task_lower.contains("merge") {
+                    suggestions.push("git checkout main".to_string());
+                    suggestions.push("git merge branch-name".to_string());
+                }
+
+                if task_lower.contains("diff") {
+                    suggestions.push("git diff".to_string());
+                    suggestions.push("git diff --staged".to_string());
+                }
+            }
+        }
+
+        suggestions
+    }
+
+    /// Enhanced multi-file project operation support
+    pub async fn handle_multi_file_operation(&self, operation: &str, current_dir: &PathBuf) -> Result<Vec<CodeExecutionRequest>> {
+        let structure = self.analyze_project_structure(current_dir).await?;
+        let mut commands = Vec::new();
+
+        match operation.to_lowercase().as_str() {
+            "test" | "run tests" => {
+                match structure.build_system {
+                    BuildSystem::Cargo => {
+                        commands.push(self.create_execution_request(
+                            "cargo test",
+                            "Run all Rust tests",
+                            RiskLevel::Low,
+                            Some(60),
+                        ));
+                    }
+                    BuildSystem::Npm => {
+                        commands.push(self.create_execution_request(
+                            "npm test",
+                            "Run npm test suite",
+                            RiskLevel::Low,
+                            Some(45),
+                        ));
+                    }
+                    BuildSystem::Yarn => {
+                        commands.push(self.create_execution_request(
+                            "yarn test",
+                            "Run yarn test suite",
+                            RiskLevel::Low,
+                            Some(45),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            "build" | "compile" => {
+                match structure.build_system {
+                    BuildSystem::Cargo => {
+                        commands.push(self.create_execution_request(
+                            "cargo build",
+                            "Build Rust project",
+                            RiskLevel::Low,
+                            Some(90),
+                        ));
+                    }
+                    BuildSystem::Npm => {
+                        commands.push(self.create_execution_request(
+                            "npm run build",
+                            "Build npm project",
+                            RiskLevel::Low,
+                            Some(120),
+                        ));
+                    }
+                    BuildSystem::Yarn => {
+                        commands.push(self.create_execution_request(
+                            "yarn build",
+                            "Build yarn project",
+                            RiskLevel::Low,
+                            Some(120),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            "lint" | "check style" => {
+                match structure.project_type {
+                    ProjectType::Rust => {
+                        commands.push(self.create_execution_request(
+                            "cargo clippy",
+                            "Run Rust linter",
+                            RiskLevel::Safe,
+                            Some(30),
+                        ));
+                        commands.push(self.create_execution_request(
+                            "cargo fmt",
+                            "Format Rust code",
+                            RiskLevel::Low,
+                            Some(15),
+                        ));
+                    }
+                    ProjectType::JavaScript | ProjectType::TypeScript => {
+                        commands.push(self.create_execution_request(
+                            "npm run lint",
+                            "Run JavaScript/TypeScript linter",
+                            RiskLevel::Safe,
+                            Some(25),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            "run" | "start" => {
+                match structure.build_system {
+                    BuildSystem::Cargo => {
+                        commands.push(self.create_execution_request(
+                            "cargo run",
+                            "Run Rust project",
+                            RiskLevel::Medium,
+                            Some(30),
+                        ));
+                    }
+                    BuildSystem::Npm => {
+                        commands.push(self.create_execution_request(
+                            "npm start",
+                            "Start npm project",
+                            RiskLevel::Medium,
+                            Some(60),
+                        ));
+                    }
+                    BuildSystem::Yarn => {
+                        commands.push(self.create_execution_request(
+                            "yarn start",
+                            "Start yarn project",
+                            RiskLevel::Medium,
+                            Some(60),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+
+        Ok(commands)
+    }
+
+    /// Enhanced code analysis with project context
+    pub async fn analyze_code_quality(&self, current_dir: &PathBuf) -> Result<String> {
+        let structure = self.analyze_project_structure(current_dir).await?;
+        let mut analysis = Vec::new();
+
+        analysis.push(format!("CODE QUALITY ANALYSIS for {:?} project:", structure.project_type));
+        analysis.push(format!(""));
+
+        // Project structure analysis
+        analysis.push(format!("📁 Project Structure:"));
+        analysis.push(format!("  - Source files: {}", structure.source_files.len()));
+        analysis.push(format!("  - Test files: {}", structure.test_files.len()));
+        analysis.push(format!("  - Config files: {}", structure.config_files.len()));
+
+        // Test coverage assessment
+        let test_ratio = if structure.source_files.is_empty() {
+            0.0
+        } else {
+            structure.test_files.len() as f64 / structure.source_files.len() as f64
+        };
+
+        analysis.push(format!(""));
+        analysis.push(format!("🧪 Test Coverage Assessment:"));
+        if test_ratio > 0.8 {
+            analysis.push(format!("  ✅ Excellent test coverage ({:.1}% ratio)", test_ratio * 100.0));
+        } else if test_ratio > 0.5 {
+            analysis.push(format!("  ⚠️  Good test coverage ({:.1}% ratio)", test_ratio * 100.0));
+        } else if test_ratio > 0.2 {
+            analysis.push(format!("  ⚠️  Moderate test coverage ({:.1}% ratio)", test_ratio * 100.0));
+        } else {
+            analysis.push(format!("  ❌ Low test coverage ({:.1}% ratio)", test_ratio * 100.0));
+            analysis.push(format!("  💡 Consider adding more tests"));
+        }
+
+        // Dependencies analysis
+        analysis.push(format!(""));
+        analysis.push(format!("📦 Dependencies:"));
+        if structure.dependencies.is_empty() {
+            analysis.push(format!("  - No external dependencies detected"));
+        } else {
+            analysis.push(format!("  - {} external dependencies", structure.dependencies.len()));
+            for dep in structure.dependencies.iter().take(5) {
+                analysis.push(format!("    • {}", dep));
+            }
+            if structure.dependencies.len() > 5 {
+                analysis.push(format!("    ... and {} more", structure.dependencies.len() - 5));
+            }
+        }
+
+        // Git status
+        if structure.git_repository {
+            analysis.push(format!(""));
+            analysis.push(self.get_git_context(current_dir).await);
+        }
+
+        // Suggestions based on project type
+        analysis.push(format!(""));
+        analysis.push(format!("💡 Recommendations:"));
+        match structure.project_type {
+            ProjectType::Rust => {
+                analysis.push(format!("  • Run `cargo clippy` for linting"));
+                analysis.push(format!("  • Run `cargo fmt` for formatting"));
+                analysis.push(format!("  • Consider adding more unit tests"));
+                if !structure.dependencies.contains(&"serde".to_string()) {
+                    analysis.push(format!("  • Consider adding `serde` for serialization"));
+                }
+            }
+            ProjectType::JavaScript | ProjectType::TypeScript => {
+                analysis.push(format!("  • Run `npm run lint` for code quality"));
+                analysis.push(format!("  • Consider adding type definitions"));
+                analysis.push(format!("  • Ensure proper error handling"));
+            }
+            _ => {
+                analysis.push(format!("  • Add comprehensive tests"));
+                analysis.push(format!("  • Document public APIs"));
+                analysis.push(format!("  • Follow language-specific best practices"));
+            }
+        }
+
+        Ok(analysis.join("\n"))
+    }
+
+    /// Create an enhanced code execution request with risk assessment
+    fn create_execution_request(
+        &self,
+        command: &str,
+        explanation: &str,
+        risk_level: RiskLevel,
+        estimated_duration: Option<u32>,
+    ) -> CodeExecutionRequest {
+        let prerequisites = self.analyze_command_prerequisites(command);
+        let expected_outputs = self.predict_command_outputs(command);
+        let require_confirmation = matches!(risk_level, RiskLevel::High | RiskLevel::Critical) || self.config.require_confirmation;
+
+        CodeExecutionRequest {
+            command: command.to_string(),
+            require_confirmation,
+            explanation: explanation.to_string(),
+            risk_level,
+            estimated_duration,
+            prerequisites,
+            expected_outputs,
+        }
+    }
+
+    /// Analyze command prerequisites
+    fn analyze_command_prerequisites(&self, command: &str) -> Vec<String> {
+        let mut prerequisites = Vec::new();
+        let cmd_parts: Vec<&str> = command.split_whitespace().collect();
+
+        if cmd_parts.is_empty() {
+            return prerequisites;
+        }
+
+        match cmd_parts[0] {
+            "cargo" => {
+                prerequisites.push("Rust toolchain installed".to_string());
+                if cmd_parts.contains(&"test") {
+                    prerequisites.push("Test files present".to_string());
+                }
+                if cmd_parts.contains(&"build") {
+                    prerequisites.push("Valid Cargo.toml".to_string());
+                }
+            }
+            "npm" | "yarn" => {
+                prerequisites.push("Node.js installed".to_string());
+                prerequisites.push("package.json exists".to_string());
+            }
+            "git" => {
+                prerequisites.push("Git repository initialized".to_string());
+                if cmd_parts.contains(&"push") {
+                    prerequisites.push("Remote repository configured".to_string());
+                }
+                if cmd_parts.contains(&"commit") {
+                    prerequisites.push("Changes staged or --all flag".to_string());
+                }
+            }
+            "python" => {
+                prerequisites.push("Python interpreter available".to_string());
+            }
+            _ => {}
+        }
+
+        prerequisites
+    }
+
+    /// Predict command outputs
+    fn predict_command_outputs(&self, command: &str) -> Vec<String> {
+        let mut outputs = Vec::new();
+        let cmd_parts: Vec<&str> = command.split_whitespace().collect();
+
+        if cmd_parts.is_empty() {
+            return outputs;
+        }
+
+        match cmd_parts[0] {
+            "ls" => outputs.push("Directory listing".to_string()),
+            "cat" => outputs.push("File contents".to_string()),
+            "cargo" => {
+                if cmd_parts.contains(&"build") {
+                    outputs.push("Compilation results".to_string());
+                    outputs.push("Binary artifacts".to_string());
+                }
+                if cmd_parts.contains(&"test") {
+                    outputs.push("Test results".to_string());
+                    outputs.push("Coverage information".to_string());
+                }
+            }
+            "git" => {
+                if cmd_parts.contains(&"status") {
+                    outputs.push("Repository status".to_string());
+                }
+                if cmd_parts.contains(&"log") {
+                    outputs.push("Commit history".to_string());
+                }
+            }
+            _ => outputs.push("Command output".to_string()),
+        }
+
+        outputs
+    }
+
+    /// Assess command risk level
+    fn assess_command_risk(&self, command: &str) -> RiskLevel {
+        let cmd_parts: Vec<&str> = command.split_whitespace().collect();
+
+        if cmd_parts.is_empty() {
+            return RiskLevel::Safe;
+        }
+
+        let base_cmd = cmd_parts[0];
+        let full_command = command.to_lowercase();
+
+        // Critical risk commands
+        if base_cmd == "rm" && full_command.contains("-rf") {
+            return RiskLevel::Critical;
+        }
+        if ["chmod", "chown", "sudo", "su"].contains(&base_cmd) {
+            return RiskLevel::Critical;
+        }
+
+        // High risk commands
+        if ["rm", "mv", "cp"].contains(&base_cmd) && cmd_parts.len() > 1 {
+            return RiskLevel::High;
+        }
+        if base_cmd == "git" && ["reset", "rebase", "push", "merge"].iter().any(|&op| cmd_parts.contains(&op)) {
+            return RiskLevel::High;
+        }
+
+        // Medium risk commands
+        if ["cargo", "npm", "yarn"].contains(&base_cmd) && ["add", "install", "update"].iter().any(|&op| cmd_parts.contains(&op)) {
+            return RiskLevel::Medium;
+        }
+        if ["mkdir", "touch", "echo"].contains(&base_cmd) {
+            return RiskLevel::Medium;
+        }
+
+        // Low risk commands
+        if ["sed", "awk", "grep"].contains(&base_cmd) {
+            return RiskLevel::Low;
+        }
+
+        // Safe commands
+        if ["ls", "cat", "pwd", "cd", "which", "whereis", "ps", "top"].contains(&base_cmd) {
+            return RiskLevel::Safe;
+        }
+
+        // Default to medium for unknown commands
+        RiskLevel::Medium
+    }
+
+    /// Initialize default code templates
+    fn initialize_default_templates() -> Vec<CodeTemplate> {
+        vec![
+            // Rust templates
+            CodeTemplate {
+                name: "rust_function".to_string(),
+                description: "Basic Rust function template".to_string(),
+                language: ProjectType::Rust,
+                template_content: r#"/// {description}
+pub fn {function_name}({parameters}) -> {return_type} {
+    {body}
+}"#.to_string(),
+                variables: vec![
+                    TemplateVariable {
+                        name: "function_name".to_string(),
+                        description: "Name of the function".to_string(),
+                        default_value: Some("my_function".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "parameters".to_string(),
+                        description: "Function parameters".to_string(),
+                        default_value: Some("".to_string()),
+                        required: false,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "return_type".to_string(),
+                        description: "Return type".to_string(),
+                        default_value: Some("()".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "description".to_string(),
+                        description: "Function description".to_string(),
+                        default_value: Some("Function description".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "body".to_string(),
+                        description: "Function body".to_string(),
+                        default_value: Some("todo!()".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                ],
+                dependencies: vec![],
+                use_cases: vec!["Creating new functions".to_string(), "Implementing methods".to_string()],
+            },
+
+            CodeTemplate {
+                name: "rust_struct".to_string(),
+                description: "Basic Rust struct template".to_string(),
+                language: ProjectType::Rust,
+                template_content: r#"/// {description}
+#[derive({derives})]
+pub struct {struct_name} {
+{fields}
+}"#.to_string(),
+                variables: vec![
+                    TemplateVariable {
+                        name: "struct_name".to_string(),
+                        description: "Name of the struct".to_string(),
+                        default_value: Some("MyStruct".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "description".to_string(),
+                        description: "Struct description".to_string(),
+                        default_value: Some("Struct description".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "derives".to_string(),
+                        description: "Derive macros".to_string(),
+                        default_value: Some("Debug, Clone".to_string()),
+                        required: false,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "fields".to_string(),
+                        description: "Struct fields".to_string(),
+                        default_value: Some("    // Add fields here".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                ],
+                dependencies: vec![],
+                use_cases: vec!["Data structures".to_string(), "Configuration objects".to_string()],
+            },
+
+            CodeTemplate {
+                name: "rust_error_handling".to_string(),
+                description: "Rust error handling with custom error type".to_string(),
+                language: ProjectType::Rust,
+                template_content: r#"use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum {error_name} {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Custom error: {message}")]
+    Custom { message: String },
+
+    #[error("Validation failed: {field}")]
+    Validation { field: String },
+}
+
+pub type Result<T> = std::result::Result<T, {error_name}>;
+"#.to_string(),
+                variables: vec![
+                    TemplateVariable {
+                        name: "error_name".to_string(),
+                        description: "Name of the error enum".to_string(),
+                        default_value: Some("MyError".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                ],
+                dependencies: vec!["thiserror".to_string()],
+                use_cases: vec!["Error handling".to_string(), "Library development".to_string()],
+            },
+
+            // JavaScript/TypeScript templates
+            CodeTemplate {
+                name: "js_async_function".to_string(),
+                description: "Async JavaScript function template".to_string(),
+                language: ProjectType::JavaScript,
+                template_content: r#"/**
+ * {description}
+ * @param {{params_doc}}
+ * @returns {{return_doc}}
+ */
+async function {function_name}({parameters}) {
+    try {
+        {body}
+    } catch (error) {
+        console.error(`Error in {function_name}:`, error);
+        throw error;
+    }
+}
+"#.to_string(),
+                variables: vec![
+                    TemplateVariable {
+                        name: "function_name".to_string(),
+                        description: "Name of the function".to_string(),
+                        default_value: Some("myAsyncFunction".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "parameters".to_string(),
+                        description: "Function parameters".to_string(),
+                        default_value: Some("".to_string()),
+                        required: false,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "description".to_string(),
+                        description: "Function description".to_string(),
+                        default_value: Some("Function description".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "params_doc".to_string(),
+                        description: "Parameters documentation".to_string(),
+                        default_value: Some("".to_string()),
+                        required: false,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "return_doc".to_string(),
+                        description: "Return value documentation".to_string(),
+                        default_value: Some("Promise<void>".to_string()),
+                        required: false,
+                        variable_type: VariableType::String,
+                    },
+                    TemplateVariable {
+                        name: "body".to_string(),
+                        description: "Function body".to_string(),
+                        default_value: Some("// Implementation here".to_string()),
+                        required: true,
+                        variable_type: VariableType::String,
+                    },
+                ],
+                dependencies: vec![],
+                use_cases: vec!["Async operations".to_string(), "API calls".to_string()],
+            },
+        ]
+    }
+
+    /// Get available code templates for a project type
+    pub async fn get_code_templates(&self, project_type: Option<ProjectType>) -> Vec<CodeTemplate> {
+        let templates = self.code_templates.lock().await;
+        match project_type {
+            Some(ptype) => templates.iter()
+                .filter(|t| t.language == ptype)
+                .cloned()
+                .collect(),
+            None => templates.clone(),
+        }
+    }
+
+    /// Generate code from template with variable substitution
+    pub async fn generate_from_template(
+        &self,
+        template_name: &str,
+        variables: std::collections::HashMap<String, String>,
+    ) -> Result<String> {
+        let templates = self.code_templates.lock().await;
+
+        let template = templates.iter()
+            .find(|t| t.name == template_name)
+            .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", template_name))?;
+
+        let mut content = template.template_content.clone();
+
+        // Substitute variables
+        for var in &template.variables {
+            let value = variables.get(&var.name)
+                .or(var.default_value.as_ref())
+                .ok_or_else(|| anyhow::anyhow!("Required variable '{}' not provided", var.name))?;
+
+            content = content.replace(&format!("{{{}}}", var.name), value);
+        }
+
+        Ok(content)
+    }
+
+    /// Add custom code template
+    pub async fn add_code_template(&self, template: CodeTemplate) {
+        let mut templates = self.code_templates.lock().await;
+        templates.push(template);
+    }
+
+    /// Update performance metrics
+    async fn update_performance_metrics(&self, command: &str, success: bool, duration: std::time::Duration) {
+        let mut metrics = self.performance_metrics.lock().await;
+
+        metrics.total_commands_executed += 1;
+
+        // Update average execution time
+        let new_time = duration.as_secs_f64();
+        metrics.average_execution_time = (metrics.average_execution_time * (metrics.total_commands_executed - 1) as f64 + new_time) / metrics.total_commands_executed as f64;
+
+        // Update success rate
+        let successful_commands = if success {
+            (metrics.success_rate * (metrics.total_commands_executed - 1) as f64) + 1.0
+        } else {
+            metrics.success_rate * (metrics.total_commands_executed - 1) as f64
+        };
+        metrics.success_rate = successful_commands / metrics.total_commands_executed as f64;
+
+        // Track command usage
+        *metrics.most_used_commands.entry(command.split_whitespace().next().unwrap_or("unknown").to_string()).or_insert(0) += 1;
+    }
+
+    /// Get performance metrics
+    pub async fn get_performance_metrics(&self) -> PerformanceMetrics {
+        self.performance_metrics.lock().await.clone()
+    }
+
+    /// Generate refactoring suggestions
+    pub async fn generate_refactoring_suggestions(&self, current_dir: &PathBuf) -> Result<Vec<RefactoringSuggestion>> {
+        let structure = self.analyze_project_structure(current_dir).await?;
+        let mut suggestions = Vec::new();
+
+        // Analyze for common refactoring opportunities
+        for source_file in &structure.source_files {
+            if let Ok(content) = tokio::fs::read_to_string(current_dir.join(source_file)).await {
+                suggestions.extend(self.analyze_file_for_refactoring(source_file, &content, &structure.project_type).await);
+            }
+        }
+
+        // Sort by confidence score
+        suggestions.sort_by(|a, b| b.confidence_score.partial_cmp(&a.confidence_score).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(suggestions)
+    }
+
+    /// Analyze a file for refactoring opportunities
+    async fn analyze_file_for_refactoring(&self, file_path: &str, content: &str, project_type: &ProjectType) -> Vec<RefactoringSuggestion> {
+        let mut suggestions = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+
+        match project_type {
+            ProjectType::Rust => {
+                // Check for long functions
+                if let Some(suggestion) = self.check_long_functions_rust(&lines, file_path) {
+                    suggestions.push(suggestion);
+                }
+
+                // Check for missing error handling
+                if let Some(suggestion) = self.check_missing_error_handling_rust(&lines, file_path) {
+                    suggestions.push(suggestion);
+                }
+
+                // Check for duplicate code
+                if let Some(suggestion) = self.check_duplicate_code_rust(&lines, file_path) {
+                    suggestions.push(suggestion);
+                }
+            }
+            ProjectType::JavaScript | ProjectType::TypeScript => {
+                // Check for callback hell
+                if let Some(suggestion) = self.check_callback_hell_js(&lines, file_path) {
+                    suggestions.push(suggestion);
+                }
+            }
+            _ => {}
+        }
+
+        suggestions
+    }
+
+    fn check_long_functions_rust(&self, lines: &[&str], file_path: &str) -> Option<RefactoringSuggestion> {
+        let mut function_start = None;
+        let mut brace_count = 0;
+        let mut function_lines = 0;
+
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+
+            if trimmed.starts_with("fn ") || trimmed.contains("fn ") {
+                function_start = Some(i);
+                function_lines = 0;
+                brace_count = 0;
+            }
+
+            if function_start.is_some() {
+                function_lines += 1;
+                brace_count += trimmed.chars().filter(|&c| c == '{').count() as i32;
+                brace_count -= trimmed.chars().filter(|&c| c == '}').count() as i32;
+
+                if brace_count == 0 && function_lines > 50 {
+                    return Some(RefactoringSuggestion {
+                        suggestion_type: RefactoringType::ExtractFunction,
+                        description: format!("Function starting at line {} is {} lines long. Consider breaking it into smaller functions.", function_start.unwrap() + 1, function_lines),
+                        affected_files: vec![file_path.to_string()],
+                        commands: vec![
+                            self.create_execution_request(
+                                &format!("# Extract long function in {}", file_path),
+                                "Break down long function into smaller, more manageable functions",
+                                RiskLevel::Medium,
+                                Some(300),
+                            )
+                        ],
+                        confidence_score: 0.8,
+                        impact_assessment: ImpactAssessment {
+                            lines_affected: function_lines,
+                            files_affected: 1,
+                            breaking_changes: false,
+                            test_updates_required: true,
+                            documentation_updates_required: true,
+                        },
+                    });
+                }
+            }
+        }
+
+        None
+    }
+
+    fn check_missing_error_handling_rust(&self, lines: &[&str], file_path: &str) -> Option<RefactoringSuggestion> {
+        let mut unwrap_count = 0;
+        let mut expect_count = 0;
+
+        for line in lines {
+            unwrap_count += line.matches(".unwrap()").count();
+            expect_count += line.matches(".expect(").count();
+        }
+
+        if unwrap_count + expect_count > 5 {
+            return Some(RefactoringSuggestion {
+                suggestion_type: RefactoringType::AddError,
+                description: format!("Found {} unwrap() and {} expect() calls. Consider implementing proper error handling.", unwrap_count, expect_count),
+                affected_files: vec![file_path.to_string()],
+                commands: vec![
+                    self.create_execution_request(
+                        &format!("# Add error handling to {}", file_path),
+                        "Replace unwrap() and expect() calls with proper error handling",
+                        RiskLevel::Medium,
+                        Some(600),
+                    )
+                ],
+                confidence_score: 0.9,
+                impact_assessment: ImpactAssessment {
+                    lines_affected: unwrap_count + expect_count,
+                    files_affected: 1,
+                    breaking_changes: true,
+                    test_updates_required: true,
+                    documentation_updates_required: false,
+                },
+            });
+        }
+
+        None
+    }
+
+    fn check_duplicate_code_rust(&self, _lines: &[&str], _file_path: &str) -> Option<RefactoringSuggestion> {
+        // Simplified duplicate detection - in a real implementation, this would be more sophisticated
+        None
+    }
+
+    fn check_callback_hell_js(&self, lines: &[&str], file_path: &str) -> Option<RefactoringSuggestion> {
+        let mut callback_depth: i32 = 0;
+        let mut max_depth: i32 = 0;
+
+        for line in lines {
+            let trimmed = line.trim();
+            if trimmed.contains("function(") || trimmed.contains("(") && trimmed.contains("=>{") {
+                callback_depth += 1;
+                max_depth = max_depth.max(callback_depth);
+            }
+            if trimmed.contains("})") {
+                callback_depth = callback_depth.saturating_sub(1);
+            }
+        }
+
+        if max_depth > 4 {
+            return Some(RefactoringSuggestion {
+                suggestion_type: RefactoringType::ExtractFunction,
+                description: format!("Detected callback nesting depth of {}. Consider using async/await or promises.", max_depth),
+                affected_files: vec![file_path.to_string()],
+                commands: vec![
+                    self.create_execution_request(
+                        &format!("# Refactor callbacks in {}", file_path),
+                        "Convert callback hell to async/await pattern",
+                        RiskLevel::High,
+                        Some(900),
+                    )
+                ],
+                confidence_score: 0.7,
+                impact_assessment: ImpactAssessment {
+                    lines_affected: lines.len(),
+                    files_affected: 1,
+                    breaking_changes: true,
+                    test_updates_required: true,
+                    documentation_updates_required: false,
+                },
+            });
+        }
+
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[tokio::test]
+    async fn test_coding_agent_creation() {
+        let agent = CodingAgentService::new_with_defaults();
+        assert_eq!(agent.config.default_model, "codellama:latest");
+        assert!(agent.config.safe_commands.contains(&"ls".to_string()));
+    }
+
+    #[test]
+    fn test_safe_command_check() {
+        let agent = CodingAgentService::new_with_defaults();
+        assert!(agent.is_safe_command("ls -la"));
+        assert!(agent.is_safe_command("pwd"));
+        assert!(!agent.is_safe_command("rm -rf /"));
+        assert!(!agent.is_safe_command("sudo apt install"));
+    }
+
+    #[test]
+    fn test_command_parsing() {
+        let agent = CodingAgentService::new_with_defaults();
+        let response = "You should run `ls -la` to see the files. Also try:\n```bash\npwd\necho hello\n```";
+
+        let commands = agent.parse_commands_from_response(response);
+        assert_eq!(commands.len(), 3);
+        assert_eq!(commands[0].command, "ls -la");
+        assert_eq!(commands[1].command, "pwd");
+        assert_eq!(commands[2].command, "echo hello");
+    }
+
+    #[test]
+    fn test_context_building() {
+        let agent = CodingAgentService::new_with_defaults();
+        let lines = vec![
+            "line1".to_string(),
+            "line2".to_string(),
+            "line3".to_string(),
+        ];
+
+        let context = agent.build_context(&lines);
+        assert_eq!(context, "line1\nline2\nline3");
+    }
+}

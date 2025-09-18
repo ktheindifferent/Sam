@@ -375,7 +375,7 @@ function showOllamaHelp() {
 		"  ollama stop                    - Stop Ollama service",
 		"",
 		"Model Management:",
-		"  ollama list                    - List installed models",
+		"  ollama list                    - List installed and available models",
 		"  ollama pull <model>            - Download a model (e.g., llama3.2)",
 		"  ollama remove <model>          - Remove a model",
 		"  ollama search [query]          - Search available models",
@@ -518,40 +518,100 @@ function stopOllama() {
 
 function listOllamaModels() {
 	appendTerminalOutput("⠋ Loading models...", true);
-	
-	$.get("/api/ollama/models")
+
+	$.get("/api/ollama/models/all")
 		.done(function(data) {
-			console.log("Ollama models response:", data);
+			console.log("Ollama all models response:", data);
 			replaceLastSpinner();
-			
-			if (data.success && data.data && data.data.models) {
-				var models = data.data.models;
-				if (models.length === 0) {
-					appendTerminalOutput("No models installed.");
-					appendTerminalOutput("Run 'ollama pull <model>' to install a model.");
-				} else {
-					appendTerminalOutput("Installed Models (" + models.length + "):");
+
+			if (data.success && data.data) {
+				var modelData = data.data;
+				var installedModels = modelData.installed || [];
+				var availableModels = modelData.available || [];
+
+				// Show installed models first
+				if (installedModels.length === 0) {
+					appendTerminalOutput("Installed Models (0):");
 					appendTerminalOutput("");
-					
-					for (var i = 0; i < models.length; i++) {
-						var model = models[i];
+					appendTerminalOutput("  No models installed.");
+				} else {
+					appendTerminalOutput("Installed Models (" + installedModels.length + "):");
+					appendTerminalOutput("");
+					for (var i = 0; i < installedModels.length; i++) {
+						var model = installedModels[i];
 						var sizeGB = (model.size / (1024 * 1024 * 1024)).toFixed(1);
 						appendTerminalOutput("  " + model.name + " (" + sizeGB + " GB)");
 					}
 				}
+
+				appendTerminalOutput("");
+				appendTerminalOutput("Available Models for Installation:");
+				appendTerminalOutput("");
+
+				// Group available models by category
+				var groupedModels = {
+					'Llama Models': [],
+					'Code Models': [],
+					'Mistral Models': [],
+					'Gemma Models': [],
+					'DeepSeek Models': [],
+					'Other Models': []
+				};
+
+				for (var i = 0; i < availableModels.length; i++) {
+					var model = availableModels[i];
+					if (model.startsWith('llama')) {
+						groupedModels['Llama Models'].push(model);
+					} else if (model.startsWith('code') || model.includes('coder')) {
+						groupedModels['Code Models'].push(model);
+					} else if (model.startsWith('mistral') || model.includes('mixtral')) {
+						groupedModels['Mistral Models'].push(model);
+					} else if (model.startsWith('gemma')) {
+						groupedModels['Gemma Models'].push(model);
+					} else if (model.startsWith('deepseek')) {
+						groupedModels['DeepSeek Models'].push(model);
+					} else {
+						groupedModels['Other Models'].push(model);
+					}
+				}
+
+				// Display models by category
+				for (var category in groupedModels) {
+					if (groupedModels[category].length > 0) {
+						appendTerminalOutput("  " + category + ":");
+						for (var j = 0; j < groupedModels[category].length; j++) {
+							appendTerminalOutput("    " + groupedModels[category][j]);
+						}
+						appendTerminalOutput("");
+					}
+				}
+
+				appendTerminalOutput("Use 'ollama pull <model>' to install a model.");
+				appendTerminalOutput("Example: ollama pull llama3.2:latest");
 			} else {
 				appendTerminalOutput("✗ " + (data.message || "Failed to list models"));
-				if (data.message && data.message.includes("connection")) {
-					appendTerminalOutput("Make sure Ollama service is running: 'ollama start'");
-				}
 			}
-			
+
 			finishCommand();
 		})
 		.fail(function(xhr, status, error) {
 			console.log("Ollama models error:", xhr, status, error);
 			replaceLastSpinner();
-			appendTerminalOutput("✗ Failed to list models: " + (xhr.responseText || error));
+
+			var errorMsg = "✗ Failed to list models";
+			if (xhr.responseJSON && xhr.responseJSON.message) {
+				errorMsg += ": " + xhr.responseJSON.message;
+			} else if (xhr.status === 503) {
+				errorMsg += ": Ollama service is not running";
+			} else {
+				errorMsg += ": " + (error || status);
+			}
+
+			appendTerminalOutput(errorMsg);
+			if (xhr.status === 503) {
+				appendTerminalOutput("Make sure Ollama service is running: 'ollama start'");
+			}
+
 			finishCommand();
 		});
 }
@@ -753,7 +813,7 @@ function getOllamaModelInfo(model) {
 }
 
 function installRecommendedModels() {
-	appendTerminalOutput("This will install: llama3.2, codellama, and mistral");
+	appendTerminalOutput("This will install: llama3.2, codellama, mistral, gemma2:2b, and phi3:mini");
 	appendTerminalOutput("This may take several minutes.");
 	appendTerminalOutput("⠋ Installing recommended models...", true);
 	

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::services::ollama::OllamaService;
+use crate::services::llms::ollama::OllamaService;
 
 /// Handle Ollama CLI commands in the TUI
 pub async fn handle_ollama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
@@ -213,20 +213,103 @@ async fn stop_ollama(service: &OllamaService, output_lines: &Arc<Mutex<Vec<Strin
 }
 
 async fn list_models(service: &OllamaService, output_lines: &Arc<Mutex<Vec<String>>>) {
-    match service.list_models().await {
-        Ok(models) => {
+    match service.list_all_models().await {
+        Ok((installed_models, available_models)) => {
             let mut lines = output_lines.lock().await;
-            if models.models.is_empty() {
-                lines.push("No models installed.".to_string());
-                lines.push("Run 'ollama pull <model>' to install a model.".to_string());
-            } else {
-                lines.push(format!("Installed Models ({}):", models.models.len()));
+
+            // Show installed models first
+            if installed_models.is_empty() {
+                lines.push("Installed Models (0):".to_string());
                 lines.push("".to_string());
-                for model in &models.models {
+                lines.push("  No models installed.".to_string());
+            } else {
+                lines.push(format!("Installed Models ({}):", installed_models.len()));
+                lines.push("".to_string());
+                for model in &installed_models {
                     let size_gb = model.size as f64 / (1024.0 * 1024.0 * 1024.0);
                     lines.push(format!("  {} ({:.1} GB)", model.name, size_gb));
                 }
             }
+
+            lines.push("".to_string());
+            lines.push("Available Models for Installation:".to_string());
+            lines.push("".to_string());
+
+            // Group available models by category for better organization
+            let mut llama_models = Vec::new();
+            let mut code_models = Vec::new();
+            let mut mistral_models = Vec::new();
+            let mut gemma_models = Vec::new();
+            let mut deepseek_models = Vec::new();
+            let mut other_models = Vec::new();
+
+            for model in &available_models {
+                if model.starts_with("llama") {
+                    llama_models.push(model);
+                } else if model.starts_with("code") || model.contains("coder") {
+                    code_models.push(model);
+                } else if model.starts_with("mistral") || model.contains("mixtral") {
+                    mistral_models.push(model);
+                } else if model.starts_with("gemma") {
+                    gemma_models.push(model);
+                } else if model.starts_with("deepseek") {
+                    deepseek_models.push(model);
+                } else {
+                    other_models.push(model);
+                }
+            }
+
+            // Display models by category
+            if !llama_models.is_empty() {
+                lines.push("  Llama Models:".to_string());
+                for model in llama_models {
+                    lines.push(format!("    {}", model));
+                }
+                lines.push("".to_string());
+            }
+
+            if !code_models.is_empty() {
+                lines.push("  Code Models:".to_string());
+                for model in code_models {
+                    lines.push(format!("    {}", model));
+                }
+                lines.push("".to_string());
+            }
+
+            if !mistral_models.is_empty() {
+                lines.push("  Mistral Models:".to_string());
+                for model in mistral_models {
+                    lines.push(format!("    {}", model));
+                }
+                lines.push("".to_string());
+            }
+
+            if !gemma_models.is_empty() {
+                lines.push("  Gemma Models:".to_string());
+                for model in gemma_models {
+                    lines.push(format!("    {}", model));
+                }
+                lines.push("".to_string());
+            }
+
+            if !deepseek_models.is_empty() {
+                lines.push("  DeepSeek Models:".to_string());
+                for model in deepseek_models {
+                    lines.push(format!("    {}", model));
+                }
+                lines.push("".to_string());
+            }
+
+            if !other_models.is_empty() {
+                lines.push("  Other Models:".to_string());
+                for model in other_models {
+                    lines.push(format!("    {}", model));
+                }
+                lines.push("".to_string());
+            }
+
+            lines.push("Use 'ollama pull <model>' to install a model.".to_string());
+            lines.push("Example: ollama pull llama3.2:latest".to_string());
         }
         Err(e) => {
             let mut lines = output_lines.lock().await;
@@ -411,12 +494,12 @@ async fn generate_text(service: &OllamaService, model: &str, prompt: &str, outpu
 
 async fn install_recommended_models(service: &OllamaService, output_lines: &Arc<Mutex<Vec<String>>>) {
     let mut lines = output_lines.lock().await;
-    lines.push("This will install: llama3.2, codellama, and mistral".to_string());
+    lines.push("This will install: llama3.2, codellama, mistral, gemma2:2b, and phi3:mini".to_string());
     lines.push("This may take several minutes.".to_string());
     drop(lines);
-    
+
     let service_clone = service.clone();
-    
+
     crate::cli::spinner::run_with_spinner(
         output_lines,
         "Installing recommended models...",

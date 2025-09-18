@@ -1,0 +1,734 @@
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio::time::sleep;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+use super::coding_agent::CodingAgentService;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExecutionState {
+    Planning,
+    GeneratingSteps,
+    ExecutingCommand { step: usize, total: usize, command: String },
+    WaitingForConfirmation { step: usize, total: usize, command: String },
+    Completed,
+    Failed { error: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionStep {
+    pub description: String,
+    pub command: String,
+    pub output: Option<String>,
+    pub success: bool,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IncrementalExecution {
+    pub task_description: String,
+    pub state: ExecutionState,
+    pub steps: Vec<ExecutionStep>,
+    pub current_step: usize,
+    pub spinner_active: bool,
+    pub start_time: u64,
+    pub auto_execute: bool,
+}
+
+impl Default for IncrementalExecution {
+    fn default() -> Self {
+        Self {
+            task_description: String::new(),
+            state: ExecutionState::Planning,
+            steps: Vec::new(),
+            current_step: 0,
+            spinner_active: false,
+            start_time: 0,
+            auto_execute: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CodingAgentExecutor {
+    coding_agent: Arc<CodingAgentService>,
+    execution: Arc<Mutex<IncrementalExecution>>,
+}
+
+impl CodingAgentExecutor {
+    pub fn new(coding_agent: Arc<CodingAgentService>) -> Self {
+        Self {
+            coding_agent,
+            execution: Arc::new(Mutex::new(IncrementalExecution::default())),
+        }
+    }
+
+    /// Start incremental execution of a complex task
+    pub async fn execute_incremental_task(
+        &self,
+        task_description: &str,
+        current_dir: &std::path::PathBuf,
+        session_context: &[String],
+        auto_execute: bool,
+    ) -> Result<()> {
+        let start_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Initialize execution state
+        {
+            let mut execution = self.execution.lock().await;
+            execution.task_description = task_description.to_string();
+            execution.state = ExecutionState::Planning;
+            execution.steps.clear();
+            execution.current_step = 0;
+            execution.spinner_active = true;
+            execution.start_time = start_time;
+            execution.auto_execute = auto_execute;
+        }
+
+        // Phase 1: Generate execution plan
+        self.update_state(ExecutionState::GeneratingSteps).await;
+
+        let planning_prompt = format!(
+            "Break down this task into individual shell commands: '{}'
+
+CRITICAL REQUIREMENTS - FOLLOW EXACTLY:
+1. SEPARATE COMMANDS ONLY - NO && or ; or pipes
+2. ONE COMMAND PER LINE
+3. Use this exact format:
+```bash
+mkdir directory_name
+cd directory_name
+cargo new project_name
+```
+
+FORBIDDEN:
+- Do NOT use: mkdir foo && cd foo
+- Do NOT use: mkdir foo; cd foo
+- Do NOT combine commands
+
+ALLOWED COMMANDS ONLY: mkdir, cd, cargo, ls, pwd, cat, echo, touch, cp, mv, grep, find
+
+EXAMPLE for 'make directory foo and rust project bar':
+```bash
+mkdir foo
+cd foo
+cargo new bar
+```
+
+Task: {}",
+            task_description, task_description
+        );
+
+        let response = self.coding_agent.generate_response(
+            &planning_prompt,
+            current_dir,
+            session_context,
+            None,
+        ).await?;
+
+        // Parse the response into execution steps
+        let steps = self.parse_execution_steps(&response.response_text, task_description).await;
+
+        {
+            let mut execution = self.execution.lock().await;
+            execution.steps = steps;
+            execution.spinner_active = false;
+        }
+
+        // Phase 2: Execute steps incrementally
+        if auto_execute {
+            self.execute_all_steps(current_dir).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Parse AI response into executable steps
+    async fn parse_execution_steps(&self, response: &str, task_description: &str) -> Vec<ExecutionStep> {
+        let mut steps = Vec::new();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Try multiple parsing strategies
+
+        // Strategy 1: Look for markdown code blocks
+        if let Ok(regex) = regex::Regex::new(r"```(?:bash|shell|sh)?\n(.+?)\n```") {
+            for captures in regex.captures_iter(response) {
+                if let Some(code_block) = captures.get(1) {
+                    for line in code_block.as_str().lines() {
+                        let command = line.trim();
+                        if !command.is_empty() && !command.starts_with('#') {
+                            if command.contains("&&") || command.contains(";") {
+                                // Split compound commands
+                                let compound_steps = self.split_compound_command(command, timestamp);
+                                steps.extend(compound_steps);
+                            } else if let Some(step) = self.create_execution_step(command, timestamp) {
+                                steps.push(step);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy 2: Look for backtick-wrapped commands
+        if steps.is_empty() {
+            if let Ok(regex) = regex::Regex::new(r"`([^`]+)`") {
+                for captures in regex.captures_iter(response) {
+                    if let Some(command_match) = captures.get(1) {
+                        let command = command_match.as_str().trim();
+                        if command.contains("&&") || command.contains(";") {
+                            // Split compound commands
+                            let compound_steps = self.split_compound_command(command, timestamp);
+                            steps.extend(compound_steps);
+                        } else if let Some(step) = self.create_execution_step(command, timestamp) {
+                            steps.push(step);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy 3: Line-by-line parsing for direct commands
+        if steps.is_empty() {
+            for line in response.lines() {
+                let line = line.trim();
+
+                // Skip empty lines and comments
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+
+                // Skip long explanatory lines
+                if line.len() > 100 {
+                    continue;
+                }
+
+                // Check if line starts with a known command
+                if line.contains("&&") || line.contains(";") {
+                    // Split compound commands
+                    let compound_steps = self.split_compound_command(line, timestamp);
+                    steps.extend(compound_steps);
+                } else if let Some(step) = self.create_execution_step(line, timestamp) {
+                    steps.push(step);
+                }
+            }
+        }
+
+        // Strategy 4: Manual fallback for common patterns
+        if steps.is_empty() {
+            steps = self.create_fallback_steps(task_description, timestamp);
+        }
+
+        steps
+    }
+
+    /// Create execution steps from a command, splitting compound commands if needed
+    fn create_execution_step(&self, command: &str, timestamp: u64) -> Option<ExecutionStep> {
+        // Split compound commands that contain && or ;
+        if command.contains("&&") || command.contains(";") {
+            // Return None to let compound commands be handled elsewhere
+            return None;
+        }
+
+        let cmd_parts: Vec<&str> = command.split_whitespace().collect();
+        if !cmd_parts.is_empty() && self.is_valid_command(&cmd_parts[0]) {
+            Some(ExecutionStep {
+                description: self.get_command_description(command),
+                command: command.to_string(),
+                output: None,
+                success: false,
+                timestamp,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Split compound commands into individual steps
+    fn split_compound_command(&self, command: &str, timestamp: u64) -> Vec<ExecutionStep> {
+        let mut steps = Vec::new();
+
+        // Split on && or ;
+        let individual_commands: Vec<&str> = if command.contains("&&") {
+            command.split("&&").collect()
+        } else if command.contains(";") {
+            command.split(";").collect()
+        } else {
+            vec![command]
+        };
+
+        for cmd in individual_commands {
+            let trimmed_cmd = cmd.trim();
+            if let Some(step) = self.create_execution_step(trimmed_cmd, timestamp) {
+                steps.push(step);
+            }
+        }
+
+        steps
+    }
+
+    /// Create fallback steps for common task patterns
+    fn create_fallback_steps(&self, task_description: &str, timestamp: u64) -> Vec<ExecutionStep> {
+        let lower_task = task_description.to_lowercase();
+        let mut steps = Vec::new();
+
+        // Pattern: "make a new directory called X and in it create a rust project called Y"
+        if (lower_task.contains("directory") || lower_task.contains("folder")) &&
+           (lower_task.contains("rust project") || lower_task.contains("rust")) {
+
+            // Try multiple regex patterns to be more flexible
+            let patterns = [
+                r"directory called (\w+).*(?:rust project called|rust project named|project called|project named) (\w+)",
+                r"folder called (\w+).*(?:rust project called|rust project named|project called|project named) (\w+)",
+                r"directory (\w+).*(?:rust project|project) (\w+)",
+                r"folder (\w+).*(?:rust project|project) (\w+)",
+            ];
+
+            for pattern in &patterns {
+                if let Ok(regex) = regex::Regex::new(pattern) {
+                    if let Some(captures) = regex.captures(&lower_task) {
+                        let dir_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_dir");
+                        let project_name = captures.get(2).map(|m| m.as_str()).unwrap_or("new_project");
+
+                        steps.push(ExecutionStep {
+                            description: format!("Creating directory {}", dir_name),
+                            command: format!("mkdir {}", dir_name),
+                            output: None,
+                            success: false,
+                            timestamp,
+                        });
+
+                        steps.push(ExecutionStep {
+                            description: format!("Changing to directory {}", dir_name),
+                            command: format!("cd {}", dir_name),
+                            output: None,
+                            success: false,
+                            timestamp,
+                        });
+
+                        steps.push(ExecutionStep {
+                            description: format!("Creating Rust project {}", project_name),
+                            command: format!("cargo new {}", project_name),
+                            output: None,
+                            success: false,
+                            timestamp,
+                        });
+
+                        return steps;
+                    }
+                }
+            }
+        }
+
+        // Pattern: "create a rust project called X"
+        if lower_task.contains("rust project") {
+            if let Ok(regex) = regex::Regex::new(r"rust project called (\w+)") {
+                if let Some(captures) = regex.captures(&lower_task) {
+                    let project_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_project");
+
+                    steps.push(ExecutionStep {
+                        description: format!("Creating Rust project {}", project_name),
+                        command: format!("cargo new {}", project_name),
+                        output: None,
+                        success: false,
+                        timestamp,
+                    });
+
+                    return steps;
+                }
+            }
+        }
+
+        // Pattern: "make directory X"
+        if lower_task.contains("directory") {
+            if let Ok(regex) = regex::Regex::new(r"directory (?:called )?(\w+)") {
+                if let Some(captures) = regex.captures(&lower_task) {
+                    let dir_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_dir");
+
+                    steps.push(ExecutionStep {
+                        description: format!("Creating directory {}", dir_name),
+                        command: format!("mkdir {}", dir_name),
+                        output: None,
+                        success: false,
+                        timestamp,
+                    });
+
+                    return steps;
+                }
+            }
+        }
+
+        // Final fallback
+        steps.push(ExecutionStep {
+            description: format!("Execute task: {}", task_description),
+            command: "echo 'Task needs manual implementation'".to_string(),
+            output: None,
+            success: false,
+            timestamp,
+        });
+
+        steps
+    }
+
+    /// Get a human-readable description for a command
+    fn get_command_description(&self, command: &str) -> String {
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            return command.to_string();
+        }
+
+        match parts[0] {
+            "mkdir" => format!("Creating directory {}", parts.get(1).unwrap_or(&"<name>")),
+            "cd" => format!("Changing to directory {}", parts.get(1).unwrap_or(&"<dir>")),
+            "cargo" if parts.get(1) == Some(&"new") => {
+                format!("Creating new Rust project {}", parts.get(2).unwrap_or(&"<name>"))
+            },
+            "touch" => format!("Creating file {}", parts.get(1).unwrap_or(&"<file>")),
+            "echo" => format!("Writing content to file"),
+            "cp" => format!("Copying files"),
+            "mv" => format!("Moving/renaming files"),
+            "ls" => format!("Listing directory contents"),
+            "cat" => format!("Displaying file contents"),
+            _ => command.to_string(),
+        }
+    }
+
+    /// Check if a command is valid/safe
+    fn is_valid_command(&self, cmd: &str) -> bool {
+        let safe_commands = [
+            "mkdir", "cd", "touch", "echo", "cat", "ls", "pwd", "cp", "mv",
+            "cargo", "git", "grep", "find", "head", "tail", "wc", "sort",
+            "uniq", "tree", "file", "stat", "which", "basename", "dirname",
+            "clear", "date", "whoami", "id", "uname"
+        ];
+
+        safe_commands.contains(&cmd)
+    }
+
+    /// Execute all steps automatically
+    async fn execute_all_steps(&self, current_dir: &std::path::PathBuf) -> Result<()> {
+        let step_count = {
+            let execution = self.execution.lock().await;
+            execution.steps.len()
+        };
+
+        for i in 0..step_count {
+            // Update state to show current step
+            let command = {
+                let execution = self.execution.lock().await;
+                execution.steps[i].command.clone()
+            };
+
+            self.update_state(ExecutionState::ExecutingCommand {
+                step: i + 1,
+                total: step_count,
+                command: command.clone(),
+            }).await;
+
+            // Small delay for visual feedback
+            sleep(Duration::from_millis(500)).await;
+
+            // Execute the command
+            let result = self.execute_single_command(&command, current_dir).await;
+
+            // Update step with result
+            {
+                let mut execution = self.execution.lock().await;
+                // For diagnostic commands, trim very long outputs but preserve important info
+                let trimmed_result = if result.len() > 1000 && command.contains("cargo") {
+                    // For cargo commands, try to preserve error messages
+                    if result.contains("error:") {
+                        // Find and preserve error lines
+                        let lines: Vec<&str> = result.lines().collect();
+                        let mut important_lines = Vec::new();
+                        let mut in_error = false;
+
+                        for line in lines.iter().take(50) {  // Limit to first 50 lines
+                            if line.contains("error:") || line.contains("Error:") {
+                                in_error = true;
+                                important_lines.push(*line);
+                            } else if in_error && (line.starts_with("  ") || line.starts_with("   ")) {
+                                important_lines.push(*line);
+                            } else if line.contains("warning:") && important_lines.len() < 10 {
+                                important_lines.push(*line);
+                            } else if !line.trim().is_empty() && important_lines.len() < 20 {
+                                important_lines.push(*line);
+                                in_error = false;
+                            }
+                        }
+
+                        if important_lines.len() > 0 {
+                            format!("{}\n... (output truncated, {} total characters)",
+                                important_lines.join("\n"), result.len())
+                        } else {
+                            format!("{}... (truncated from {} characters)",
+                                &result[..500.min(result.len())], result.len())
+                        }
+                    } else {
+                        format!("{}... (truncated from {} characters)",
+                            &result[..500.min(result.len())], result.len())
+                    }
+                } else {
+                    result.clone()
+                };
+
+                execution.steps[i].output = Some(trimmed_result);
+                execution.steps[i].success = !result.contains("Error:") && !result.contains("Command failed") && !result.contains("error:");
+                execution.current_step = i + 1;
+            }
+
+            // If command failed and it's critical, stop execution
+            if result.contains("Error:") && self.is_critical_command(&command) {
+                self.update_state(ExecutionState::Failed {
+                    error: format!("Critical command failed: {}", command)
+                }).await;
+                return Ok(());
+            }
+
+            // Brief pause between commands
+            sleep(Duration::from_millis(200)).await;
+        }
+
+        self.update_state(ExecutionState::Completed).await;
+        Ok(())
+    }
+
+    /// Execute a single command with retry logic
+    async fn execute_single_command(&self, command: &str, current_dir: &std::path::PathBuf) -> String {
+        self.execute_single_command_with_retry(command, current_dir, 3).await
+    }
+
+    /// Execute a single command with configurable retry attempts
+    async fn execute_single_command_with_retry(&self, command: &str, current_dir: &std::path::PathBuf, max_retries: u32) -> String {
+        // Handle cd command specially since it doesn't work in child processes
+        if command.starts_with("cd ") {
+            return self.handle_cd_command(command, current_dir).await;
+        }
+
+        // For other commands, implement retry logic
+        let mut last_error = String::new();
+        for attempt in 0..max_retries {
+            match self.coding_agent.execute_command(command, false).await {
+                Ok(output) => {
+                    // If previous attempts failed but this one succeeded, note the recovery
+                    if attempt > 0 {
+                        return format!(
+                            "{}\n[Note: Command succeeded on attempt {} after {} failures]",
+                            output,
+                            attempt + 1,
+                            attempt
+                        );
+                    }
+                    return output;
+                }
+                Err(e) => {
+                    last_error = format!("Error: {}", e);
+
+                    // Don't retry for certain types of errors
+                    if self.is_non_retryable_error(&last_error) {
+                        break;
+                    }
+
+                    // Wait before retrying (exponential backoff)
+                    if attempt < max_retries - 1 {
+                        let delay_ms = 100 * (2_u64.pow(attempt));
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                    }
+                }
+            }
+        }
+
+        // All attempts failed
+        format!("{}\n[Command failed after {} attempts]", last_error, max_retries)
+    }
+
+    /// Handle cd command with directory validation and retry logic
+    async fn handle_cd_command(&self, command: &str, current_dir: &std::path::PathBuf) -> String {
+        let target_dir = command.strip_prefix("cd ").unwrap_or("").trim();
+        if target_dir.is_empty() {
+            return "Changed to home directory".to_string();
+        }
+
+        // Get the current working directory first
+        let current_working_dir = match std::env::current_dir() {
+            Ok(dir) => dir,
+            Err(_) => current_dir.clone(),
+        };
+
+        // For relative paths, make them relative to current working directory
+        let full_path = if std::path::Path::new(target_dir).is_absolute() {
+            std::path::PathBuf::from(target_dir)
+        } else {
+            current_working_dir.join(target_dir)
+        };
+
+        // Check if directory exists before trying to change
+        // Add a small retry mechanism in case of timing issues
+        let mut attempts = 0;
+        let max_attempts = 3;
+
+        while attempts < max_attempts {
+            if full_path.exists() && full_path.is_dir() {
+                break;
+            }
+
+            attempts += 1;
+            if attempts < max_attempts {
+                // Small delay to handle potential timing issues
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+        }
+
+        if !full_path.exists() {
+            return format!("Error: Directory '{}' does not exist", full_path.display());
+        }
+
+        if !full_path.is_dir() {
+            return format!("Error: '{}' is not a directory", full_path.display());
+        }
+
+        match std::env::set_current_dir(&full_path) {
+            Ok(()) => format!("Changed directory to {}", full_path.display()),
+            Err(e) => format!("Error: Failed to change directory: {}", e),
+        }
+    }
+
+    /// Check if an error should not be retried
+    fn is_non_retryable_error(&self, error_msg: &str) -> bool {
+        let non_retryable_patterns = [
+            "not in the safe command list",
+            "Command not found",
+            "Permission denied",
+            "File not found",
+            "Directory not found",
+            "Invalid argument",
+            "Syntax error",
+            "parse error",
+        ];
+
+        non_retryable_patterns.iter().any(|pattern| error_msg.contains(pattern))
+    }
+
+    /// Check if a command is critical (failure should stop execution)
+    fn is_critical_command(&self, command: &str) -> bool {
+        let cmd_parts: Vec<&str> = command.split_whitespace().collect();
+        if cmd_parts.is_empty() {
+            return false;
+        }
+
+        // For diagnostic/analysis commands, failures shouldn't stop execution
+        // Only project creation commands are truly critical
+        if cmd_parts[0] == "cargo" {
+            match cmd_parts.get(1) {
+                Some(&"new") | Some(&"init") => true,  // Project creation is critical
+                Some(&"check") | Some(&"test") | Some(&"clippy") | Some(&"build") | Some(&"run") => false, // Diagnostic commands are not critical
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Update execution state
+    async fn update_state(&self, new_state: ExecutionState) {
+        let mut execution = self.execution.lock().await;
+        execution.state = new_state;
+        execution.spinner_active = matches!(execution.state,
+            ExecutionState::Planning |
+            ExecutionState::GeneratingSteps |
+            ExecutionState::ExecutingCommand { .. }
+        );
+    }
+
+    /// Get current execution state (for UI updates)
+    pub async fn get_execution_state(&self) -> IncrementalExecution {
+        self.execution.lock().await.clone()
+    }
+
+    /// Check if execution is active
+    pub async fn is_executing(&self) -> bool {
+        let execution = self.execution.lock().await;
+        matches!(execution.state,
+            ExecutionState::Planning |
+            ExecutionState::GeneratingSteps |
+            ExecutionState::ExecutingCommand { .. } |
+            ExecutionState::WaitingForConfirmation { .. }
+        )
+    }
+
+    /// Get spinner text based on current state
+    pub async fn get_spinner_text(&self) -> String {
+        let execution = self.execution.lock().await;
+        match &execution.state {
+            ExecutionState::Planning => "🤖 Planning task...".to_string(),
+            ExecutionState::GeneratingSteps => "🧠 Generating execution steps...".to_string(),
+            ExecutionState::ExecutingCommand { step, total, command } => {
+                format!("⚡ [{}/{}] {}", step, total, self.get_command_description(command))
+            },
+            ExecutionState::WaitingForConfirmation { step, total, command } => {
+                format!("⏳ [{}/{}] Confirm: {}", step, total, command)
+            },
+            ExecutionState::Completed => "✅ Task completed!".to_string(),
+            ExecutionState::Failed { error } => format!("❌ Failed: {}", error),
+        }
+    }
+
+    /// Cancel current execution
+    pub async fn cancel_execution(&self) {
+        let mut execution = self.execution.lock().await;
+        execution.state = ExecutionState::Failed {
+            error: "Cancelled by user".to_string()
+        };
+        execution.spinner_active = false;
+    }
+
+    /// Get formatted execution log for display
+    pub async fn get_execution_log(&self) -> Vec<String> {
+        let execution = self.execution.lock().await;
+        let mut log = Vec::new();
+
+        log.push(format!("🎯 Task: {}", execution.task_description));
+        log.push("".to_string());
+
+        for (i, step) in execution.steps.iter().enumerate() {
+            let status = if i < execution.current_step {
+                if step.success { "✅" } else { "❌" }
+            } else if i == execution.current_step {
+                "⚡"
+            } else {
+                "⏳"
+            };
+
+            log.push(format!("{} {}", status, step.description));
+            log.push(format!("   Command: {}", step.command));
+
+            if let Some(output) = &step.output {
+                if !output.is_empty() {
+                    let trimmed_output = if output.len() > 200 {
+                        format!("{}...", &output[..200])
+                    } else {
+                        output.clone()
+                    };
+                    log.push(format!("   Output: {}", trimmed_output));
+                }
+            }
+            log.push("".to_string());
+        }
+
+        match &execution.state {
+            ExecutionState::Completed => log.push("🎉 All steps completed successfully!".to_string()),
+            ExecutionState::Failed { error } => log.push(format!("💥 Execution failed: {}", error)),
+            _ => {}
+        }
+
+        log
+    }
+}

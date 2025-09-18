@@ -2,7 +2,7 @@ use rouille::{Request, Response, input::json::JsonError};
 use serde::{Deserialize, Serialize};
 use log::{info, error};
 use std::collections::HashMap;
-use crate::services::ollama::OllamaService;
+use crate::services::llms::ollama::OllamaService;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaStatus {
@@ -11,6 +11,14 @@ pub struct OllamaStatus {
     pub version: Option<String>,
     pub models: Vec<String>,
     pub status_text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AllModelsResponse {
+    pub installed: Vec<crate::services::llms::ollama::OllamaModel>,
+    pub available: Vec<String>,
+    pub total_installed: usize,
+    pub total_available: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,10 +67,11 @@ pub fn handle(request: &Request) -> Result<Response, crate::http::Error> {
 
 fn handle_get_request(url: &str) -> Result<Response, crate::http::Error> {
     let rt = tokio::runtime::Runtime::new()?;
-    
+
     match url {
         "/api/ollama/status" => rt.block_on(get_ollama_status()),
         "/api/ollama/models" => rt.block_on(list_models()),
+        "/api/ollama/models/all" => rt.block_on(list_all_models()),
         "/api/ollama/models/available" => rt.block_on(search_available_models("")),
         _ if url.starts_with("/api/ollama/models/available/") => {
             let query = url.trim_start_matches("/api/ollama/models/available/");
@@ -230,9 +239,9 @@ async fn stop_service() -> Result<Response, crate::http::Error> {
 
 async fn list_models() -> Result<Response, crate::http::Error> {
     info!("Listing Ollama models");
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     if !service.is_running().await {
         let response = ApiResponse {
             success: false,
@@ -241,7 +250,7 @@ async fn list_models() -> Result<Response, crate::http::Error> {
         };
         return Ok(Response::json(&response).with_status_code(503));
     }
-    
+
     match service.list_models().await {
         Ok(models) => {
             let response = ApiResponse {
@@ -256,6 +265,39 @@ async fn list_models() -> Result<Response, crate::http::Error> {
             let response = ApiResponse {
                 success: false,
                 message: format!("Failed to list models: {}", e),
+                data: None,
+            };
+            Ok(Response::json(&response).with_status_code(500))
+        }
+    }
+}
+
+async fn list_all_models() -> Result<Response, crate::http::Error> {
+    info!("Listing all Ollama models (installed and available)");
+
+    let service = OllamaService::new_with_defaults();
+
+    match service.list_all_models().await {
+        Ok((installed_models, available_models)) => {
+            let all_models = AllModelsResponse {
+                total_installed: installed_models.len(),
+                total_available: available_models.len(),
+                installed: installed_models,
+                available: available_models,
+            };
+
+            let response = ApiResponse {
+                success: true,
+                message: format!("Found {} installed and {} available models", all_models.total_installed, all_models.total_available),
+                data: Some(serde_json::to_value(all_models).map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?),
+            };
+            Ok(Response::json(&response))
+        },
+        Err(e) => {
+            error!("Failed to list all models: {}", e);
+            let response = ApiResponse {
+                success: false,
+                message: format!("Failed to list all models: {}", e),
                 data: None,
             };
             Ok(Response::json(&response).with_status_code(500))

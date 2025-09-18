@@ -46,7 +46,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     move || {
                         let prompt = prompt.clone();
                         async move {
-                            crate::services::llama::LlamaService::query_v2(&prompt)
+                            crate::services::llms::llama::LlamaService::query_v2(&prompt)
                                 .unwrap_or_else(|e| format!("llama2 error: {}", e))
                         }
                     },
@@ -67,7 +67,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     move || {
                         let prompt = prompt.clone();
                         async move {
-                            crate::services::llama::LlamaService::query_v2_tiny(&prompt)
+                            crate::services::llms::llama::LlamaService::query_v2_tiny(&prompt)
                                 .unwrap_or_else(|e| format!("llama2-tiny error: {}", e))
                         }
                     },
@@ -120,7 +120,7 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                     let model_path = std::path::PathBuf::from(model_path_str.clone());
                     let prompt = prompt_str.clone();
                     async move {
-                        crate::services::llama::LlamaService::query(&model_path, &prompt)
+                        crate::services::llms::llama::LlamaService::query(&model_path, &prompt)
                             .unwrap_or_else(|e| format!("llama error: {}", e))
                     }
                 },

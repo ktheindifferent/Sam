@@ -100,6 +100,19 @@ impl Config {
             });
         });
 
+        // Start SSH server for remote TUI access
+        thread_manager::spawn("ssh-server", move |shutdown_signal, _health_rx| {
+            let runtime = tokio::runtime::Runtime::new().expect("Failed to create SSH runtime");
+            
+            runtime.block_on(async {
+                log::info!("Starting SSH server on port 2222");
+                match crate::services::ssh::server::start_ssh_server().await {
+                    Ok(_) => log::info!("SSH server started successfully"),
+                    Err(e) => log::error!("Failed to start SSH server: {}", e),
+                }
+            });
+        });
+
         // Initialize and start crawler service
         thread_manager::spawn("crawler-service", move |shutdown_signal, _health_rx| {
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create crawler runtime");

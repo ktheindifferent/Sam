@@ -108,6 +108,13 @@ impl From<&str> for CommonError {
     }
 }
 
+#[cfg(feature = "nst")]
+impl From<tch::TchError> for CommonError {
+    fn from(err: tch::TchError) -> Self {
+        CommonError::External(Box::new(err))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, CommonError>;
 
 pub trait ErrorContext<T> {

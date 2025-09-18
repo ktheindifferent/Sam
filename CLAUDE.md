@@ -80,6 +80,7 @@ psql -U $USER -c "CREATE DATABASE sam OWNER sam;"
 │       │   ├── matter.rs        # Matter protocol support
 │       │   ├── mdns.rs          # Service discovery
 │       │   ├── ssh.rs           # SSH client operations
+│       │   ├── ssh_server.rs    # SSH server for remote TUI access
 │       │   ├── backup.rs        # Backup management
 │       │   ├── monitoring.rs    # System monitoring
 │       │   ├── cache.rs         # Hybrid caching layer
@@ -118,6 +119,7 @@ psql -U $USER -c "CREATE DATABASE sam OWNER sam;"
 ├── benches/                     # Performance benchmarks
 ├── scripts/                     # Utility scripts
 ├── nginx-websocket.conf        # WebSocket proxy config
+├── ssh_connect.sh             # SSH connection helper script
 └── fix_postgres_permissions.sh # Database setup helper
 ```
 
@@ -146,7 +148,30 @@ psql -U $USER -c "CREATE DATABASE sam OWNER sam;"
 - Automatic reconnection with exponential backoff
 - Channel-based pub/sub system
 
-### 3. Services Architecture
+### 3. Remote Access Server (Port 2222)
+- Remote command server with SSH tunneling support
+- Multiple connection methods: direct telnet, SSH tunneling, or netcat
+- Built-in authentication with configurable credentials
+- Interactive command shell with SAM-specific commands
+- Real-time service status monitoring
+- SSH-compatible access via port forwarding or command execution
+- Configurable via environment variables:
+  - `SSH_SERVER_PORT` (default: 2222)
+  - `SSH_USERNAME` (default: "sam")  
+  - `SSH_PASSWORD` (default: "sam")
+- Available commands:
+  - `help` - Show available commands
+  - `status` - Display service status
+  - `services` - List all services
+  - `system` - Show system information
+  - `tui` - Enter TUI mode (planned)
+  - `exit`/`quit` - Disconnect
+- Connection methods:
+  - **Direct**: `telnet hostname 2222` or `nc hostname 2222`
+  - **SSH Tunnel**: `ssh -L 2222:localhost:2222 user@hostname` then `telnet localhost 2222`
+  - **SSH Command**: `ssh user@hostname "nc localhost 2222"`
+
+### 4. Services Architecture
 
 #### Core Infrastructure Services
 - **Redis**: High-performance cache with circuit breaker, connection pooling via deadpool-redis
@@ -184,8 +209,9 @@ psql -U $USER -c "CREATE DATABASE sam OWNER sam;"
 - **System Monitor**: CPU, memory, disk monitoring via sysinfo
 - **Backup Services**: Automated backup with encryption
 
-### 4. Terminal UI (TUI)
+### 5. Terminal UI (TUI)
 - Built with ratatui and crossterm
+- Available locally in interactive mode and remotely via SSH server
 - Navigation modes (F1-F7):
   - F1: Command mode (default)
   - F2: Services management
@@ -195,9 +221,10 @@ psql -U $USER -c "CREATE DATABASE sam OWNER sam;"
   - F6: File browser
   - F7: Help screen
 - Real-time updates using channels
-- Service status indicators with color coding
+- Service status indicators with color coding (includes SSH server status)
 - Resource usage graphs
 - Interactive command prompt
+- Remote access via SSH server on port 2222 (configurable)
 
 ## Environment Variables
 
@@ -222,6 +249,11 @@ POSTGRES_URL=postgresql://sam:sam@srv-captain--sam-db:5432/sam
 ```bash
 DATABASE_ENGINE=postgres  # or 'sqlite' for lightweight deployment
 JWT_SECRET=your-secret   # For WebSocket authentication
+
+# Remote Access Server configuration
+SSH_SERVER_PORT=2222     # Remote access server port (default: 2222)
+SSH_USERNAME=sam         # Login username (default: "sam")
+SSH_PASSWORD=sam         # Login password (default: "sam")
 ```
 
 ## WebSocket Protocol
@@ -300,6 +332,10 @@ JWT_SECRET=your-secret   # For WebSocket authentication
 2. Configure external Redis/PostgreSQL URLs
 3. Set up Nginx reverse proxy (see `nginx-websocket.conf`)
 4. Ensure WebSocket endpoint `/ws` is proxied to port 8080
+5. Configure SSH server access:
+   - Ensure port 2222 is accessible (or configure SSH_SERVER_PORT)
+   - Set SSH_USERNAME and SSH_PASSWORD environment variables for security
+   - Consider firewall rules for SSH server port
 
 ## Known Issues & Solutions
 
@@ -318,6 +354,19 @@ JWT_SECRET=your-secret   # For WebSocket authentication
 ### Issue: Too many WebSocket connections
 **Solution**: Connection limit is 20 per IP. Restart server or increase limit in `security.rs`
 
+### Issue: SSH server connection refused
+**Solution**: 
+- Check if SSH server is running in serve mode (not available in interactive TUI mode)
+- Verify SSH_SERVER_PORT is not blocked by firewall
+- Ensure port 2222 (or configured port) is available
+- Check SSH server status in TUI or WebSocket dashboard
+
+### Issue: SSH authentication failed
+**Solution**:
+- Verify SSH_USERNAME and SSH_PASSWORD environment variables
+- Default credentials are username="sam", password="sam"
+- Check SSH server logs for authentication attempts
+
 ## Testing Checklist
 
 Before committing changes:
@@ -331,6 +380,9 @@ Before committing changes:
 - [ ] Verify API endpoints - Return JSON, not HTML for errors
 - [ ] Check memory usage - No leaks in long-running operations
 - [ ] Verify error handling - Graceful failures
+- [ ] Test remote access server - Connect via `telnet localhost 2222`
+- [ ] Verify remote access server status shows in TUI and dashboard  
+- [ ] Test remote access server commands (help, status, services, system)
 - [ ] Test with both PostgreSQL and SQLite backends
 - [ ] Verify Docker deployment works
 
@@ -367,6 +419,17 @@ websocat ws://localhost:8080/ws
 
 # Check service status via API
 curl http://localhost:8000/api/services/redis/status
+
+# Test remote access server connection
+./ssh_connect.sh                    # Use connection helper script
+# or directly:
+telnet localhost 2222               # Direct connection
+# or via SSH:
+ssh user@hostname "nc localhost 2222"  # SSH command execution
+# (use default username "sam" and password "sam")
+
+# Check if SSH server port is available
+lsof -i :2222
 
 # Monitor system resources
 htop

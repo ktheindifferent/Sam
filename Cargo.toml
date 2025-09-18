@@ -139,16 +139,35 @@ sha2 = "0.10"
 rusqlite = { version = "0.32", features = ["bundled", "chrono", "serde_json", "backup"] }
 diesel = { version = "2.2", features = ["sqlite", "postgres", "chrono", "serde_json"] }
 jsonwebtoken = "9.3"
+# Dependencies for coding agent modules
+petgraph = "0.6"
+tantivy = "0.22"
+semver = "1.0"
+md5 = "0.7"
 ssh2 = "0.9"
+russh = "0.44"
+russh-keys = "0.44"
 sentry = "0.34"
+# PyTorch bindings for Neural Style Transfer
+tch = { version = "0.20", optional = true }
+image = { version = "0.25", optional = true }
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
+nst = ["tch", "image"]
 
 [[bin]]
 name = "installer"
 test = false
 bench = false
+
+[[bin]]
+name = "coding_agent"
+path = "src/bin/coding_agent.rs"
+
+[[bin]]
+name = "coding_agent_interactive"
+path = "src/bin/coding_agent_interactive.rs"
 
 [lib]
 name = "libsam"
@@ -179,9 +198,9 @@ serial_test = "3.0"
 # Computer Vision and Deep Learning (optional - remove if not using)
 # opencv = { version = "0.92", features = ["opencv-4"] }
 # ort = { version = "2.0.0-rc.10", features = ["load-dynamic"] }
-# image = "0.25"
+image = "0.25"
 # imageproc = "0.25"
-# tch = "0.16"
+# tch = "0.16"  # Moved to optional dependencies section
 # candle-core = "0.7"
 # candle-nn = "0.7"
 # candle-transformers = "0.7"

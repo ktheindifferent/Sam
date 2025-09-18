@@ -46,6 +46,9 @@ pub mod sam;
 // use tui_logger;
 
 use std::env;
+use std::io::Write;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 // Store application version as a const, set at compile time
 // const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
@@ -71,20 +74,78 @@ fn build_tokio_runtime() -> tokio::runtime::Runtime {
         .expect("Failed to build Tokio runtime")
 }
 
+/// Setup dual logging to console and file
+fn setup_dual_logger(log_file: &std::path::Path, is_serve_mode: bool) {
+    use env_logger::{Builder, Target};
+
+    // Custom writer that writes to both console and file
+    struct DualWriter {
+        file: Arc<Mutex<std::fs::File>>,
+    }
+
+    impl std::io::Write for DualWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            // Write to console
+            std::io::stderr().write_all(buf)?;
+
+            // Write to file
+            if let Ok(mut file) = self.file.lock() {
+                file.write_all(buf)?;
+                file.flush()?;
+            }
+
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            std::io::stderr().flush()?;
+            if let Ok(mut file) = self.file.lock() {
+                file.flush()?;
+            }
+            Ok(())
+        }
+    }
+
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file)
+        .expect("Failed to open log file");
+
+    let file = Arc::new(Mutex::new(file));
+
+    // Only setup env_logger in serve mode or when explicitly requested
+    // In TUI mode, we use tui_logger instead
+    if is_serve_mode || env::var("RUST_LOG").is_ok() {
+        Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+            .target(Target::Pipe(Box::new(DualWriter { file })))
+            .init();
+    }
+}
+
 /// Main application initialization logic
 async fn initialize_application() {
     // Initialize Sentry for error tracking and monitoring
     let _sentry_guard = sam::monitoring::init_sentry();
     
     // Initialize logging first
-    // Don't use env_logger if we're going to use TUI (it conflicts with tui_logger)
-    // Only initialize env_logger in serve mode
+    // Setup logging to both console and file
     let args: Vec<String> = env::args().collect();
     let is_serve_mode = args.len() > 1 && args[1] == "serve";
-    
-    if is_serve_mode {
-        env_logger::init();
-    }
+
+    // Create .sam directory if it doesn't exist
+    let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let sam_dir = std::path::PathBuf::from(home).join(".sam");
+    let _ = std::fs::create_dir_all(&sam_dir);
+
+    // Setup logging to file
+    let log_file = sam_dir.join("output.log");
+
+    // Clear the log file at startup
+    let _ = std::fs::write(&log_file, format!("=== SAM Log Started at {} ===\n", chrono::Local::now()));
+
+    // Initialize dual logger (console + file) for all modes
+    setup_dual_logger(&log_file, is_serve_mode);
     
     setup_panic_handler();
     ensure_manifest_dir();

@@ -30,6 +30,7 @@ pub mod backup;
 pub mod backup_enhanced;
 pub mod cache;
 pub mod clamav;
+pub mod coding;
 pub mod copilot;
 pub mod crawler;
 pub mod darknet;
@@ -44,15 +45,13 @@ pub mod github;
 pub mod http;
 pub mod jupiter;
 pub mod lifx;
-pub mod llama;
+pub mod llms;
 pub mod matter;
-pub mod ollama;
 pub mod mdns;
 pub mod media;
 pub mod monitoring;
 // Nextcloud moved to fs/ submodule
 pub mod notifications;
-pub mod openai;
 pub mod orchestrator;
 pub mod osf;
 pub mod package_managers;
@@ -94,3 +93,9 @@ pub use http_client::{ApiClient, HttpClientConfig, SharedHttpClient};
 pub use retry::{ExponentialBackoffRetry, RetryConfig, RetryStrategy};
 pub use traits::{Service, ServiceFactory, ServiceHealth, ServiceRegistry};
 pub use validation::{ConfigValidator, ValidationError, Validator};
+
+// Re-export LLM services for convenience
+pub use llms::{LlamaService, OllamaService, OllamaConfig, OpenAIClient};
+
+// Re-export coding agent for convenience
+pub use coding::{CodingAgentService, CodingAgentExecutor, CodingAgentConfig};
