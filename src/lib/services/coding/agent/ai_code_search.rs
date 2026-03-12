@@ -8,7 +8,7 @@ use tokio::fs;
 use regex::Regex;
 
 use super::errors::CodingAgentError as ServiceError;
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 // AI-Powered Code Search and Navigation System
 
@@ -732,7 +732,7 @@ impl AiCodeSearchEngine {
         }
 
         // Sort by relevance
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
+        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
 
         Ok(results)
     }

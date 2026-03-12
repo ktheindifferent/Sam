@@ -383,6 +383,160 @@ impl ConfigBuilder {
     }
 }
 
+/// User-level SAM configuration loaded from `~/.sam/config.toml`.
+///
+/// All fields are optional — sensible defaults are used when absent.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SamUserConfig {
+    pub tui: Option<TuiConfig>,
+    pub services: Option<UserServicesConfig>,
+    pub coding_agent: Option<CodingAgentUserConfig>,
+    pub database: Option<UserDatabaseConfig>,
+    pub notifications: Option<crate::services::notifications::NotificationConfig>,
+    #[cfg(feature = "plugins")]
+    pub plugins: Option<crate::services::plugins::loader::PluginUserConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserDatabaseConfig {
+    /// Database engine: "sqlite" (default) or "postgres"
+    pub engine: Option<String>,
+    /// PostgreSQL host (only used when engine = "postgres")
+    pub pg_host: Option<String>,
+    /// PostgreSQL port (only used when engine = "postgres")
+    pub pg_port: Option<u16>,
+    /// PostgreSQL database name
+    pub pg_dbname: Option<String>,
+    /// PostgreSQL user
+    pub pg_user: Option<String>,
+    /// PostgreSQL password
+    pub pg_pass: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TuiConfig {
+    /// Theme name: "dark" (default) or "light"
+    pub theme: Option<String>,
+    /// Service polling interval in seconds (default 2)
+    pub poll_interval: Option<u64>,
+    /// Enable vim-style keybindings
+    pub vim_keybindings: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserServicesConfig {
+    /// Services to start automatically on launch
+    pub auto_start: Option<Vec<String>>,
+    /// Services to never start
+    pub disabled: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodingAgentUserConfig {
+    /// Default LLM model for the coding agent
+    pub default_model: Option<String>,
+}
+
+impl SamUserConfig {
+    /// Load user config from `~/.sam/config.toml`. Returns defaults if file doesn't exist.
+    pub fn load() -> Self {
+        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let config_path = PathBuf::from(home).join(".sam").join("config.toml");
+
+        if !config_path.exists() {
+            log::debug!("No user config at {:?}, using defaults", config_path);
+            return Self::default();
+        }
+
+        match fs::read_to_string(&config_path) {
+            Ok(content) => match toml::from_str(&content) {
+                Ok(config) => {
+                    log::info!("Loaded user config from {:?}", config_path);
+                    config
+                }
+                Err(e) => {
+                    log::warn!("Failed to parse {:?}: {}, using defaults", config_path, e);
+                    Self::default()
+                }
+            },
+            Err(e) => {
+                log::warn!("Failed to read {:?}: {}, using defaults", config_path, e);
+                Self::default()
+            }
+        }
+    }
+
+    pub fn vim_keybindings(&self) -> bool {
+        self.tui.as_ref().and_then(|t| t.vim_keybindings).unwrap_or(false)
+    }
+
+    pub fn poll_interval_secs(&self) -> u64 {
+        self.tui.as_ref().and_then(|t| t.poll_interval).unwrap_or(2)
+    }
+
+    pub fn default_model(&self) -> String {
+        self.coding_agent
+            .as_ref()
+            .and_then(|c| c.default_model.clone())
+            .unwrap_or_else(|| "llama3.2:3b".to_string())
+    }
+
+    pub fn theme(&self) -> String {
+        self.tui.as_ref().and_then(|t| t.theme.clone()).unwrap_or_else(|| "dark".to_string())
+    }
+
+    /// Determine the database engine: env var > config file > default "sqlite".
+    pub fn database_engine(&self) -> String {
+        // Env var takes priority
+        if let Ok(engine) = env::var("DATABASE_ENGINE") {
+            return engine;
+        }
+        // Config file value
+        self.database
+            .as_ref()
+            .and_then(|d| d.engine.clone())
+            .unwrap_or_else(|| "sqlite".to_string())
+    }
+
+    /// Create `~/.sam/config.toml` with sensible defaults if it does not exist.
+    pub fn write_defaults_if_missing() {
+        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let sam_dir = PathBuf::from(&home).join(".sam");
+        let config_path = sam_dir.join("config.toml");
+
+        if config_path.exists() {
+            return;
+        }
+
+        let _ = fs::create_dir_all(&sam_dir);
+
+        let default_config = r#"# SAM User Configuration
+# See CLAUDE.md for full documentation.
+
+[tui]
+# theme = "dark"
+# poll_interval = 2
+
+[database]
+# Database engine: "sqlite" (default) or "postgres"
+engine = "sqlite"
+
+# Uncomment and configure the following for PostgreSQL:
+# engine = "postgres"
+# pg_host = "localhost"
+# pg_port = 5432
+# pg_dbname = "sam"
+# pg_user = "sam"
+# pg_pass = "sam"
+"#;
+
+        match fs::write(&config_path, default_config) {
+            Ok(_) => log::info!("Created default config at {:?}", config_path),
+            Err(e) => log::warn!("Failed to write default config to {:?}: {}", config_path, e),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

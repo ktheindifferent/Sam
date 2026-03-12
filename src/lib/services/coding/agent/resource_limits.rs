@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use crate::services::coding::agent::errors::{CodingAgentError, CodingAgentResult};
+use super::constants::*;
 
 /// Resource limits configuration
 #[derive(Debug, Clone)]
@@ -26,13 +27,13 @@ pub struct ResourceLimits {
 impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
-            max_memory_bytes: 512 * 1024 * 1024,        // 512 MB
-            max_cpu_seconds: 60,                        // 1 minute
-            max_concurrent_operations: 10,              // 10 concurrent ops
-            max_output_bytes: 1024 * 1024,              // 1 MB
-            max_command_duration_seconds: 120,          // 2 minutes
-            max_context_tokens: 8192,                   // ~32KB of text
-            max_file_size_bytes: 10 * 1024 * 1024,      // 10 MB
+            max_memory_bytes: MAX_MEMORY_BYTES as u64,
+            max_cpu_seconds: MAX_CPU_SECONDS,
+            max_concurrent_operations: MAX_CONCURRENT_OPERATIONS,
+            max_output_bytes: MAX_OUTPUT_BYTES,
+            max_command_duration_seconds: DEFAULT_TIMEOUT_SECONDS * 2,
+            max_context_tokens: MAX_CONVERSATION_TOKENS,
+            max_file_size_bytes: MAX_FILE_SIZE_BYTES as u64,
         }
     }
 }

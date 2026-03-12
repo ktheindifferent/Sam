@@ -82,20 +82,27 @@ class Notifications {
         </div>`);
     }
 
+    _escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str || ''));
+        return div.innerHTML;
+    }
+
     genHtml(){
         var html = "";
+        var ref = this;
         html += `<button onclick="notifications.close()" title="Close" class="btn btn-link notifications-exit-btn" ><i class="fas fa fa-times"></i></button>`;
-    
+
         $(this.notifications).each(function(i, obj) {
 
             html += `<div class="notification-item">
-                        <p>${obj.message}</p>
-                        <small>${obj.timestamp}</small>
+                        <p>${ref._escapeHtml(obj.message)}</p>
+                        <small>${ref._escapeHtml(obj.timestamp)}</small>
                     </div>`;
         });
 
         return html;
-    
+
     }
 
     close(){

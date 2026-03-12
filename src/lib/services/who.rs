@@ -42,7 +42,7 @@ pub fn install() -> Result<()> {
         obama_zip,
     )?;
     let _ = crate::tools::extract_zip(obama_zip, "/opt/sam/scripts/who.io/dataset/");
-    crate::tools::uinx_cmd(&format!("rm -rf {obama_zip}"));
+    let _ = std::fs::remove_file(obama_zip);
 
     // Write and extract Donald Trump dataset
     let trump_zip = "/opt/sam/scripts/who.io/dataset/donald_trump.zip";
@@ -51,7 +51,7 @@ pub fn install() -> Result<()> {
         trump_zip,
     )?;
     let _ = crate::tools::extract_zip(trump_zip, "/opt/sam/scripts/who.io/dataset/");
-    crate::tools::uinx_cmd(&format!("rm -rf {trump_zip}"));
+    let _ = std::fs::remove_file(trump_zip);
 
     Ok(())
 }

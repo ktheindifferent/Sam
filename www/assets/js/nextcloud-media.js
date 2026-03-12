@@ -23,13 +23,27 @@ function initializeWebSocket() {
     const wsUrl = `${wsProtocol}//${window.location.hostname}:8080/ws`;
 
     websocketConnection = new WebSocket(wsUrl);
+    window.ws = websocketConnection;
 
     websocketConnection.onopen = function(event) {
         console.log('WebSocket connected for NextCloud media');
+        // Re-initialize Dropbox/SeaweedFS to use the new socket
+        if (typeof initializeDropboxMediaWS === 'function') {
+            initializeDropboxMediaWS();
+        }
+        if (typeof initializeSeaweedFSMediaWS === 'function') {
+            initializeSeaweedFSMediaWS();
+        }
     };
 
     websocketConnection.onmessage = function(event) {
-        const data = JSON.parse(event.data);
+        let data;
+        try {
+            data = JSON.parse(event.data);
+        } catch (e) {
+            console.error('Malformed WebSocket message:', e);
+            return;
+        }
         handleNextCloudMediaResponse(data);
     };
 
@@ -209,10 +223,13 @@ function renderMediaFiles() {
         const mediaType = getMediaType(file.mime_type);
         const icon = getMediaIcon(file.name, file.is_directory, mediaType);
         const iconColor = getMediaIconColor(mediaType, file.is_directory);
+        const safeName = escapeHtml(file.name);
+        const safePath = escapeHtml(file.path);
+        const safeMime = escapeHtml(file.mime_type || '');
 
         gridHTML += `
             <div class="media-item controller-btn"
-                 onclick="${file.is_directory ? `navigateToMediaFolder('${file.path}')` : `openMediaFile('${file.path}', '${file.name}', '${file.mime_type}', ${file.size})`}"
+                 onclick="${file.is_directory ? `navigateToMediaFolder('${safePath}')` : `openMediaFile('${safePath}', '${safeName}', '${safeMime}', ${file.size})`}"
                  style="background: rgba(42, 42, 58, 0.8); border: 2px solid ${iconColor}; border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: all 0.3s; position: relative;">
 
                 <div class="media-icon" style="font-size: 48px; color: ${iconColor}; margin-bottom: 10px;">
@@ -220,7 +237,7 @@ function renderMediaFiles() {
                 </div>
 
                 <div class="media-name" style="color: white; font-size: 12px; word-break: break-word; margin-bottom: 5px;">
-                    ${file.name}
+                    ${safeName}
                 </div>
 
                 <div class="media-info" style="color: #adb5bd; font-size: 10px;">
@@ -229,7 +246,7 @@ function renderMediaFiles() {
 
                 ${!file.is_directory ? `
                     <div class="media-actions" style="position: absolute; top: 5px; right: 5px;">
-                        <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteMediaFile('${file.path}')" title="Delete">
+                        <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteMediaFile('${safePath}')" title="Delete">
                             <i class="fas fa-trash" style="font-size: 10px;"></i>
                         </button>
                     </div>
@@ -296,6 +313,8 @@ function navigateBack() {
 // Open media file
 function openMediaFile(path, name, mimeType, size) {
     currentMediaFile = { path, name, mimeType, size };
+    dropboxCurrentMediaFile = null;
+    seaweedfsCurrentMediaFile = null;
     const mediaType = getMediaType(mimeType);
 
     // Hide all player types first
@@ -333,27 +352,53 @@ function openMediaFile(path, name, mimeType, size) {
 function createStreamingUrl(filePath) {
     if (!nextcloudMediaCredentials) return '#';
 
-    const credentials = btoa(`${nextcloudMediaCredentials.username}:${nextcloudMediaCredentials.password}`);
-    const webdavUrl = nextcloudMediaCredentials.serverUrl.replace(/\/$/, '') +
-                     `/remote.php/dav/files/${nextcloudMediaCredentials.username}/` +
-                     filePath.replace(/^\//, '');
+    const serverUrl = nextcloudMediaCredentials.serverUrl.replace(/\/$/, '');
+    const username = encodeURIComponent(nextcloudMediaCredentials.username);
+    const password = encodeURIComponent(nextcloudMediaCredentials.password);
 
-    return webdavUrl;
+    // Parse the server URL to embed credentials for Basic auth
+    const url = new URL(serverUrl);
+    const authedBase = `${url.protocol}//${username}:${password}@${url.host}${url.pathname}`;
+
+    return authedBase + `/remote.php/dav/files/${nextcloudMediaCredentials.username}/` +
+           filePath.replace(/^\//, '');
 }
 
 // Show video player
 function showVideoPlayer(videoUrl, title) {
+    // Dispose existing player if present (this removes the DOM element)
+    const existingPlayer = videojs.getPlayer('nextcloudVideoPlayer');
+    if (existingPlayer) {
+        existingPlayer.dispose();
+    }
+
+    // Re-create the video element if it was removed by dispose()
+    if (!document.getElementById('nextcloudVideoPlayer')) {
+        const modalBody = document.querySelector('#mediaPlayerModal .modal-body');
+        const video = document.createElement('video');
+        video.id = 'nextcloudVideoPlayer';
+        video.className = 'video-js vjs-default-skin';
+        video.setAttribute('controls', '');
+        video.setAttribute('preload', 'auto');
+        video.setAttribute('width', '100%');
+        video.setAttribute('height', '400');
+        video.style.background = 'black';
+        modalBody.insertBefore(video, modalBody.firstChild);
+    }
+
     const videoPlayer = document.getElementById('nextcloudVideoPlayer');
     videoPlayer.style.display = 'block';
 
-    if (videojs.getPlayer('nextcloudVideoPlayer')) {
-        videojs.getPlayer('nextcloudVideoPlayer').dispose();
-    }
+    // Determine MIME type from whichever integration is active
+    const mimeType = (currentMediaFile && currentMediaFile.mimeType) ||
+                     (dropboxCurrentMediaFile && dropboxCurrentMediaFile.mimeType) ||
+                     (seaweedfsCurrentMediaFile && seaweedfsCurrentMediaFile.mimeType) ||
+                     'video/mp4';
 
     const player = videojs('nextcloudVideoPlayer', {
         sources: [{
             src: videoUrl,
-            type: currentMediaFile.mimeType
+            type: mimeType
         }],
         controls: true,
         responsive: true,
@@ -365,13 +410,19 @@ function showVideoPlayer(videoUrl, title) {
     });
 }
 
+// Get active media file from whichever integration is open
+function getActiveMediaFile() {
+    return currentMediaFile || dropboxCurrentMediaFile || seaweedfsCurrentMediaFile || null;
+}
+
 // Show audio player
 function showAudioPlayer(audioUrl, title, info) {
     document.getElementById('nextcloudAudioPlayer').style.display = 'block';
     document.getElementById('audioTitle').textContent = title;
     document.getElementById('audioInfo').textContent = info;
     document.getElementById('audioSource').src = audioUrl;
-    document.getElementById('audioSource').type = currentMediaFile.mimeType;
+    const active = getActiveMediaFile();
+    document.getElementById('audioSource').type = (active && active.mimeType) || 'audio/mpeg';
 
     const audioElement = document.querySelector('#nextcloudAudioPlayer audio');
     audioElement.load();
@@ -495,6 +546,11 @@ function refreshNextCloudMedia() {
 function deleteMediaFile(path) {
     if (!confirm(`Are you sure you want to delete this file?`)) return;
 
+    if (!nextcloudMediaCredentials) {
+        showMediaToast('Please connect to NextCloud first', 'error');
+        return;
+    }
+
     const message = {
         type: 'command',
         id: generateMediaId(),
@@ -512,37 +568,52 @@ function deleteMediaFile(path) {
     }
 }
 
-// Delete current media (from modal)
+// Delete current media (from modal) — unified dispatcher
 function deleteCurrentMedia() {
-    if (!currentMediaFile) return;
-    $('#mediaPlayerModal').modal('hide');
-    deleteMediaFile(currentMediaFile.path);
+    if (dropboxCurrentMediaFile) {
+        deleteCurrentDropboxMedia();
+    } else if (seaweedfsCurrentMediaFile) {
+        deleteCurrentSeaweedFSMedia();
+    } else if (currentMediaFile) {
+        $('#mediaPlayerModal').modal('hide');
+        deleteMediaFile(currentMediaFile.path);
+    }
 }
 
-// Download current media
+// Download current media — unified dispatcher
 function downloadCurrentMedia() {
-    if (!currentMediaFile) return;
+    if (dropboxCurrentMediaFile) {
+        downloadCurrentDropboxMedia();
+    } else if (seaweedfsCurrentMediaFile) {
+        downloadCurrentSeaweedFSMedia();
+    } else if (currentMediaFile) {
+        const message = {
+            type: 'command',
+            id: generateMediaId(),
+            command: 'nextcloud_download_file',
+            args: {
+                server_url: nextcloudMediaCredentials.serverUrl,
+                username: nextcloudMediaCredentials.username,
+                password: nextcloudMediaCredentials.password,
+                remote_path: currentMediaFile.path
+            }
+        };
 
-    const message = {
-        type: 'command',
-        id: generateMediaId(),
-        command: 'nextcloud_download_file',
-        args: {
-            server_url: nextcloudMediaCredentials.serverUrl,
-            username: nextcloudMediaCredentials.username,
-            password: nextcloudMediaCredentials.password,
-            remote_path: currentMediaFile.path
+        if (websocketConnection && websocketConnection.readyState === WebSocket.OPEN) {
+            websocketConnection.send(JSON.stringify(message));
         }
-    };
-
-    if (websocketConnection && websocketConnection.readyState === WebSocket.OPEN) {
-        websocketConnection.send(JSON.stringify(message));
     }
 }
 
 // Download media file from response
 function downloadMediaFileFromResponse(response) {
     if (!response.content) return;
+
+    const active = getActiveMediaFile();
+    if (!active) {
+        showMediaToast('No file selected for download', 'error');
+        return;
+    }
 
     try {
         const byteCharacters = atob(response.content);
@@ -551,12 +622,12 @@ function downloadMediaFileFromResponse(response) {
             byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
         const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: currentMediaFile.mimeType });
+        const blob = new Blob([byteArray], { type: active.mimeType || 'application/octet-stream' });
 
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = currentMediaFile.name;
+        a.download = active.name;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -568,11 +639,24 @@ function downloadMediaFileFromResponse(response) {
     }
 }
 
-// Open in new tab
+// Open in new tab — unified dispatcher
 function openInNewTab() {
-    if (!currentMediaFile) return;
-    const streamUrl = createStreamingUrl(currentMediaFile.path);
-    window.open(streamUrl, '_blank');
+    if (currentMediaFile) {
+        window.open(createStreamingUrl(currentMediaFile.path), '_blank');
+    } else if (dropboxCurrentMediaFile) {
+        getDropboxDownloadUrl(dropboxCurrentMediaFile.path, function(url) {
+            if (url) window.open(url, '_blank');
+        });
+    } else if (seaweedfsCurrentMediaFile) {
+        window.open(createSeaweedFSStreamingUrl(seaweedfsCurrentMediaFile.path), '_blank');
+    }
+}
+
+// HTML escape to prevent XSS from filenames
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
 }
 
 // Utility functions
@@ -603,6 +687,21 @@ $(document).ready(function() {
 
     // Initialize tooltips
     $('[title]').tooltip();
+
+    // Stop audio/video playback when modal is closed
+    $('#mediaPlayerModal').on('hidden.bs.modal', function() {
+        // Pause and reset audio
+        var audio = document.querySelector('#nextcloudAudioPlayer audio');
+        if (audio) {
+            audio.pause();
+            audio.currentTime = 0;
+        }
+        // Dispose video player if active
+        var player = videojs.getPlayer('nextcloudVideoPlayer');
+        if (player) {
+            player.pause();
+        }
+    });
 
     console.log('NextCloud Media integration initialized');
 });

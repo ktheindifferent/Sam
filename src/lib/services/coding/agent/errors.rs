@@ -1,5 +1,11 @@
+//! Error types and handling for the coding agent module.
+//!
+//! This module provides comprehensive error types with severity levels,
+//! retry logic, and user-friendly error messages.
+
 use thiserror::Error;
 use std::path::PathBuf;
+use std::fmt;
 
 /// Comprehensive error types for the coding agent
 #[derive(Debug, Error)]
@@ -147,30 +153,54 @@ pub enum CodingAgentError {
 pub type CodingAgentResult<T> = Result<T, CodingAgentError>;
 
 /// Error severity levels for better error handling decisions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum ErrorSeverity {
     /// Can be safely ignored or logged
-    Warning,
+    Info = 0,
     /// Should be handled but not critical
-    Error,
+    Warning = 1,
+    /// Should be handled but not critical
+    Error = 2,
     /// Critical error that should stop execution
-    Critical,
+    Critical = 3,
     /// Fatal error that may require system restart
-    Fatal,
+    Fatal = 4,
+}
+
+impl fmt::Display for ErrorSeverity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Info => write!(f, "INFO"),
+            Self::Warning => write!(f, "WARNING"),
+            Self::Error => write!(f, "ERROR"),
+            Self::Critical => write!(f, "CRITICAL"),
+            Self::Fatal => write!(f, "FATAL"),
+        }
+    }
 }
 
 impl CodingAgentError {
     /// Get the severity level of this error
     pub fn severity(&self) -> ErrorSeverity {
+        use ErrorSeverity::*;
         match self {
-            Self::ParseError { .. } => ErrorSeverity::Warning,
-            Self::ProviderUnavailable { .. } => ErrorSeverity::Error,
-            Self::CommandNotAllowed { .. } => ErrorSeverity::Error,
-            Self::ResourceLimitExceeded { .. } => ErrorSeverity::Critical,
-            Self::NoProviderConfigured => ErrorSeverity::Critical,
-            Self::WorkingDirectoryError { .. } => ErrorSeverity::Error,
-            Self::CommandExecutionFailed { .. } => ErrorSeverity::Error,
-            _ => ErrorSeverity::Error,
+            Self::ParseError { .. } | Self::ValidationError { .. } => Warning,
+            Self::ProviderUnavailable { .. } | Self::ProviderNotFound { .. } => Error,
+            Self::CommandNotAllowed { .. } => Warning,
+            Self::CommandExecutionFailed { exit_code, .. } => {
+                exit_code.map_or(Error, |code| if code == 0 { Warning } else { Error })
+            }
+            Self::ResourceLimitExceeded { .. } | Self::NoProviderConfigured => Critical,
+            Self::WorkingDirectoryError { .. } | Self::IoError { .. } => Error,
+            Self::NetworkError { .. } | Self::Timeout { .. } => Error,
+            Self::CircuitBreakerOpen { .. } | Self::RetryLimitExceeded { .. } => Warning,
+            Self::InvalidStateTransition { .. } | Self::ExecutionError(_) => Error,
+            Self::NotFound { .. } => Warning,
+            Self::SerializationError { .. } => Error,
+            Self::GitError { .. } | Self::ProjectAnalysisError { .. } => Error,
+            Self::ModelError { .. } | Self::ConfigError { .. } => Critical,
+            Self::ContextError { .. } | Self::TemplateError { .. } => Warning,
+            Self::Other(_) => Error,
         }
     }
 
@@ -182,18 +212,28 @@ impl CodingAgentError {
                 | Self::NetworkError { .. }
                 | Self::Timeout { .. }
                 | Self::CircuitBreakerOpen { .. }
+                | Self::IoError { .. }
         )
     }
 
-    /// Get suggested retry delay in seconds
-    pub fn retry_delay_seconds(&self) -> Option<u64> {
-        match self {
-            Self::CircuitBreakerOpen { retry_after_seconds, .. } => *retry_after_seconds,
-            Self::ProviderUnavailable { .. } => Some(5),
-            Self::NetworkError { .. } => Some(2),
-            Self::Timeout { .. } => Some(10),
-            _ => None,
-        }
+    /// Check if this error is recoverable
+    pub fn is_recoverable(&self) -> bool {
+        self.severity() <= ErrorSeverity::Error
+    }
+
+    /// Get suggested retry delay in seconds with exponential backoff support
+    pub fn retry_delay_seconds(&self, attempt: u32) -> Option<u64> {
+        let base_delay = match self {
+            Self::CircuitBreakerOpen { retry_after_seconds, .. } => return *retry_after_seconds,
+            Self::ProviderUnavailable { .. } => 5,
+            Self::NetworkError { .. } => 2,
+            Self::Timeout { .. } => 10,
+            Self::IoError { .. } => 1,
+            _ => return None,
+        };
+        // Exponential backoff with jitter
+        let delay = base_delay * 2u64.pow(attempt.min(5));
+        Some(delay.min(60)) // Cap at 60 seconds
     }
 
     /// Convert to user-friendly error message

@@ -53,6 +53,14 @@ lazy_static! {
     ).unwrap();
 }
 
+/// Returns the current time as seconds since UNIX_EPOCH, or 0 on clock error.
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedItem<T> {
     pub value: T,
@@ -64,11 +72,8 @@ pub struct CachedItem<T> {
 
 impl<T> CachedItem<T> {
     fn new(value: T, ttl: u64) -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        
+        let now = now_secs();
+
         Self {
             value,
             expires_at: now + ttl,
@@ -77,31 +82,21 @@ impl<T> CachedItem<T> {
             last_accessed: now,
         }
     }
-    
+
     fn is_expired(&self) -> bool {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        now >= self.expires_at
+        now_secs() >= self.expires_at
     }
-    
+
     fn should_refresh(&self, threshold: f64) -> bool {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let now = now_secs();
         let age = now - self.created_at;
         let ttl = self.expires_at - self.created_at;
         age as f64 >= ttl as f64 * threshold
     }
-    
+
     fn touch(&mut self) {
         self.access_count += 1;
-        self.last_accessed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        self.last_accessed = now_secs();
     }
 }
 

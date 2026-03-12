@@ -9,7 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{interval, sleep};
 
 use super::errors::CodingAgentError as ServiceError;
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 // Distributed Coding Agent for Team Collaboration
 

@@ -9,7 +9,7 @@ use tokio::process::Command;
 use tokio::fs;
 
 use super::errors::CodingAgentError as ServiceError;
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 // Advanced Performance Profiler with Flame Graphs and Deep Analysis
 

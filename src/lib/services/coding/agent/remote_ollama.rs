@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use std::time::Duration;
 
 use super::gpu_offload::{GpuOffloadManager, GpuInstance};
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 /// Remote Ollama configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -294,9 +294,15 @@ impl RemoteOllamaProvider {
     }
 }
 
+use super::traits::provider::{
+    GenerateRequest, GenerateResponse, Model, ProviderInfo,
+    ProviderMetrics, ProviderType, ResponseStream, StreamChunk,
+    TokenUsage, FinishReason,
+};
+
 #[async_trait::async_trait]
 impl LLMProvider for RemoteOllamaProvider {
-    async fn generate_response(&self, prompt: &str, model: &str) -> Result<String> {
+    async fn generate(&self, request: GenerateRequest) -> Result<GenerateResponse> {
         // Start GPU instance if needed and not already running
         if self.config.use_gpu_offload && !*self.is_remote_healthy.read().await {
             if let Err(e) = self.start_gpu_instance().await {
@@ -307,7 +313,50 @@ impl LLMProvider for RemoteOllamaProvider {
             }
         }
 
-        self.generate_with_failover(prompt, model).await
+        let text = self.generate_with_failover(&request.prompt, &request.model).await?;
+
+        Ok(GenerateResponse {
+            text,
+            model: request.model,
+            usage: TokenUsage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+            },
+            finish_reason: FinishReason::Complete,
+            metadata: serde_json::json!({}),
+        })
+    }
+
+    async fn stream(&self, request: GenerateRequest) -> Result<ResponseStream> {
+        let (tx, rx) = tokio::sync::mpsc::channel(100);
+
+        // For now, just generate and send as a single chunk
+        let response = self.generate(request).await?;
+
+        tokio::spawn(async move {
+            let _ = tx.send(StreamChunk {
+                delta: response.text,
+                is_final: true,
+                metadata: Some(response.metadata),
+            }).await;
+        });
+
+        Ok(ResponseStream::new(rx))
+    }
+
+    fn info(&self) -> ProviderInfo {
+        ProviderInfo {
+            name: "Remote Ollama".to_string(),
+            version: "1.0.0".to_string(),
+            provider_type: if self.config.use_gpu_offload {
+                ProviderType::Hybrid
+            } else {
+                ProviderType::Local
+            },
+            base_url: Some(self.current_endpoint.blocking_read().clone()),
+            requires_auth: false,
+        }
     }
 
     async fn is_available(&self) -> bool {
@@ -315,11 +364,19 @@ impl LLMProvider for RemoteOllamaProvider {
         self.check_health(&endpoint).await.unwrap_or(false)
     }
 
-    fn provider_name(&self) -> &str {
-        "remote-ollama"
+    async fn metrics(&self) -> Result<ProviderMetrics> {
+        Ok(ProviderMetrics {
+            total_requests: 0,
+            successful_requests: 0,
+            failed_requests: 0,
+            average_latency: std::time::Duration::from_millis(0),
+            tokens_processed: 0,
+            uptime: std::time::Duration::from_secs(0),
+            error_rate: 0.0,
+        })
     }
 
-    async fn list_models(&self) -> Result<Vec<String>> {
+    async fn list_models(&self) -> Result<Vec<Model>> {
         let endpoint = self.current_endpoint.read().await.clone();
 
         let response = self.client
@@ -336,16 +393,20 @@ impl LLMProvider for RemoteOllamaProvider {
             .as_array()
             .map(|arr| {
                 arr.iter()
-                    .filter_map(|m| m["name"].as_str().map(String::from))
+                    .filter_map(|m| {
+                        m["name"].as_str().map(|name| Model {
+                            id: name.to_string(),
+                            name: name.to_string(),
+                            description: m["description"].as_str().map(String::from),
+                            context_length: 4096,
+                            capabilities: vec![],
+                        })
+                    })
                     .collect()
             })
             .unwrap_or_default();
 
         Ok(models)
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 

@@ -9,7 +9,7 @@ use tokio::process::Command;
 use regex::Regex;
 
 use super::errors::CodingAgentError as ServiceError;
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 // Advanced Testing Framework with Mutation Testing, Property-Based Testing, and Fuzzing
 

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use super::utils;
 
 /// Execution state for incremental task processing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,11 +16,58 @@ pub enum ExecutionState {
 /// Individual execution step
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionStep {
-    pub description: String,
-    pub command: String,
-    pub output: Option<String>,
-    pub success: bool,
-    pub timestamp: u64,
+    pub(crate) step_number: usize,
+    pub(crate) description: String,
+    pub(crate) command: String,
+    pub(crate) output: Option<String>,
+    pub(crate) success: bool,
+    pub(crate) timestamp: u64,
+}
+
+impl ExecutionStep {
+    /// Create a new execution step
+    pub fn new(description: String, command: String, timestamp: u64) -> Self {
+        Self {
+            step_number: 0,
+            description,
+            command,
+            output: None,
+            success: false,
+            timestamp,
+        }
+    }
+
+    /// Create with step number
+    pub fn with_step_number(step_number: usize, description: String, command: String, timestamp: u64) -> Self {
+        Self {
+            step_number,
+            description,
+            command,
+            output: None,
+            success: false,
+            timestamp,
+        }
+    }
+
+    /// Get the command
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    /// Get the output if available
+    pub fn output(&self) -> Option<&str> {
+        self.output.as_deref()
+    }
+
+    /// Check if step was successful
+    pub fn is_successful(&self) -> bool {
+        self.success
+    }
+
+    /// Get the description
+    pub fn description(&self) -> &str {
+        &self.description
+    }
 }
 
 /// Incremental execution context
@@ -53,10 +101,7 @@ impl Default for IncrementalExecution {
 impl IncrementalExecution {
     /// Create a new execution context
     pub fn new(task_description: String, auto_execute: bool) -> Self {
-        let start_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let start_time = utils::unix_timestamp();
 
         Self {
             task_description,
@@ -117,15 +162,15 @@ impl IncrementalExecution {
     /// Get spinner text based on current state
     pub fn get_spinner_text(&self) -> String {
         match &self.state {
-            ExecutionState::Planning => "🤖 Planning task...".to_string(),
-            ExecutionState::GeneratingSteps => "🧠 Generating execution steps...".to_string(),
+            ExecutionState::Planning => "🤖 Planning task...".into(),
+            ExecutionState::GeneratingSteps => "🧠 Generating execution steps...".into(),
             ExecutionState::ExecutingCommand { step, total, command } => {
                 format!("⚡ [{}/{}] Executing: {}", step, total, Self::get_command_description(command))
             },
             ExecutionState::WaitingForConfirmation { step, total, command } => {
                 format!("⏳ [{}/{}] Confirm: {}", step, total, command)
             },
-            ExecutionState::Completed => "✅ Task completed!".to_string(),
+            ExecutionState::Completed => "✅ Task completed!".into(),
             ExecutionState::Failed { error } => format!("❌ Failed: {}", error),
         }
     }
@@ -134,7 +179,7 @@ impl IncrementalExecution {
     fn get_command_description(command: &str) -> String {
         let parts: Vec<&str> = command.split_whitespace().collect();
         if parts.is_empty() {
-            return command.to_string();
+            return command.into();
         }
 
         match parts[0] {
@@ -144,12 +189,12 @@ impl IncrementalExecution {
                 format!("Creating new Rust project {}", parts.get(2).unwrap_or(&"<name>"))
             },
             "touch" => format!("Creating file {}", parts.get(1).unwrap_or(&"<file>")),
-            "echo" => "Writing content to file".to_string(),
-            "cp" => "Copying files".to_string(),
-            "mv" => "Moving/renaming files".to_string(),
-            "ls" => "Listing directory contents".to_string(),
-            "cat" => "Displaying file contents".to_string(),
-            _ => command.to_string(),
+            "echo" => "Writing content to file".into(),
+            "cp" => "Copying files".into(),
+            "mv" => "Moving/renaming files".into(),
+            "ls" => "Listing directory contents".into(),
+            "cat" => "Displaying file contents".into(),
+            _ => command.into(),
         }
     }
 
@@ -158,7 +203,7 @@ impl IncrementalExecution {
         let mut log = Vec::new();
 
         log.push(format!("🎯 Task: {}", self.task_description));
-        log.push("".to_string());
+        log.push(String::new());
 
         for (i, step) in self.steps.iter().enumerate() {
             let status = if i < self.current_step {
@@ -182,35 +227,79 @@ impl IncrementalExecution {
                     log.push(format!("   Output: {}", trimmed_output));
                 }
             }
-            log.push("".to_string());
+            log.push(String::new());
         }
 
         match &self.state {
-            ExecutionState::Completed => log.push("🎉 All steps completed successfully!".to_string()),
+            ExecutionState::Completed => log.push("🎉 All steps completed successfully!".into()),
             ExecutionState::Failed { error } => log.push(format!("💥 Execution failed: {}", error)),
             _ => {}
         }
 
         // Add raw AI response for debugging
         if let Some(raw_response) = &self.raw_ai_response {
-            log.push("".to_string());
-            log.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".to_string());
-            log.push("DEBUG: Raw Ollama Output".to_string());
-            log.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".to_string());
+            log.push(String::new());
+            log.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+            log.push("DEBUG: Raw Ollama Output".into());
+            log.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
             // Split the response into lines for better formatting
             for line in raw_response.lines() {
-                log.push(line.to_string());
+                log.push(line.into());
             }
-            log.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".to_string());
+            log.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
         }
 
         log
     }
 
+    /// Add multiple steps at once
+    pub fn add_steps(&mut self, new_steps: Vec<ExecutionStep>) {
+        self.steps.extend(new_steps);
+    }
+
+    /// Get the next pending step
+    pub fn get_next_pending_step(&mut self) -> Option<ExecutionStep> {
+        for (index, step) in self.steps.iter().enumerate() {
+            if step.output.is_none() {
+                self.current_step = index;
+                return Some(step.clone());
+            }
+        }
+        None
+    }
+
+    /// Update step output by step number
+    pub fn update_step_output(&mut self, step_number: usize, result: Result<String, String>) {
+        if let Some(step) = self.steps.iter_mut().find(|s| s.step_number == step_number) {
+            match result {
+                Ok(output) => {
+                    step.output = Some(output);
+                    step.success = true;
+                }
+                Err(error) => {
+                    step.output = Some(error);
+                    step.success = false;
+                }
+            }
+        }
+    }
+
+    /// Get current state
+    pub fn get_state(&self) -> ExecutionState {
+        self.state.clone()
+    }
+
+    /// Get execution summary
+    pub fn get_summary(&self) -> String {
+        let completed = self.steps.iter().filter(|s| s.output.is_some()).count();
+        let total = self.steps.len();
+        format!("Execution: {}/{} steps completed", completed, total)
+    }
+
     /// Cancel the execution
     pub fn cancel(&mut self) {
         self.state = ExecutionState::Failed {
-            error: "Cancelled by user".to_string()
+            error: "Cancelled by user".into()
         };
         self.spinner_active = false;
     }
@@ -225,11 +314,7 @@ impl IncrementalExecution {
 
     /// Get execution duration so far
     pub fn get_execution_duration(&self) -> u64 {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        now - self.start_time
+        utils::duration_between(self.start_time, utils::unix_timestamp())
     }
 
     /// Check if all steps are completed successfully
@@ -292,7 +377,7 @@ impl IncrementalExecution {
         // Add completion status
         match &self.state {
             ExecutionState::Completed => {
-                lines.push("🎉 All steps completed successfully!".to_string());
+                lines.push("🎉 All steps completed successfully!".into());
             },
             ExecutionState::Failed { error } => {
                 lines.push(format!("💥 Execution failed: {}", error));
@@ -303,11 +388,11 @@ impl IncrementalExecution {
         // Add raw AI response for debugging
         if let Some(raw_response) = &self.raw_ai_response {
             lines.push(String::new());
-            lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".to_string());
-            lines.push("DEBUG: Raw Ollama Output".to_string());
-            lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".to_string());
+            lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+            lines.push("DEBUG: Raw Ollama Output".into());
+            lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
             lines.push(raw_response.clone());
-            lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".to_string());
+            lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
         }
 
         lines

@@ -8,7 +8,7 @@ use tokio::sync::{RwLock, mpsc};
 use tokio::fs;
 
 use super::errors::CodingAgentError as ServiceError;
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 // AI Model Training System for Custom Code Models
 

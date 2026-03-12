@@ -15,6 +15,7 @@ let dropboxCurrentMediaFile = null;
 
 // Initialize WebSocket connection for Dropbox commands
 let dropboxWsConnection = null;
+const dropboxWsPendingCallbacks = {};
 
 function initializeDropboxMediaWS() {
     if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
@@ -22,6 +23,32 @@ function initializeDropboxMediaWS() {
         return;
     }
     dropboxWsConnection = window.ws;
+
+    // Add a listener that dispatches by message ID
+    const existingHandler = dropboxWsConnection.onmessage;
+    dropboxWsConnection.onmessage = function(event) {
+        let data;
+        try {
+            data = JSON.parse(event.data);
+        } catch (e) {
+            console.error('Malformed WebSocket message:', e);
+            return;
+        }
+        if (data.type === 'command_response' && dropboxWsPendingCallbacks[data.id]) {
+            const cb = dropboxWsPendingCallbacks[data.id];
+            delete dropboxWsPendingCallbacks[data.id];
+            cb(data);
+            return;
+        }
+        if (seaweedfsWsPendingCallbacks && data.type === 'command_response' && seaweedfsWsPendingCallbacks[data.id]) {
+            const cb = seaweedfsWsPendingCallbacks[data.id];
+            delete seaweedfsWsPendingCallbacks[data.id];
+            cb(data);
+            return;
+        }
+        // Fall through to the original handler (e.g. NextCloud's)
+        if (existingHandler) existingHandler(event);
+    };
 }
 
 // Connect to Dropbox
@@ -43,6 +70,12 @@ function connectToDropbox() {
 
 function authenticateDropbox() {
     showDropboxToast('Opening Dropbox authentication...', 'info');
+
+    // Remove existing modal if present to avoid DOM leaks
+    const existing = document.getElementById('dropboxAuthModal');
+    if (existing) {
+        existing.parentNode.removeChild(existing);
+    }
 
     // This would normally open Dropbox OAuth flow
     // For now, we'll show instructions
@@ -74,6 +107,10 @@ function authenticateDropbox() {
         </div>
     `;
     document.body.appendChild(modal);
+    // Clean up DOM when modal is hidden
+    $('#dropboxAuthModal').on('hidden.bs.modal', function() {
+        $(this).parent().remove();
+    });
     $('#dropboxAuthModal').modal('show');
 }
 
@@ -97,26 +134,17 @@ function testDropboxConnection() {
         }
     };
 
-    dropboxWsConnection.send(JSON.stringify(testCommand));
-
-    // Listen for response
-    const originalHandler = dropboxWsConnection.onmessage;
-    dropboxWsConnection.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'command_response' && data.id === testCommand.id) {
-            if (data.success) {
-                showDropboxToast('Connected to Dropbox successfully!', 'success');
-                document.getElementById('dropbox-connection-panel').style.display = 'none';
-                document.getElementById('dropbox-media-browser').style.display = 'block';
-                loadDropboxFiles();
-            } else {
-                showDropboxToast('Failed to connect to Dropbox: ' + data.error, 'error');
-            }
-            // Restore original handler
-            dropboxWsConnection.onmessage = originalHandler;
+    dropboxWsPendingCallbacks[testCommand.id] = function(data) {
+        if (data.success) {
+            showDropboxToast('Connected to Dropbox successfully!', 'success');
+            document.getElementById('dropbox-connection-panel').style.display = 'none';
+            document.getElementById('dropbox-media-browser').style.display = 'block';
+            loadDropboxFiles();
+        } else {
+            showDropboxToast('Failed to connect to Dropbox: ' + data.error, 'error');
         }
     };
+    dropboxWsConnection.send(JSON.stringify(testCommand));
 }
 
 function loadDropboxFiles(path = '') {
@@ -136,25 +164,16 @@ function loadDropboxFiles(path = '') {
         }
     };
 
-    dropboxWsConnection.send(JSON.stringify(listCommand));
-
-    // Listen for response
-    const originalHandler = dropboxWsConnection.onmessage;
-    dropboxWsConnection.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'command_response' && data.id === listCommand.id) {
-            if (data.success) {
-                dropboxMediaFiles = data.data.files || [];
-                displayDropboxFiles(dropboxMediaFiles);
-                showDropboxToast(`Loaded ${dropboxMediaFiles.length} files`, 'success');
-            } else {
-                showDropboxToast('Failed to load Dropbox files: ' + data.error, 'error');
-            }
-            // Restore original handler
-            dropboxWsConnection.onmessage = originalHandler;
+    dropboxWsPendingCallbacks[listCommand.id] = function(data) {
+        if (data.success) {
+            dropboxMediaFiles = data.data.files || [];
+            displayDropboxFiles(dropboxMediaFiles);
+            showDropboxToast(`Loaded ${dropboxMediaFiles.length} files`, 'success');
+        } else {
+            showDropboxToast('Failed to load Dropbox files: ' + data.error, 'error');
         }
     };
+    dropboxWsConnection.send(JSON.stringify(listCommand));
 }
 
 function refreshDropboxFiles() {
@@ -186,10 +205,10 @@ function createDropboxFileCard(file) {
 
     div.innerHTML = `
         <div style="font-size: 48px; margin-bottom: 10px; color: #007bff;">
-            ${icon}
+            <i class="${icon}"></i>
         </div>
         <div style="color: white; font-weight: bold; margin-bottom: 5px; font-size: 14px; word-break: break-word;">
-            ${file.name}
+            ${escapeHtml(file.name)}
         </div>
         <div style="color: #bbb; font-size: 12px;">
             ${formatDropboxFileSize(file.size)}
@@ -258,47 +277,43 @@ async function uploadDropboxFile(file) {
     }
 
     // Convert file to base64 for WebSocket transmission
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const base64Content = e.target.result.split(',')[1];
+    const base64Content = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 
-        const uploadCommand = {
-            type: 'command',
-            id: generateDropboxId(),
-            command: 'dropbox_upload_file',
-            args: {
-                access_token: dropboxMediaCredentials.accessToken,
-                remote_path: `/${file.name}`,
-                content: base64Content,
-                filename: file.name
-            }
-        };
-
-        dropboxWsConnection.send(JSON.stringify(uploadCommand));
-
-        // Listen for response
-        const originalHandler = dropboxWsConnection.onmessage;
-        dropboxWsConnection.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-
-            if (data.type === 'command_response' && data.id === uploadCommand.id) {
-                if (data.success) {
-                    showDropboxToast(`${file.name} uploaded successfully!`, 'success');
-                } else {
-                    showDropboxToast(`Failed to upload ${file.name}: ${data.error}`, 'error');
-                }
-                // Restore original handler
-                dropboxWsConnection.onmessage = originalHandler;
-            }
-        };
+    const uploadCommand = {
+        type: 'command',
+        id: generateDropboxId(),
+        command: 'dropbox_upload_file',
+        args: {
+            access_token: dropboxMediaCredentials.accessToken,
+            remote_path: `/${file.name}`,
+            content: base64Content,
+            filename: file.name
+        }
     };
 
-    reader.readAsDataURL(file);
+    return new Promise((resolve) => {
+        dropboxWsPendingCallbacks[uploadCommand.id] = function(data) {
+            if (data.success) {
+                showDropboxToast(`${file.name} uploaded successfully!`, 'success');
+            } else {
+                showDropboxToast(`Failed to upload ${file.name}: ${data.error}`, 'error');
+            }
+            resolve();
+        };
+        dropboxWsConnection.send(JSON.stringify(uploadCommand));
+    });
 }
 
 function openDropboxMediaFile(path, name, mimeType, size) {
     const mediaType = getDropboxMediaType(mimeType);
     dropboxCurrentMediaFile = { path, name, mimeType, size, mediaType };
+    currentMediaFile = null;
+    seaweedfsCurrentMediaFile = null;
 
     // Hide all player types first
     document.getElementById('nextcloudVideoPlayer').style.display = 'none';
@@ -352,23 +367,14 @@ function getDropboxDownloadUrl(path, callback) {
         }
     };
 
-    dropboxWsConnection.send(JSON.stringify(downloadCommand));
-
-    // Listen for response
-    const originalHandler = dropboxWsConnection.onmessage;
-    dropboxWsConnection.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'command_response' && data.id === downloadCommand.id) {
-            if (data.success) {
-                callback(data.data.download_url);
-            } else {
-                callback(null);
-            }
-            // Restore original handler
-            dropboxWsConnection.onmessage = originalHandler;
+    dropboxWsPendingCallbacks[downloadCommand.id] = function(data) {
+        if (data.success) {
+            callback(data.data.download_url);
+        } else {
+            callback(null);
         }
     };
+    dropboxWsConnection.send(JSON.stringify(downloadCommand));
 }
 
 // Utility functions for Dropbox media
@@ -382,19 +388,19 @@ function getDropboxMediaType(mimeType) {
 }
 
 function getDropboxMediaIcon(filename, isFolder, mediaType) {
-    if (isFolder) return '<i class="fas fa-folder"></i>';
+    if (isFolder) return 'fas fa-folder';
 
     switch (mediaType) {
-        case 'image': return '<i class="fas fa-image"></i>';
-        case 'video': return '<i class="fas fa-video"></i>';
-        case 'audio': return '<i class="fas fa-music"></i>';
+        case 'image': return 'fas fa-image';
+        case 'video': return 'fas fa-video';
+        case 'audio': return 'fas fa-music';
         case 'document':
-            if (filename.toLowerCase().endsWith('.pdf')) return '<i class="fas fa-file-pdf"></i>';
-            if (filename.toLowerCase().match(/\.(doc|docx)$/)) return '<i class="fas fa-file-word"></i>';
-            if (filename.toLowerCase().match(/\.(xls|xlsx)$/)) return '<i class="fas fa-file-excel"></i>';
-            if (filename.toLowerCase().match(/\.(ppt|pptx)$/)) return '<i class="fas fa-file-powerpoint"></i>';
-            return '<i class="fas fa-file"></i>';
-        default: return '<i class="fas fa-file"></i>';
+            if (filename.toLowerCase().endsWith('.pdf')) return 'fas fa-file-pdf';
+            if (filename.toLowerCase().match(/\.(doc|docx)$/)) return 'fas fa-file-word';
+            if (filename.toLowerCase().match(/\.(xls|xlsx)$/)) return 'fas fa-file-excel';
+            if (filename.toLowerCase().match(/\.(ppt|pptx)$/)) return 'fas fa-file-powerpoint';
+            return 'fas fa-file';
+        default: return 'fas fa-file';
     }
 }
 
@@ -452,25 +458,16 @@ function deleteCurrentDropboxMedia() {
             }
         };
 
-        dropboxWsConnection.send(JSON.stringify(deleteCommand));
-
-        // Listen for response
-        const originalHandler = dropboxWsConnection.onmessage;
-        dropboxWsConnection.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-
-            if (data.type === 'command_response' && data.id === deleteCommand.id) {
-                if (data.success) {
-                    showDropboxToast('File deleted successfully', 'success');
-                    $('#mediaPlayerModal').modal('hide');
-                    refreshDropboxFiles();
-                } else {
-                    showDropboxToast('Failed to delete file: ' + data.error, 'error');
-                }
-                // Restore original handler
-                dropboxWsConnection.onmessage = originalHandler;
+        dropboxWsPendingCallbacks[deleteCommand.id] = function(data) {
+            if (data.success) {
+                showDropboxToast('File deleted successfully', 'success');
+                $('#mediaPlayerModal').modal('hide');
+                refreshDropboxFiles();
+            } else {
+                showDropboxToast('Failed to delete file: ' + data.error, 'error');
             }
         };
+        dropboxWsConnection.send(JSON.stringify(deleteCommand));
     }
 }
 

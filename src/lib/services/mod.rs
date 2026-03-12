@@ -20,6 +20,7 @@
 pub mod config;
 pub mod environment;
 pub mod errors;
+pub mod events;
 pub mod http_client;
 pub mod retry;
 pub mod traits;
@@ -61,6 +62,7 @@ pub mod restart_test;
 // SeaweedFS moved to fs/ submodule
 pub mod p2p;
 pub mod password_manager;
+pub mod plugins;
 pub mod pg;
 pub mod redis;
 pub mod rivescript;

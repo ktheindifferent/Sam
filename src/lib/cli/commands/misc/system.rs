@@ -5,7 +5,12 @@ use tokio::sync::Mutex;
 use sysinfo::System;
 
 pub async fn handle_setup() {
-    // tokio::spawn(crate::setup::install());
+    crate::services::config::SamUserConfig::write_defaults_if_missing();
+    let config = crate::services::config::SamUserConfig::load();
+    println!("SAM setup complete.");
+    println!("  Config: ~/.sam/config.toml");
+    println!("  Database engine: {}", config.database_engine());
+    println!("Edit ~/.sam/config.toml to change settings.");
 }
 
 pub async fn handle_version(output_lines: &Arc<Mutex<Vec<String>>>) {

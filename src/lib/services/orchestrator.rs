@@ -6,6 +6,8 @@ use tokio::time::{sleep, interval};
 use log::{info, warn, error, debug};
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
+use petgraph::graph::DiGraph;
+use petgraph::algo::toposort;
 
 use super::restart::{RestartManager, RestartConfig, RestartStrategy};
 
@@ -1092,6 +1094,88 @@ pub fn default_configs() -> Vec<ServiceConfig> {
     ]
 }
 
+/// Petgraph-based dependency graph for service startup ordering.
+///
+/// Builds a directed acyclic graph from service configs and uses
+/// topological sort to determine correct startup order (dependencies first).
+pub struct ServiceDependencyGraph {
+    graph: DiGraph<ServiceName, ()>,
+    node_map: HashMap<ServiceName, petgraph::graph::NodeIndex>,
+}
+
+impl ServiceDependencyGraph {
+    /// Build a dependency graph from service configurations.
+    pub fn from_configs(configs: &[ServiceConfig]) -> Self {
+        let mut graph = DiGraph::new();
+        let mut node_map = HashMap::new();
+
+        // Add all services as nodes
+        for config in configs {
+            let idx = graph.add_node(config.name.clone());
+            node_map.insert(config.name.clone(), idx);
+        }
+
+        // Add dependency edges (dependency → dependent)
+        for config in configs {
+            if let Some(&dependent_idx) = node_map.get(&config.name) {
+                for dep in &config.dependencies {
+                    if let Some(&dep_idx) = node_map.get(dep) {
+                        graph.add_edge(dep_idx, dependent_idx, ());
+                    }
+                }
+            }
+        }
+
+        Self { graph, node_map }
+    }
+
+    /// Return services in topological startup order (dependencies first).
+    /// Returns Err if a cycle is detected.
+    pub fn startup_order(&self) -> Result<Vec<ServiceName>> {
+        match toposort(&self.graph, None) {
+            Ok(indices) => Ok(indices
+                .into_iter()
+                .map(|idx| self.graph[idx].clone())
+                .collect()),
+            Err(cycle) => Err(anyhow::anyhow!(
+                "Circular dependency detected involving {:?}",
+                self.graph[cycle.node_id()]
+            )),
+        }
+    }
+
+    /// Return services in reverse topological order (for shutdown).
+    pub fn shutdown_order(&self) -> Result<Vec<ServiceName>> {
+        let mut order = self.startup_order()?;
+        order.reverse();
+        Ok(order)
+    }
+
+    /// Get direct dependencies of a service.
+    pub fn dependencies_of(&self, name: &ServiceName) -> Vec<ServiceName> {
+        if let Some(&idx) = self.node_map.get(name) {
+            self.graph
+                .neighbors_directed(idx, petgraph::Direction::Incoming)
+                .map(|dep_idx| self.graph[dep_idx].clone())
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Get services that depend on the given service.
+    pub fn dependents_of(&self, name: &ServiceName) -> Vec<ServiceName> {
+        if let Some(&idx) = self.node_map.get(name) {
+            self.graph
+                .neighbors_directed(idx, petgraph::Direction::Outgoing)
+                .map(|dep_idx| self.graph[dep_idx].clone())
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1168,6 +1252,89 @@ mod tests {
         }).expect("Failed to register service");
         
         assert!(orchestrator.get_startup_order().is_err());
+    }
+
+    #[test]
+    fn test_dependency_graph_startup_order() {
+        let configs = vec![
+            ServiceConfig {
+                name: ServiceName::PostgreSQL,
+                enabled: true,
+                dependencies: vec![],
+                ..Default::default()
+            },
+            ServiceConfig {
+                name: ServiceName::Redis,
+                enabled: true,
+                dependencies: vec![],
+                ..Default::default()
+            },
+            ServiceConfig {
+                name: ServiceName::Crawler,
+                enabled: true,
+                dependencies: vec![ServiceName::PostgreSQL, ServiceName::Redis],
+                ..Default::default()
+            },
+        ];
+
+        let graph = ServiceDependencyGraph::from_configs(&configs);
+        let order = graph.startup_order().expect("Should produce valid order");
+
+        let pg_pos = order.iter().position(|s| *s == ServiceName::PostgreSQL).unwrap();
+        let redis_pos = order.iter().position(|s| *s == ServiceName::Redis).unwrap();
+        let crawler_pos = order.iter().position(|s| *s == ServiceName::Crawler).unwrap();
+
+        assert!(pg_pos < crawler_pos);
+        assert!(redis_pos < crawler_pos);
+    }
+
+    #[test]
+    fn test_dependency_graph_circular_detection() {
+        let configs = vec![
+            ServiceConfig {
+                name: ServiceName::Redis,
+                enabled: true,
+                dependencies: vec![ServiceName::PostgreSQL],
+                ..Default::default()
+            },
+            ServiceConfig {
+                name: ServiceName::PostgreSQL,
+                enabled: true,
+                dependencies: vec![ServiceName::Redis],
+                ..Default::default()
+            },
+        ];
+
+        let graph = ServiceDependencyGraph::from_configs(&configs);
+        assert!(graph.startup_order().is_err());
+    }
+
+    #[test]
+    fn test_dependency_graph_dependents() {
+        let configs = vec![
+            ServiceConfig {
+                name: ServiceName::PostgreSQL,
+                enabled: true,
+                dependencies: vec![],
+                ..Default::default()
+            },
+            ServiceConfig {
+                name: ServiceName::FileStorage,
+                enabled: true,
+                dependencies: vec![ServiceName::PostgreSQL],
+                ..Default::default()
+            },
+            ServiceConfig {
+                name: ServiceName::Backup,
+                enabled: true,
+                dependencies: vec![ServiceName::PostgreSQL],
+                ..Default::default()
+            },
+        ];
+
+        let graph = ServiceDependencyGraph::from_configs(&configs);
+        let dependents = graph.dependents_of(&ServiceName::PostgreSQL);
+        assert_eq!(dependents.len(), 2);
     }
 }
 

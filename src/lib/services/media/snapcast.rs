@@ -33,7 +33,7 @@ pub fn init() {
     let snap_cast_thread = thread::Builder::new()
         .name("snapserver".to_string())
         .spawn(move || {
-            crate::tools::uinx_cmd("snapserver");
+            crate::tools::safe_uinx_cmd("snapserver", &[]);
         });
 
     match snap_cast_thread {
@@ -175,8 +175,8 @@ pub fn install_snapcast_server_arm64() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
-    crate::tools::uinx_cmd("service snapserver start");
+    crate::tools::safe_uinx_cmd("dpkg", &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"]);
+    crate::tools::safe_uinx_cmd("service", &["snapserver", "start"]);
     Ok(())
 }
 
@@ -189,8 +189,8 @@ pub fn install_snapcast_server_arm() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
-    crate::tools::uinx_cmd("service snapserver start");
+    crate::tools::safe_uinx_cmd("dpkg", &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"]);
+    crate::tools::safe_uinx_cmd("service", &["snapserver", "start"]);
     Ok(())
 }
 
@@ -204,7 +204,7 @@ pub fn install_snapcast_server_amd64() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::tools::uinx_cmd("dpkg --force-all -i /opt/sam/tmp/snapserver.deb");
-    crate::tools::uinx_cmd("service snapserver start");
+    crate::tools::safe_uinx_cmd("dpkg", &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"]);
+    crate::tools::safe_uinx_cmd("service", &["snapserver", "start"]);
     Ok(())
 }

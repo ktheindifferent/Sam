@@ -1,5 +1,4 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -7,47 +6,74 @@ use tokio::sync::mpsc;
 
 use libsam::services::coding::agent::{
     CodingAgentService,
-    InteractiveExecutor,
+    CodingAgentExecutor,
     UserMessage,
 };
 
-#[derive(Parser)]
-#[command(
-    name = "coding_agent_interactive",
-    about = "Interactive AI-powered coding agent with verification and correction"
-)]
+// Simple CLI args structure without clap
 struct Cli {
-    #[command(subcommand)]
     command: Option<Commands>,
-
-    /// Task to execute (if not using subcommand)
     task: Option<String>,
-
-    /// Working directory
-    #[arg(short = 'd', long, default_value = ".")]
     dir: PathBuf,
-
-    /// Maximum correction attempts
-    #[arg(short = 'c', long, default_value = "3")]
     max_corrections: u32,
-
-    /// Enable interactive mode (allows typing during execution)
-    #[arg(short = 'i', long)]
     interactive: bool,
-
-    /// Verbose output
-    #[arg(short = 'v', long)]
     verbose: bool,
 }
 
-#[derive(Subcommand)]
+impl Cli {
+    fn parse() -> Self {
+        let args: Vec<String> = std::env::args().collect();
+
+        // Simple argument parsing without clap
+        let mut cli = Cli {
+            command: None,
+            task: None,
+            dir: PathBuf::from("."),
+            max_corrections: 3,
+            interactive: false,
+            verbose: false,
+        };
+
+        // Parse basic flags
+        for (i, arg) in args.iter().enumerate() {
+            match arg.as_str() {
+                "-d" | "--dir" => {
+                    if let Some(dir) = args.get(i + 1) {
+                        cli.dir = PathBuf::from(dir);
+                    }
+                }
+                "-c" | "--max-corrections" => {
+                    if let Some(val) = args.get(i + 1) {
+                        cli.max_corrections = val.parse().unwrap_or(3);
+                    }
+                }
+                "-i" | "--interactive" => cli.interactive = true,
+                "-v" | "--verbose" => cli.verbose = true,
+                "execute" => {
+                    if let Some(task) = args.get(i + 1) {
+                        cli.command = Some(Commands::Execute {
+                            task: task.clone(),
+                        });
+                    }
+                }
+                "session" | "interactive" => cli.command = Some(Commands::Interactive),
+                _ => {
+                    // If not a flag and not the program name, treat as task
+                    if i > 0 && !arg.starts_with('-') && args.get(i - 1).map(|a| !a.starts_with('-')).unwrap_or(true) {
+                        cli.task = Some(arg.clone());
+                    }
+                }
+            }
+        }
+
+        cli
+    }
+}
+
 enum Commands {
-    /// Execute a task with interactive verification
     Execute {
-        /// Task description
         task: String,
     },
-    /// Start an interactive session
     Interactive,
     /// Show help for available commands
     Help,
@@ -103,19 +129,18 @@ async fn execute_task(
 
     // Initialize coding agent
     let coding_agent = Arc::new(CodingAgentService::new_with_defaults().await);
-    let executor = InteractiveExecutor::new(coding_agent);
+    let mut executor = CodingAgentExecutor::new(coding_agent);
 
     // Set up message channel if interactive mode is enabled
-    let message_sender = if interactive {
+    if interactive {
         println!("💬 Interactive mode enabled. You can type messages during execution.");
         println!("   Messages will be queued and processed without interrupting execution.");
         println!();
 
-        let sender = executor.setup_message_channel().await;
+        let mut _receiver = executor.setup_message_channel();
 
         // Spawn task to read user input
         let executor_clone = executor.clone();
-        let sender_clone = sender.clone();
         tokio::spawn(async move {
             let stdin = io::stdin();
             let mut reader = BufReader::new(stdin);
@@ -128,14 +153,8 @@ async fn execute_task(
                     Ok(_) => {
                         let msg = line.trim();
                         if !msg.is_empty() {
-                            let user_msg = UserMessage {
-                                content: msg.to_string(),
-                                timestamp: std::time::SystemTime::now(),
-                            };
-                            if sender_clone.send(user_msg.clone()).await.is_ok() {
-                                executor_clone.queue_message(msg.to_string()).await;
-                                println!("📨 Message queued: {}", msg);
-                            }
+                            executor_clone.queue_message(msg.to_string()).await;
+                            println!("📨 Message queued: {}", msg);
                         }
                     }
                     Err(e) => {
@@ -145,33 +164,43 @@ async fn execute_task(
                 }
             }
         });
-
-        Some(sender)
-    } else {
-        None
-    };
+    }
 
     // Execute task with verification
-    match executor.execute_with_verification(
+    if max_corrections > 0 {
+        // Enable verification mode
+        executor.enable_verification().await;
+    }
+
+    match executor.execute_incremental_task_with_verification(
         &task,
         &working_dir,
-        &[],
-        max_corrections
+        &[]  // session context
     ).await {
         Ok(_) => {
             println!("\n✅ Task completed successfully!");
 
             // Show final context if verbose
             if verbose {
-                let context = executor.get_context().await;
-                println!("\n📊 Execution Summary:");
-                println!("   Commands executed: {}", context.command_history.len());
-                println!("   User messages: {}", context.user_messages.len());
+                let summary = executor.get_summary().await;
+                let history = executor.get_command_history().await;
 
-                if !context.execution_log.is_empty() {
-                    println!("\n📜 Execution Log:");
-                    for entry in &context.execution_log {
-                        println!("   {}", entry);
+                println!("\n📊 Execution Summary:");
+                println!("   {}", summary);
+                println!("   Commands executed: {}", history.len());
+
+                if !history.is_empty() {
+                    println!("\n📜 Command History:");
+                    for (cmd, output) in &history {
+                        println!("   > {}", cmd);
+                        if !output.is_empty() {
+                            let preview = if output.len() > 100 {
+                                format!("{}...", &output[..100])
+                            } else {
+                                output.clone()
+                            };
+                            println!("     {}", preview);
+                        }
                     }
                 }
             }
@@ -179,11 +208,11 @@ async fn execute_task(
         Err(e) => {
             println!("\n❌ Task failed: {}", e);
 
-            // Show context on failure for debugging
-            let context = executor.get_context().await;
-            if !context.command_history.is_empty() {
+            // Show command history on failure for debugging
+            let history = executor.get_command_history().await;
+            if !history.is_empty() {
                 println!("\n📜 Command History:");
-                for (i, (cmd, output)) in context.command_history.iter().enumerate() {
+                for (i, (cmd, output)) in history.iter().enumerate() {
                     println!("   {}. {}", i + 1, cmd);
                     if verbose && !output.trim().is_empty() {
                         println!("      Output: {}", output.lines().next().unwrap_or(""));
@@ -202,7 +231,7 @@ async fn run_interactive_session(
     verbose: bool,
 ) -> Result<()> {
     let coding_agent = Arc::new(CodingAgentService::new_with_defaults().await);
-    let executor = InteractiveExecutor::new(coding_agent);
+    let mut executor = CodingAgentExecutor::new(coding_agent);
 
     println!("🤖 Interactive Coding Agent Session");
     println!("📁 Working directory: {}", working_dir.display());
@@ -233,17 +262,19 @@ async fn run_interactive_session(
                 }
 
                 if task == "clear" {
-                    executor.clear_history_preserve_messages().await;
-                    println!("History cleared (messages preserved)");
+                    // Clear history
+                    println!("History cleared");
+                    session_context.clear();
                     continue;
                 }
 
                 if task == "context" {
-                    let context = executor.get_context().await;
+                    let summary = executor.get_summary().await;
+                    let history = executor.get_command_history().await;
                     println!("Current Context:");
-                    println!("  Working dir: {}", context.working_directory.display());
-                    println!("  Commands executed: {}", context.command_history.len());
-                    println!("  User messages: {}", context.user_messages.len());
+                    println!("  Working dir: {}", working_dir.display());
+                    println!("  {}", summary);
+                    println!("  Commands in history: {}", history.len());
                     continue;
                 }
 
@@ -251,11 +282,14 @@ async fn run_interactive_session(
                 println!("\n🚀 Executing: {}", task);
                 session_context.push(format!("Previous task: {}", task));
 
-                match executor.execute_with_verification(
+                if max_corrections > 0 {
+                    executor.enable_verification().await;
+                }
+
+                match executor.execute_incremental_task_with_verification(
                     task,
                     &working_dir,
-                    &session_context,
-                    max_corrections
+                    &session_context
                 ).await {
                     Ok(_) => {
                         println!("✅ Task completed!");

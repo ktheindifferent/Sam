@@ -1,6 +1,7 @@
 // Command modules
 pub mod cd;
 pub mod crawler;
+pub mod doctor;
 pub mod crawler_stats;
 pub mod darknet;
 pub mod docker;
@@ -15,6 +16,7 @@ pub mod nano;
 pub mod ollama;
 pub mod p2p;
 pub mod pg;
+pub mod plugin;
 pub mod redis;
 pub mod router;
 pub mod sms;

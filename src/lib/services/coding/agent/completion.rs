@@ -218,7 +218,7 @@ impl CompletionEngine {
         }
 
         // Sort by relevance score
-        completions.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        completions.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
         // Cache the results
         self.cache.write().await.insert(cache_key, completions.clone());

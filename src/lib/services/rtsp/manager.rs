@@ -298,7 +298,9 @@ pub fn gen_rtsp_to_http_stream_script(address: String, identifier: String) -> St
 pub fn gen_rtsp_to_wav_script(address: String, identifier: String) -> String {
     let p = format!("/opt/sam/tmp/sound/{identifier}");
     if !Path::new(&p).exists() {
-        crate::tools::uinx_cmd(&format!("mkdir -p {p}/s1 {p}/s2 {p}/s3")); // Fixed path creation
+        let _ = std::fs::create_dir_all(format!("{p}/s1"));
+        let _ = std::fs::create_dir_all(format!("{p}/s2"));
+        let _ = std::fs::create_dir_all(format!("{p}/s3"));
     }
 
     let mut script = "#!/bin/bash\n".to_string();

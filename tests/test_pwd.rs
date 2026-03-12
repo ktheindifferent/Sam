@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 // Import our new pwd function
-use sam::cli::commands::misc::handle_pwd;
+use libsam::cli::commands::misc::handle_pwd;
 
 #[tokio::main]
 async fn main() {

@@ -6,7 +6,7 @@ use tokio::time::{sleep, Duration};
 use log;
 
 use super::service::CodingAgentService;
-use super::execution_state::{IncrementalExecution, ExecutionState, ExecutionStep};
+use super::execution_state::IncrementalExecution;
 use super::step_parser::StepParser;
 use super::command_executor::CommandExecutor;
 
@@ -321,11 +321,28 @@ Generate the minimal sequence of commands needed:"#,
                 result.success
             ));
 
-            // Show result
+            // Show result with cleaner formatting
             if result.success {
-                println!("   ✅ Success");
+                if !result.output.trim().is_empty() {
+                    // For very long outputs (like ls -la), show more content
+                    let output_len = result.output.trim().len();
+                    if output_len > 200 {
+                        // Show first few lines for long directory listings
+                        let lines: Vec<&str> = result.output.lines().take(5).collect();
+                        println!("   ✅ {}", lines.join("\n   "));
+                        if result.output.lines().count() > 5 {
+                            println!("   ... ({} more lines)", result.output.lines().count() - 5);
+                        }
+                    } else {
+                        println!("   ✅ {}", self.format_output(&result.output, 120));
+                    }
+                } else {
+                    println!("   ✅ Success");
+                }
             } else {
-                println!("   ❌ Failed: {}", result.output);
+                // Format the error output more cleanly
+                let clean_output = self.format_error_output(&result.output, &command);
+                println!("   ❌ {}", clean_output);
 
                 // Ask Ollama for suggestions on failure
                 if let Some(suggestion) = self.get_correction_suggestion(&command, &result.output).await {
@@ -352,9 +369,27 @@ Generate the minimal sequence of commands needed:"#,
             Err(err) => err,
         };
 
-        let success = !output.contains("Error:") &&
-                      !output.contains("error:") &&
-                      !output.contains("failed");
+        // Improve success detection by considering expected errors
+        let success = if command.starts_with("cat ") && output.contains("Is a directory") {
+            // cat on a directory is a failure but expected
+            false
+        } else if command.starts_with("grep ") && output.contains("Is a directory") {
+            // grep on a directory is a failure but expected
+            false
+        } else if output.contains("No such file or directory") {
+            false
+        } else if output.contains("Permission denied") {
+            false
+        } else if output.contains("command not found") {
+            false
+        } else if output.contains("Command '") && output.contains("failed with exit code") {
+            false
+        } else {
+            // For other cases, consider it success if no critical errors
+            !output.to_lowercase().contains("error:") &&
+            !output.to_lowercase().contains("failed:") &&
+            !output.to_lowercase().contains("fatal:")
+        };
 
         // Update execution state
         {
@@ -458,6 +493,59 @@ Response:"#,
         context.execution_log.clear();
         context.command_history.clear();
         // Keep user_messages and session_context
+    }
+
+    /// Format output for display, truncating if necessary (UTF-8 safe)
+    fn format_output(&self, output: &str, max_len: usize) -> String {
+        let trimmed = output.trim();
+        if trimmed.len() <= max_len {
+            trimmed.to_string()
+        } else {
+            // Use char_indices to safely truncate at character boundaries
+            let mut truncate_at = max_len;
+            for (idx, _) in trimmed.char_indices() {
+                if idx >= max_len {
+                    truncate_at = idx;
+                    break;
+                }
+            }
+            // If we still haven't found a safe boundary, use chars() iterator
+            if truncate_at >= trimmed.len() {
+                let safe_str: String = trimmed.chars().take(max_len).collect();
+                format!("{}...", safe_str)
+            } else {
+                format!("{}...", &trimmed[..truncate_at])
+            }
+        }
+    }
+
+    /// Format error output more cleanly
+    fn format_error_output(&self, output: &str, command: &str) -> String {
+        let trimmed = output.trim();
+
+        // Handle specific error patterns for cleaner display
+        if command.starts_with("cat ") && trimmed.contains("Is a directory") {
+            if let Some(target) = command.strip_prefix("cat ").map(|s| s.trim()) {
+                return format!("{} is a directory", target);
+            }
+        }
+
+        if command.starts_with("grep ") && trimmed.contains("Is a directory") {
+            if let Some(parts) = command.strip_prefix("grep ") {
+                let parts: Vec<&str> = parts.split_whitespace().collect();
+                if parts.len() > 1 {
+                    return format!("{} is a directory", parts.last().unwrap_or(&"target"));
+                }
+            }
+        }
+
+        // Remove redundant "Command failed:" prefix if present
+        if trimmed.starts_with("Command failed:") {
+            return trimmed.strip_prefix("Command failed:").unwrap_or(trimmed).trim().to_string();
+        }
+
+        // For other errors, return as-is but truncated if too long
+        self.format_output(trimmed, 80)
     }
 }
 

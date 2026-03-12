@@ -17,11 +17,11 @@ pub fn handle(
     request: &Request,
 ) -> Result<Response, crate::http::Error> {
     if request.url() == "/api/observations" {
-        let skip = request.get_param("skip");
-        let mut skip_number: usize = 0;
-        if skip.is_some() {
-            skip_number = skip.unwrap().parse::<usize>().unwrap();
-        }
+        let skip_number: usize = request
+            .get_param("skip")
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or(0);
 
         let objects = crate::memory::Observation::select_lite(
             Some(1),
@@ -47,10 +47,15 @@ pub fn handle(
 
         // Select project by oid
         let observations =
-            crate::memory::Observation::select(None, None, None, Some(pg_query)).unwrap();
-        let observation = observations[0].clone();
+            crate::memory::Observation::select(None, None, None, Some(pg_query))?;
+        let observation = observations.first().ok_or_else(|| {
+            crate::http::Error::BadRequest("Observation not found".to_string())
+        })?.clone();
 
-        let response = Response::from_data("audio/wav", observation.observation_file.unwrap());
+        let file_data = observation.observation_file.ok_or_else(|| {
+            crate::http::Error::BadRequest("Observation file not found".to_string())
+        })?;
+        let response = Response::from_data("audio/wav", file_data);
 
         return Ok(response);
     }
@@ -71,61 +76,55 @@ pub fn handle(
 
         // Select project by oid
         let observations =
-            crate::memory::Observation::select(None, None, None, Some(pg_query)).unwrap();
-        let observation = observations[0].clone();
+            crate::memory::Observation::select(None, None, None, Some(pg_query))?;
+        let observation = observations.first().ok_or_else(|| {
+            crate::http::Error::BadRequest("Observation not found".to_string())
+        })?.clone();
 
-        let wav_data = observation.observation_file.unwrap();
+        let wav_data = observation.observation_file.ok_or_else(|| {
+            crate::http::Error::BadRequest("Observation file not found".to_string())
+        })?;
 
-        let tmp_file_path = format!("/opt/sam/tmp/observations/vwav/{}.wav", observation.oid)
-            .as_str()
-            .to_string();
+        let tmp_file_path = format!("/opt/sam/tmp/observations/vwav/{}.wav", observation.oid);
 
         // Use cached tmp file if it already exists
-        let cache_path = format!("{}.16.wav.mp4", tmp_file_path.clone());
+        let cache_path = format!("{}.16.wav.mp4", tmp_file_path);
         if Path::new(&cache_path).exists() {
-            let data = std::fs::read(format!("{}.16.wav.mp4", tmp_file_path.clone()).as_str())?;
+            let data = std::fs::read(&cache_path)?;
             let response = Response::from_data("video/mp4", data);
             return Ok(response);
         }
 
-        std::fs::write(tmp_file_path.clone(), wav_data)?;
+        std::fs::write(&tmp_file_path, wav_data)?;
+
+        let wav_16_path = format!("{}.16.wav", tmp_file_path);
 
         // TODO: Fix 8000 vs 16000
-        crate::tools::uinx_cmd(
-            format!(
-                "ffmpeg -y -i {} -ar 16000 -ac 1 -c:a pcm_s16le {}.16.wav",
-                tmp_file_path.clone(),
-                tmp_file_path.clone()
-            )
-            .as_str(),
+        crate::tools::safe_uinx_cmd(
+            "ffmpeg",
+            &["-y", "-i", &tmp_file_path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", &wav_16_path],
         );
-        // crate::tools::uinx_cmd(format!("cp {} {}.16.wav", tmp_file_path.clone(), tmp_file_path.clone()));
 
-        crate::tools::uinx_cmd(
-            format!(
-                "/opt/sam/bin/whisper -m /opt/sam/models/ggml-large.bin -f {}.16.wav -owts",
-                tmp_file_path.clone()
-            )
-            .as_str(),
+        crate::tools::safe_uinx_cmd(
+            "/opt/sam/bin/whisper",
+            &["-m", "/opt/sam/models/ggml-large.bin", "-f", &wav_16_path, "-owts"],
         );
 
         crate::services::stt::patch_whisper_wts()?;
 
-        crate::tools::uinx_cmd(
-            format!("chmod +x {}.16.wav.wts", tmp_file_path.clone()).as_str(),
-        );
+        let wts_path = format!("{}.wts", wav_16_path);
+        crate::tools::safe_uinx_cmd("chmod", &["+x", &wts_path]);
 
-        crate::tools::uinx_cmd(format!("{}.16.wav.wts", tmp_file_path.clone()).as_str());
+        crate::tools::safe_uinx_cmd(&wts_path, &[]);
 
-        let data = std::fs::read(format!("{}.16.wav.mp4", tmp_file_path.clone()).as_str())?;
+        let data = std::fs::read(&cache_path)?;
 
         let response = Response::from_data("video/mp4", data);
 
-        // Cleanup
-        crate::tools::uinx_cmd(format!("rm {}", tmp_file_path.clone()).as_str());
-        crate::tools::uinx_cmd(format!("rm {}.16.wav", tmp_file_path.clone()).as_str());
-        crate::tools::uinx_cmd(format!("rm {}.16.wav.wts", tmp_file_path.clone()).as_str());
-        // crate::tools::uinx_cmd(format!("rm {}.16.wav.mp4", tmp_file_path.clone()));
+        // Cleanup using std::fs instead of shell commands
+        let _ = std::fs::remove_file(&tmp_file_path);
+        let _ = std::fs::remove_file(&wav_16_path);
+        let _ = std::fs::remove_file(&wts_path);
 
         return Ok(response);
     }

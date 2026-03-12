@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use std::sync::Arc;
+use anyhow::Result;
 
 /// Enhanced execution context that maintains state across commands
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -405,7 +406,7 @@ impl ExecutionContextManager {
     }
 
     /// Save all contexts to disk
-    pub async fn save_contexts(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn save_contexts(&self, path: &Path) -> Result<()> {
         let contexts = self.contexts.read().await;
         let data = serde_json::to_string_pretty(&*contexts)?;
         tokio::fs::write(path, data).await?;
@@ -413,7 +414,7 @@ impl ExecutionContextManager {
     }
 
     /// Load contexts from disk
-    pub async fn load_contexts(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn load_contexts(&self, path: &Path) -> Result<()> {
         let data = tokio::fs::read_to_string(path).await?;
         let loaded: HashMap<String, ExecutionContext> = serde_json::from_str(&data)?;
         let mut contexts = self.contexts.write().await;

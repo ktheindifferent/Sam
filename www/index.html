@@ -40,7 +40,7 @@ Licensed under GPLv3....see LICENSE file. -->
   <style>
     /* Enhanced Dashboard Styles following design.md */
 
-    /* Core Design Variables */
+    /* Core Design Variables - Dark Theme (default) */
     :root {
       --bg-primary: #1e1e2d;
       --bg-secondary: #252532;
@@ -56,6 +56,56 @@ Licensed under GPLv3....see LICENSE file. -->
       --info: #17a2b8;
       --border: rgba(255, 255, 255, 0.1);
       --border-accent: rgba(39, 160, 185, 0.3);
+    }
+
+    /* Light Theme */
+    [data-theme="light"] {
+      --bg-primary: #f5f6fa;
+      --bg-secondary: #ffffff;
+      --bg-card: #ffffff;
+      --text-primary: #1e1e2d;
+      --text-secondary: #495057;
+      --text-muted: #8898aa;
+      --accent-primary: #1a8a9e;
+      --accent-secondary: #157a8c;
+      --success: #28a745;
+      --error: #dc3545;
+      --warning: #fd7e14;
+      --info: #17a2b8;
+      --border: rgba(0, 0, 0, 0.1);
+      --border-accent: rgba(26, 138, 158, 0.3);
+    }
+    [data-theme="light"] body,
+    [data-theme="light"] .main-panel,
+    [data-theme="light"] .wrapper {
+      background-color: var(--bg-primary) !important;
+      color: var(--text-primary) !important;
+    }
+    [data-theme="light"] .sidebar {
+      background: var(--bg-secondary) !important;
+    }
+    [data-theme="light"] .navbar {
+      background: var(--bg-secondary) !important;
+    }
+    [data-theme="light"] .dashboard-card {
+      background: var(--bg-card) !important;
+      border-color: var(--border) !important;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08) !important;
+    }
+    [data-theme="light"] .metric-value {
+      color: var(--accent-primary) !important;
+    }
+    [data-theme="light"] .metric-label,
+    [data-theme="light"] .log-message,
+    [data-theme="light"] h5,
+    [data-theme="light"] p {
+      color: var(--text-primary) !important;
+    }
+    [data-theme="light"] .activity-log {
+      background: var(--bg-primary) !important;
+    }
+    [data-theme="light"] .log-entry {
+      border-bottom-color: var(--border) !important;
     }
 
     /* Model Management Styles */
@@ -368,13 +418,167 @@ Licensed under GPLv3....see LICENSE file. -->
     }
 
     /* Mobile Responsiveness */
-    @media (max-width: 768px) {
+    @media (max-width: 991px) {
+      .sidebar {
+        display: none !important;
+      }
+      .main-panel {
+        width: 100% !important;
+        margin-left: 0 !important;
+      }
+      .content {
+        padding: 15px 10px 80px 10px !important;
+      }
+      .dashboard-card {
+        padding: 14px;
+        margin-bottom: 12px;
+      }
+      .dashboard-card:hover {
+        transform: none;
+      }
       .service-grid {
         grid-template-columns: 1fr;
+        gap: 12px;
       }
-      
+      .row > [class*="col-"] {
+        padding-left: 6px;
+        padding-right: 6px;
+      }
+      /* 2-column metric cards on mobile */
+      .row > .col-xl-3 {
+        flex: 0 0 50%;
+        max-width: 50%;
+      }
       .metric-value {
-        font-size: 2rem;
+        font-size: 1.6rem;
+      }
+      .metric-label {
+        font-size: 0.75rem;
+      }
+      /* Dashboard tabs: scrollable row */
+      #dashboardTabs {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      #dashboardTabs .nav-link {
+        white-space: nowrap;
+        font-size: 0.85rem;
+        padding: 6px 12px !important;
+      }
+      /* Log controls stack */
+      #tab-content-logs .d-flex.align-items-center {
+        flex-wrap: wrap;
+        gap: 6px !important;
+      }
+      #tab-content-logs .form-control-sm {
+        width: 100% !important;
+      }
+      /* Activity log shorter on mobile */
+      .activity-log {
+        max-height: 250px;
+      }
+      #stream-log-container {
+        height: 300px !important;
+      }
+      /* Quick actions stack vertically */
+      .quick-actions {
+        flex-direction: column;
+      }
+      /* Navbar compact */
+      .navbar {
+        padding: 8px 10px !important;
+      }
+      #Clock {
+        font-size: 1.1rem !important;
+      }
+      /* Service control buttons: 44px min touch targets */
+      .service-controls .btn {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 8px 12px;
+        font-size: 0.8rem;
+      }
+      /* Hide long button text on small screens, keep icons */
+      .service-controls .btn i + span {
+        display: none;
+      }
+      /* Toast above bottom nav */
+      .toast-notification {
+        bottom: 76px !important;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .row > .col-xl-3 {
+        flex: 0 0 50%;
+        max-width: 50%;
+      }
+      .metric-value {
+        font-size: 1.3rem;
+      }
+      .service-controls {
+        justify-content: center;
+      }
+    }
+
+    /* Bottom Navigation Bar (mobile only) */
+    .mobile-bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      z-index: 1050;
+      justify-content: space-around;
+      align-items: center;
+      padding: 0 4px;
+      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+    }
+    @media (max-width: 991px) {
+      .mobile-bottom-nav {
+        display: flex;
+      }
+    }
+    .mobile-bottom-nav .nav-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
+      padding: 4px 8px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.65rem;
+      letter-spacing: 0.3px;
+      border-radius: 8px;
+      transition: color 0.2s, background 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      cursor: pointer;
+    }
+    .mobile-bottom-nav .nav-tab i {
+      font-size: 1.2rem;
+      margin-bottom: 2px;
+    }
+    .mobile-bottom-nav .nav-tab.active {
+      color: var(--accent-primary);
+      background: rgba(39, 160, 185, 0.1);
+    }
+
+    /* Mobile sections (toggled by bottom nav) */
+    .mobile-section {
+      /* Visible by default on desktop */
+    }
+    @media (max-width: 991px) {
+      .mobile-section {
+        display: none;
+      }
+      .mobile-section.mobile-active {
+        display: block;
       }
     }
 
@@ -392,10 +596,11 @@ Licensed under GPLv3....see LICENSE file. -->
       to { transform: rotate(360deg); }
     }
 
-    /* Hide cursor on touch devices - following design.md */
+    /* Touch device optimizations */
     @media (pointer: coarse) {
-      * {
-        cursor: none !important;
+      .btn, .nav-link, a, .service-controls button {
+        min-height: 44px;
+        min-width: 44px;
       }
     }
 
@@ -508,12 +713,18 @@ Licensed under GPLv3....see LICENSE file. -->
         <div class="navbar-brand">
           <div id="Clock" class="glow" style="font-size: 1.5rem; color: #27a0b9; font-weight: 600;">00:00</div>
         </div>
+        <div class="ml-auto d-flex align-items-center" style="gap: 10px;">
+          <button class="btn btn-sm" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 5px 10px;">
+            <i class="fas fa-moon" id="theme-icon"></i>
+          </button>
+        </div>
       </nav>
       
       <!-- Main Dashboard Content -->
       <div class="content">
 
-        <!-- System Status Overview -->
+        <!-- System Status Overview (mobile-section: dashboard) -->
+        <div class="mobile-section mobile-active" id="mobile-section-dashboard">
         <div class="row">
           <div class="col-xl-3 col-lg-6 col-md-6">
             <div class="dashboard-card">
@@ -547,11 +758,94 @@ Licensed under GPLv3....see LICENSE file. -->
           </div>
         </div>
 
+        </div><!-- /mobile-section-dashboard -->
+
+        <!-- Services Section (mobile-section: services) -->
+        <div class="mobile-section mobile-active" id="mobile-section-services">
         <!-- Service Status Grid -->
         <div class="service-grid" id="service-status-grid">
           <!-- Service cards will be populated dynamically -->
         </div>
+        </div><!-- /mobile-section-services -->
 
+        <!-- Logs/Overview Section (mobile-section: logs) -->
+        <div class="mobile-section mobile-active" id="mobile-section-logs">
+        <!-- Dashboard Tabs -->
+        <div class="row mt-3 mb-3">
+          <div class="col-12">
+            <ul class="nav nav-pills" id="dashboardTabs" style="gap: 8px;">
+              <li class="nav-item">
+                <a class="nav-link active" href="#" onclick="switchDashboardTab('overview')" id="tab-overview" style="background: var(--accent-primary); color: #fff; border-radius: 8px; padding: 6px 16px;">Overview</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#" onclick="switchDashboardTab('logs')" id="tab-logs" style="background: var(--bg-card); color: var(--text-secondary); border-radius: 8px; padding: 6px 16px;">Logs</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#" onclick="switchDashboardTab('topology')" id="tab-topology" style="background: var(--bg-card); color: var(--text-secondary); border-radius: 8px; padding: 6px 16px;">Topology</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Logs Tab Content (hidden by default) -->
+        <div id="tab-content-logs" style="display: none;">
+          <div class="row">
+            <div class="col-12">
+              <div class="dashboard-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h5><i class="fas fa-stream text-info"></i> Real-Time Logs</h5>
+                  <div class="d-flex align-items-center" style="gap: 8px;">
+                    <select id="log-level-filter" class="form-control form-control-sm" style="width: 120px; background: var(--bg-secondary); color: var(--text-primary); border-color: var(--border);" onchange="filterLogs()">
+                      <option value="all">All Levels</option>
+                      <option value="error">Error</option>
+                      <option value="warn">Warning</option>
+                      <option value="info">Info</option>
+                      <option value="debug">Debug</option>
+                    </select>
+                    <input type="text" id="log-search" class="form-control form-control-sm" placeholder="Search..." style="width: 200px; background: var(--bg-secondary); color: var(--text-primary); border-color: var(--border);" oninput="filterLogs()">
+                    <button class="btn btn-sm" onclick="clearStreamLogs()" style="background: var(--error); color: #fff; border-radius: 6px;">
+                      <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <label style="display: flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: 0.85rem; margin: 0;">
+                      <input type="checkbox" id="log-autoscroll" checked> Auto-scroll
+                    </label>
+                  </div>
+                </div>
+                <div id="stream-log-container" style="height: 500px; overflow-y: auto; background: var(--bg-primary); border-radius: 8px; padding: 10px; font-family: monospace; font-size: 0.85rem; border: 1px solid var(--border);">
+                  <div style="color: var(--text-muted);">Waiting for log stream...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Topology Tab Content (hidden by default) -->
+        <div id="tab-content-topology" style="display: none;">
+          <div class="row">
+            <div class="col-12">
+              <div class="dashboard-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h5><i class="fas fa-project-diagram text-info"></i> Service Topology</h5>
+                  <button class="btn btn-sm" onclick="refreshTopology()" style="background: var(--accent-primary); color: #fff; border-radius: 6px;">
+                    <i class="fas fa-sync"></i> Refresh
+                  </button>
+                </div>
+                <div id="topology-container" style="height: 500px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border); position: relative; overflow: hidden;">
+                  <svg id="topology-svg" width="100%" height="100%"></svg>
+                </div>
+                <div class="mt-2" style="color: var(--text-muted); font-size: 0.85rem;">
+                  <span style="display: inline-block; width: 12px; height: 12px; background: var(--success); border-radius: 50%; margin-right: 4px;"></span> Running
+                  <span style="display: inline-block; width: 12px; height: 12px; background: var(--error); border-radius: 50%; margin-left: 12px; margin-right: 4px;"></span> Stopped
+                  <span style="display: inline-block; width: 12px; height: 12px; background: var(--text-muted); border-radius: 50%; margin-left: 12px; margin-right: 4px;"></span> Unknown
+                  <span style="margin-left: 12px;">Lines show dependencies</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overview Tab Content (shown by default) -->
+        <div id="tab-content-overview">
         <!-- Main Dashboard Sections -->
         <div class="row mt-4">
           <!-- Activity Log -->
@@ -663,8 +957,53 @@ Licensed under GPLv3....see LICENSE file. -->
             </div>
           </div>
         </div>
+        </div><!-- /tab-content-overview -->
+        </div><!-- /mobile-section-logs -->
+
+        <!-- Settings Section (mobile-section: settings) -->
+        <div class="mobile-section mobile-active" id="mobile-section-settings">
+          <div class="row">
+            <div class="col-12">
+              <div class="dashboard-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h5><i class="fas fa-bell text-warning"></i> Notification Settings</h5>
+                  <button class="btn btn-primary-custom btn-sm" onclick="testNotification()">
+                    <i class="fas fa-paper-plane"></i> Test
+                  </button>
+                </div>
+                <div id="notification-rules-list" style="max-height: 300px; overflow-y: auto;">
+                  <div style="color: var(--text-muted);">Loading notification rules...</div>
+                </div>
+                <div class="mt-3" style="font-size: 0.85rem; color: var(--text-secondary);">
+                  Configure rules in <code>~/.sam/config.toml</code> under <code>[notifications]</code>.
+                  <a href="#" onclick="loadNotificationRules(); return false;" style="color: var(--accent-primary);">Refresh</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div><!-- /mobile-section-settings -->
 
       </div>
+
+      <!-- Mobile Bottom Navigation Bar -->
+      <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+        <a class="nav-tab active" data-section="dashboard" onclick="switchMobileSection('dashboard')">
+          <i class="fas fa-tachometer-alt"></i>
+          <span>Dashboard</span>
+        </a>
+        <a class="nav-tab" data-section="services" onclick="switchMobileSection('services')">
+          <i class="fas fa-server"></i>
+          <span>Services</span>
+        </a>
+        <a class="nav-tab" data-section="logs" onclick="switchMobileSection('logs')">
+          <i class="fas fa-stream"></i>
+          <span>Logs</span>
+        </a>
+        <a class="nav-tab" data-section="settings" onclick="switchMobileSection('settings')">
+          <i class="fas fa-cog"></i>
+          <span>Settings</span>
+        </a>
+      </nav>
 
       <!-- Animated Background -->
       <div class="bg-animation">
@@ -1397,7 +1736,64 @@ Licensed under GPLv3....see LICENSE file. -->
       updateSystemMetrics();
       updateServiceStatuses();
       loadCurrentUser();
+      loadNotificationRules();
       showToast('Dashboard data refreshed', 'success');
+    }
+
+    // ============ Notification Settings ============
+    function loadNotificationRules() {
+      if (typeof ws !== 'undefined' && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'command',
+          id: 'notif_rules_' + Date.now(),
+          command: 'get_notification_rules',
+          args: {}
+        }));
+      }
+      // Also handle the response in handleWebSocketMessage or inline:
+      var container = document.getElementById('notification-rules-list');
+      if (!container) return;
+      // If no WS, show placeholder
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        container.innerHTML = '<div style="color: var(--text-muted);">WebSocket not connected. Rules are configured in ~/.sam/config.toml</div>';
+      }
+    }
+
+    function renderNotificationRules(rules) {
+      var container = document.getElementById('notification-rules-list');
+      if (!container) return;
+      if (!rules || rules.length === 0) {
+        container.innerHTML = '<div style="color: var(--text-muted);">No notification rules configured. Add rules in ~/.sam/config.toml</div>';
+        return;
+      }
+      container.innerHTML = rules.map(function(rule) {
+        var severityColor = rule.severity === 'critical' ? 'var(--error)' :
+                           rule.severity === 'error' ? 'var(--error)' :
+                           rule.severity === 'warning' ? 'var(--warning)' : 'var(--info)';
+        var condType = rule.condition && rule.condition.type ? rule.condition.type.replace(/_/g, ' ') : 'unknown';
+        return '<div style="padding: 10px; border-left: 3px solid ' + severityColor + '; margin-bottom: 8px; background: rgba(255,255,255,0.05); border-radius: 0 8px 8px 0;">' +
+          '<div class="d-flex justify-content-between align-items-center">' +
+            '<strong style="color: var(--text-primary);">' + (rule.name || rule.id) + '</strong>' +
+            '<span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: ' + severityColor + '; color: #fff;">' + (rule.severity || 'info') + '</span>' +
+          '</div>' +
+          '<div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">' + condType + '</div>' +
+          '<div style="font-size: 0.75rem; color: ' + (rule.enabled ? 'var(--success)' : 'var(--text-muted)') + ';">' + (rule.enabled ? 'Enabled' : 'Disabled') + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function testNotification() {
+      if (typeof ws !== 'undefined' && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'command',
+          id: 'test_notif_' + Date.now(),
+          command: 'test_notification',
+          args: { channel: 'websocket', message: 'Test notification from SAM dashboard' }
+        }));
+        showToast('Test notification sent', 'info');
+      } else {
+        showToast('WebSocket not connected', 'error');
+      }
     }
 
     function openTerminal() {
@@ -1851,6 +2247,205 @@ Licensed under GPLv3....see LICENSE file. -->
     function generateId() {
       return Math.random().toString(36).substr(2, 9);
     }
+
+    // ============ Theme Toggle ============
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('sam-theme', next);
+      const icon = document.getElementById('theme-icon');
+      if (icon) {
+        icon.className = next === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
+      }
+    }
+    // Restore saved theme
+    (function() {
+      const saved = localStorage.getItem('sam-theme');
+      if (saved) {
+        document.documentElement.setAttribute('data-theme', saved);
+        const icon = document.getElementById('theme-icon');
+        if (icon) icon.className = saved === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
+      }
+    })();
+
+    // ============ Dashboard Tabs ============
+    function switchDashboardTab(tab) {
+      ['overview', 'logs', 'topology'].forEach(function(t) {
+        var content = document.getElementById('tab-content-' + t);
+        var tabEl = document.getElementById('tab-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (tabEl) {
+          tabEl.style.background = (t === tab) ? 'var(--accent-primary)' : 'var(--bg-card)';
+          tabEl.style.color = (t === tab) ? '#fff' : 'var(--text-secondary)';
+        }
+      });
+    }
+
+    // ============ Mobile Bottom Nav Section Switching ============
+    function switchMobileSection(section) {
+      var sections = ['dashboard', 'services', 'logs', 'settings'];
+      sections.forEach(function(s) {
+        var el = document.getElementById('mobile-section-' + s);
+        if (el) {
+          if (s === section) {
+            el.classList.add('mobile-active');
+          } else {
+            el.classList.remove('mobile-active');
+          }
+        }
+      });
+      // Update nav tab active states
+      var tabs = document.querySelectorAll('.mobile-bottom-nav .nav-tab');
+      tabs.forEach(function(tab) {
+        if (tab.getAttribute('data-section') === section) {
+          tab.classList.add('active');
+        } else {
+          tab.classList.remove('active');
+        }
+      });
+      // Scroll to top when switching sections
+      window.scrollTo(0, 0);
+    }
+
+    // ============ Log Streaming ============
+    var streamLogs = [];
+    var maxStreamLogs = 500;
+
+    function addStreamLog(entry) {
+      streamLogs.push(entry);
+      if (streamLogs.length > maxStreamLogs) {
+        streamLogs = streamLogs.slice(-maxStreamLogs);
+      }
+      renderStreamLogs();
+    }
+
+    function renderStreamLogs() {
+      var container = document.getElementById('stream-log-container');
+      if (!container) return;
+      var filter = (document.getElementById('log-level-filter') || {}).value || 'all';
+      var search = ((document.getElementById('log-search') || {}).value || '').toLowerCase();
+
+      var filtered = streamLogs.filter(function(log) {
+        if (filter !== 'all' && log.level !== filter) return false;
+        if (search && log.message.toLowerCase().indexOf(search) === -1) return false;
+        return true;
+      });
+
+      var html = filtered.map(function(log) {
+        var color = log.level === 'error' ? 'var(--error)' :
+                    log.level === 'warn' ? 'var(--warning)' :
+                    log.level === 'debug' ? 'var(--text-muted)' : 'var(--text-secondary)';
+        return '<div style="padding: 2px 0; border-bottom: 1px solid var(--border);">' +
+          '<span style="color: var(--text-muted); margin-right: 8px;">' + (log.timestamp || '') + '</span>' +
+          '<span style="color: ' + color + '; font-weight: 600; margin-right: 8px;">[' + (log.level || 'info').toUpperCase() + ']</span>' +
+          '<span style="color: var(--text-primary);">' + (log.message || '') + '</span>' +
+          '</div>';
+      }).join('');
+
+      container.innerHTML = html || '<div style="color: var(--text-muted);">No logs matching filter.</div>';
+
+      if (document.getElementById('log-autoscroll') && document.getElementById('log-autoscroll').checked) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    function filterLogs() {
+      renderStreamLogs();
+    }
+
+    function clearStreamLogs() {
+      streamLogs = [];
+      renderStreamLogs();
+    }
+
+    // Wire log_entry WebSocket messages into the stream
+    var _origOnMessage = (typeof onMessage === 'function') ? onMessage : null;
+    function hookLogStreaming(data) {
+      if (data && data.type === 'log_entry') {
+        addStreamLog({
+          timestamp: data.timestamp || new Date().toLocaleTimeString(),
+          level: data.level || 'info',
+          message: data.message || ''
+        });
+      }
+      // Also add activity messages as logs
+      if (data && data.type === 'activity' && data.activity) {
+        addStreamLog({
+          timestamp: new Date().toLocaleTimeString(),
+          level: 'info',
+          message: data.activity.message || JSON.stringify(data.activity)
+        });
+      }
+    }
+
+    // ============ Service Topology ============
+    var topologyServices = [
+      { name: 'PostgreSQL', x: 200, y: 80, group: 'core', deps: [] },
+      { name: 'Redis', x: 400, y: 80, group: 'core', deps: [] },
+      { name: 'Docker', x: 600, y: 80, group: 'core', deps: [] },
+      { name: 'HTTP Server', x: 100, y: 200, group: 'core', deps: ['PostgreSQL', 'Redis'] },
+      { name: 'WebSocket', x: 300, y: 200, group: 'core', deps: ['Redis'] },
+      { name: 'SSH Server', x: 500, y: 200, group: 'core', deps: [] },
+      { name: 'Ollama', x: 150, y: 320, group: 'ai', deps: [] },
+      { name: 'Crawler', x: 350, y: 320, group: 'network', deps: ['PostgreSQL', 'Redis'] },
+      { name: 'Spotify', x: 550, y: 320, group: 'media', deps: [] },
+      { name: 'LIFX', x: 700, y: 200, group: 'home', deps: [] },
+      { name: 'TTS', x: 250, y: 420, group: 'media', deps: [] },
+      { name: 'STT', x: 450, y: 420, group: 'media', deps: [] },
+    ];
+
+    function refreshTopology() {
+      var svg = document.getElementById('topology-svg');
+      if (!svg) return;
+      svg.innerHTML = '';
+      var ns = 'http://www.w3.org/2000/svg';
+
+      // Draw dependency lines
+      topologyServices.forEach(function(svc) {
+        svc.deps.forEach(function(depName) {
+          var dep = topologyServices.find(function(s) { return s.name === depName; });
+          if (dep) {
+            var line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', dep.x); line.setAttribute('y1', dep.y);
+            line.setAttribute('x2', svc.x); line.setAttribute('y2', svc.y);
+            line.setAttribute('stroke', 'rgba(39, 160, 185, 0.3)');
+            line.setAttribute('stroke-width', '2');
+            line.setAttribute('stroke-dasharray', '5,5');
+            svg.appendChild(line);
+          }
+        });
+      });
+
+      // Draw service nodes
+      topologyServices.forEach(function(svc) {
+        var statusEl = document.getElementById(svc.name.toLowerCase().replace(/\s+/g, '-') + '-status');
+        var isRunning = statusEl && (statusEl.textContent || '').toLowerCase().indexOf('running') >= 0;
+        var color = isRunning ? '#28a745' : '#6c757d';
+
+        var circle = document.createElementNS(ns, 'circle');
+        circle.setAttribute('cx', svc.x);
+        circle.setAttribute('cy', svc.y);
+        circle.setAttribute('r', '20');
+        circle.setAttribute('fill', color);
+        circle.setAttribute('stroke', 'rgba(255,255,255,0.2)');
+        circle.setAttribute('stroke-width', '2');
+        svg.appendChild(circle);
+
+        var text = document.createElementNS(ns, 'text');
+        text.setAttribute('x', svc.x);
+        text.setAttribute('y', svc.y + 35);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('fill', 'var(--text-secondary)');
+        text.setAttribute('font-size', '11');
+        text.textContent = svc.name;
+        svg.appendChild(text);
+      });
+    }
+
+    // Initialize topology on first view
+    setTimeout(refreshTopology, 1000);
   </script>
 </body>
 

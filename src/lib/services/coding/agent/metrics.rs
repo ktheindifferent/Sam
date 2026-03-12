@@ -2,7 +2,16 @@ use std::collections::HashMap;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use super::types::{PerformanceMetrics, LearningMetrics};
-use super::providers::ModelPerformanceMetrics;
+
+/// Model performance metrics (moved from providers)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelPerformanceMetrics {
+    pub average_response_time: Duration,
+    pub total_requests: u64,
+    pub successful_requests: u64,
+    pub failed_requests: u64,
+    pub average_token_count: f64,
+}
 
 /// Metrics manager for tracking performance and learning
 pub struct MetricsManager {
@@ -293,7 +302,12 @@ impl MetricsManager {
     pub fn update_model_performance(&mut self, provider: &str, metrics: &ModelPerformanceMetrics) {
         // We could integrate model performance into our learning metrics
         // For now, just record as user preference
-        self.record_user_preference(&format!("model_performance_{}", provider), &format!("{:.2}", metrics.success_rate));
+        let success_rate = if metrics.total_requests > 0 {
+            metrics.successful_requests as f64 / metrics.total_requests as f64
+        } else {
+            0.0
+        };
+        self.record_user_preference(&format!("model_performance_{}", provider), &format!("{:.2}", success_rate));
     }
 
     /// Get success rate for a specific command

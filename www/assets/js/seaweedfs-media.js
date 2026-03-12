@@ -15,6 +15,7 @@ let seaweedfsCurrentMediaFile = null;
 
 // Initialize WebSocket connection for SeaweedFS commands
 let seaweedfsWsConnection = null;
+const seaweedfsWsPendingCallbacks = {};
 
 function initializeSeaweedFSMediaWS() {
     if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
@@ -63,26 +64,17 @@ function testSeaweedFSConnection() {
         }
     };
 
-    seaweedfsWsConnection.send(JSON.stringify(testCommand));
-
-    // Listen for response
-    const originalHandler = seaweedfsWsConnection.onmessage;
-    seaweedfsWsConnection.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'command_response' && data.id === testCommand.id) {
-            if (data.success) {
-                showSeaweedFSToast('Connected to SeaweedFS successfully!', 'success');
-                document.getElementById('seaweedfs-connection-panel').style.display = 'none';
-                document.getElementById('seaweedfs-media-browser').style.display = 'block';
-                loadSeaweedFSFiles();
-            } else {
-                showSeaweedFSToast('Failed to connect to SeaweedFS: ' + data.error, 'error');
-            }
-            // Restore original handler
-            seaweedfsWsConnection.onmessage = originalHandler;
+    seaweedfsWsPendingCallbacks[testCommand.id] = function(data) {
+        if (data.success) {
+            showSeaweedFSToast('Connected to SeaweedFS successfully!', 'success');
+            document.getElementById('seaweedfs-connection-panel').style.display = 'none';
+            document.getElementById('seaweedfs-media-browser').style.display = 'block';
+            loadSeaweedFSFiles();
+        } else {
+            showSeaweedFSToast('Failed to connect to SeaweedFS: ' + data.error, 'error');
         }
     };
+    seaweedfsWsConnection.send(JSON.stringify(testCommand));
 }
 
 function loadSeaweedFSFiles(path = '/') {
@@ -102,25 +94,16 @@ function loadSeaweedFSFiles(path = '/') {
         }
     };
 
-    seaweedfsWsConnection.send(JSON.stringify(listCommand));
-
-    // Listen for response
-    const originalHandler = seaweedfsWsConnection.onmessage;
-    seaweedfsWsConnection.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'command_response' && data.id === listCommand.id) {
-            if (data.success) {
-                seaweedfsMediaFiles = data.data.files || [];
-                displaySeaweedFSFiles(seaweedfsMediaFiles);
-                showSeaweedFSToast(`Loaded ${seaweedfsMediaFiles.length} files`, 'success');
-            } else {
-                showSeaweedFSToast('Failed to load SeaweedFS files: ' + data.error, 'error');
-            }
-            // Restore original handler
-            seaweedfsWsConnection.onmessage = originalHandler;
+    seaweedfsWsPendingCallbacks[listCommand.id] = function(data) {
+        if (data.success) {
+            seaweedfsMediaFiles = data.data.files || [];
+            displaySeaweedFSFiles(seaweedfsMediaFiles);
+            showSeaweedFSToast(`Loaded ${seaweedfsMediaFiles.length} files`, 'success');
+        } else {
+            showSeaweedFSToast('Failed to load SeaweedFS files: ' + data.error, 'error');
         }
     };
+    seaweedfsWsConnection.send(JSON.stringify(listCommand));
 }
 
 function refreshSeaweedFSFiles() {
@@ -152,10 +135,10 @@ function createSeaweedFSFileCard(file) {
 
     div.innerHTML = `
         <div style="font-size: 48px; margin-bottom: 10px; color: #ffc107;">
-            ${icon}
+            <i class="${icon}"></i>
         </div>
         <div style="color: white; font-weight: bold; margin-bottom: 5px; font-size: 14px; word-break: break-word;">
-            ${file.name}
+            ${escapeHtml(file.name)}
         </div>
         <div style="color: #bbb; font-size: 12px;">
             ${formatSeaweedFSFileSize(file.size)}
@@ -224,50 +207,46 @@ async function uploadSeaweedFSFile(file) {
     }
 
     // Convert file to base64 for WebSocket transmission
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const base64Content = e.target.result.split(',')[1];
+    const base64Content = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 
-        const uploadCommand = {
-            type: 'command',
-            id: generateSeaweedFSId(),
-            command: 'seaweedfs_upload_file',
-            args: {
-                master_url: seaweedfsMediaCredentials.masterUrl,
-                filer_url: seaweedfsMediaCredentials.filerUrl,
-                remote_path: `/${file.name}`,
-                content: base64Content,
-                filename: file.name,
-                collection: seaweedfsMediaCredentials.collection,
-                replication: seaweedfsMediaCredentials.replication
-            }
-        };
-
-        seaweedfsWsConnection.send(JSON.stringify(uploadCommand));
-
-        // Listen for response
-        const originalHandler = seaweedfsWsConnection.onmessage;
-        seaweedfsWsConnection.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-
-            if (data.type === 'command_response' && data.id === uploadCommand.id) {
-                if (data.success) {
-                    showSeaweedFSToast(`${file.name} uploaded successfully!`, 'success');
-                } else {
-                    showSeaweedFSToast(`Failed to upload ${file.name}: ${data.error}`, 'error');
-                }
-                // Restore original handler
-                seaweedfsWsConnection.onmessage = originalHandler;
-            }
-        };
+    const uploadCommand = {
+        type: 'command',
+        id: generateSeaweedFSId(),
+        command: 'seaweedfs_upload_file',
+        args: {
+            master_url: seaweedfsMediaCredentials.masterUrl,
+            filer_url: seaweedfsMediaCredentials.filerUrl,
+            remote_path: `/${file.name}`,
+            content: base64Content,
+            filename: file.name,
+            collection: seaweedfsMediaCredentials.collection,
+            replication: seaweedfsMediaCredentials.replication
+        }
     };
 
-    reader.readAsDataURL(file);
+    return new Promise((resolve) => {
+        seaweedfsWsPendingCallbacks[uploadCommand.id] = function(data) {
+            if (data.success) {
+                showSeaweedFSToast(`${file.name} uploaded successfully!`, 'success');
+            } else {
+                showSeaweedFSToast(`Failed to upload ${file.name}: ${data.error}`, 'error');
+            }
+            resolve();
+        };
+        seaweedfsWsConnection.send(JSON.stringify(uploadCommand));
+    });
 }
 
 function openSeaweedFSMediaFile(path, name, mimeType, size) {
     const mediaType = getSeaweedFSMediaType(mimeType);
     seaweedfsCurrentMediaFile = { path, name, mimeType, size, mediaType };
+    currentMediaFile = null;
+    dropboxCurrentMediaFile = null;
 
     // Hide all player types first
     document.getElementById('nextcloudVideoPlayer').style.display = 'none';
@@ -316,19 +295,19 @@ function getSeaweedFSMediaType(mimeType) {
 }
 
 function getSeaweedFSMediaIcon(filename, isFolder, mediaType) {
-    if (isFolder) return '<i class="fas fa-folder"></i>';
+    if (isFolder) return 'fas fa-folder';
 
     switch (mediaType) {
-        case 'image': return '<i class="fas fa-image"></i>';
-        case 'video': return '<i class="fas fa-video"></i>';
-        case 'audio': return '<i class="fas fa-music"></i>';
+        case 'image': return 'fas fa-image';
+        case 'video': return 'fas fa-video';
+        case 'audio': return 'fas fa-music';
         case 'document':
-            if (filename.toLowerCase().endsWith('.pdf')) return '<i class="fas fa-file-pdf"></i>';
-            if (filename.toLowerCase().match(/\.(doc|docx)$/)) return '<i class="fas fa-file-word"></i>';
-            if (filename.toLowerCase().match(/\.(xls|xlsx)$/)) return '<i class="fas fa-file-excel"></i>';
-            if (filename.toLowerCase().match(/\.(ppt|pptx)$/)) return '<i class="fas fa-file-powerpoint"></i>';
-            return '<i class="fas fa-file"></i>';
-        default: return '<i class="fas fa-file"></i>';
+            if (filename.toLowerCase().endsWith('.pdf')) return 'fas fa-file-pdf';
+            if (filename.toLowerCase().match(/\.(doc|docx)$/)) return 'fas fa-file-word';
+            if (filename.toLowerCase().match(/\.(xls|xlsx)$/)) return 'fas fa-file-excel';
+            if (filename.toLowerCase().match(/\.(ppt|pptx)$/)) return 'fas fa-file-powerpoint';
+            return 'fas fa-file';
+        default: return 'fas fa-file';
     }
 }
 
@@ -381,25 +360,16 @@ function deleteCurrentSeaweedFSMedia() {
             }
         };
 
-        seaweedfsWsConnection.send(JSON.stringify(deleteCommand));
-
-        // Listen for response
-        const originalHandler = seaweedfsWsConnection.onmessage;
-        seaweedfsWsConnection.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-
-            if (data.type === 'command_response' && data.id === deleteCommand.id) {
-                if (data.success) {
-                    showSeaweedFSToast('File deleted successfully', 'success');
-                    $('#mediaPlayerModal').modal('hide');
-                    refreshSeaweedFSFiles();
-                } else {
-                    showSeaweedFSToast('Failed to delete file: ' + data.error, 'error');
-                }
-                // Restore original handler
-                seaweedfsWsConnection.onmessage = originalHandler;
+        seaweedfsWsPendingCallbacks[deleteCommand.id] = function(data) {
+            if (data.success) {
+                showSeaweedFSToast('File deleted successfully', 'success');
+                $('#mediaPlayerModal').modal('hide');
+                refreshSeaweedFSFiles();
+            } else {
+                showSeaweedFSToast('Failed to delete file: ' + data.error, 'error');
             }
         };
+        seaweedfsWsConnection.send(JSON.stringify(deleteCommand));
     }
 }
 
@@ -418,24 +388,15 @@ function createSeaweedFSFolder() {
         }
     };
 
-    seaweedfsWsConnection.send(JSON.stringify(createCommand));
-
-    // Listen for response
-    const originalHandler = seaweedfsWsConnection.onmessage;
-    seaweedfsWsConnection.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'command_response' && data.id === createCommand.id) {
-            if (data.success) {
-                showSeaweedFSToast('Folder created successfully', 'success');
-                refreshSeaweedFSFiles();
-            } else {
-                showSeaweedFSToast('Failed to create folder: ' + data.error, 'error');
-            }
-            // Restore original handler
-            seaweedfsWsConnection.onmessage = originalHandler;
+    seaweedfsWsPendingCallbacks[createCommand.id] = function(data) {
+        if (data.success) {
+            showSeaweedFSToast('Folder created successfully', 'success');
+            refreshSeaweedFSFiles();
+        } else {
+            showSeaweedFSToast('Failed to create folder: ' + data.error, 'error');
         }
     };
+    seaweedfsWsConnection.send(JSON.stringify(createCommand));
 }
 
 // Initialize when page loads

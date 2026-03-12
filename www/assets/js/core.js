@@ -80,7 +80,14 @@ function initializeDashboard() {
 // Real-time system monitoring
 function startRealTimeUpdates() {
     updateSystemMetrics();
-    setInterval(updateSystemMetrics, 5000); // Update every 5 seconds
+    // Reduce polling frequency on touch/mobile devices to save battery
+    var pollInterval = is_touch_enabled() ? 10000 : 5000;
+    // Only poll REST if WebSocket is not connected (ws is defined in dashboard-service-control.js)
+    setInterval(function() {
+        if (typeof ws === 'undefined' || !ws || ws.readyState !== WebSocket.OPEN) {
+            updateSystemMetrics();
+        }
+    }, pollInterval);
 }
 
 async function updateSystemMetrics() {
@@ -275,20 +282,6 @@ if ('serviceWorker' in navigator) {
 function newPopWindow(url, windowname, w, h, x, y)
 {
     window.open(url, windowname, "resizable=no, toolbar=no, scrollbars=no, menubar=no, status=no, directories=no, width=" + w + ", height=" + h + ", left=" + x + ", top=" + y);
-}
-
-function is_touch_enabled() {
-    return ( 'ontouchstart' in window ) ||
-           ( navigator.maxTouchPoints > 0 ) ||
-           ( navigator.msMaxTouchPoints > 0 );
-}
-
-function disableCursor(){
-    var style = document.createElement('style');
-    style.innerHTML = `* {
-    cursor: none !important;
-    }`;
-    document.head.appendChild(style);
 }
 
 function uploadFile() {

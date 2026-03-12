@@ -217,7 +217,7 @@ impl WsServer {
         let security_limits = self.security_limits.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
-            
+
             loop {
                 interval.tick().await;
                 security_limits.cleanup().await;
@@ -225,29 +225,67 @@ impl WsServer {
         });
         let broadcast_tx = self.broadcast_tx.clone();
         let stats_tx = self.stats_tx.clone();
-        
-        // System stats updater (every 5 seconds)
+
+        // System stats updater (every 5 seconds) with threshold alerts
+        let alert_broadcast_tx = self.broadcast_tx.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if let Ok(stats) = collect_system_stats().await {
                     let _ = stats_tx.send(stats.clone());
-                    let _ = broadcast_tx.send(WsMessage::SystemStats { stats });
+                    let _ = broadcast_tx.send(WsMessage::SystemStats { stats: stats.clone() });
+
+                    // Threshold alerts
+                    if stats.cpu >= 90.0 {
+                        let _ = alert_broadcast_tx.send(WsMessage::Alert {
+                            message: format!("CPU usage critical: {:.1}%", stats.cpu),
+                            severity: AlertSeverity::Critical,
+                        });
+                    } else if stats.cpu >= 80.0 {
+                        let _ = alert_broadcast_tx.send(WsMessage::Alert {
+                            message: format!("CPU usage high: {:.1}%", stats.cpu),
+                            severity: AlertSeverity::Warning,
+                        });
+                    }
+
+                    if stats.memory_percent >= 90.0 {
+                        let _ = alert_broadcast_tx.send(WsMessage::Alert {
+                            message: format!("Memory usage critical: {:.1}%", stats.memory_percent),
+                            severity: AlertSeverity::Critical,
+                        });
+                    } else if stats.memory_percent >= 80.0 {
+                        let _ = alert_broadcast_tx.send(WsMessage::Alert {
+                            message: format!("Memory usage high: {:.1}%", stats.memory_percent),
+                            severity: AlertSeverity::Warning,
+                        });
+                    }
+
+                    if stats.disk_percent >= 90.0 {
+                        let _ = alert_broadcast_tx.send(WsMessage::Alert {
+                            message: format!("Disk usage critical: {:.1}%", stats.disk_percent),
+                            severity: AlertSeverity::Critical,
+                        });
+                    } else if stats.disk_percent >= 85.0 {
+                        let _ = alert_broadcast_tx.send(WsMessage::Alert {
+                            message: format!("Disk usage high: {:.1}%", stats.disk_percent),
+                            severity: AlertSeverity::Warning,
+                        });
+                    }
                 }
             }
         });
-        
+
         // Service status updater (every 10 seconds)
         let broadcast_tx = self.broadcast_tx.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if let Ok(statuses) = collect_service_statuses().await {
                     for (service, status) in statuses {
                         let _ = broadcast_tx.send(WsMessage::ServiceStatus { service, status });
@@ -255,18 +293,79 @@ impl WsServer {
                 }
             }
         });
-        
+
+        // Event bus bridge: forward ServiceEvent -> WsMessage
+        let broadcast_tx = self.broadcast_tx.clone();
+        tokio::spawn(async move {
+            let mut event_rx = crate::services::events::subscribe();
+            loop {
+                match event_rx.recv().await {
+                    Ok(event) => {
+                        let ws_msg = match event {
+                            crate::services::events::ServiceEvent::StatusChanged { service, old_status: _, new_status } => {
+                                WsMessage::ServiceStatus {
+                                    service: service.clone(),
+                                    status: ServiceStatus {
+                                        state: new_status.clone(),
+                                        message: Some(format!("Status changed to {}", new_status)),
+                                        progress: None,
+                                        last_check: Utc::now(),
+                                    },
+                                }
+                            }
+                            crate::services::events::ServiceEvent::Error { service, message } => {
+                                WsMessage::Alert {
+                                    message: format!("[{}] {}", service, message),
+                                    severity: AlertSeverity::Error,
+                                }
+                            }
+                            crate::services::events::ServiceEvent::HealthCheck { service, healthy, message } => {
+                                WsMessage::ServiceStatus {
+                                    service: service.clone(),
+                                    status: ServiceStatus {
+                                        state: if healthy { "healthy".to_string() } else { "unhealthy".to_string() },
+                                        message: Some(message),
+                                        progress: None,
+                                        last_check: Utc::now(),
+                                    },
+                                }
+                            }
+                            crate::services::events::ServiceEvent::MetricsUpdate { service, metric, value } => {
+                                WsMessage::Activity {
+                                    activity: ActivityItem {
+                                        id: Uuid::new_v4().to_string(),
+                                        timestamp: Utc::now(),
+                                        message: format!("{}: {} = {:.2}", service, metric, value),
+                                        activity_type: "metrics".to_string(),
+                                        metadata: None,
+                                    },
+                                }
+                            }
+                        };
+                        let _ = broadcast_tx.send(ws_msg);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("WebSocket event bridge lagged {} events", n);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        info!("Event bus closed, stopping WebSocket bridge");
+                        break;
+                    }
+                }
+            }
+        });
+
         // Client health checker (every 30 seconds)
         let clients = self.clients.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let mut clients_guard = clients.write().await;
                 let now = Utc::now();
-                
+
                 // Remove inactive clients (no ping for 60 seconds)
                 clients_guard.retain(|id, client| {
                     let inactive_duration = now.signed_duration_since(client.last_ping);
@@ -1189,6 +1288,66 @@ async fn process_command(
             } else {
                 Ok(serde_json::json!({ "success": false, "error": "Missing server_url" }))
             }
+        }
+
+        // Notification commands
+        "get_notification_rules" => {
+            let user_config = crate::services::config::SamUserConfig::load();
+            let rules = user_config
+                .notifications
+                .and_then(|n| n.rules)
+                .unwrap_or_default();
+            Ok(serde_json::to_value(rules)?)
+        }
+
+        "test_notification" => {
+            let channel = args.get("channel").and_then(|c| c.as_str()).unwrap_or("websocket");
+            let message = args
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Test notification from SAM");
+            let notification = crate::services::notifications::Notification {
+                rule_id: "test".into(),
+                rule_name: "Manual Test".into(),
+                severity: crate::services::notifications::Severity::Info,
+                message: message.to_string(),
+                service: None,
+                timestamp: chrono::Utc::now(),
+            };
+            match channel {
+                "sms" => {
+                    let user_config = crate::services::config::SamUserConfig::load();
+                    if let Some(recipients) = user_config
+                        .notifications
+                        .as_ref()
+                        .and_then(|n| n.sms_recipients.clone())
+                    {
+                        let ch = crate::services::notifications::channels::SmsChannel { recipients };
+                        use crate::services::notifications::channels::NotificationChannel;
+                        ch.send(&notification)
+                            .await
+                            .map_err(|e| -> BoxError { e.into() })?;
+                        Ok(serde_json::json!({ "success": true, "message": "Test SMS sent" }))
+                    } else {
+                        Ok(serde_json::json!({ "success": false, "error": "No SMS recipients configured" }))
+                    }
+                }
+                _ => {
+                    // Default: emit through websocket channel (which sends an event)
+                    let ch = crate::services::notifications::channels::WebSocketChannel;
+                    use crate::services::notifications::channels::NotificationChannel;
+                    ch.send(&notification)
+                        .await
+                        .map_err(|e| -> BoxError { e.into() })?;
+                    Ok(serde_json::json!({ "success": true, "message": "Test notification sent" }))
+                }
+            }
+        }
+
+        "acknowledge_notification" => {
+            let rule_id = args.get("rule_id").and_then(|r| r.as_str()).unwrap_or("");
+            log::info!("Notification acknowledged: {}", rule_id);
+            Ok(serde_json::json!({ "success": true, "acknowledged": rule_id }))
         }
 
         _ => Err(format!("Unknown command: {}", command).into()),

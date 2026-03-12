@@ -11,7 +11,7 @@ use crate::services::coding::agent::{
     gpu_offload::GpuOffloadManager,
 };
 
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 /// Intelligent code completion engine with deep context awareness
 pub struct IntelligentCompletionEngine {

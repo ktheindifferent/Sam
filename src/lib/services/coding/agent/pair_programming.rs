@@ -7,7 +7,7 @@ use tokio::sync::{RwLock, mpsc, broadcast};
 use tokio::time::{interval, Duration};
 
 use super::errors::CodingAgentError as ServiceError;
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairProgrammingSession {

@@ -2,18 +2,20 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use anyhow::Result;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use log::{info, debug, warn, error};
 use serde::{Serialize, Deserialize};
 
 use super::config::CodingAgentConfig;
-use super::types::{CodingAgentResponse, CommandHistoryEntry, CodeExecutionRequest, RiskLevel, ProjectStructure, ProjectType};
+use super::constants::*;
+use super::types::{CodingAgentResponse, CommandHistoryEntry, CodeExecutionRequest, RiskLevel};
 use super::providers::{ProviderManager, OllamaProvider};
+use super::utils;
 use crate::services::llms::ollama::{OllamaService, OllamaConfig};
 use super::context::ContextManager;
 use super::templates::TemplateManager;
 use super::metrics::MetricsManager;
-use super::code_intelligence::{CodeIntelligence, FileAnalysis, CodeIssue, IssueSeverity, IssueCategory};
+use super::code_intelligence::{CodeIssue, IssueSeverity, IssueCategory};
 use super::workspace_analyzer::{WorkspaceAnalyzer, WorkspaceAnalysis};
 use super::ollama_config_manager::OllamaConfigManager;
 
@@ -38,12 +40,12 @@ pub struct ConversationMemory {
 pub struct CodingAgentService {
     config: CodingAgentConfig,
     providers: Arc<Mutex<ProviderManager>>,
-    context_manager: Arc<Mutex<ContextManager>>,
-    template_manager: Arc<Mutex<TemplateManager>>,
-    metrics_manager: Arc<Mutex<MetricsManager>>,
+    context_manager: Arc<RwLock<ContextManager>>,
+    template_manager: Arc<RwLock<TemplateManager>>,
+    metrics_manager: Arc<RwLock<MetricsManager>>,
     command_history: Arc<Mutex<Vec<CommandHistoryEntry>>>,
     conversation_memory: Arc<Mutex<ConversationMemory>>,
-    streaming_enabled: Arc<Mutex<bool>>,
+    streaming_enabled: Arc<RwLock<bool>>,
     configured_model: String,  // Store the model from Ollama config
 }
 
@@ -63,15 +65,15 @@ impl CodingAgentService {
 
         // Try to load Ollama configuration from file
         let (ollama_config, configured_model) = if let Ok(config_manager) = OllamaConfigManager::new().await {
-            let model = config_manager.get_selected_model().unwrap_or("codellama:latest").to_string();
+            let model = config_manager.get_selected_model().unwrap_or_else(|| DEFAULT_OLLAMA_MODEL).to_string();
             if let Some(endpoint) = config_manager.get_current_endpoint() {
                 info!("Using Ollama server from config: {} with model: {}", endpoint, model);
                 (OllamaConfig::from_endpoint(&endpoint, config.ollama_timeout_seconds), model)
             } else {
                 info!("No Ollama server configured, using defaults");
                 (OllamaConfig {
-                    host: "localhost".to_string(),
-                    port: 11434,
+                    host: DEFAULT_LOCALHOST.to_string(),
+                    port: DEFAULT_OLLAMA_PORT,
                     timeout_seconds: config.ollama_timeout_seconds,
                     custom_endpoint: None,
                 }, config.default_model.clone())
@@ -79,34 +81,34 @@ impl CodingAgentService {
         } else {
             info!("Could not load Ollama config, using defaults");
             (OllamaConfig {
-                host: "localhost".to_string(),
-                port: 11434,
+                host: DEFAULT_LOCALHOST.to_string(),
+                port: DEFAULT_OLLAMA_PORT,
                 timeout_seconds: config.ollama_timeout_seconds,
                 custom_endpoint: None,
             }, config.default_model.clone())
         };
         let ollama_service = Arc::new(OllamaService::new(ollama_config));
         let ollama_provider = OllamaProvider::new(ollama_service);
-        provider_manager.add_provider("ollama".to_string(), Box::new(ollama_provider));
-        
+        provider_manager.add_provider(PROVIDER_OLLAMA.to_string(), Box::new(ollama_provider));
+
         // Set default provider
-        provider_manager.set_default_provider("ollama".to_string());
+        provider_manager.set_default_provider(PROVIDER_OLLAMA.to_string());
         info!("Provider manager initialized with ollama as default provider");
 
         Self {
             config,
             providers: Arc::new(Mutex::new(provider_manager)),
-            context_manager: Arc::new(Mutex::new(ContextManager::new())),
-            template_manager: Arc::new(Mutex::new(TemplateManager::new())),
-            metrics_manager: Arc::new(Mutex::new(MetricsManager::new())),
+            context_manager: Arc::new(RwLock::new(ContextManager::new())),
+            template_manager: Arc::new(RwLock::new(TemplateManager::new())),
+            metrics_manager: Arc::new(RwLock::new(MetricsManager::new())),
             command_history: Arc::new(Mutex::new(Vec::new())),
             conversation_memory: Arc::new(Mutex::new(ConversationMemory {
                 messages: Vec::new(),
-                max_messages: 20,
+                max_messages: MAX_CONVERSATION_MESSAGES,
                 total_tokens: 0,
-                max_tokens: 8192,
+                max_tokens: MAX_CONVERSATION_TOKENS,
             })),
-            streaming_enabled: Arc::new(Mutex::new(false)),
+            streaming_enabled: Arc::new(RwLock::new(false)),
             configured_model,
         }
     }
@@ -161,6 +163,61 @@ impl CodingAgentService {
         self.generate_enhanced_response_internal(user_input, current_dir, session_context, model_override).await
     }
 
+    /// Update context manager with current directory
+    async fn update_context(&self, current_dir: &PathBuf) -> Result<()> {
+        info!("Updating context manager");
+        let mut context_manager = self.context_manager.write().await;
+        context_manager.update_workspace_context(current_dir).await?;
+        info!("Context updated");
+        Ok(())
+    }
+
+    /// Call LLM provider with timeout
+    async fn call_llm_with_timeout(
+        &self,
+        prompt: &str,
+        model: &str,
+        provider_hint: Option<&str>,
+    ) -> Result<(String, std::time::Duration)> {
+        let start_time = std::time::Instant::now();
+        let mut providers = self.providers.lock().await;
+
+        info!("Requesting LLM response with model: {} (timeout: {}s)",
+            model, self.config.ollama_timeout_seconds);
+
+        let timeout_duration = std::time::Duration::from_secs(self.config.ollama_timeout_seconds);
+        let response_text = match tokio::time::timeout(
+            timeout_duration,
+            providers.generate_response(prompt, model)
+        ).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(e)) => {
+                error!("LLM provider error: {}", e);
+                return Err(anyhow::anyhow!("LLM provider error: {}", e));
+            }
+            Err(_) => {
+                error!("LLM request timed out after {}s", self.config.ollama_timeout_seconds);
+                return Err(anyhow::anyhow!("LLM request timed out after {} seconds",
+                    self.config.ollama_timeout_seconds));
+            }
+        };
+
+        drop(providers);
+        let response_time = start_time.elapsed();
+        Ok((response_text, response_time))
+    }
+
+    /// Record AI generation metrics
+    async fn record_generation_metrics(&self, model: &str, success: bool, duration: std::time::Duration) {
+        let mut metrics = self.metrics_manager.write().await;
+        metrics.record_command_execution(
+            &format!("generate_response_{}", model),
+            success,
+            duration,
+            "ai_generation"
+        );
+    }
+
     /// Generate enhanced response for complex requests (internal, bypasses file detection)
     async fn generate_enhanced_response_internal(
         &self,
@@ -172,16 +229,11 @@ impl CodingAgentService {
         info!("generate_enhanced_response_internal called");
 
         // Update context
-        info!("Updating context manager");
-        {
-            let mut context_manager = self.context_manager.lock().await;
-            context_manager.update_workspace_context(current_dir).await?;
-        }
-        info!("Context updated");
+        self.update_context(current_dir).await?;
 
         // Build system prompt with enhanced context
         let system_prompt = self.build_system_prompt(current_dir, session_context).await?;
-        
+
         // Prepare the full prompt
         let full_prompt = format!("{}\n\nUser Request: {}", system_prompt, user_input);
 
@@ -189,47 +241,19 @@ impl CodingAgentService {
         let model_to_use = model_override.unwrap_or(&self.configured_model);
 
         // Generate response using current provider with timeout
-        let start_time = std::time::Instant::now();
-        let mut providers = self.providers.lock().await;
-
-        info!("Requesting LLM response with model: {} (timeout: {}s)",
-            model_to_use, self.config.ollama_timeout_seconds);
-
-        // Apply timeout to the LLM call
-        let timeout_duration = std::time::Duration::from_secs(self.config.ollama_timeout_seconds);
-        let response_text = match tokio::time::timeout(
-            timeout_duration,
-            providers.generate_response(&full_prompt, model_to_use, Some("ollama"))
-        ).await {
-            Ok(Ok(response)) => response,
-            Ok(Err(e)) => {
-                error!("LLM provider error: {}", e);
-                return Err(anyhow::anyhow!("LLM provider error: {}", e));
-            }
-            Err(_) => {
-                error!("LLM request timed out after {}s", self.config.ollama_timeout_seconds);
-                return Err(anyhow::anyhow!("LLM request timed out after {} seconds", self.config.ollama_timeout_seconds));
-            }
-        };
-
-        drop(providers);
-        let response_time = start_time.elapsed();
+        let (response_text, response_time) = self.call_llm_with_timeout(
+            &full_prompt,
+            model_to_use,
+            Some(PROVIDER_OLLAMA)
+        ).await?;
 
         info!("LLM response received in {:?} (length: {} chars)", response_time, response_text.len());
 
         // Parse commands from response
         let suggested_commands = self.parse_commands_from_response(&response_text);
-        
+
         // Record metrics
-        {
-            let mut metrics = self.metrics_manager.lock().await;
-            metrics.record_command_execution(
-                &format!("generate_response_{}", model_to_use),
-                true,
-                response_time,
-                "ai_generation"
-            );
-        }
+        self.record_generation_metrics(model_to_use, true, response_time).await;
 
         Ok(CodingAgentResponse {
             response_text,
@@ -245,7 +269,7 @@ impl CodingAgentService {
         current_dir: &PathBuf,
         session_lines: &[String]
     ) -> Result<String> {
-        let context_manager = self.context_manager.lock().await;
+        let context_manager = self.context_manager.read().await;
         let enhanced_context = context_manager.get_enhanced_context(current_dir, session_lines).await?;
         
         let available_models = {
@@ -472,10 +496,7 @@ impl CodingAgentService {
         }
 
         // Record command in history
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let timestamp = utils::unix_timestamp();
 
         let start_time = std::time::Instant::now();
 
@@ -491,9 +512,19 @@ impl CodingAgentService {
                 if result.status.success() {
                     String::from_utf8_lossy(&result.stdout).to_string()
                 } else {
-                    let stderr = String::from_utf8_lossy(&result.stderr);
-                    let stdout = String::from_utf8_lossy(&result.stdout);
-                    format!("Command failed: {}\nStderr: {}", stdout, stderr)
+                    let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
+                    let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+
+                    // Format the error output more cleanly
+                    if !stderr.is_empty() && stdout.is_empty() {
+                        stderr
+                    } else if stderr.is_empty() && !stdout.is_empty() {
+                        stdout
+                    } else if !stderr.is_empty() && !stdout.is_empty() {
+                        format!("{}\n{}", stdout, stderr)
+                    } else {
+                        format!("Command '{}' failed with exit code: {}", command, result.status.code().unwrap_or(-1))
+                    }
                 }
             }
             Err(e) => {
@@ -519,7 +550,7 @@ impl CodingAgentService {
 
         // Record metrics
         {
-            let mut metrics = self.metrics_manager.lock().await;
+            let mut metrics = self.metrics_manager.write().await;
             metrics.record_command_execution(command, success, execution_time, "user_command");
         }
 
@@ -533,16 +564,22 @@ impl CodingAgentService {
         // Provider status
         {
             let providers = self.providers.lock().await;
+            let current_provider = providers.get_current_provider_name().await;
+            let available_providers = providers.list_providers().await;
+            let provider_status = match current_provider.as_ref() {
+                Some(name) => providers.get_provider_status(name).await.unwrap_or(false),
+                None => false
+            };
             status.insert("providers".to_string(), serde_json::json!({
-                "current": providers.get_current_provider_name(),
-                "available": providers.list_providers(),
-                "status": providers.get_provider_status().await
+                "current": current_provider,
+                "available": available_providers,
+                "status": provider_status
             }));
         }
 
         // Metrics
         {
-            let metrics = self.metrics_manager.lock().await;
+            let metrics = self.metrics_manager.read().await;
             status.insert("metrics".to_string(), serde_json::json!(metrics.get_performance_metrics()));
         }
 
@@ -777,12 +814,12 @@ impl CodingAgentService {
 
     /// Enable or disable streaming mode
     pub async fn set_streaming_mode(&self, enabled: bool) {
-        *self.streaming_enabled.lock().await = enabled;
+        *self.streaming_enabled.write().await = enabled;
     }
 
     /// Check if streaming is enabled
     pub async fn is_streaming_enabled(&self) -> bool {
-        *self.streaming_enabled.lock().await
+        *self.streaming_enabled.read().await
     }
 
     /// Generate response with conversation context
@@ -839,7 +876,7 @@ impl CodingAgentService {
         // Spawn async task for streaming
         tokio::spawn(async move {
             // Update context
-            if let Ok(mut ctx) = context_manager.try_lock() {
+            if let Ok(mut ctx) = context_manager.try_write() {
                 let _ = ctx.update_workspace_context(&dir).await;
             }
 
@@ -850,7 +887,7 @@ impl CodingAgentService {
             // Stream response chunks
             if let Ok(mut provs) = providers.try_lock() {
                 // For now, send complete response in chunks (can be enhanced with actual streaming)
-                match provs.generate_response(&prompt, model_to_use, Some("ollama")).await {
+                match provs.generate_response(&prompt, model_to_use).await {
                     Ok(response) => {
                         // Simulate streaming by sending response in chunks
                         let chunk_size = 50; // Send 50 chars at a time
@@ -1327,7 +1364,7 @@ impl CodingAgentService {
                             message: "Using unwrap() can cause panics".to_string(),
                             file: PathBuf::new(),
                             line: i + 1,
-                            column: line.find(".unwrap()").unwrap_or(0),
+                            column: line.find(".unwrap()").unwrap_or_default(),
                             suggestion: Some("Consider using ? operator or proper error handling".to_string()),
                             auto_fixable: true,
                         });

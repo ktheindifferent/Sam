@@ -522,19 +522,24 @@ impl GpuOffloadManager {
         };
 
         // Store instance and create cost tracker
-        let mut instances = self.instances.write().await;
-        instances.insert(session_id.to_string(), instance.clone());
+        // Use separate scopes to avoid holding multiple write locks
+        {
+            let mut instances = self.instances.write().await;
+            instances.insert(session_id.to_string(), instance.clone());
+        }
 
-        let mut trackers = self.cost_trackers.write().await;
-        trackers.insert(session_id.to_string(), CostTracker {
-            session_id: session_id.to_string(),
-            total_cost: 0.0,
-            runtime_minutes: 0,
-            gpu_hours: 0.0,
-            cost_per_hour: gpu_spec.cost_per_hour,
-            budget_limit: self.config.budget_limit,
-            budget_alert_threshold: self.config.budget_alert_threshold,
-        });
+        {
+            let mut trackers = self.cost_trackers.write().await;
+            trackers.insert(session_id.to_string(), CostTracker {
+                session_id: session_id.to_string(),
+                total_cost: 0.0,
+                runtime_minutes: 0,
+                gpu_hours: 0.0,
+                cost_per_hour: gpu_spec.cost_per_hour,
+                budget_limit: self.config.budget_limit,
+                budget_alert_threshold: self.config.budget_alert_threshold,
+            });
+        }
 
         log::info!("Started GPU instance {} for session {} at ${}/hour",
                    instance.id, session_id, gpu_spec.cost_per_hour);

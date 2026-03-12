@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use tokio::fs;
 
 use super::errors::CodingAgentError as ServiceError;
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 // Intelligent Code Explanation Engine
 

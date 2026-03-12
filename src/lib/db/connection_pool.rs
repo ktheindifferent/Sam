@@ -306,11 +306,12 @@ impl QueryBuilder {
     }
 
     pub async fn execute(self) -> Result<Vec<Row>, Box<dyn std::error::Error>> {
-        let params: Vec<&(dyn tokio_postgres::types::ToSql + Send + Sync)> = 
-            self.params.iter().map(|p| p.as_ref()).collect();
-        let params_slice: &[&(dyn tokio_postgres::types::ToSql + Sync)] = 
-            unsafe { std::mem::transmute(params.as_slice()) };
-        DbPool::query(&self.query, params_slice).await
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            self.params.iter().map(|p| {
+                let r: &(dyn tokio_postgres::types::ToSql + Sync) = p.as_ref();
+                r
+            }).collect();
+        DbPool::query(&self.query, &params).await
     }
 }
 

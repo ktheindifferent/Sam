@@ -1,4 +1,9 @@
 
+function escapeHtmlSearch(str) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str || ''));
+    return div.innerHTML;
+}
 
 class SearchWidget {
     constructor() {
@@ -45,17 +50,19 @@ class SearchWidget {
 
         // /api/services/media/games/games
 
-        $.get(`/api/services/media/games/games}`, function( data ) {
+        $.get(`/api/services/media/games/games`, function( data ) {
             $(data).each(function(i, obj) {
 
 
-                var gid = `game${obj.name.replace(" ", "")}`;
-    
+                var safeName = escapeHtmlSearch(obj.name);
+                var safeIcon = escapeHtmlSearch(obj.icon);
+                var gid = `game${safeName.replace(/\s/g, "")}`;
+
 
                 html += `<div class='game-result' id="${gid}">
-                    
-                    <img src='${obj.icon}' class='image'></img>
-                    <p>${obj.name}</p>
+
+                    <img src='${safeIcon}' class='image'></img>
+                    <p>${safeName}</p>
                     <div class="middle">
                         <button onclick="" class='btn btn-primary'><i class="fas fa-play"></i></button>
                     </div>
@@ -71,20 +78,23 @@ class SearchWidget {
         });
 
     
-        $.get(`/api/services/media/youtube?q=${search_input.val()}`, function( data ) {
+        $.get(`/api/services/media/youtube?q=${encodeURIComponent(search_input.val())}`, function( data ) {
             $(data).each(function(i, obj) {
                 if(i >= ref.result_limit) {
-                   
+
                 } else {
                     var video = obj["Video"];
                     if(video !== undefined) {
+                        var safeTitle = escapeHtmlSearch(video.title);
+                        var safeId = escapeHtmlSearch(video.id);
+                        var safeThumb = (video.thumbnails && video.thumbnails[3]) ? escapeHtmlSearch(video.thumbnails[3].url) : '';
                         html += `<div class='video-result'>
-                            
-                            <img src='${video.thumbnails[3].url}' class='image'></img>
-                            <p>${video.title}</p>
+
+                            <img src='${safeThumb}' class='image'></img>
+                            <p>${safeTitle}</p>
                             <div class="middle">
-                                <button onclick="new VideoPlayer('youtube:${video.id}');" class='btn btn-primary'><i class="fas fa-play"></i></button>
-                                <button onclick="downloadYoutubeVideo('${video.id}');" class='btn btn-primary'><i class="fas fa-download"></i></button>
+                                <button onclick="new VideoPlayer('youtube:${safeId}');" class='btn btn-primary'><i class="fas fa-play"></i></button>
+                                <button onclick="downloadYoutubeVideo('${safeId}');" class='btn btn-primary'><i class="fas fa-download"></i></button>
                             </div>
 
                         </div>`;
@@ -110,8 +120,9 @@ class SearchWidget {
 var search_widget = new SearchWidget();
 
 function downloadYoutubeVideo(id){
-    notifications.new(`Downloading video: ${id} from YouTube...`);
-    $.get(`/api/services/media/youtube/download?id=${id}`, function( data ) {
+    var safeId = encodeURIComponent(id);
+    notifications.new(`Downloading video: ${escapeHtmlSearch(id)} from YouTube...`);
+    $.get(`/api/services/media/youtube/download?id=${safeId}`, function( data ) {
 
     });
 }

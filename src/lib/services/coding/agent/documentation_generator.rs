@@ -7,7 +7,7 @@ use tokio::fs;
 use regex::Regex;
 
 use super::errors::CodingAgentError as ServiceError;
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 // Intelligent Documentation Generator with Multiple Output Formats
 

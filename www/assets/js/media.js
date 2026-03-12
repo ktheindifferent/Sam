@@ -34,7 +34,9 @@ if (btnVibration) {
 }
 
 function hapticFeedback() {
-    navigator.getGamepads()[0].vibrationActuator.playEffect('dual-rumble', {
+    var gp = navigator.getGamepads()[0];
+    if (!gp || !gp.vibrationActuator) return;
+    gp.vibrationActuator.playEffect('dual-rumble', {
         startDelay: 0,
         duration: 1500,
         weakMagnitude: 1,
@@ -80,8 +82,10 @@ function prevMenuItem(index) {
 
 function updateLoop() {
     let gp = navigator.getGamepads()[0];
-    console.log(gp);
-    console.log(current_menu_item);
+    if (!gp) {
+        setTimeout(function () { rAF(updateLoop); }, 160);
+        return;
+    }
     focusable_app_area = document.getElementsByClassName('tab-pane active')[0].getElementsByClassName('controller-btn');
     switch (true) {
         case gp.buttons[0].pressed:

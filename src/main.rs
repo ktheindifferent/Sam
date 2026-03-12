@@ -34,24 +34,10 @@
 // 18. Data goblin apps (recipie, shopping list, calendar, cat identification, etc.)
 pub mod sam;
 
-// External crates
-// extern crate hound;
-// extern crate postgres;
-// extern crate threadpool;
-// extern crate wikipedia;
-// #[macro_use]
-// extern crate lazy_static;
-// #[macro_use]
-// extern crate log;
-// use tui_logger;
-
 use std::env;
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-// Store application version as a const, set at compile time
-// const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 /// Main entry point for the SAM application.
 /// Initializes logging, environment variables, configuration, and all core services.
@@ -106,13 +92,23 @@ fn setup_dual_logger(log_file: &std::path::Path, is_serve_mode: bool) {
         }
     }
 
-    let file = std::fs::OpenOptions::new()
+    let file = match std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(log_file)
-        .expect("Failed to open log file");
-
-    let file = Arc::new(Mutex::new(file));
+    {
+        Ok(f) => Arc::new(Mutex::new(f)),
+        Err(e) => {
+            eprintln!("Warning: Failed to open log file: {}. Logging to stderr only.", e);
+            // Fall back to stderr-only logging
+            if is_serve_mode || env::var("RUST_LOG").is_ok() {
+                Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+                    .target(Target::Stderr)
+                    .init();
+            }
+            return;
+        }
+    };
 
     // Only setup env_logger in serve mode or when explicitly requested
     // In TUI mode, we use tui_logger instead
@@ -132,11 +128,21 @@ async fn initialize_application() {
     // Setup logging to both console and file
     let args: Vec<String> = env::args().collect();
     let is_serve_mode = args.len() > 1 && args[1] == "serve";
+    let is_doctor_mode = args.len() > 1 && args[1] == "doctor";
+
+    // Doctor mode: run diagnostics and exit immediately
+    if is_doctor_mode {
+        libsam::cli::commands::doctor::run_doctor().await;
+        return;
+    }
 
     // Create .sam directory if it doesn't exist
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let sam_dir = std::path::PathBuf::from(home).join(".sam");
     let _ = std::fs::create_dir_all(&sam_dir);
+
+    // Ensure default config exists on first run
+    libsam::services::config::SamUserConfig::write_defaults_if_missing();
 
     // Setup logging to file
     let log_file = sam_dir.join("output.log");
@@ -153,15 +159,16 @@ async fn initialize_application() {
     let user = get_application_user();
     libsam::print_banner(user.clone());
 
-    println!("DEBUG: After banner, before setup_environment_variables");
+    log::debug!("After banner, before setup_environment_variables");
     setup_environment_variables();
-    println!("DEBUG: After setup_environment_variables");
+    log::debug!("After setup_environment_variables");
     
     // Check if we're running in serve mode or CapRover environment (already checked above)
     let is_caprover = env::var("CAPROVER").unwrap_or_default().to_lowercase() == "true";
-    let database_engine = env::var("DATABASE_ENGINE").unwrap_or_else(|_| "postgres".to_string());
+    let user_config = libsam::services::config::SamUserConfig::load();
+    let database_engine = user_config.database_engine();
     
-    println!("DEBUG: Serve mode: {}, CapRover: {}, Database engine: {}", is_serve_mode, is_caprover, database_engine);
+    log::debug!("Serve mode: {}, CapRover: {}, Database engine: {}", is_serve_mode, is_caprover, database_engine);
     
     if is_serve_mode || is_caprover {
         log::info!("Running in {} mode with database engine: {}", 
@@ -169,7 +176,7 @@ async fn initialize_application() {
     }
     
     // Handle database setup based on engine type and mode
-    println!("DEBUG: Starting database setup");
+    log::debug!("Starting database setup");
     if database_engine == "sqlite" {
         // For SQLite, we don't need PostgreSQL setup
         // Set dummy values for PostgreSQL config to prevent panics
@@ -177,14 +184,11 @@ async fn initialize_application() {
         env::set_var("PG_USER", "dummy");
         env::set_var("PG_PASS", "dummy");
         env::set_var("PG_ADDRESS", "dummy");
-        println!("DEBUG: Using SQLite database engine");
         log::info!("Using SQLite database engine");
     } else if is_serve_mode || is_caprover {
         // In serve/CapRover mode with PostgreSQL, assume external database is configured
         // Don't try to start local PostgreSQL
-        println!("DEBUG: Using external PostgreSQL database in {}", 
-                 if is_caprover { "CapRover mode" } else { "serve mode" });
-        log::info!("Using external PostgreSQL database in {}", 
+        log::info!("Using external PostgreSQL database in {}",
                   if is_caprover { "CapRover mode" } else { "serve mode" });
         // Ensure the environment variables are already set
         if env::var("PG_DBNAME").is_err() || env::var("PG_USER").is_err() || 
@@ -192,7 +196,7 @@ async fn initialize_application() {
             panic!("PostgreSQL environment variables must be set in {}: PG_DBNAME, PG_USER, PG_PASS, PG_ADDRESS",
                    if is_caprover { "CapRover mode" } else { "serve mode" });
         }
-        println!("DEBUG: PostgreSQL env vars verified");
+        log::debug!("PostgreSQL env vars verified");
     } else {
         // For local development with PostgreSQL, do the full setup
         setup_postgres(&user).await;
@@ -200,16 +204,53 @@ async fn initialize_application() {
         log::info!("Using local PostgreSQL database");
     }
 
-    println!("DEBUG: Creating Config");
+    log::debug!("Creating Config");
     let config = libsam::memory::Config::new();
-    println!("DEBUG: Calling config.init()");
+    log::debug!("Calling config.init()");
     config.init().await;
-    println!("DEBUG: config.init() completed");
+    log::debug!("config.init() completed");
+
+    // Start plugin loader if enabled (feature-gated)
+    #[cfg(feature = "plugins")]
+    {
+        if let Some(ref plugin_config) = user_config.plugins {
+            if plugin_config.enabled {
+                log::info!("Starting plugin loader");
+                let loader_config = libsam::services::plugins::loader::PluginLoaderConfig {
+                    plugins_dir: plugin_config.plugins_dir.as_ref()
+                        .map(|d| std::path::PathBuf::from(d))
+                        .unwrap_or_else(|| {
+                            let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                            std::path::PathBuf::from(home).join(".sam").join("plugins")
+                        }),
+                    max_memory_per_plugin: plugin_config.max_memory_per_plugin_mb.unwrap_or(64) * 1024 * 1024,
+                    fuel_limit: 1_000_000_000,
+                    hot_reload: plugin_config.hot_reload.unwrap_or(true),
+                };
+                let registry = std::sync::Arc::new(tokio::sync::RwLock::new(
+                    libsam::services::plugins::PluginRegistry::new(),
+                ));
+                let loader = libsam::services::plugins::loader::PluginLoader::new(
+                    loader_config, registry,
+                );
+                let _watcher_handle = loader.spawn_watcher();
+            }
+        }
+    }
+
+    // Start notification service if enabled in user config
+    if let Some(ref notif_config) = user_config.notifications {
+        if notif_config.enabled.unwrap_or(false) {
+            log::info!("Starting notification service");
+            let _notif_handle = libsam::services::notifications::NotificationService::spawn(
+                notif_config.clone(),
+            );
+        }
+    }
 
     if is_serve_mode || is_caprover {
         // In serve/CapRover mode, just run the event loop (HTTP server is started by config.init())
         let port = env::var("PORT").unwrap_or_else(|_| "8000".to_string());
-        println!("DEBUG: HTTP server should be started on port {}", port);
         log::info!("HTTP server started on port {}", port);
         run_event_loop().await;
     } else {
@@ -360,8 +401,7 @@ async fn shutdown_services_on_panic() -> Result<(), Box<dyn std::error::Error>> 
     
     // Stop PostgreSQL if needed
     if libsam::cli::commands::pg::is_postgres_running().await {
-        // TODO: Implement stop_postgres function
-        log::info!("PostgreSQL is running but no stop function available");
+        libsam::cli::commands::pg::stop().await;
     }
     
     // Add any other service shutdowns here
@@ -460,9 +500,14 @@ fn setup_environment_variables() {
 /// Sets up and configures PostgreSQL database
 async fn setup_postgres(user: &str) {
     if libsam::memory::Config::check_postgres_installed() {
-        println!("Postgres is already installed.");
-        libsam::cli::commands::pg::start_postgres(user).expect("Failed to start PostgreSQL service");
-        libsam::memory::Config::create_user_and_database(user).expect("Failed to create PostgreSQL user and database");
+        log::info!("Postgres is already installed.");
+        if let Err(e) = libsam::cli::commands::pg::start_postgres(user) {
+            log::error!("Failed to start PostgreSQL service: {}. Continuing without PostgreSQL.", e);
+            return;
+        }
+        if let Err(e) = libsam::memory::Config::create_user_and_database(user) {
+            log::error!("Failed to create PostgreSQL user and database: {}. Continuing anyway.", e);
+        }
     } else {
         install_and_configure_postgres(user).await;
     }
@@ -470,21 +515,26 @@ async fn setup_postgres(user: &str) {
 
 /// Installs and configures PostgreSQL for first-time setup
 async fn install_and_configure_postgres(user: &str) {
-    println!("Installing Postgres...");
+    log::info!("Installing Postgres...");
     libsam::cli::commands::pg::install().await;
 
-    println!("Starting Postgres...");
-    libsam::cli::commands::pg::start_postgres(user).expect("Failed to start PostgreSQL service during initial setup");
+    log::info!("Starting Postgres...");
+    if let Err(e) = libsam::cli::commands::pg::start_postgres(user) {
+        log::error!("Failed to start PostgreSQL service during initial setup: {}. Continuing.", e);
+        return;
+    }
 
     if libsam::cli::commands::pg::is_postgres_running().await {
-        println!("Postgres is running.");
+        log::info!("Postgres is running.");
     } else {
-        println!("Postgres failed to start.");
+        log::warn!("Postgres failed to start.");
     }
 
     add_postgres_to_path_if_macos();
-    libsam::memory::Config::create_user_and_database(user).expect("Failed to create PostgreSQL user and database during setup");
-    println!("Postgres installation complete.");
+    if let Err(e) = libsam::memory::Config::create_user_and_database(user) {
+        log::error!("Failed to create PostgreSQL user and database during setup: {}. Continuing.", e);
+    }
+    log::info!("Postgres installation complete.");
 }
 
 /// Adds Homebrew PostgreSQL binary paths to PATH on macOS

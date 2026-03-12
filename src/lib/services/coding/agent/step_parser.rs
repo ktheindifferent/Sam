@@ -1,6 +1,7 @@
 use super::execution_state::ExecutionStep;
+use super::utils;
 use anyhow::Result;
-use log;
+use log::{info, warn};
 
 /// Parser for converting AI responses into executable steps
 #[derive(Debug)]
@@ -16,10 +17,7 @@ impl StepParser {
     /// Parse AI response into executable steps
     pub async fn parse_execution_steps(&self, response: &str, task_description: &str) -> Vec<ExecutionStep> {
         let mut steps = Vec::new();
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let timestamp = utils::unix_timestamp();
 
         // Try multiple parsing strategies with enhanced validation
 
@@ -58,11 +56,11 @@ impl StepParser {
                                 i += 1;
                             }
 
-                            log::info!("Creating heredoc step with command: {}", full_command);
+                            info!("Creating heredoc step with command: {}", full_command);
                             if let Some(step) = self.create_heredoc_step(&full_command, timestamp) {
                                 steps.push(step);
                             } else {
-                                log::warn!("Failed to create heredoc step");
+                                warn!("Failed to create heredoc step");
                             }
                         } else if self.is_command_like(line) {
                             // Regular single-line command
@@ -133,7 +131,7 @@ impl StepParser {
         steps.retain(|step| {
             let is_valid = self.is_valid_execution_step(step);
             if !is_valid {
-                log::warn!("Removing invalid step: {} (command: {}...)",
+                warn!("Removing invalid step: {} (command: {}...)",
                     step.description,
                     &step.command.chars().take(50).collect::<String>()
                 );
@@ -142,16 +140,21 @@ impl StepParser {
         });
 
         if pre_validation_count != steps.len() {
-            log::warn!("Validation removed {} steps ({} -> {})",
+            warn!("Validation removed {} steps ({} -> {})",
                 pre_validation_count - steps.len(),
                 pre_validation_count,
                 steps.len()
             );
         }
 
-        log::info!("Parsed {} steps from AI response", steps.len());
+        // Assign step numbers
+        for (i, step) in steps.iter_mut().enumerate() {
+            step.step_number = i + 1;
+        }
+
+        info!("Parsed {} steps from AI response", steps.len());
         for (i, step) in steps.iter().enumerate() {
-            log::info!("  Step {}: {} (command length: {} chars)", i + 1, step.description, step.command.len());
+            info!("  Step {}: {} (command length: {} chars)", i + 1, step.description, step.command.len());
         }
 
         steps
@@ -161,27 +164,14 @@ impl StepParser {
     fn is_command_like(&self, line: &str) -> bool {
         let line = line.trim();
 
-        // Must be reasonable length
-        if line.is_empty() || line.len() > 200 {
+        if !self.is_valid_line_length(line) {
             return false;
         }
 
-        // Skip explanatory text patterns
-        let skip_patterns = [
-            "need to", "you can", "additionally", "also", "furthermore", "however",
-            "let me", "i will", "we need", "first", "next", "then", "finally",
-            "to add", "to include", "to modify", "to create", "to install",
-            "file before", "file to include", "code.", "dependency",
-        ];
-
-        let line_lower = line.to_lowercase();
-        for pattern in &skip_patterns {
-            if line_lower.contains(pattern) {
-                return false;
-            }
+        if self.contains_explanatory_text(line) {
+            return false;
         }
 
-        // Check if starts with a known command
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.is_empty() {
             return false;
@@ -189,26 +179,44 @@ impl StepParser {
 
         let first_word = parts[0];
 
-        // Check against safe commands list
-        if self.safe_commands.contains(&first_word.to_string()) {
-            return true;
-        }
+        self.is_known_command(first_word) || self.matches_command_pattern(line, first_word)
+    }
 
-        // Additional patterns that look like commands
-        let command_patterns = [
+    /// Check if line has valid length for a command
+    fn is_valid_line_length(&self, line: &str) -> bool {
+        !line.is_empty() && line.len() <= 200
+    }
+
+    /// Check if line contains explanatory text patterns
+    fn contains_explanatory_text(&self, line: &str) -> bool {
+        const SKIP_PATTERNS: &[&str] = &[
+            "need to", "you can", "additionally", "also", "furthermore", "however",
+            "let me", "i will", "we need", "first", "next", "then", "finally",
+            "to add", "to include", "to modify", "to create", "to install",
+            "file before", "file to include", "code.", "dependency",
+        ];
+
+        let line_lower = line.to_lowercase();
+        SKIP_PATTERNS.iter().any(|pattern| line_lower.contains(pattern))
+    }
+
+    /// Check if word is in safe commands list
+    fn is_known_command(&self, word: &str) -> bool {
+        self.safe_commands.iter().any(|cmd| cmd == word)
+    }
+
+    /// Check if line matches command patterns
+    fn matches_command_pattern(&self, line: &str, first_word: &str) -> bool {
+        const COMMAND_PATTERNS: &[&str] = &[
             r"^\w+\s+",           // word followed by space (basic command pattern)
             r"^[a-zA-Z_][a-zA-Z0-9_]*\s", // valid command name pattern
         ];
 
-        for pattern in &command_patterns {
-            if let Ok(regex) = regex::Regex::new(pattern) {
-                if regex.is_match(line) && self.is_valid_command(first_word) {
-                    return true;
-                }
-            }
-        }
-
-        false
+        COMMAND_PATTERNS.iter().any(|pattern| {
+            regex::Regex::new(pattern)
+                .map(|regex| regex.is_match(line) && self.is_valid_command(first_word))
+                .unwrap_or(false)
+        })
     }
 
     /// Validate that an execution step is safe and meaningful
@@ -257,7 +265,7 @@ impl StepParser {
 
         let cmd_parts: Vec<&str> = command.split_whitespace().collect();
         if !cmd_parts.is_empty() && self.is_valid_command(&cmd_parts[0]) {
-            Some(ExecutionStep {
+            Some(ExecutionStep { step_number: 0,
                 description: self.get_command_description(command),
                 command: command.to_string(),
                 output: None,
@@ -283,7 +291,7 @@ impl StepParser {
         // Check if the first command (usually 'cat') is valid
         if !cmd_parts.is_empty() && self.is_valid_command(&cmd_parts[0]) {
             let description = self.get_heredoc_description(first_line);
-            Some(ExecutionStep {
+            Some(ExecutionStep { step_number: 0,
                 description,
                 command: command.to_string(),
                 output: None,
@@ -341,7 +349,7 @@ impl StepParser {
                         let dir_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_dir");
                         let project_name = captures.get(2).map(|m| m.as_str()).unwrap_or("new_project");
 
-                        steps.push(ExecutionStep {
+                        steps.push(ExecutionStep { step_number: 0,
                             description: format!("Creating directory {}", dir_name),
                             command: format!("mkdir {}", dir_name),
                             output: None,
@@ -349,7 +357,7 @@ impl StepParser {
                             timestamp,
                         });
 
-                        steps.push(ExecutionStep {
+                        steps.push(ExecutionStep { step_number: 0,
                             description: format!("Changing to directory {}", dir_name),
                             command: format!("cd {}", dir_name),
                             output: None,
@@ -357,7 +365,7 @@ impl StepParser {
                             timestamp,
                         });
 
-                        steps.push(ExecutionStep {
+                        steps.push(ExecutionStep { step_number: 0,
                             description: format!("Creating Rust project {}", project_name),
                             command: format!("cargo new {}", project_name),
                             output: None,
@@ -377,7 +385,7 @@ impl StepParser {
                 if let Some(captures) = regex.captures(&lower_task) {
                     let project_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_project");
 
-                    steps.push(ExecutionStep {
+                    steps.push(ExecutionStep { step_number: 0,
                         description: format!("Creating Rust project {}", project_name),
                         command: format!("cargo new {}", project_name),
                         output: None,
@@ -396,7 +404,7 @@ impl StepParser {
                 if let Some(captures) = regex.captures(&lower_task) {
                     let dir_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_dir");
 
-                    steps.push(ExecutionStep {
+                    steps.push(ExecutionStep { step_number: 0,
                         description: format!("Creating directory {}", dir_name),
                         command: format!("mkdir {}", dir_name),
                         output: None,
@@ -415,7 +423,7 @@ impl StepParser {
                 if let Some(captures) = regex.captures(&lower_task) {
                     let file_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_file.txt");
 
-                    steps.push(ExecutionStep {
+                    steps.push(ExecutionStep { step_number: 0,
                         description: format!("Creating file {}", file_name),
                         command: format!("touch {}", file_name),
                         output: None,
@@ -432,25 +440,25 @@ impl StepParser {
         if lower_task.contains("build") || lower_task.contains("compile") {
             // Determine build command based on project context
             if lower_task.contains("rust") || lower_task.contains("cargo") {
-                steps.push(ExecutionStep {
-                    description: "Building Rust project".to_string(),
-                    command: "cargo build".to_string(),
+                steps.push(ExecutionStep { step_number: 0,
+                    description: "Building Rust project".into(),
+                    command: "cargo build".into(),
                     output: None,
                     success: false,
                     timestamp,
                 });
             } else if lower_task.contains("npm") || lower_task.contains("node") {
-                steps.push(ExecutionStep {
-                    description: "Building Node.js project".to_string(),
-                    command: "npm run build".to_string(),
+                steps.push(ExecutionStep { step_number: 0,
+                    description: "Building Node.js project".into(),
+                    command: "npm run build".into(),
                     output: None,
                     success: false,
                     timestamp,
                 });
             } else {
-                steps.push(ExecutionStep {
-                    description: "Building project".to_string(),
-                    command: "make".to_string(),
+                steps.push(ExecutionStep { step_number: 0,
+                    description: "Building project".into(),
+                    command: "make".into(),
                     output: None,
                     success: false,
                     timestamp,
@@ -462,32 +470,32 @@ impl StepParser {
         // Pattern: git operations
         if lower_task.contains("git") {
             if lower_task.contains("status") {
-                steps.push(ExecutionStep {
-                    description: "Checking git status".to_string(),
-                    command: "git status".to_string(),
+                steps.push(ExecutionStep { step_number: 0,
+                    description: "Checking git status".into(),
+                    command: "git status".into(),
                     output: None,
                     success: false,
                     timestamp,
                 });
             } else if lower_task.contains("commit") {
-                steps.push(ExecutionStep {
-                    description: "Adding files to git".to_string(),
-                    command: "git add .".to_string(),
+                steps.push(ExecutionStep { step_number: 0,
+                    description: "Adding files to git".into(),
+                    command: "git add .".into(),
                     output: None,
                     success: false,
                     timestamp,
                 });
-                steps.push(ExecutionStep {
-                    description: "Committing changes".to_string(),
-                    command: "git commit -m \"Update\"".to_string(),
+                steps.push(ExecutionStep { step_number: 0,
+                    description: "Committing changes".into(),
+                    command: "git commit -m \"Update\"".into(),
                     output: None,
                     success: false,
                     timestamp,
                 });
             } else if lower_task.contains("init") {
-                steps.push(ExecutionStep {
-                    description: "Initializing git repository".to_string(),
-                    command: "git init".to_string(),
+                steps.push(ExecutionStep { step_number: 0,
+                    description: "Initializing git repository".into(),
+                    command: "git init".into(),
                     output: None,
                     success: false,
                     timestamp,
@@ -497,9 +505,9 @@ impl StepParser {
         }
 
         // Final fallback
-        steps.push(ExecutionStep {
+        steps.push(ExecutionStep { step_number: 0,
             description: format!("Execute task: {}", task_description),
-            command: "echo 'Task needs manual implementation'".to_string(),
+            command: "echo 'Task needs manual implementation'".into(),
             output: None,
             success: false,
             timestamp,
@@ -520,14 +528,14 @@ impl StepParser {
         }
 
         // Fallback description
-        "Writing content using heredoc".to_string()
+        "Writing content using heredoc".into()
     }
 
     /// Get a human-readable description for a command
     fn get_command_description(&self, command: &str) -> String {
         let parts: Vec<&str> = command.split_whitespace().collect();
         if parts.is_empty() {
-            return command.to_string();
+            return command.into();
         }
 
         match parts[0] {
@@ -536,44 +544,62 @@ impl StepParser {
             "cargo" if parts.get(1) == Some(&"new") => {
                 format!("Creating new Rust project {}", parts.get(2).unwrap_or(&"<name>"))
             },
-            "cargo" if parts.get(1) == Some(&"build") => "Building Rust project".to_string(),
-            "cargo" if parts.get(1) == Some(&"run") => "Running Rust project".to_string(),
-            "cargo" if parts.get(1) == Some(&"test") => "Running Rust tests".to_string(),
+            "cargo" if parts.get(1) == Some(&"build") => "Building Rust project".into(),
+            "cargo" if parts.get(1) == Some(&"run") => "Running Rust project".into(),
+            "cargo" if parts.get(1) == Some(&"test") => "Running Rust tests".into(),
             "touch" => format!("Creating file {}", parts.get(1).unwrap_or(&"<file>")),
-            "echo" => "Writing content".to_string(),
-            "cp" => "Copying files".to_string(),
-            "mv" => "Moving/renaming files".to_string(),
-            "ls" => "Listing directory contents".to_string(),
+            "echo" => "Writing content".into(),
+            "cp" => "Copying files".into(),
+            "mv" => "Moving/renaming files".into(),
+            "grep" => {
+                if parts.len() > 2 {
+                    format!("Searching for '{}' in {}", parts.get(1).unwrap_or(&"pattern"), parts[2..].join(" "))
+                } else if parts.len() > 1 {
+                    format!("Searching for '{}'", parts.get(1).unwrap_or(&"pattern"))
+                } else {
+                    "Searching for pattern".into()
+                }
+            },
+            "ls" => {
+                // Check if listing a specific directory or file
+                if parts.len() > 1 {
+                    format!("Listing {}", parts[1..].join(" "))
+                } else {
+                    "Listing current directory".into()
+                }
+            },
             "cat" => {
                 // Check if this is a heredoc command
                 if command.contains("<<") {
                     self.get_heredoc_description(command)
+                } else if parts.len() > 1 {
+                    format!("Displaying contents of {}", parts[1])
                 } else {
-                    "Displaying file contents".to_string()
+                    "Displaying file contents".into()
                 }
             },
             "git" => match parts.get(1) {
-                Some(&"status") => "Checking git status".to_string(),
-                Some(&"add") => "Adding files to git".to_string(),
-                Some(&"commit") => "Committing changes".to_string(),
-                Some(&"init") => "Initializing git repository".to_string(),
-                Some(&"clone") => "Cloning repository".to_string(),
-                Some(&"pull") => "Pulling latest changes".to_string(),
-                Some(&"push") => "Pushing changes".to_string(),
+                Some(&"status") => "Checking git status".into(),
+                Some(&"add") => "Adding files to git".into(),
+                Some(&"commit") => "Committing changes".into(),
+                Some(&"init") => "Initializing git repository".into(),
+                Some(&"clone") => "Cloning repository".into(),
+                Some(&"pull") => "Pulling latest changes".into(),
+                Some(&"push") => "Pushing changes".into(),
                 _ => format!("Git operation: {}", command),
             },
             "npm" => match parts.get(1) {
-                Some(&"install") => "Installing npm dependencies".to_string(),
+                Some(&"install") => "Installing npm dependencies".into(),
                 Some(&"run") => format!("Running npm script: {}", parts.get(2).unwrap_or(&"<script>")),
-                Some(&"build") => "Building npm project".to_string(),
-                Some(&"test") => "Running npm tests".to_string(),
+                Some(&"build") => "Building npm project".into(),
+                Some(&"test") => "Running npm tests".into(),
                 _ => format!("NPM operation: {}", command),
             },
-            "python" | "python3" => "Running Python script".to_string(),
-            "node" => "Running Node.js script".to_string(),
-            "make" => "Building with Make".to_string(),
-            "docker" => "Docker operation".to_string(),
-            _ => command.to_string(),
+            "python" | "python3" => "Running Python script".into(),
+            "node" => "Running Node.js script".into(),
+            "make" => "Building with Make".into(),
+            "docker" => "Docker operation".into(),
+            _ => command.into(),
         }
     }
 
@@ -635,9 +661,9 @@ cargo run
         let steps = self.parse_execution_steps(&test_response, "test task").await;
         let step_commands: Vec<String> = steps.iter().map(|s| s.command.clone()).collect();
 
-        log::info!("Test parsed {} steps:", steps.len());
+        info!("Test parsed {} steps:", steps.len());
         for (i, step) in steps.iter().enumerate() {
-            log::info!("  Step {}: {}", i + 1, step.description);
+            info!("  Step {}: {}", i + 1, step.description);
         }
 
         // Should have 5 steps: cargo new, cargo add, heredoc, cargo build, cargo run

@@ -7,6 +7,13 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+// HTML escape to prevent XSS from filenames
+function escapeHtmlFiles(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
+
 class StoredFiles {
     constructor() {
         this.files = undefined;
@@ -93,16 +100,19 @@ class StoredFiles {
                 if(obj.file_folder_tree !== null && obj.file_folder_tree !== undefined && obj.file_folder_tree.length > 1){
                     if(!ref.folders.includes(obj.file_folder_tree[0])){
                         ref.folders.push(obj.file_folder_tree[0]);
+                        var safeFolder = escapeHtmlFiles(obj.file_folder_tree[0]);
                         html += `
-                            <tr onclick="openFolder('${obj.file_folder_tree[0]}')">
-                                <td><i class="fas fa-folder"></i> ${obj.file_folder_tree[0]}</td>
+                            <tr onclick="openFolder('${safeFolder}')">
+                                <td><i class="fas fa-folder"></i> ${safeFolder}</td>
                             </tr>
                         `;
                     }
                 } else {
+                    var safeName = escapeHtmlFiles(obj.file_name);
+                    var safeOid = escapeHtmlFiles(obj.oid);
                     html += `
-                        <tr onclick="openFile('${obj.oid}', '${obj.file_name}')">
-                            <td>${iconFromName(obj.file_name)} ${obj.file_name}</td>
+                        <tr onclick="openFile('${safeOid}', '${safeName}')">
+                            <td>${iconFromName(obj.file_name)} ${safeName}</td>
                         </tr>
                     `;
                 }
@@ -122,21 +132,22 @@ class StoredFiles {
 
             $.get("/api/services/dropbox", function( data ) {
                 $(data).each(function() {
+                    var safePath = escapeHtmlFiles(this.path);
                     if(this.object_type === "folder"){
                         html += `
-                            <tr onclick="openDropboxPath('${this.path}')">
-                                <td>${this.path.replace("/", "")}</td>
+                            <tr onclick="openDropboxPath('${safePath}')">
+                                <td>${safePath.replace("/", "")}</td>
                             </tr>
                         `;
                     } else {
-                        file_name = this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", "");
+                        var file_name = escapeHtmlFiles(this.path.replace(ref.virtual_path.replace("/Dropbox", ""), "").replace("/", ""));
                         html += `
-                        <tr onclick='openDropboxFile("${this.path}")'>
+                        <tr onclick='openDropboxFile("${safePath}")'>
                             <td>${file_name}</td>
                         </tr>
                     `;
                     }
-          
+
                 });
                 table.html(html);
             });
@@ -153,18 +164,20 @@ class StoredFiles {
             `;
 
 
-            $.get("/api/services/dropbox?path=" + this.virtual_path.replace("/Dropbox", ""), function( data ) {
+            $.get("/api/services/dropbox?path=" + encodeURIComponent(this.virtual_path.replace("/Dropbox", "")), function( data ) {
                 $(data).each(function() {
+                    var safePath = escapeHtmlFiles(this.path);
+                    var safeName = escapeHtmlFiles(this.path.split("/").pop());
                     if(this.object_type === "folder"){
                         html += `
-                            <tr onclick="openDropboxPath('${this.path}')">
-                                <td>${this.path.split("/").pop()}</td>
+                            <tr onclick="openDropboxPath('${safePath}')">
+                                <td>${safeName}</td>
                             </tr>
                         `;
                     } else {
                         html += `
-                            <tr onclick="openDropboxFile('${this.path}')">
-                                <td>${this.path.split("/").pop()}</td>
+                            <tr onclick="openDropboxFile('${safePath}')">
+                                <td>${safeName}</td>
                             </tr>
                         `;
                     }
@@ -306,14 +319,15 @@ class StoredFiles {
 
                         if(obj.file_folder_tree.includes(split[split.length-1])){
                             ref.folders.push(obj.file_folder_tree[split.length-1]);
+                            var safeFolder = escapeHtmlFiles(obj.file_folder_tree[split.length-1]);
                             html += `
-                                <tr onclick="openFolder('${obj.file_folder_tree[split.length-1]}')">
-                                    <td><i class="fas fa-folder"></i> ${obj.file_folder_tree[split.length-1]}</td>
+                                <tr onclick="openFolder('${safeFolder}')">
+                                    <td><i class="fas fa-folder"></i> ${safeFolder}</td>
                                 </tr>
-                            `;    
+                            `;
                         }
 
- 
+
 
 
 
@@ -321,9 +335,11 @@ class StoredFiles {
                     }
                 } else {
                     if(obj.file_folder_tree !== null && obj.file_folder_tree !== undefined && obj.file_folder_tree.includes(split[split.length-1])){
+                        var safeName = escapeHtmlFiles(obj.file_name);
+                        var safeOid = escapeHtmlFiles(obj.oid);
                         html += `
-                            <tr onclick="openFile('${obj.oid}', '${obj.file_name}')">
-                                <td>${iconFromName(obj.file_name)} ${obj.file_name}</td>
+                            <tr onclick="openFile('${safeOid}', '${safeName}')">
+                                <td>${iconFromName(obj.file_name)} ${safeName}</td>
                             </tr>
                         `;
                     }

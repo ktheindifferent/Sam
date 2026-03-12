@@ -1,15 +1,15 @@
 use std::collections::{HashMap, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
-use tokio::sync::{RwLock, Mutex};
+use tokio::sync::RwLock;
 use tokio::time::{sleep, timeout};
 use regex::Regex;
+use log::info;
 
 use super::errors::{CodingAgentError as ServiceError, ErrorSeverity};
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorContext {
@@ -782,28 +782,28 @@ impl RecoveryExecutor {
         match action {
             RecoveryAction::RestartService { service_name } => {
                 // Implement service restart
-                println!("Restarting service: {}", service_name);
+                info!("Restarting service: {}", service_name);
                 Ok(())
             }
             RecoveryAction::ModifyCode { file, changes } => {
                 // Implement code modification
-                println!("Modifying {} with {} changes", file.display(), changes.len());
+                info!("Modifying {} with {} changes", file.display(), changes.len());
                 Ok(())
             }
             RecoveryAction::UpdateDependency { name, version } => {
                 // Implement dependency update
-                println!("Updating {} to {}", name, version);
+                info!("Updating {} to {}", name, version);
                 Ok(())
             }
             RecoveryAction::ClearCache { cache_name } => {
                 // Implement cache clearing
-                println!("Clearing cache: {:?}", cache_name);
+                info!("Clearing cache: {:?}", cache_name);
                 Ok(())
             }
             RecoveryAction::RetryOperation { max_attempts, delay_ms } => {
                 // Implement retry logic
                 for attempt in 1..=*max_attempts {
-                    println!("Retry attempt {}/{}", attempt, max_attempts);
+                    info!("Retry attempt {}/{}", attempt, max_attempts);
                     sleep(Duration::from_millis(*delay_ms)).await;
                 }
                 Ok(())

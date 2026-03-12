@@ -4,6 +4,14 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use super::types::{ProjectStructure, ProjectType, BuildSystem};
 
+/// Common development environment variables
+const RELEVANT_ENV_VARS: &[&str] = &[
+    "PATH", "HOME", "USER", "SHELL", "EDITOR", "TERM",
+    "RUST_LOG", "CARGO_HOME", "RUSTUP_HOME",
+    "NODE_ENV", "NPM_CONFIG_PREFIX", "PYTHON_PATH",
+    "JAVA_HOME", "GOPATH", "GOROOT",
+];
+
 /// Workspace context for better AI responses
 #[derive(Debug, Clone, Default)]
 pub struct WorkspaceContext {
@@ -101,19 +109,11 @@ impl ContextManager {
 
     /// Get relevant environment variables
     fn get_relevant_env_vars(&self) -> HashMap<String, String> {
-        let mut env_vars = HashMap::new();
-        
-        // Common development environment variables
-        let relevant_vars = [
-            "PATH", "HOME", "USER", "SHELL", "EDITOR", "TERM",
-            "RUST_LOG", "CARGO_HOME", "RUSTUP_HOME",
-            "NODE_ENV", "NPM_CONFIG_PREFIX", "PYTHON_PATH",
-            "JAVA_HOME", "GOPATH", "GOROOT",
-        ];
+        let mut env_vars = HashMap::with_capacity(RELEVANT_ENV_VARS.len());
 
-        for var in &relevant_vars {
+        for var in RELEVANT_ENV_VARS {
             if let Ok(value) = std::env::var(var) {
-                env_vars.insert(var.to_string(), value);
+                env_vars.insert((*var).into(), value);
             }
         }
 
@@ -143,7 +143,7 @@ impl ContextManager {
                     .await
                 {
                     if output.status.success() {
-                        running_services.push(service_name.to_string());
+                        running_services.push((*service_name).into());
                     }
                 }
             }

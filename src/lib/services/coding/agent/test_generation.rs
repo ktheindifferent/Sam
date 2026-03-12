@@ -11,7 +11,7 @@ use crate::services::coding::agent::{
     code_review::CodeLocation,
 };
 
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 pub struct TestGenerationEngine {
     llm_provider: Box<dyn LLMProvider>,

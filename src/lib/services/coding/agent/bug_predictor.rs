@@ -10,7 +10,7 @@ use crate::services::coding::agent::{
     code_review::CodeLocation,
 };
 
-use super::providers::LLMProvider;
+use super::traits::provider::LLMProvider;
 
 /// Intelligent bug prediction and prevention system
 pub struct BugPredictor {

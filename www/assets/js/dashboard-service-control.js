@@ -100,6 +100,10 @@ function handleWebSocketMessage(data) {
         addLog(data.activity.message, 'info');
     } else if (data.type === 'alert') {
         addLog(data.message, data.severity);
+        // Show toast for warning and above
+        if (data.severity === 'warning' || data.severity === 'error' || data.severity === 'critical') {
+            showToast(data.message, data.severity === 'critical' ? 'error' : data.severity);
+        }
     } else if (data.type === 'heartbeat_ack') {
         console.log('Heartbeat acknowledged');
     }
@@ -223,19 +227,35 @@ function handleCommandResponse(data) {
     }
 }
 
-// Update system statistics
+// Update system statistics (both service-control and core.js dashboard elements)
 function updateSystemStats(stats) {
     if (stats.cpu !== undefined) {
         const cpuElement = document.getElementById('cpu-usage');
         if (cpuElement) cpuElement.textContent = `${stats.cpu.toFixed(1)}%`;
+        // Also update core.js dashboard elements
+        const cpuCard = document.getElementById('cpu-usage-card');
+        if (cpuCard) cpuCard.textContent = `${stats.cpu.toFixed(1)}%`;
+        const cpuProgress = document.getElementById('cpu-progress-main');
+        if (cpuProgress) cpuProgress.style.width = `${stats.cpu}%`;
     }
     if (stats.memory_percent !== undefined) {
         const memElement = document.getElementById('memory-usage');
         if (memElement) memElement.textContent = `${stats.memory_percent.toFixed(1)}%`;
+        const memProgress = document.getElementById('memory-progress-main');
+        if (memProgress) memProgress.style.width = `${stats.memory_percent}%`;
+    }
+    if (stats.memory_used !== undefined) {
+        const memCard = document.getElementById('memory-usage-card');
+        if (memCard) {
+            const memMB = (stats.memory_used / (1024 * 1024)).toFixed(0);
+            memCard.textContent = `${memMB} MB`;
+        }
     }
     if (stats.disk_percent !== undefined) {
         const diskElement = document.getElementById('disk-usage');
         if (diskElement) diskElement.textContent = `${stats.disk_percent.toFixed(1)}%`;
+        const diskProgress = document.getElementById('disk-progress-main');
+        if (diskProgress) diskProgress.style.width = `${stats.disk_percent}%`;
     }
 }
 
@@ -658,12 +678,14 @@ function formatTime(timestamp) {
     return date.toLocaleDateString();
 }
 
-// Start polling as fallback
+// Start polling as fallback (slower on touch devices to save battery)
 function startPolling() {
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    const pollInterval = isTouchDevice ? 10000 : 5000;
     setInterval(() => {
         fetchServiceStatus();
         updateSystemMetrics();
-    }, 5000);
+    }, pollInterval);
 }
 
 // Check environment mode
@@ -724,13 +746,13 @@ function init() {
     fetchServiceStatus();
     updateSystemMetrics();
     
-    // Update metrics periodically
+    // Update uptime continuously
     setInterval(updateUptime, 1000);
-    setInterval(updateSystemMetrics, 10000);
-    
-    // Periodic status refresh if WebSocket fails
+
+    // Only poll REST endpoints when WebSocket is not connected
     setInterval(() => {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
+            updateSystemMetrics();
             fetchServiceStatus();
         }
     }, 5000);

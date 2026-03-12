@@ -76,13 +76,14 @@ impl CommandExecutor {
                 Ok(output) => {
                     // Check if the output indicates a failure even though the command "succeeded"
                     if self.output_indicates_failure(&output, command) {
-                        last_error = format!("Command executed but produced error output: {}", output);
-                        if attempt < max_retries - 1 {
+                        // Only retry for actual failures, not expected errors
+                        if !output.contains("is a directory") && attempt < max_retries - 1 {
                             let delay_ms = 100 * (2_u64.pow(attempt));
                             sleep(Duration::from_millis(delay_ms)).await;
                             continue;
                         }
-                        return last_error;
+                        // Return the output as-is without adding redundant prefix
+                        return output;
                     }
 
                     // If previous attempts failed but this one succeeded, note the recovery
@@ -182,13 +183,14 @@ impl CommandExecutor {
                     }).await;
 
                     if self.output_indicates_failure(&output, command) {
-                        last_error = format!("Command executed but produced error output: {}", output);
-                        if attempt < max_retries - 1 {
+                        // Only retry for actual failures, not expected errors
+                        if !output.contains("is a directory") && attempt < max_retries - 1 {
                             let delay_ms = 100 * (2_u64.pow(attempt));
                             sleep(Duration::from_millis(delay_ms)).await;
                             continue;
                         }
-                        return last_error;
+                        // Return the output as-is without adding redundant prefix
+                        return output;
                     }
 
                     if attempt > 0 {
@@ -282,6 +284,29 @@ impl CommandExecutor {
             return false; // Directory already exists, that's fine
         }
 
+        // Special case: ls on a directory that exists is not a failure
+        if command.starts_with("ls") && !output_lower.contains("no such file") {
+            return false;
+        }
+
+        // Special case: cat on a directory is an expected error, not a failure to retry
+        if command.starts_with("cat") && output_lower.contains("is a directory") {
+            // It's an error but not one we should retry
+            return false;
+        }
+
+        // Special case: grep not finding matches is not a failure
+        if command.starts_with("grep") && output_lower.contains("is a directory") {
+            return false;
+        }
+
+        // Skip "Command failed:" prefix check since that's added by our code
+        let clean_output = if output_lower.starts_with("command failed:") {
+            output_lower.strip_prefix("command failed:").unwrap_or(&output_lower).trim()
+        } else {
+            &output_lower
+        };
+
         // Common error indicators
         let error_patterns = [
             "error:", "failed:", "cannot", "no such file", "permission denied",
@@ -290,23 +315,27 @@ impl CommandExecutor {
         ];
 
         for pattern in &error_patterns {
-            if output_lower.contains(pattern) {
+            if clean_output.contains(pattern) {
+                // Additional checks for false positives
+                if *pattern == "cannot" && command.starts_with("echo") {
+                    continue; // Echo might output text containing "cannot"
+                }
                 return true;
             }
         }
 
         // Check for command-specific failure patterns
         if command.starts_with("cargo") {
-            if output_lower.contains("compilation failed") ||
-               output_lower.contains("build failed") ||
-               output_lower.contains("could not compile") {
+            if clean_output.contains("compilation failed") ||
+               clean_output.contains("build failed") ||
+               clean_output.contains("could not compile") {
                 return true;
             }
         }
 
         if command.starts_with("git") {
-            if output_lower.contains("fatal:") ||
-               output_lower.contains("not a git repository") {
+            if clean_output.contains("fatal:") ||
+               clean_output.contains("not a git repository") {
                 return true;
             }
         }

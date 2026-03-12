@@ -193,8 +193,14 @@ impl BenchmarkingEngine {
         runner: &dyn BenchmarkRunner,
     ) -> Result<(usize, f64), ServiceError> {
         // Start profilers
-        let memory_profiler = self.profilers.get("memory").unwrap();
-        let cpu_profiler = self.profilers.get("cpu").unwrap();
+        let memory_profiler = self.profilers.get("memory")
+            .ok_or_else(|| ServiceError::ConfigError {
+                message: "Memory profiler not found".to_string()
+            })?;
+        let cpu_profiler = self.profilers.get("cpu")
+            .ok_or_else(|| ServiceError::ConfigError {
+                message: "CPU profiler not found".to_string()
+            })?;
 
         memory_profiler.start().await?;
         cpu_profiler.start().await?;
@@ -219,10 +225,27 @@ impl BenchmarkingEngine {
         let mut sorted_timings = timings.clone();
         sorted_timings.sort();
 
+        if timings.is_empty() {
+            return BenchmarkResult {
+                name,
+                duration_mean: Duration::from_secs(0),
+                duration_median: Duration::from_secs(0),
+                duration_min: Duration::from_secs(0),
+                duration_max: Duration::from_secs(0),
+                duration_std_dev: Duration::from_secs(0),
+                throughput: 0.0,
+                memory_peak: None,
+                memory_average: None,
+                cpu_usage: None,
+                iterations_completed: 0,
+                errors: vec!["No timing data available".to_string()],
+            };
+        }
+
         let mean = timings.iter().sum::<Duration>() / timings.len() as u32;
         let median = sorted_timings[sorted_timings.len() / 2];
-        let min = *sorted_timings.first().unwrap();
-        let max = *sorted_timings.last().unwrap();
+        let min = *sorted_timings.first().unwrap_or(&Duration::from_secs(0));
+        let max = *sorted_timings.last().unwrap_or(&Duration::from_secs(0));
 
         // Calculate standard deviation
         let variance = timings.iter()
@@ -342,7 +365,11 @@ impl BenchmarkingEngine {
     async fn profile_rust_code(&self, code_path: &Path) -> Result<ProfilingData, ServiceError> {
         // Use cargo-flamegraph or similar
         let output = Command::new("cargo")
-            .args(&["flamegraph", "--bin", code_path.to_str().unwrap()])
+            .args(&["flamegraph", "--bin", code_path.to_str()
+                .ok_or_else(|| ServiceError::IoError {
+                    message: format!("Invalid path: {:?}", code_path),
+                    path: Some(code_path.to_path_buf())
+                })?])
             .output()
             .await
             .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
@@ -354,7 +381,11 @@ impl BenchmarkingEngine {
     async fn profile_python_code(&self, code_path: &Path) -> Result<ProfilingData, ServiceError> {
         // Use cProfile
         let output = Command::new("python")
-            .args(&["-m", "cProfile", "-o", "profile.stats", code_path.to_str().unwrap()])
+            .args(&["-m", "cProfile", "-o", "profile.stats", code_path.to_str()
+                .ok_or_else(|| ServiceError::IoError {
+                    message: format!("Invalid path: {:?}", code_path),
+                    path: Some(code_path.to_path_buf())
+                })?])
             .output()
             .await
             .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
@@ -366,7 +397,11 @@ impl BenchmarkingEngine {
     async fn profile_js_code(&self, code_path: &Path) -> Result<ProfilingData, ServiceError> {
         // Use node --prof
         let output = Command::new("node")
-            .args(&["--prof", code_path.to_str().unwrap()])
+            .args(&["--prof", code_path.to_str()
+                .ok_or_else(|| ServiceError::IoError {
+                    message: format!("Invalid path: {:?}", code_path),
+                    path: Some(code_path.to_path_buf())
+                })?])
             .output()
             .await
             .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
@@ -433,7 +468,12 @@ impl RustBenchmarkRunner {
 impl BenchmarkRunner for RustBenchmarkRunner {
     async fn run_once(&self, code_path: &Path) -> Result<(), ServiceError> {
         let output = Command::new("cargo")
-            .args(&["bench", "--bench", code_path.file_stem().unwrap().to_str().unwrap()])
+            .args(&["bench", "--bench", code_path.file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| ServiceError::IoError {
+                    message: format!("Invalid benchmark path: {:?}", code_path),
+                    path: Some(code_path.to_path_buf())
+                })?])
             .output()
             .await
             .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
@@ -521,7 +561,11 @@ impl GoBenchmarkRunner {
 impl BenchmarkRunner for GoBenchmarkRunner {
     async fn run_once(&self, code_path: &Path) -> Result<(), ServiceError> {
         let output = Command::new("go")
-            .args(&["test", "-bench", ".", code_path.to_str().unwrap()])
+            .args(&["test", "-bench", ".", code_path.to_str()
+                .ok_or_else(|| ServiceError::IoError {
+                    message: format!("Invalid path: {:?}", code_path),
+                    path: Some(code_path.to_path_buf())
+                })?])
             .output()
             .await
             .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
@@ -551,7 +595,11 @@ impl BenchmarkRunner for JavaBenchmarkRunner {
     async fn run_once(&self, code_path: &Path) -> Result<(), ServiceError> {
         // Use JMH (Java Microbenchmark Harness)
         let output = Command::new("java")
-            .args(&["-jar", "jmh.jar", code_path.to_str().unwrap()])
+            .args(&["-jar", "jmh.jar", code_path.to_str()
+                .ok_or_else(|| ServiceError::IoError {
+                    message: format!("Invalid path: {:?}", code_path),
+                    path: Some(code_path.to_path_buf())
+                })?])
             .output()
             .await
             .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
@@ -795,7 +843,7 @@ impl Optimizer for ConcurrencyOptimizer {
                 description: "Lock-free alternatives might improve performance".to_string(),
                 impact: OptimizationImpact::Medium,
                 difficulty: Difficulty::Hard,
-                code_before: "let data = mutex.lock().unwrap();".to_string(),
+                code_before: "let data = mutex.lock()?;".to_string(),
                 code_after: "// Use Arc<RwLock> or lock-free structures".to_string(),
                 expected_improvement: 25.0,
                 category: OptimizationCategory::Concurrency,

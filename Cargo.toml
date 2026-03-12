@@ -151,10 +151,14 @@ sentry = "0.34"
 # PyTorch bindings for Neural Style Transfer
 tch = { version = "0.20", optional = true }
 image = { version = "0.25", optional = true }
+# Plugin system dependencies (optional)
+wasmtime = { version = "27", optional = true }
+notify = { version = "6.1", optional = true }
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
 nst = ["tch", "image"]
+plugins = ["wasmtime", "notify"]
 
 [[bin]]
 name = "installer"
