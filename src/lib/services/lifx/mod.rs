@@ -14,12 +14,27 @@ pub use traits::{LightControl, LightDevice};
 pub use start as start_service;
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 // Global service state
 static SERVICE_RUNNING: AtomicBool = AtomicBool::new(false);
 static BULB_COUNT: AtomicUsize = AtomicUsize::new(0);
 static API_PORT: AtomicUsize = AtomicUsize::new(0);
+
+// Global discovery service reference for handlers
+use crate::services::lifx::discovery::DiscoveryService;
+lazy_static::lazy_static! {
+    static ref GLOBAL_DISCOVERY: Arc<Mutex<Option<Arc<Mutex<DiscoveryService>>>>> =
+        Arc::new(Mutex::new(None));
+}
+
+pub fn set_global_discovery(discovery: Arc<Mutex<DiscoveryService>>) {
+    *GLOBAL_DISCOVERY.lock().unwrap() = Some(discovery);
+}
+
+pub fn get_global_discovery() -> Option<Arc<Mutex<DiscoveryService>>> {
+    GLOBAL_DISCOVERY.lock().unwrap().clone()
+}
 
 pub fn stop_service() -> anyhow::Result<()> {
     SERVICE_RUNNING.store(false, Ordering::SeqCst);

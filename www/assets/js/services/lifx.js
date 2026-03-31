@@ -14,17 +14,11 @@ class LifXThings {
     }
 
     add(thing) {
-
-
-
         if(this.things == undefined){
             this.things = [];
-        } else {
-            
         }
         this.remove(thing.oid);
         this.things.push(thing);
-
     }
 
     remove(oid) {
@@ -84,14 +78,14 @@ class LifXThing {
                             if(expectations == "power:on"){
                                 if(this.power == "off" && loops < 5){
                                     loops+=1;
-                                    setTimeout(modelref.init(expectations, loops), 300);
+                                    setTimeout(function() { modelref.init(expectations, loops); }, 300);
                                     return modelref;
                                 }
                             }
                             if(expectations == "power:off"){
                                 if(this.power == "on" && loops < 5){
                                     loops+=1;
-                                    setTimeout(modelref.init(expectations, loops), 300);
+                                    setTimeout(function() { modelref.init(expectations, loops); }, 300);
                                     return modelref;
                                 }
                             }
@@ -134,14 +128,14 @@ class LifXThing {
                                         if(expectations == "power:on"){
                                             if(this.power == "off" && loops < 5){
                                                 loops+=1;
-                                                setTimeout(modelref.init(expectations, loops), 100);
+                                                setTimeout(function() { modelref.init(expectations, loops); }, 100);
                                                 return modelref;
                                             }
                                         }
                                         if(expectations == "power:off"){
                                             if(this.power == "on" && loops < 5){
                                                 loops+=1;
-                                                setTimeout(modelref.init(expectations, loops), 100);
+                                                setTimeout(function() { modelref.init(expectations, loops); }, 100);
                                                 return modelref;
                                             }
                                         }
@@ -237,14 +231,14 @@ class LifXThing {
                                         if(expectations == "power:on"){
                                             if(this.power == "off" && loops < 5){
                                                 loops+=1;
-                                                setTimeout(modelref.init(expectations, loops), 100);
+                                                setTimeout(function() { modelref.init(expectations, loops); }, 100);
                                                 return modelref;
                                             }
                                         }
                                         if(expectations == "power:off"){
                                             if(this.power == "on" && loops < 5){
                                                 loops+=1;
-                                                setTimeout(modelref.init(expectations, loops), 100);
+                                                setTimeout(function() { modelref.init(expectations, loops); }, 100);
                                                 return modelref;
                                             }
                                         }
@@ -443,7 +437,7 @@ class LifXThing {
 
 
         if(this.public_obj == undefined && this.private_obj == undefined){
-            setTimeout(this.update_html(), 500);
+            setTimeout(() => { this.update_html(); }, 500);
             return false;
         }
 

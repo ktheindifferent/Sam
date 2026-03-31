@@ -32,9 +32,13 @@ pub struct ApiServer {
 impl ApiServer {
     pub fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
         config.validate()?;
-        
+
         let source = 0x72757374; // "rust" in hex
         let discovery = Arc::new(Mutex::new(DiscoveryService::new(source)?));
+
+        // Set global discovery reference for handlers
+        crate::services::lifx::set_global_discovery(discovery.clone());
+
         let handlers = Arc::new(HttpHandlers::new(source));
         let stop_flag = Arc::new(AtomicBool::new(false));
 

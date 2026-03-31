@@ -374,25 +374,35 @@ impl HttpHandlers {
 
 /// Handle LIFX API requests from the main HTTP server
 pub fn handle_api_request(request: &Request) -> Response {
-    use crate::services::lifx::{get_status_json, set_service_state};
+    use crate::services::lifx::{get_status_json, get_global_discovery};
 
     // Status endpoint (already handled in mod.rs, but here for completeness)
     if request.url().contains("/status") {
         return Response::json(&get_status_json());
     }
 
-    // List bulbs endpoint
+    // List bulbs endpoint - now uses real discovery service
     if request.url().contains("/bulbs") || request.url().contains("/lights") {
-        // Return mock data for now - real implementation would query discovery service
-        let mock_bulbs = json!({
+        if let Some(discovery_arc) = get_global_discovery() {
+            if let Ok(discovery) = discovery_arc.lock() {
+                if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                    let bulbs_vec: Vec<&BulbInfo> = bulbs_arc.values().collect();
+                    return Response::json(&json!({
+                        "bulbs": bulbs_vec,
+                        "count": bulbs_vec.len()
+                    }));
+                }
+            }
+        }
+        // Fallback if discovery service not available
+        return Response::json(&json!({
             "bulbs": [],
             "count": 0,
-            "message": "No bulbs discovered yet. Ensure LIFX bulbs are powered on and on the same network."
-        });
-        return Response::json(&mock_bulbs);
+            "message": "Discovery service not initialized"
+        }));
     }
 
-    // Set color endpoint
+    // Set color endpoint - now uses real bulb control
     if request.url().contains("/set_color") {
         let input = try_or_400!(post_input!(request, {
             use_public: Option<String>,
@@ -402,14 +412,55 @@ pub fn handle_api_request(request: &Request) -> Response {
 
         log::info!("LIFX set_color request: selector={}, color={}", input.selector, input.color);
 
+        // Get discovery service and execute command
+        if let Some(discovery_arc) = get_global_discovery() {
+            if let Ok(discovery) = discovery_arc.lock() {
+                if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                    let sock = discovery.get_socket();
+                    let handlers = HttpHandlers::new(0);
+
+                    let mut bulbs_vec: Vec<&BulbInfo> = bulbs_arc.values().collect();
+
+                    // Apply selector filtering
+                    if input.selector.contains("group_id:") {
+                        let gid = input.selector.replace("group_id:", "");
+                        bulbs_vec.retain(|b| {
+                            b.lifx_group.as_ref()
+                                .map(|g| g.id.contains(&gid))
+                                .unwrap_or(false)
+                        });
+                    } else if input.selector.contains("id:") {
+                        let id = input.selector.replace("id:", "");
+                        bulbs_vec.retain(|b| b.id.contains(&id));
+                    }
+
+                    // Execute color change for each bulb
+                    let mut success_count = 0;
+                    for bulb in &bulbs_vec {
+                        if let Some(hsbk) = handlers.parse_color_command(&input.color, bulb, 0) {
+                            if handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 0).is_ok() {
+                                success_count += 1;
+                            }
+                        }
+                    }
+
+                    return Response::json(&json!({
+                        "success": success_count > 0,
+                        "message": format!("Color command sent to {} bulbs", success_count),
+                        "color": input.color,
+                        "selector": input.selector
+                    }));
+                }
+            }
+        }
+
         return Response::json(&json!({
-            "success": true,
-            "message": format!("Color command queued for {}", input.selector),
-            "color": input.color
+            "success": false,
+            "message": "Discovery service not available"
         }));
     }
 
-    // Set state endpoint
+    // Set state endpoint - now uses real bulb control
     if request.url().contains("/set_state") {
         let input = try_or_400!(post_input!(request, {
             use_public: Option<String>,
@@ -419,9 +470,55 @@ pub fn handle_api_request(request: &Request) -> Response {
 
         log::info!("LIFX set_state request: selector={}, power={}", input.selector, input.power);
 
+        // Get discovery service and execute command
+        if let Some(discovery_arc) = get_global_discovery() {
+            if let Ok(discovery) = discovery_arc.lock() {
+                if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                    let sock = discovery.get_socket();
+
+                    let mut bulbs_vec: Vec<&BulbInfo> = bulbs_arc.values().collect();
+
+                    // Apply selector filtering
+                    if input.selector.contains("group_id:") {
+                        let gid = input.selector.replace("group_id:", "");
+                        bulbs_vec.retain(|b| {
+                            b.lifx_group.as_ref()
+                                .map(|g| g.id.contains(&gid))
+                                .unwrap_or(false)
+                        });
+                    } else if input.selector.contains("id:") {
+                        let id = input.selector.replace("id:", "");
+                        bulbs_vec.retain(|b| b.id.contains(&id));
+                    }
+
+                    // Execute power change for each bulb
+                    let power_level = if input.power == "on" {
+                        PowerLevel::Enabled
+                    } else {
+                        PowerLevel::Standby
+                    };
+
+                    let mut success_count = 0;
+                    for bulb in &bulbs_vec {
+                        let protocol = ProtocolHandler::new(0);
+                        if protocol.send_power_command(sock, bulb.target, bulb.addr, power_level).is_ok() {
+                            success_count += 1;
+                        }
+                    }
+
+                    return Response::json(&json!({
+                        "success": success_count > 0,
+                        "message": format!("Power {} command sent to {} bulbs", input.power, success_count),
+                        "power": input.power,
+                        "selector": input.selector
+                    }));
+                }
+            }
+        }
+
         return Response::json(&json!({
-            "success": true,
-            "message": format!("Power {} command queued for {}", input.power, input.selector)
+            "success": false,
+            "message": "Discovery service not available"
         }));
     }
 
