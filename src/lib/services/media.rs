@@ -30,5 +30,17 @@ pub fn handle(
 /// Initialize the media service
 pub async fn initialize() -> anyhow::Result<()> {
     log::info!("Media service initialized");
+    
+    // Check for librespot availability and log status
+    match snapcast::check_librespot() {
+        Ok(path) => {
+            log::info!("Spotify support enabled (librespot at {})", path);
+        }
+        Err(_) => {
+            log::warn!("Spotify support disabled - librespot not installed");
+            log::info!("To enable Spotify: cargo install librespot");
+        }
+    }
+    
     Ok(())
 }
