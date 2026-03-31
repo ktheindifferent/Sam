@@ -126,8 +126,9 @@ impl ApiServer {
                     };
 
                     if request.url().contains("/lights/states") {
-                        // TODO: Implement bulk state changes
-                        Response::text("Bulk state changes not yet implemented")
+                        // Implement bulk state changes using existing handler with "all" selector
+                        let sock = discovery.get_socket();
+                        handlers.handle_set_state(request, &bulbs, "all", sock)
                     } else if request.url().contains("/state") {
                         let sock = discovery.get_socket();
                         handlers.handle_set_state(request, &bulbs, selector, sock)
