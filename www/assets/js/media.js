@@ -177,34 +177,120 @@ function initKeyboardShortcuts() {
     });
 }
 
-// Media control functions
+// Media control functions - Integrated with Snapcast API
 function togglePlayPause() {
-    MediaPlayer.isPlaying = !MediaPlayer.isPlaying;
+    const action = MediaPlayer.isPlaying ? 'pause' : 'play';
+    
+    fetch(`/api/services/media/snapcast/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            MediaPlayer.isPlaying = action === 'play';
+            updatePlayPauseButton();
+            console.log('Snapcast:', data.message);
+        } else {
+            console.error('Failed to', action + ':', data.error || data.message);
+            // Fallback to local state
+            MediaPlayer.isPlaying = !MediaPlayer.isPlaying;
+            updatePlayPauseButton();
+        }
+    })
+    .catch(err => {
+        console.warn('Snapcast API unavailable, using local state:', err);
+        MediaPlayer.isPlaying = !MediaPlayer.isPlaying;
+        updatePlayPauseButton();
+    });
+}
+
+function updatePlayPauseButton() {
     const playBtn = document.querySelector('#play-pause-btn');
     if (playBtn) {
         playBtn.innerHTML = MediaPlayer.isPlaying
             ? '<i class="fas fa-pause"></i>'
             : '<i class="fas fa-play"></i>';
     }
-    console.log('Play/Pause toggled:', MediaPlayer.isPlaying);
 }
 
 function nextTrack() {
-    console.log('Next track');
-    // TODO: Integrate with actual media backend
-    showNotification('Next track', 'info');
+    fetch('/api/services/media/snapcast/next', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Snapcast:', data.message);
+            showNotification('Next track', 'info');
+        } else {
+            console.warn('Next track:', data.message);
+            showNotification('Next track (source-dependent)', 'info');
+        }
+    })
+    .catch(err => {
+        console.warn('Snapcast API unavailable:', err);
+        showNotification('Next track', 'info');
+    });
 }
 
 function previousTrack() {
-    console.log('Previous track');
-    // TODO: Integrate with actual media backend
-    showNotification('Previous track', 'info');
+    fetch('/api/services/media/snapcast/previous', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Snapcast:', data.message);
+            showNotification('Previous track', 'info');
+        } else {
+            console.warn('Previous track:', data.message);
+            showNotification('Previous track (source-dependent)', 'info');
+        }
+    })
+    .catch(err => {
+        console.warn('Snapcast API unavailable:', err);
+        showNotification('Previous track', 'info');
+    });
 }
 
 function setVolume(level) {
-    MediaPlayer.volume = parseInt(level);
-    console.log('Volume set to:', MediaPlayer.volume);
-    // TODO: Send to Snapcast backend
+    const volumeLevel = parseInt(level);
+    MediaPlayer.volume = volumeLevel;
+    
+    fetch('/api/services/media/snapcast/volume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level: volumeLevel })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Snapcast volume:', data.message);
+            updateVolumeUI(volumeLevel);
+        } else {
+            console.warn('Volume control:', data.message);
+            updateVolumeUI(volumeLevel);
+        }
+    })
+    .catch(err => {
+        console.warn('Snapcast API unavailable, local volume only:', err);
+        updateVolumeUI(volumeLevel);
+    });
+}
+
+function updateVolumeUI(level) {
+    const volumeSlider = document.querySelector('#volume-slider');
+    if (volumeSlider) {
+        volumeSlider.value = level;
+    }
+    
+    // Update any volume display elements
+    document.querySelectorAll('.volume-display').forEach(el => {
+        el.textContent = level + '%';
+    });
 }
 
 function increaseVolume() {
@@ -216,14 +302,37 @@ function decreaseVolume() {
 }
 
 function toggleMute() {
-    MediaPlayer.isMuted = !MediaPlayer.isMuted;
+    fetch('/api/services/media/snapcast/mute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            MediaPlayer.isMuted = data.muted;
+            updateMuteButton();
+            console.log('Snapcast:', data.message);
+        } else {
+            console.warn('Mute toggle:', data.message);
+            // Fallback to local state
+            MediaPlayer.isMuted = !MediaPlayer.isMuted;
+            updateMuteButton();
+        }
+    })
+    .catch(err => {
+        console.warn('Snapcast API unavailable, using local state:', err);
+        MediaPlayer.isMuted = !MediaPlayer.isMuted;
+        updateMuteButton();
+    });
+}
+
+function updateMuteButton() {
     const muteBtn = document.querySelector('#mute-btn');
     if (muteBtn) {
         muteBtn.innerHTML = MediaPlayer.isMuted
             ? '<i class="fas fa-volume-mute"></i>'
             : '<i class="fas fa-volume-up"></i>';
     }
-    console.log('Mute toggled:', MediaPlayer.isMuted);
 }
 
 // Snapcast integration
