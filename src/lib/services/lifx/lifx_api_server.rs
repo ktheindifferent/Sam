@@ -731,6 +731,134 @@ impl Manager {
     }
 }
 
+/// Helper function to set bulb color based on color string command
+fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: u32) -> Result<(), String> {
+    let kelvin = bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(6500);
+    let brightness = bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535);
+    let saturation = bulb.lifx_color.as_ref().map(|c| c.saturation).unwrap_or(0);
+    let hue = bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0);
+
+    let hsbk = if color_str.contains("white") {
+        HSBK { hue: 0, saturation: 0, brightness, kelvin }
+    } else if color_str.contains("red") {
+        HSBK { hue: 0, saturation: 65535, brightness, kelvin }
+    } else if color_str.contains("orange") {
+        HSBK { hue: 7098, saturation: 65535, brightness, kelvin }
+    } else if color_str.contains("yellow") {
+        HSBK { hue: 10920, saturation: 65535, brightness, kelvin }
+    } else if color_str.contains("cyan") {
+        HSBK { hue: 32760, saturation: 65535, brightness, kelvin }
+    } else if color_str.contains("green") {
+        HSBK { hue: 21840, saturation: 65535, brightness, kelvin }
+    } else if color_str.contains("blue") {
+        HSBK { hue: 43680, saturation: 65535, brightness, kelvin }
+    } else if color_str.contains("purple") {
+        HSBK { hue: 50050, saturation: 65535, brightness, kelvin }
+    } else if color_str.contains("pink") {
+        HSBK { hue: 63700, saturation: 25000, brightness, kelvin }
+    } else if color_str.contains("hue:") {
+        if let Some(hue_val) = extract_color_value(color_str, "hue:") {
+            if let Ok(h) = hue_val.parse::<u16>() {
+                HSBK { hue: h, saturation, brightness, kelvin }
+            } else {
+                return Err("Invalid hue value".to_string());
+            }
+        } else {
+            return Err("Missing hue value".to_string());
+        }
+    } else if color_str.contains("saturation:") {
+        if let Some(sat_val) = extract_color_value(color_str, "saturation:") {
+            if let Ok(s) = sat_val.parse::<f64>() {
+                HSBK { hue, saturation: (s * 655.35) as u16, brightness, kelvin }
+            } else {
+                return Err("Invalid saturation value".to_string());
+            }
+        } else {
+            return Err("Missing saturation value".to_string());
+        }
+    } else if color_str.contains("brightness:") {
+        if let Some(bright_val) = extract_color_value(color_str, "brightness:") {
+            if let Ok(b) = bright_val.parse::<f64>() {
+                HSBK { hue, saturation, brightness: (b * 65535.0) as u16, kelvin }
+            } else {
+                return Err("Invalid brightness value".to_string());
+            }
+        } else {
+            return Err("Missing brightness value".to_string());
+        }
+    } else if color_str.contains("kelvin:") {
+        if let Some(kelvin_val) = extract_color_value(color_str, "kelvin:") {
+            if let Ok(k) = kelvin_val.parse::<u16>() {
+                HSBK { hue, saturation: 0, brightness, kelvin: k }
+            } else {
+                return Err("Invalid kelvin value".to_string());
+            }
+        } else {
+            return Err("Missing kelvin value".to_string());
+        }
+    } else if color_str.contains("rgb:") {
+        if let Some(rgb_val) = extract_color_value(color_str, "rgb:") {
+            let parts: Vec<&str> = rgb_val.split(',').collect();
+            if parts.len() == 3 {
+                if let Ok(r) = parts[0].parse::<f32>() {
+                    if let Ok(g) = parts[1].parse::<f32>() {
+                        if let Ok(b) = parts[2].parse::<f32>() {
+                            let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(r, g, b);
+                            let hsv = Hsv::from_color(rgb);
+                            HSBK {
+                                hue: (hsv.hue.into_positive_degrees() * 182.0) as u16,
+                                saturation: (hsv.saturation * 65535.0) as u16,
+                                brightness,
+                                kelvin,
+                            }
+                        } else {
+                            return Err("Invalid blue value".to_string());
+                        }
+                    } else {
+                        return Err("Invalid green value".to_string());
+                    }
+                } else {
+                    return Err("Invalid red value".to_string());
+                }
+            } else {
+                return Err("RGB requires 3 values".to_string());
+            }
+        } else {
+            return Err("Missing RGB value".to_string());
+        }
+    } else if color_str.contains('#') {
+        let hex = extract_color_value(color_str, "#").unwrap_or("");
+        if let Ok(rgb) = TransformRgb::from_hex_str(&format!("#{}", hex)) {
+            let r = rgb.get_red();
+            let g = rgb.get_green();
+            let b = rgb.get_blue();
+            let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(r, g, b);
+            let hsv = Hsv::from_color(rgb);
+            HSBK {
+                hue: (hsv.hue.into_positive_degrees() * 182.0) as u16,
+                saturation: (hsv.saturation * 65535.0) as u16,
+                brightness,
+                kelvin,
+            }
+        } else {
+            return Err("Invalid hex color".to_string());
+        }
+    } else {
+        return Err(format!("Unknown color format: {}", color_str));
+    };
+
+    bulb.set_color(sock, hsbk, duration)
+        .map_err(|e| format!("Failed to set color: {}", e))
+}
+
+fn extract_color_value<'a>(input: &'a str, prefix: &str) -> Option<&'a str> {
+    input.find(prefix).map(|pos| {
+        let start = pos + prefix.len();
+        let rest = &input[start..];
+        rest.split_whitespace().next().unwrap_or(rest)
+    })
+}
+
 /// Used to set the params when posting a FlameEffect event
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -914,9 +1042,7 @@ pub fn start(config: Config) -> StopHandle {
                             return Response::empty_404();
                         }
                         let auth_header = request.header("Authorization");
-                        if auth_header.is_none() {
-                            return Response::empty_404();
-                        } else if *auth_header.unwrap() != format!("Bearer {}", config.secret_key) {
+                        if auth_header.is_none() || auth_header.unwrap() != format!("Bearer {}", config.secret_key) {
                             return Response::empty_404();
                         }
                         let mut response = Response::text("hello world");
@@ -975,13 +1101,116 @@ pub fn start(config: Config) -> StopHandle {
                             bulbs_vec.retain(|b| b.id.contains(&selector.replace("id:", "")));
                         }
 
-                        // (PUT) SetStates
-                        // TODO - Implement
+                        // (PUT) SetStates - Bulk state changes for multiple lights
                         // https://api.lifx.com/v1/lights/states
                         if request.url().contains("/lights/states") {
-                            // std::mem::drop(bulbs);
-                            // std::mem::drop(mgr);
-                            // std::mem::drop(lock);
+                            let input = try_or_400!(post_input!(request, {
+                                states: Vec<std::collections::HashMap<String, serde_json::Value>>
+                            }));
+
+                            use serde_json::json;
+                            #[derive(Serialize)]
+                            struct BulkStateResult {
+                                results: Vec<BulbStateResult>,
+                            }
+
+                            #[derive(Serialize)]
+                            struct BulbStateResult {
+                                id: String,
+                                label: String,
+                                status: String,
+                            }
+
+                            let mut results = Vec::new();
+
+                            for state_req in input.states {
+                                let selector = state_req.get("selector")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("all");
+
+                                let mut filtered_bulbs: Vec<&BulbInfo> = bulbs_vec.clone();
+
+                                if selector != "all" {
+                                    if selector.contains("group_id:") {
+                                        let gid = selector.replace("group_id:", "");
+                                        filtered_bulbs.retain(|b| {
+                                            b.lifx_group.as_ref()
+                                                .map(|g| g.id.contains(&gid))
+                                                .unwrap_or(false)
+                                        });
+                                    }
+                                    if selector.contains("location_id:") {
+                                        let lid = selector.replace("location_id:", "");
+                                        filtered_bulbs.retain(|b| {
+                                            b.lifx_location.as_ref()
+                                                .map(|l| l.id.contains(&lid))
+                                                .unwrap_or(false)
+                                        });
+                                    }
+                                    if selector.contains("id:") {
+                                        let id = selector.replace("id:", "");
+                                        filtered_bulbs.retain(|b| b.id.contains(&id));
+                                    }
+                                }
+
+                                let duration = state_req.get("duration")
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(0.0) as u32;
+
+                                for bulb in &filtered_bulbs {
+                                    let mut status = "ok";
+
+                                    // Power control
+                                    if let Some(power) = state_req.get("power").and_then(|v| v.as_str()) {
+                                        let power_level = if power == "on" {
+                                            PowerLevel::Enabled
+                                        } else {
+                                            PowerLevel::Standby
+                                        };
+                                        if let Err(e) = bulb.set_power(&mgr.sock, power_level) {
+                                            log::error!("Failed to set power for bulb {}: {}", bulb.id, e);
+                                            status = "error";
+                                        }
+                                    }
+
+                                    // Color control
+                                    if let Some(color) = state_req.get("color").and_then(|v| v.as_str()) {
+                                        let color_result = set_bulb_color(bulb, &mgr.sock, color, duration);
+                                        if let Err(e) = color_result {
+                                            log::error!("Failed to set color for bulb {}: {}", bulb.id, e);
+                                            status = "error";
+                                        }
+                                    }
+
+                                    // Brightness control
+                                    if let Some(brightness) = state_req.get("brightness").and_then(|v| v.as_f64()) {
+                                        let current_color = bulb.lifx_color.as_ref().map(|c| HSBK {
+                                            hue: c.hue,
+                                            saturation: c.saturation,
+                                            brightness: (brightness * 65535.0) as u16,
+                                            kelvin: c.kelvin,
+                                        }).unwrap_or(HSBK {
+                                            hue: 0,
+                                            saturation: 0,
+                                            brightness: (brightness * 65535.0) as u16,
+                                            kelvin: 6500,
+                                        });
+
+                                        if let Err(e) = bulb.set_color(&mgr.sock, current_color, duration) {
+                                            log::error!("Failed to set brightness for bulb {}: {}", bulb.id, e);
+                                            status = "error";
+                                        }
+                                    }
+
+                                    results.push(BulbStateResult {
+                                        id: bulb.id.clone(),
+                                        label: bulb.label.clone(),
+                                        status: status.to_string(),
+                                    });
+                                }
+                            }
+
+                            return Response::json(&BulkStateResult { results });
                         }
 
                         // (PUT) SetState
@@ -1018,10 +1247,7 @@ pub fn start(config: Config) -> StopHandle {
                                     let mut saturation = 0;
                                     let mut hue = 0;
 
-                                    let mut duration = 0;
-                                    if input.duration.is_some() {
-                                        duration = input.duration.unwrap() as u32;
-                                    }
+                                    let duration = input.duration.map(|d| d as u32).unwrap_or(0);
 
                                     if let Some(lifxc) = bulb.lifx_color.as_ref() {
                                         kelvin = lifxc.kelvin;
@@ -1297,18 +1523,14 @@ pub fn start(config: Config) -> StopHandle {
                             }
 
                             // Brightness
-                            if input.brightness.is_some() {
-                                let brightness = input.brightness.unwrap();
+                            if let Some(brightness) = input.brightness {
 
                                 for bulb in &bulbs_vec {
                                     let mut kelvin = 6500;
                                     let mut saturation = 0;
                                     let mut hue = 0;
 
-                                    let mut duration = 0;
-                                    if input.duration.is_some() {
-                                        duration = input.duration.unwrap() as u32;
-                                    }
+                                    let duration = input.duration.map(|d| d as u32).unwrap_or(0);
 
                                     if let Some(lifxc) = bulb.lifx_color.as_ref() {
                                         kelvin = lifxc.kelvin;
