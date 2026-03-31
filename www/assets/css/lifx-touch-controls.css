@@ -1,0 +1,255 @@
+/**
+ * LIFX Touch Control Styles
+ * Enhanced visual feedback for touch-based lighting controls
+ */
+
+/* Touch-enabled bulb controls */
+.lifx-bulb-control.touch-feedback {
+    position: relative;
+    transition: all 0.2s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.lifx-bulb-control.touch-feedback:active {
+    transform: scale(0.95);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.lifx-bulb-control.selected {
+    border: 2px solid #00d4ff;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+}
+
+.lifx-bulb-control.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: #00d4ff;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.lifx-bulb-control.touch-updated {
+    animation: pulse-glow 0.3s ease;
+}
+
+@keyframes pulse-glow {
+    0% {
+        box-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+    }
+    100% {
+        box-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
+    }
+}
+
+/* Brightness indicator */
+.brightness-level {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.lifx-bulb-control:hover .brightness-level,
+.lifx-bulb-control.touch-feedback .brightness-level {
+    opacity: 1;
+}
+
+/* Touch gesture hints overlay */
+.lifx-gesture-hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.9), rgba(0, 150, 255, 0.9));
+    color: white;
+    padding: 15px 30px;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: bold;
+    z-index: 10000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(5px);
+}
+
+.lifx-gesture-hint.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+}
+
+/* Touch control mode indicator */
+.lifx-touch-mode-indicator {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #00d4ff;
+    padding: 10px 15px;
+    border-radius: 20px;
+    font-size: 12px;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    border: 1px solid #00d4ff;
+}
+
+.lifx-touch-mode-indicator.active {
+    display: flex;
+}
+
+.lifx-touch-mode-indicator::before {
+    content: '👆';
+    font-size: 16px;
+}
+
+/* Gesture tutorial overlay */
+.lifx-gesture-tutorial {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 10001;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.lifx-gesture-tutorial.active {
+    display: flex;
+}
+
+.lifx-gesture-tutorial-content {
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 500px;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lifx-gesture-tutorial h3 {
+    color: #333;
+    margin-bottom: 20px;
+    font-size: 24px;
+}
+
+.lifx-gesture-tutorial-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin: 15px 0;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 10px;
+}
+
+.lifx-gesture-tutorial-icon {
+    font-size: 32px;
+    width: 50px;
+    text-align: center;
+}
+
+.lifx-gesture-tutorial-text {
+    flex: 1;
+    text-align: left;
+    color: #666;
+    font-size: 14px;
+}
+
+.lifx-gesture-tutorial-close {
+    margin-top: 20px;
+    padding: 12px 30px;
+    background: #00d4ff;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.lifx-gesture-tutorial-close:hover {
+    background: #00a8cc;
+}
+
+/* Scene indicators */
+.scene-indicator {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #00d4ff;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .lifx-bulb-control.touch-feedback {
+        min-height: 120px;
+    }
+    
+    .lifx-gesture-hint {
+        font-size: 14px;
+        padding: 12px 24px;
+    }
+    
+    .lifx-touch-mode-indicator {
+        bottom: 10px;
+        right: 10px;
+        font-size: 11px;
+        padding: 8px 12px;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .lifx-gesture-tutorial-content {
+        background: #2a2a2a;
+    }
+    
+    .lifx-gesture-tutorial h3 {
+        color: #fff;
+    }
+    
+    .lifx-gesture-tutorial-item {
+        background: #3a3a3a;
+    }
+    
+    .lifx-gesture-tutorial-text {
+        color: #ccc;
+    }
+}
