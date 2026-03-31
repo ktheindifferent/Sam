@@ -36,14 +36,18 @@ const LifXTouchControls = {
             onGesture('swipeUp', (data) => {
                 if (this.selectedBulb) {
                     this.adjustBrightness(10);
-                    showSwipeHint('Brightness +');
+                    if (typeof showSwipeHint === 'function') {
+                        showSwipeHint('Brightness +');
+                    }
                 }
             });
             
             onGesture('swipeDown', (data) => {
                 if (this.selectedBulb) {
                     this.adjustBrightness(-10);
-                    showSwipeHint('Brightness -');
+                    if (typeof showSwipeHint === 'function') {
+                        showSwipeHint('Brightness -');
+                    }
                 }
             });
             
@@ -51,14 +55,18 @@ const LifXTouchControls = {
             onGesture('swipeRight', (data) => {
                 if (this.selectedBulb) {
                     this.adjustColorTemp(200);
-                    showSwipeHint('Warmer');
+                    if (typeof showSwipeHint === 'function') {
+                        showSwipeHint('Warmer');
+                    }
                 }
             });
             
             onGesture('swipeLeft', (data) => {
                 if (this.selectedBulb) {
                     this.adjustColorTemp(-200);
-                    showSwipeHint('Cooler');
+                    if (typeof showSwipeHint === 'function') {
+                        showSwipeHint('Cooler');
+                    }
                 }
             });
             
@@ -66,14 +74,18 @@ const LifXTouchControls = {
             onGesture('pinchOut', (data) => {
                 if (this.selectedBulb) {
                     this.nextScene();
-                    showSwipeHint('Next Scene');
+                    if (typeof showSwipeHint === 'function') {
+                        showSwipeHint('Next Scene');
+                    }
                 }
             });
             
             onGesture('pinchIn', (data) => {
                 if (this.selectedBulb) {
                     this.previousScene();
-                    showSwipeHint('Previous Scene');
+                    if (typeof showSwipeHint === 'function') {
+                        showSwipeHint('Previous Scene');
+                    }
                 }
             });
         }

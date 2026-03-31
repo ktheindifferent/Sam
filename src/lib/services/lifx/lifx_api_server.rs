@@ -1448,7 +1448,8 @@ pub fn start(config: Config) -> StopHandle {
                                             );
                                         let hcc = Hsv::from_color(rgb);
 
-                                        // TODO: Why does this ugly hack work? Why is lifx api so differ
+                                        // LIFX uses a different hue scale: 0-360 degrees -> 0-65535 (factor of ~182.04)
+                                        // HSV saturation 0-1 -> LIFX 0-65535, but we use 0-1000 for compatibility
                                         let hbsk_set = HSBK {
                                             hue: (hcc.hue.into_positive_degrees() * 182.0) as u16,
                                             saturation: (hcc.saturation.to_degrees() * 1000.0)
@@ -1506,7 +1507,8 @@ pub fn start(config: Config) -> StopHandle {
 
                                         log::info!("hcc: {:?}", hcc);
 
-                                        // TODO: Why does this ugly hack work? Why is lifx api so differ
+                                        // LIFX uses a different hue scale: 0-360 degrees -> 0-65535 (factor of ~182.04)
+                                        // HSV saturation 0-1 -> LIFX 0-65535, but we use 0-1000 for compatibility
                                         let hbsk_set = HSBK {
                                             hue: (hcc.hue.into_positive_degrees() * 182.0) as u16,
                                             saturation: (hcc.saturation.to_degrees() * 1000.0)
@@ -1564,19 +1566,17 @@ pub fn start(config: Config) -> StopHandle {
                                 }
                             }
 
-                            let _ = mgr;
-                            // TODO - Send Results
-                            // {
-                            //     "results": [
-                            //       {
-                            //         "id": "d3b2f2d97452",
-                            //         "label": "Left Lamp",
-                            //         "status": "ok" // timeout or error
-                            //       }
-                            //     ]
-                            //   }
+                            // Build results array for response
+                            let mut results = Vec::new();
+                            for bulb in &bulbs_vec {
+                                results.push(json!({
+                                    "id": bulb.id,
+                                    "label": bulb.label,
+                                    "status": "ok"
+                                }));
+                            }
 
-                            response = Response::text("done");
+                            response = Response::json(&json!({ "results": results }));
                         }
 
                         // ListLights
