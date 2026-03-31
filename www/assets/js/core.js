@@ -200,7 +200,29 @@ function restartService(serviceName) {
     }, 2000);
 }
 
-// Enhanced touch/mobile support
+// Enhanced touch/mobile support with gesture recognition
+var TouchGestures = {
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    minSwipeDistance: 50,
+    maxSwipeTime: 300,
+    pinchStartDistance: 0,
+    isPinching: false,
+    callbacks: {
+        swipeLeft: [],
+        swipeRight: [],
+        swipeUp: [],
+        swipeDown: [],
+        pinchIn: [],
+        pinchOut: [],
+        tap: [],
+        longPress: []
+    },
+    longPressTimer: null,
+    longPressDuration: 500
+};
+
 function is_touch_enabled() {
     return ( 'ontouchstart' in window ) ||
            ( navigator.maxTouchPoints > 0 ) ||
@@ -220,7 +242,177 @@ function disableCursor() {
         .touch-enabled .card:hover {
             transform: translateY(0) scale(1.02);
         }
+        /* Touch feedback animations */
+        .touch-feedback {
+            transition: transform 0.1s ease, opacity 0.1s ease;
+        }
+        .touch-feedback:active {
+            transform: scale(0.95);
+            opacity: 0.8;
+        }
+        /* Swipe indicator */
+        .swipe-hint {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .swipe-hint.visible {
+            opacity: 1;
+        }
     `).appendTo('head');
+
+    // Initialize global touch event listeners
+    initTouchGestures();
+}
+
+// Initialize touch gesture recognition
+function initTouchGestures() {
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+}
+
+function handleTouchStart(e) {
+    if (e.touches.length === 2) {
+        // Pinch gesture
+        TouchGestures.isPinching = true;
+        TouchGestures.pinchStartDistance = Math.hypot(
+            e.touches[0].pageX - e.touches[1].pageX,
+            e.touches[0].pageY - e.touches[1].pageY
+        );
+        return;
+    }
+
+    if (e.touches.length === 1) {
+        TouchGestures.startX = e.touches[0].pageX;
+        TouchGestures.startY = e.touches[0].pageY;
+        TouchGestures.startTime = Date.now();
+
+        // Long press detection
+        TouchGestures.longPressTimer = setTimeout(() => {
+            triggerCallbacks('longPress', {
+                x: TouchGestures.startX,
+                y: TouchGestures.startY
+            });
+            TouchGestures.longPressTimer = null;
+        }, TouchGestures.longPressDuration);
+    }
+}
+
+function handleTouchMove(e) {
+    if (TouchGestures.isPinching && e.touches.length === 2) {
+        e.preventDefault();
+        const currentDistance = Math.hypot(
+            e.touches[0].pageX - e.touches[1].pageX,
+            e.touches[0].pageY - e.touches[1].pageY
+        );
+        const delta = currentDistance - TouchGestures.pinchStartDistance;
+
+        if (Math.abs(delta) > 20) {
+            if (delta > 0) {
+                triggerCallbacks('pinchOut', { delta: delta });
+            } else {
+                triggerCallbacks('pinchIn', { delta: delta });
+            }
+            TouchGestures.pinchStartDistance = currentDistance;
+        }
+    }
+
+    // Cancel long press if finger moves
+    if (TouchGestures.longPressTimer) {
+        clearTimeout(TouchGestures.longPressTimer);
+        TouchGestures.longPressTimer = null;
+    }
+}
+
+function handleTouchEnd(e) {
+    // Cancel long press
+    if (TouchGestures.longPressTimer) {
+        clearTimeout(TouchGestures.longPressTimer);
+        TouchGestures.longPressTimer = null;
+    }
+
+    if (TouchGestures.isPinching) {
+        TouchGestures.isPinching = false;
+        return;
+    }
+
+    if (e.changedTouches.length === 1) {
+        const endX = e.changedTouches[0].pageX;
+        const endY = e.changedTouches[0].pageY;
+        const elapsed = Date.now() - TouchGestures.startTime;
+
+        const deltaX = endX - TouchGestures.startX;
+        const deltaY = endY - TouchGestures.startY;
+
+        // Tap detection (short touch, minimal movement)
+        if (elapsed < 200 && Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+            triggerCallbacks('tap', { x: endX, y: endY });
+            return;
+        }
+
+        // Swipe detection
+        if (elapsed < TouchGestures.maxSwipeTime &&
+            Math.abs(deltaX) > TouchGestures.minSwipeDistance) {
+            if (deltaX > 0) {
+                triggerCallbacks('swipeRight', { distance: deltaX });
+            } else {
+                triggerCallbacks('swipeLeft', { distance: Math.abs(deltaX) });
+            }
+            return;
+        }
+
+        if (elapsed < TouchGestures.maxSwipeTime &&
+            Math.abs(deltaY) > TouchGestures.minSwipeDistance) {
+            if (deltaY > 0) {
+                triggerCallbacks('swipeDown', { distance: deltaY });
+            } else {
+                triggerCallbacks('swipeUp', { distance: Math.abs(deltaY) });
+            }
+        }
+    }
+}
+
+// Register callback for gesture events
+function onGesture(gestureType, callback) {
+    if (TouchGestures.callbacks[gestureType]) {
+        TouchGestures.callbacks[gestureType].push(callback);
+    }
+}
+
+// Trigger all callbacks for a gesture type
+function triggerCallbacks(gestureType, data) {
+    const callbacks = TouchGestures.callbacks[gestureType] || [];
+    callbacks.forEach(cb => {
+        try {
+            cb(data);
+        } catch (e) {
+            console.error('Gesture callback error:', e);
+        }
+    });
+}
+
+// Show visual feedback for swipe gestures
+function showSwipeHint(text) {
+    let hint = document.querySelector('.swipe-hint');
+    if (!hint) {
+        hint = document.createElement('div');
+        hint.className = 'swipe-hint';
+        document.body.appendChild(hint);
+    }
+    hint.textContent = text;
+    hint.classList.add('visible');
+    setTimeout(() => hint.classList.remove('visible'), 800);
 }
 
 // Accessibility improvements

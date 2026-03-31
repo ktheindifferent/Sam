@@ -265,7 +265,7 @@ async function fetchServiceStatus() {
     
     try {
         // Fetch individual service statuses
-        const services = ['redis', 'crawler', 'postgres', 'docker', 'voice', 'websocket'];
+        const services = ['redis', 'crawler', 'postgres', 'docker', 'voice', 'websocket', 'lifx'];
         
         for (const service of services) {
             try {
@@ -309,7 +309,23 @@ async function fetchServiceStatus() {
                             status.running = text.includes('running');
                         }
                         break;
-                        
+
+                    case 'lifx':
+                        statusUrl = '/api/services/lifx/status';
+                        try {
+                            const lifxResponse = await fetch(statusUrl);
+                            if (lifxResponse.ok) {
+                                const lifxData = await lifxResponse.json();
+                                status.running = lifxData.running === true;
+                                status.bulb_count = lifxData.bulb_count || 0;
+                                status.message = lifxData.status || 'Unknown';
+                            }
+                        } catch (e) {
+                            console.warn('LIFX status not available:', e);
+                            status.running = false;
+                        }
+                        break;
+
                     default:
                         // Generic service check
                         status.running = false;
@@ -397,6 +413,10 @@ function updateServiceMetrics(service, status) {
     } else if (service === 'ollama' && status.metrics) {
         updateElement('ollama-models', status.metrics.models_count || '0');
         updateElement('ollama-version', status.metrics.version || '-');
+    } else if (service === 'lifx') {
+        // LIFX lighting service
+        updateElement('lifx-bulbs', status.bulb_count || '0');
+        updateElement('lifx-status', status.message || (status.running ? 'Running' : 'Stopped'));
     }
 }
 

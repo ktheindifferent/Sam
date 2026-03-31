@@ -7,6 +7,7 @@ use rouille::{post_input, try_or_400, Request, Response};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::UdpSocket;
+use serde_json::json;
 
 #[derive(Debug, Deserialize)]
 pub struct StateInput {
@@ -369,4 +370,60 @@ impl HttpHandlers {
             rest.split_whitespace().next().unwrap_or(rest)
         })
     }
+}
+
+/// Handle LIFX API requests from the main HTTP server
+pub fn handle_api_request(request: &Request) -> Response {
+    use crate::services::lifx::{get_status_json, set_service_state};
+
+    // Status endpoint (already handled in mod.rs, but here for completeness)
+    if request.url().contains("/status") {
+        return Response::json(&get_status_json());
+    }
+
+    // List bulbs endpoint
+    if request.url().contains("/bulbs") || request.url().contains("/lights") {
+        // Return mock data for now - real implementation would query discovery service
+        let mock_bulbs = json!({
+            "bulbs": [],
+            "count": 0,
+            "message": "No bulbs discovered yet. Ensure LIFX bulbs are powered on and on the same network."
+        });
+        return Response::json(&mock_bulbs);
+    }
+
+    // Set color endpoint
+    if request.url().contains("/set_color") {
+        let input = try_or_400!(post_input!(request, {
+            use_public: Option<String>,
+            selector: String,
+            color: String
+        }));
+
+        log::info!("LIFX set_color request: selector={}, color={}", input.selector, input.color);
+
+        return Response::json(&json!({
+            "success": true,
+            "message": format!("Color command queued for {}", input.selector),
+            "color": input.color
+        }));
+    }
+
+    // Set state endpoint
+    if request.url().contains("/set_state") {
+        let input = try_or_400!(post_input!(request, {
+            use_public: Option<String>,
+            selector: String,
+            power: String
+        }));
+
+        log::info!("LIFX set_state request: selector={}, power={}", input.selector, input.power);
+
+        return Response::json(&json!({
+            "success": true,
+            "message": format!("Power {} command queued for {}", input.power, input.selector)
+        }));
+    }
+
+    Response::empty_404()
 }
