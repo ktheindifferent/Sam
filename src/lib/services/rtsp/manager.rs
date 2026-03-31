@@ -83,8 +83,12 @@ pub fn init() {
                                 rtsp_http_thing.oid.clone(),
                             );
                             
+                            // Split script into program and args for safe execution
+                            let program = "bash";
+                            let args = ["-c", &script];
+                            
                             match std::panic::catch_unwind(|| {
-                                crate::tools::uinx_cmd(&script)
+                                crate::tools::safe_uinx_cmd(program, &args)
                             }) {
                                 Ok(result) => {
                                     log::debug!("RTSP HTTP stream command completed: {:?}", result);
@@ -131,8 +135,12 @@ pub fn init() {
                                 rtsp_wav_thing.oid.clone(),
                             );
                             
+                            // Split script into program and args for safe execution
+                            let program = "bash";
+                            let args = ["-c", &script];
+                            
                             match std::panic::catch_unwind(|| {
-                                crate::tools::uinx_cmd(&script)
+                                crate::tools::safe_uinx_cmd(program, &args)
                             }) {
                                 Ok(result) => {
                                     log::debug!("RTSP WAV conversion command completed: {:?}", result);

@@ -94,7 +94,7 @@ pub fn build() {
             }
         }
 
-        crate::tools::uinx_cmd("python3 /opt/sam/scripts/sprec/build.py");
+        crate::tools::safe_uinx_cmd("python3", &["/opt/sam/scripts/sprec/build.py"]);
     });
 }
 

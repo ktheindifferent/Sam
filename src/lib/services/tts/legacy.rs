@@ -77,7 +77,7 @@ pub fn init() {
     let tts_thead = thread::Builder::new()
         .name("mozillatts".to_string())
         .spawn(move || {
-            crate::tools::uinx_cmd("docker run -p 5002:5002 synesthesiam/mozillatts");
+            crate::tools::safe_uinx_cmd("docker", &["run", "-p", "5002:5002", "synesthesiam/mozillatts"]);
         });
     match tts_thead {
         Ok(_) => {
