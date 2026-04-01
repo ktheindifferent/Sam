@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -523,7 +523,11 @@ const LifXTouchControls = {
             cooking: { brightness: 95, kelvin: 4000, label: 'Cooking' },
             creative: { brightness: 85, kelvin: 4800, label: 'Creative' },
             yoga: { brightness: 50, kelvin: 3500, label: 'Yoga' },
-            movie: { brightness: 35, kelvin: 2200, label: 'Movie' }
+            movie: { brightness: 35, kelvin: 2200, label: 'Movie' },
+            study: { brightness: 75, kelvin: 4500, label: 'Study' },
+            dinner: { brightness: 55, kelvin: 2700, label: 'Dinner' },
+            morning: { brightness: 85, kelvin: 5500, label: 'Morning' },
+            goodnight: { brightness: 10, kelvin: 2000, label: 'Goodnight' }
         };
         
         const settings = sceneSettings[scene];
@@ -931,7 +935,11 @@ const LifXTouchControls = {
             'cooking': '#f39c12',
             'creative': '#8e44ad',
             'yoga': '#27ae60',
-            'movie': '#d35400'
+            'movie': '#d35400',
+            'study': '#6ab0de',
+            'dinner': '#ffcc5c',
+            'morning': '#ffd93d',
+            'goodnight': '#2c3e50'
         };
         return sceneColors[sceneName] || '#ffffff';
     },
@@ -957,7 +965,11 @@ const LifXTouchControls = {
             'cooking': { hue: 35, saturation: 60, brightness: 95, kelvin: 4000 },
             'creative': { hue: 290, saturation: 70, brightness: 85, kelvin: 4800 },
             'yoga': { hue: 120, saturation: 40, brightness: 50, kelvin: 3500 },
-            'movie': { hue: 20, saturation: 30, brightness: 35, kelvin: 2200 }
+            'movie': { hue: 20, saturation: 30, brightness: 35, kelvin: 2200 },
+            'study': { hue: 200, saturation: 30, brightness: 75, kelvin: 4500 },
+            'dinner': { hue: 30, saturation: 40, brightness: 55, kelvin: 2700 },
+            'morning': { hue: 50, saturation: 50, brightness: 85, kelvin: 5500 },
+            'goodnight': { hue: 240, saturation: 10, brightness: 10, kelvin: 2000 }
         };
         
         const scene = sceneColors[sceneName];

@@ -835,6 +835,10 @@
 .scene-indicator.creative { background: linear-gradient(135deg, #8e44ad, #9b59b6); }
 .scene-indicator.yoga { background: linear-gradient(135deg, #27ae60, #2ecc71); }
 .scene-indicator.movie { background: linear-gradient(135deg, #d35400, #e67e22); }
+.scene-indicator.study { background: linear-gradient(135deg, #3498db, #2980b9); }
+.scene-indicator.dinner { background: linear-gradient(135deg, #f39c12, #d35400); }
+.scene-indicator.morning { background: linear-gradient(135deg, #f1c40f, #f39c12); }
+.scene-indicator.goodnight { background: linear-gradient(135deg, #2c3e50, #34495e); }
 
 /* Ambient light sync indicator */
 .ambient-light-sync-active {

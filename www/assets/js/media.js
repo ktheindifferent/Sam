@@ -663,13 +663,16 @@ function toggleLifxMediaSync() {
     if (MediaPlayer.lifxSyncEnabled) {
         showMediaTouchHint('LIFX Media Sync ON', '🎵💡');
         showNotification('Lights will sync with music rhythm', 'success');
+        initAudioContext();
+        startBeatDetection();
     } else {
         showMediaTouchHint('LIFX Media Sync OFF', '💡');
         showNotification('LIFX media sync disabled', 'info');
+        stopBeatDetection();
     }
 }
 
-function pulseLifxWithBeat() {
+function pulseLifxWithBeat(beatStrength = 1.0) {
     if (!MediaPlayer.lifxSyncEnabled || !MediaPlayer.isPlaying) return;
     
     const now = Date.now();
@@ -683,8 +686,13 @@ function pulseLifxWithBeat() {
         ? LifXTouchControls.multiBulbSelection.join(',')
         : 'all';
     
-    const brightness = 0.3 + Math.random() * 0.7;
-    const hue = Math.floor(Math.random() * 360) * 182;
+    const baseBrightness = 0.3 + (beatStrength * 0.7);
+    const hue = MediaPlayer.lifxBeatDetection.lastHue || 0;
+    const newHue = (hue + (beatStrength * 50)) % 360;
+    MediaPlayer.lifxBeatDetection.lastHue = newHue;
+    
+    const colorTemp = MediaPlayer.lifxSceneMode === 'warm' ? 2700 : 
+                      MediaPlayer.lifxSceneMode === 'cool' ? 6500 : 4000;
     
     $.ajax({
         url: '/api/services/lifx/set_state',
@@ -693,8 +701,8 @@ function pulseLifxWithBeat() {
         data: JSON.stringify({
             selector: targets === 'all' ? 'all' : `id:${targets}`,
             power: 'on',
-            brightness: brightness,
-            duration: 0.1
+            brightness: baseBrightness,
+            duration: 0.05
         })
     });
     
@@ -704,11 +712,19 @@ function pulseLifxWithBeat() {
         contentType: 'application/json',
         data: JSON.stringify({
             selector: targets === 'all' ? 'all' : `id:${targets}`,
-            color: `hue:${hue}`,
-            duration: 0.2
+            color: `hue:${Math.round(newHue * 182)} saturation:${Math.round(60 + beatStrength * 40)}%`,
+            kelvin: colorTemp,
+            duration: 0.1
         }),
         error: () => {}
     });
+    
+    if (MediaPlayer.lifxBeatHistory) {
+        MediaPlayer.lifxBeatHistory.push({ time: now, strength: beatStrength });
+        if (MediaPlayer.lifxBeatHistory.length > 20) {
+            MediaPlayer.lifxBeatHistory.shift();
+        }
+    }
 }
 
 function setLifxSceneForMedia(sceneName) {
@@ -1054,8 +1070,13 @@ function initAudioContext() {
         
         MediaPlayer.audioContext = new AudioContext();
         MediaPlayer.analyser = MediaPlayer.audioContext.createAnalyser();
-        MediaPlayer.analyser.fftSize = 256;
+        MediaPlayer.analyser.fftSize = 512;
+        MediaPlayer.analyser.smoothingTimeConstant = 0.8;
         MediaPlayer.visualizationData = new Uint8Array(MediaPlayer.analyser.frequencyBinCount);
+        
+        MediaPlayer.lifxBeatHistory = [];
+        MediaPlayer.lifxBeatDetection.threshold = 0.25;
+        MediaPlayer.lifxBeatDetection.lastHue = 0;
         
         // Create equalizer
         MediaPlayer.equalizer = {
@@ -1081,6 +1102,58 @@ function initAudioContext() {
         console.log('Audio context initialized');
     } catch (e) {
         console.warn('Audio context init failed:', e);
+    }
+}
+
+function detectAudioBeat() {
+    if (!MediaPlayer.audioContext || !MediaPlayer.analyser || !MediaPlayer.isPlaying) {
+        return 0;
+    }
+    
+    const dataArray = MediaPlayer.visualizationData;
+    MediaPlayer.analyser.getByteFrequencyData(dataArray);
+    
+    const bassRange = dataArray.slice(0, 10);
+    const bassEnergy = bassRange.reduce((a, b) => a + b, 0) / bassRange.length / 255;
+    
+    const midRange = dataArray.slice(10, 50);
+    const midEnergy = midRange.reduce((a, b) => a + b, 0) / midRange.length / 255;
+    
+    const trebleRange = dataArray.slice(50, 128);
+    const trebleEnergy = trebleRange.reduce((a, b) => a + b, 0) / trebleRange.length / 255;
+    
+    const beatStrength = (bassEnergy * 0.6) + (midEnergy * 0.3) + (trebleEnergy * 0.1);
+    
+    if (beatStrength > MediaPlayer.lifxBeatDetection.threshold) {
+        const now = Date.now();
+        const timeSinceLastBeat = now - MediaPlayer.lifxBeatDetection.lastBeat;
+        
+        if (timeSinceLastBeat > MediaPlayer.lifxBeatDetection.beatCooldown) {
+            const normalizedStrength = Math.min(1.0, (beatStrength - MediaPlayer.lifxBeatDetection.threshold) / 0.5);
+            pulseLifxWithBeat(normalizedStrength);
+            return normalizedStrength;
+        }
+    }
+    
+    return 0;
+}
+
+function startBeatDetection() {
+    if (!MediaPlayer.beatDetectionInterval && MediaPlayer.lifxSyncEnabled) {
+        MediaPlayer.beatDetectionInterval = setInterval(() => {
+            if (MediaPlayer.isPlaying && MediaPlayer.lifxSyncEnabled) {
+                detectAudioBeat();
+            }
+        }, 100);
+        console.log('Beat detection started');
+    }
+}
+
+function stopBeatDetection() {
+    if (MediaPlayer.beatDetectionInterval) {
+        clearInterval(MediaPlayer.beatDetectionInterval);
+        MediaPlayer.beatDetectionInterval = null;
+        console.log('Beat detection stopped');
     }
 }
 
