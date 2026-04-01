@@ -23,12 +23,13 @@ $(document).ready(function() {
             things.push(this);
 
             if(this.thing_type == "lifx") {
-                // init_lifx_thing_group(this);
-                // init_lifx_thing(this);
                 var x = new LifXThing(this.oid);
                 x.init();
-
-                // TODO - Fix Groups
+                
+                if(this.group && this.group.name) {
+                    var group = new LifXThing(this.group.name, true);
+                    group.init();
+                }
             }
 
         });

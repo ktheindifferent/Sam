@@ -265,26 +265,29 @@ class LifXThing {
         var kelvin = $(`#lifx_kelvin`).val();
         console.log("set_kelvin");
         if(this.group_mode){
-            // Set Private (faster if object exists)
-            if(this.private_obj !== undefined){
-                $.post( "/api/services/lifx/set_color", { use_public: "false", selector: `group_id:${this.private_obj.group.id}`, color: `kelvin:${kelvin}` } );
-            } 
-
-            // Set Public (faster if object doesn't exist)
-            if(this.public_obj !== undefined){
-                $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `group_id:${this.public_obj.group.id}`, color: `kelvin:${kelvin}` } );
-            }
+            this.batchSetKelvin(kelvin);
         } else {
-            // Set Private (faster if object exists)
-            if(this.private_obj !== undefined){
-                $.post( "/api/services/lifx/set_color", { use_public: "false", selector: `id:${this.private_obj.id}`, color: `kelvin:${kelvin}` } );
-            } 
-            
-            // Set Public (faster if object doesn't exist)
-            if(this.public_obj !== undefined){
-                $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `id:${this.public_obj.id}`, color: `kelvin:${kelvin}` } );
-            }
+            this.individualSetKelvin(kelvin);
         }
+    },
+    
+    batchSetKelvin: function(kelvin) {
+        const selector = `group_id:${this.private_obj ? this.private_obj.group.id : this.public_obj.group.id}`;
+        $.post("/api/services/lifx/set_color", { 
+            use_public: this.private_obj ? "false" : "true", 
+            selector: selector, 
+            color: `kelvin:${kelvin}` 
+        });
+    },
+    
+    individualSetKelvin: function(kelvin) {
+        if(this.private_obj !== undefined){
+            $.post("/api/services/lifx/set_color", { use_public: "false", selector: `id:${this.private_obj.id}`, color: `kelvin:${kelvin}` });
+        } 
+        if(this.public_obj !== undefined){
+            $.post("/api/services/lifx/set_color", { use_public: "true", selector: `id:${this.public_obj.id}`, color: `kelvin:${kelvin}` });
+        }
+    }
         
     }
 
@@ -292,28 +295,29 @@ class LifXThing {
         var color = $(`#lifx_colorpicker`).val();
     
         if(this.group_mode){
-
-            // Set Private (faster if object exists)
-            if(this.private_obj !== undefined){
-                $.post( "/api/services/lifx/set_color", { use_public: "false", selector: `group_id:${this.private_obj.group.id}`, color: color } );
-            } 
-
-            // Set Public (faster if object doesn't exist)
-            if(this.public_obj !== undefined){
-                $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `group_id:${this.public_obj.group.id}`, color: color } );
-            }
-
+            this.batchSetColor(color);
         } else {
-            // Set Private (faster if object exists)
-            if(this.private_obj !== undefined){
-                $.post( "/api/services/lifx/set_color", { use_public: "false", selector: `id:${this.private_obj.id}`, color: color } );
-            } 
-
-            // Set Public (faster if object doesn't exist)
-            if(this.public_obj !== undefined){
-                $.post( "/api/services/lifx/set_color", { use_public: "true", selector: `id:${this.public_obj.id}`, color: color } );
-            }
+            this.setIndividualColor(color);
         }
+    },
+    
+    batchSetColor: function(color) {
+        const selector = `group_id:${this.private_obj ? this.private_obj.group.id : this.public_obj.group.id}`;
+        $.post("/api/services/lifx/set_color", { 
+            use_public: this.private_obj ? "false" : "true", 
+            selector: selector, 
+            color: color 
+        });
+    },
+    
+    setIndividualColor: function(color) {
+        if(this.private_obj !== undefined){
+            $.post("/api/services/lifx/set_color", { use_public: "false", selector: `id:${this.private_obj.id}`, color: color });
+        } 
+        if(this.public_obj !== undefined){
+            $.post("/api/services/lifx/set_color", { use_public: "true", selector: `id:${this.public_obj.id}`, color: color });
+        }
+    }
         
     }
 
