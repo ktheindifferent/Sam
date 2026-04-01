@@ -2874,6 +2874,8 @@ function showTouchSensitivitySettings() {
     }
     
     const currentSensitivity = MediaPlayer.touchGestures.sensitivity || 'medium';
+    const thresholds = MediaPlayer.touchGestures.customThresholds[currentSensitivity] || 
+                       MediaPlayer.touchGestures.customThresholds.medium;
     
     Swal.fire({
         title: '<i class="fas fa-hand-pointer"></i> Touch Sensitivity',
@@ -2884,7 +2886,7 @@ function showTouchSensitivitySettings() {
                         <span class="sensitivity-option-icon">🎯</span>
                         <div>
                             <strong>Low Sensitivity</strong>
-                            <div class="sensitivity-option-description">Requires larger gestures - fewer accidental triggers</div>
+                            <div class="sensitivity-option-description">Requires larger gestures - fewer accidental triggers. Best for casual browsing.</div>
                         </div>
                     </div>
                     ${currentSensitivity === 'low' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
@@ -2895,7 +2897,7 @@ function showTouchSensitivitySettings() {
                         <span class="sensitivity-option-icon">⚡</span>
                         <div>
                             <strong>Medium Sensitivity</strong>
-                            <div class="sensitivity-option-description">Balanced gesture detection - recommended for most users</div>
+                            <div class="sensitivity-option-description">Balanced gesture detection - recommended for most users. Perfect for daily use.</div>
                         </div>
                     </div>
                     ${currentSensitivity === 'medium' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
@@ -2906,25 +2908,61 @@ function showTouchSensitivitySettings() {
                         <span class="sensitivity-option-icon">🚀</span>
                         <div>
                             <strong>High Sensitivity</strong>
-                            <div class="sensitivity-option-description">Responds to subtle gestures - maximum responsiveness</div>
+                            <div class="sensitivity-option-description">Responds to subtle gestures - maximum responsiveness. Ideal for power users.</div>
                         </div>
                     </div>
                     ${currentSensitivity === 'high' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
                 </div>
                 
-                <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
-                    <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> Current Settings</h5>
-                    <div style="color: #adb5bd; font-size: 12px;">
-                        <div>Swipe Threshold: ${MediaPlayer.touchGestures.swipeThreshold}px</div>
-                        <div>Pinch Sensitivity: ${MediaPlayer.touchGestures.pinchSensitivity}px</div>
-                        <div>Velocity Threshold: ${MediaPlayer.touchGestures.velocityThreshold}</div>
+                <div class="gesture-sensitivity-visualizer" style="margin-top: 20px;">
+                    <div class="gesture-sensitivity-threshold" style="top: ${100 - (thresholds.swipe / 80 * 100)}%;"></div>
+                    <div class="gesture-sensitivity-level" id="gesture-sensitivity-level" style="height: ${thresholds.swipe / 80 * 100}%;"></div>
+                    <div style="padding: 10px; color: #adb5bd; font-size: 11px; text-align: center;">
+                        <i class="fas fa-chart-bar"></i> Real-time Gesture Threshold Visualization
                     </div>
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
+                    <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;">
+                        <i class="fas fa-sliders-h"></i> Current Thresholds
+                    </h5>
+                    <div style="color: #adb5bd; font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span><i class="fas fa-arrows-alt-h"></i> Swipe Threshold:</span>
+                            <span style="color: #00d4ff; font-weight: bold;">${thresholds.swipe}px</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span><i class="fas fa-compress-arrows-alt"></i> Pinch Sensitivity:</span>
+                            <span style="color: #00d4ff; font-weight: bold;">${thresholds.pinch}px</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span><i class="fas fa-tachometer-alt"></i> Velocity Threshold:</span>
+                            <span style="color: #00d4ff; font-weight: bold;">${thresholds.velocity}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 12px; background: rgba(0, 212, 255, 0.1); border-radius: 10px; border: 1px solid rgba(0, 212, 255, 0.3);">
+                    <h5 style="color: #00d4ff; margin-bottom: 8px; font-size: 13px;">
+                        <i class="fas fa-lightbulb"></i> Quick Tip
+                    </h5>
+                    <p style="color: #adb5bd; font-size: 11px; margin: 0;">
+                        Test your sensitivity by swiping on the media player. If gestures aren't registered, try higher sensitivity. 
+                        If accidental triggers occur, try lower sensitivity.
+                    </p>
                 </div>
             </div>
         `,
         showConfirmButton: false,
         showCloseButton: true,
-        width: '500px'
+        width: '550px',
+        didOpen: () => {
+            const levelElement = document.getElementById('gesture-sensitivity-level');
+            if (levelElement) {
+                const threshold = MediaPlayer.touchGestures.customThresholds[currentSensitivity].swipe;
+                levelElement.style.height = `${(threshold / 80) * 100}%`;
+            }
+        }
     });
 }
 
@@ -2939,6 +2977,8 @@ function showTouchSensitivitySettings() {
     }
     
     const currentSensitivity = MediaPlayer.touchGestures.sensitivity || 'medium';
+    const thresholds = MediaPlayer.touchGestures.customThresholds[currentSensitivity] || 
+                       MediaPlayer.touchGestures.customThresholds.medium;
     
     Swal.fire({
         title: '<i class="fas fa-hand-pointer"></i> Touch Sensitivity',
@@ -2949,7 +2989,7 @@ function showTouchSensitivitySettings() {
                         <span class="sensitivity-option-icon">🎯</span>
                         <div>
                             <strong>Low Sensitivity</strong>
-                            <div class="sensitivity-option-description">Requires larger gestures - fewer accidental triggers</div>
+                            <div class="sensitivity-option-description">Requires larger gestures - fewer accidental triggers. Best for casual browsing.</div>
                         </div>
                     </div>
                     ${currentSensitivity === 'low' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
@@ -2960,7 +3000,7 @@ function showTouchSensitivitySettings() {
                         <span class="sensitivity-option-icon">⚡</span>
                         <div>
                             <strong>Medium Sensitivity</strong>
-                            <div class="sensitivity-option-description">Balanced gesture detection - recommended for most users</div>
+                            <div class="sensitivity-option-description">Balanced gesture detection - recommended for most users. Perfect for daily use.</div>
                         </div>
                     </div>
                     ${currentSensitivity === 'medium' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
@@ -2971,25 +3011,61 @@ function showTouchSensitivitySettings() {
                         <span class="sensitivity-option-icon">🚀</span>
                         <div>
                             <strong>High Sensitivity</strong>
-                            <div class="sensitivity-option-description">Responds to subtle gestures - maximum responsiveness</div>
+                            <div class="sensitivity-option-description">Responds to subtle gestures - maximum responsiveness. Ideal for power users.</div>
                         </div>
                     </div>
                     ${currentSensitivity === 'high' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
                 </div>
                 
-                <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
-                    <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> Current Settings</h5>
-                    <div style="color: #adb5bd; font-size: 12px;">
-                        <div>Swipe Threshold: ${MediaPlayer.touchGestures.swipeThreshold}px</div>
-                        <div>Pinch Sensitivity: ${MediaPlayer.touchGestures.pinchSensitivity}px</div>
-                        <div>Velocity Threshold: ${MediaPlayer.touchGestures.velocityThreshold}</div>
+                <div class="gesture-sensitivity-visualizer" style="margin-top: 20px;">
+                    <div class="gesture-sensitivity-threshold" style="top: ${100 - (thresholds.swipe / 80 * 100)}%;"></div>
+                    <div class="gesture-sensitivity-level" id="gesture-sensitivity-level" style="height: ${thresholds.swipe / 80 * 100}%;"></div>
+                    <div style="padding: 10px; color: #adb5bd; font-size: 11px; text-align: center;">
+                        <i class="fas fa-chart-bar"></i> Real-time Gesture Threshold Visualization
                     </div>
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
+                    <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;">
+                        <i class="fas fa-sliders-h"></i> Current Thresholds
+                    </h5>
+                    <div style="color: #adb5bd; font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span><i class="fas fa-arrows-alt-h"></i> Swipe Threshold:</span>
+                            <span style="color: #00d4ff; font-weight: bold;">${thresholds.swipe}px</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span><i class="fas fa-compress-arrows-alt"></i> Pinch Sensitivity:</span>
+                            <span style="color: #00d4ff; font-weight: bold;">${thresholds.pinch}px</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span><i class="fas fa-tachometer-alt"></i> Velocity Threshold:</span>
+                            <span style="color: #00d4ff; font-weight: bold;">${thresholds.velocity}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 12px; background: rgba(0, 212, 255, 0.1); border-radius: 10px; border: 1px solid rgba(0, 212, 255, 0.3);">
+                    <h5 style="color: #00d4ff; margin-bottom: 8px; font-size: 13px;">
+                        <i class="fas fa-lightbulb"></i> Quick Tip
+                    </h5>
+                    <p style="color: #adb5bd; font-size: 11px; margin: 0;">
+                        Test your sensitivity by swiping on the media player. If gestures aren't registered, try higher sensitivity. 
+                        If accidental triggers occur, try lower sensitivity.
+                    </p>
                 </div>
             </div>
         `,
         showConfirmButton: false,
         showCloseButton: true,
-        width: '500px'
+        width: '550px',
+        didOpen: () => {
+            const levelElement = document.getElementById('gesture-sensitivity-level');
+            if (levelElement) {
+                const threshold = MediaPlayer.touchGestures.customThresholds[currentSensitivity].swipe;
+                levelElement.style.height = `${(threshold / 80) * 100}%`;
+            }
+        }
     });
 }
 
@@ -3899,18 +3975,24 @@ const BeatDetectionCalibration = {
                 const height = Math.max(5, data.energy * 100);
                 const thresholdHeight = data.threshold * 100;
                 
+                const isBeat = data.energy > data.threshold;
+                const intensity = Math.min(1, data.energy / data.threshold);
+                
                 bar.style.cssText = `
                     height: ${height}%;
                     background: linear-gradient(to top, 
-                        ${data.energy > data.threshold ? '#00d4ff' : '#6c757d'} 0%, 
-                        ${data.energy > data.threshold ? '#00ff88' : '#adb5bd'} 100%);
+                        ${isBeat ? '#ff6b6b' : '#6c757d'} 0%, 
+                        ${isBeat ? '#ff0080' : '#adb5bd'} ${50 + (intensity * 50)}%,
+                        ${isBeat ? '#00d4ff' : '#495057'} 100%);
                     position: relative;
-                    transition: height 0.1s ease;
+                    transition: height 0.05s ease, transform 0.1s ease;
+                    transform: ${isBeat ? 'scaleY(1.1)' : 'scaleY(1)'};
+                    box-shadow: ${isBeat ? `0 0 ${10 + (intensity * 20)}px rgba(255, 107, 107, ${0.3 + (intensity * 0.5)})` : 'none'};
                 `;
                 
-                if (data.energy > data.threshold) {
+                if (isBeat) {
                     bar.classList.add('peak');
-                    bar.style.boxShadow = '0 0 10px rgba(0, 212, 255, 0.8)';
+                    bar.innerHTML = `<div style="position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #ff6b6b; font-weight: bold;">${(data.energy * 100).toFixed(0)}%</div>`;
                 }
                 
                 const thresholdMarker = document.createElement('div');
