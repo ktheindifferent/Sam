@@ -6,29 +6,33 @@
 /* Touch-enabled bulb controls */
 .lifx-bulb-control.touch-feedback {
     position: relative;
-    transition: all 0.2s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    will-change: transform;
 }
 
 .lifx-bulb-control.touch-feedback:active {
-    transform: scale(0.95);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    transform: scale(0.94);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
 /* Enhanced touch ripple effect */
 .lifx-touch-ripple {
     position: absolute;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(0, 212, 255, 0.6) 0%, rgba(0, 212, 255, 0) 70%);
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.8) 0%, rgba(0, 212, 255, 0.4) 40%, rgba(0, 212, 255, 0) 70%);
     transform: scale(0);
-    animation: ripple-animation 0.6s ease-out;
+    animation: ripple-animation 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     pointer-events: none;
+    will-change: transform, opacity;
 }
 
 @keyframes ripple-animation {
     to {
-        transform: scale(2.5);
+        transform: scale(3);
         opacity: 0;
     }
 }
@@ -96,12 +100,15 @@
 @keyframes pulse-glow {
     0% {
         box-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
+        transform: scale(1);
     }
     50% {
-        box-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+        box-shadow: 0 0 25px rgba(0, 212, 255, 0.9);
+        transform: scale(1.02);
     }
     100% {
         box-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
+        transform: scale(1);
     }
 }
 
@@ -110,14 +117,23 @@
     position: absolute;
     bottom: 10px;
     right: 10px;
-    background: rgba(0, 0, 0, 0.7);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.9), rgba(0, 150, 255, 0.9));
     color: white;
-    padding: 4px 8px;
-    border-radius: 12px;
-    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 15px;
+    font-size: 12px;
     font-weight: bold;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    backdrop-filter: blur(5px);
+    box-shadow: 0 2px 10px rgba(0, 212, 255, 0.4);
+    transform: translateY(5px);
+}
+
+.lifx-bulb-control:hover .brightness-level,
+.lifx-bulb-control.touch-feedback .brightness-level {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .lifx-bulb-control:hover .brightness-level,
@@ -160,8 +176,8 @@
 }
 
 @keyframes gesture-bounce {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.3); }
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    50% { transform: scale(1.4) rotate(-10deg); }
 }
 
 @keyframes hint-bounce {
@@ -177,7 +193,14 @@
 
 .lifx-gesture-hint.visible {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1.05);
+    transform: translate(-50%, -50%) scale(1);
+    animation: hint-pop 0.3s ease-out;
+}
+
+@keyframes hint-pop {
+    0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+    50% { transform: translate(-50%, -50%) scale(1.05); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
 /* Touch control mode indicator */
@@ -428,12 +451,14 @@
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .lifx-bulb-control.touch-feedback {
-        min-height: 120px;
+        min-height: 140px;
+        touch-action: pan-x pan-y;
     }
     
     .lifx-gesture-hint {
         font-size: 14px;
         padding: 12px 24px;
+        max-width: 80%;
     }
     
     .lifx-touch-mode-indicator {
@@ -441,6 +466,48 @@
         right: 10px;
         font-size: 11px;
         padding: 8px 12px;
+    }
+    
+    .touch-hold-progress {
+        width: 80px;
+        height: 80px;
+    }
+    
+    .media-center-mobile-controls {
+        padding: 12px;
+    }
+    
+    .media-center-mobile-btn {
+        width: 55px;
+        height: 55px;
+    }
+    
+    .media-center-mobile-btn.play-pause {
+        width: 65px;
+        height: 65px;
+    }
+}
+
+/* High DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .lifx-touch-ripple {
+        will-change: transform, opacity;
+    }
+    
+    .lifx-bulb-control.touch-feedback {
+        will-change: transform;
+    }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    .lifx-touch-ripple,
+    .lifx-bulb-control.touch-feedback,
+    .lifx-gesture-hint,
+    .media-center-touch-hint {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
     }
 }
 
@@ -741,6 +808,32 @@
     pointer-events: none;
 }
 
+.media-center-mobile-btn.bpm-display {
+    width: auto;
+    padding: 0 15px;
+    background: rgba(39, 160, 185, 0.2);
+    border: 1px solid rgba(39, 160, 185, 0.4);
+    flex-direction: row;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #00d4ff;
+}
+
+.media-center-mobile-btn.bpm-display:hover {
+    background: rgba(39, 160, 185, 0.4);
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.3);
+}
+
+.media-center-mobile-btn.bpm-display i {
+    animation: bpm-pulse 1s ease-in-out infinite;
+}
+
+@keyframes bpm-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.8; }
+}
+
 /* Media center touch feedback */
 .media-center-touch-hint {
     position: fixed;
@@ -762,14 +855,15 @@
 
 .media-center-touch-hint.visible {
     opacity: 1;
-    animation: hint-fade 1.5s ease forwards;
+    animation: hint-fade-enhanced 1.5s ease forwards;
 }
 
-@keyframes hint-fade {
-    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
-    20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-    80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+@keyframes hint-fade-enhanced {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); filter: blur(5px); }
+    15% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); filter: blur(0); }
+    25% { transform: translate(-50%, -50%) scale(1); }
+    75% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); filter: blur(3px); }
 }
 
 /* Ambient light sync indicator */

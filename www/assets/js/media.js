@@ -812,30 +812,35 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
     if (!MediaPlayer.lifxSyncEnabled || !MediaPlayer.isPlaying) return;
     
     const now = Date.now();
-    if (now - MediaPlayer.lifxBeatDetection.lastBeat < MediaPlayer.lifxBeatDetection.beatCooldown) {
+    const beatDetection = MediaPlayer.beatDetection;
+    const bpm = beatDetection.bpmEstimate || 120;
+    const intensity = beatDetection.beatIntensity || beatStrength;
+    
+    if (now - beatDetection.lastBeatTime < beatDetection.beatCooldown) {
         return;
     }
     
-    MediaPlayer.lifxBeatDetection.lastBeat = now;
-    MediaPlayer.lifxBeatDetection.beatHistory.push({ time: now, strength: beatStrength });
-    if (MediaPlayer.lifxBeatDetection.beatHistory.length > 10) {
-        MediaPlayer.lifxBeatDetection.beatHistory.shift();
+    beatDetection.lastBeatTime = now;
+    beatDetection.beatHistory.push(now);
+    if (beatDetection.beatHistory.length > 8) {
+        beatDetection.beatHistory.shift();
     }
     
     const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
         ? LifXTouchControls.multiBulbSelection.join(',')
         : 'all';
     
-    const baseBrightness = 0.3 + (beatStrength * 0.7);
-    const hue = MediaPlayer.lifxBeatDetection.lastHue || 0;
-    const newHue = (hue + (beatStrength * 50)) % 360;
-    MediaPlayer.lifxBeatDetection.lastHue = newHue;
+    const hueStep = Math.max(5, 30 - (intensity * 20));
+    const hue = beatDetection.lastHue || 0;
+    const newHue = (hue + hueStep) % 360;
+    beatDetection.lastHue = newHue;
     
     const colorTemp = MediaPlayer.lifxSceneMode === 'warm' ? 2700 : 
                       MediaPlayer.lifxSceneMode === 'cool' ? 6500 : 4000;
     
-    const pulseBrightness = 0.4 + (beatStrength * 0.6);
-    const saturation = 60 + (beatStrength * 40);
+    const pulseBrightness = 0.3 + (intensity * 0.7);
+    const saturation = 50 + (intensity * 50);
+    const duration = Math.max(0.05, 0.15 - (intensity * 0.1));
     
     $.ajax({
         url: '/api/services/lifx/set_state',
@@ -845,7 +850,7 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
             selector: targets === 'all' ? 'all' : `id:${targets}`,
             power: 'on',
             brightness: pulseBrightness,
-            duration: 0.05
+            duration: duration
         })
     });
     
@@ -857,12 +862,12 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
             selector: targets === 'all' ? 'all' : `id:${targets}`,
             color: `hue:${Math.round(newHue * 182)} saturation:${Math.round(saturation)}%`,
             kelvin: colorTemp,
-            duration: 0.1
+            duration: duration * 2
         }),
         error: () => {}
     });
     
-    updateBpmEstimate();
+    updateBpmDisplay();
 }
 
 function setLifxSceneForMedia(sceneName) {
@@ -1267,6 +1272,18 @@ function updateBpmEstimate() {
     }
 }
 
+function updateBpmDisplay() {
+    const bpmEl = document.querySelector('#bpm-display');
+    if (bpmEl && MediaPlayer.beatDetection.bpmEstimate) {
+        bpmEl.textContent = `${MediaPlayer.beatDetection.bpmEstimate} BPM`;
+    }
+    
+    const bpmValueEl = document.querySelector('#bpm-value');
+    if (bpmValueEl) {
+        bpmValueEl.textContent = MediaPlayer.beatDetection.bpmEstimate || '--';
+    }
+}
+
 function detectAudioBeat() {
     if (!MediaPlayer.audioContext || !MediaPlayer.analyser || !MediaPlayer.isPlaying) {
         return 0;
@@ -1525,11 +1542,13 @@ function startAudioVisualization() {
     if (!MediaPlayer.visualizationActive && MediaPlayer.audioContext && MediaPlayer.analyser) {
         MediaPlayer.visualizationActive = true;
         visualizeAudio();
+        showMediaTouchHint('Audio Visualization ON', '🎨');
     }
 }
 
 function stopAudioVisualization() {
     MediaPlayer.visualizationActive = false;
+    showMediaTouchHint('Audio Visualization OFF', '🎨');
 }
 
 // Aurora borealis effect
@@ -2705,18 +2724,54 @@ function startBeatDetection() {
             MediaPlayer.analyser.getByteFrequencyData(dataArray);
             
             const bass = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+            const mid = dataArray.slice(10, 30).reduce((a, b) => a + b, 0) / 20;
             const now = Date.now();
             
-            if (bass > MediaPlayer.beatDetection.sensitivity * 255 && 
-                now - MediaPlayer.beatDetection.lastBeatTime > 150) {
+            const adaptiveThreshold = MediaPlayer.beatDetection.threshold * 255;
+            const energy = (bass * 0.7) + (mid * 0.3);
+            const timeSinceLastBeat = now - MediaPlayer.beatDetection.lastBeatTime;
+            
+            const minInterval = Math.max(100, 60000 / (MediaPlayer.beatDetection.bpmEstimate + 20));
+            
+            if (energy > adaptiveThreshold && timeSinceLastBeat > minInterval) {
                 MediaPlayer.beatDetection.lastBeatTime = now;
                 MediaPlayer.beatDetection.beatCount++;
+                MediaPlayer.beatDetection.beatIntensity = Math.min(1.0, energy / 255);
+                
+                MediaPlayer.beatDetection.peakEnergy = Math.max(MediaPlayer.beatDetection.peakEnergy || 0, energy);
+                MediaPlayer.beatDetection.threshold = MediaPlayer.beatDetection.peakEnergy * 0.7 / 255;
+                MediaPlayer.beatDetection.peakDecay = 0.98;
+                
+                if (MediaPlayer.beatDetection.beatHistory.length >= 4) {
+                    const intervals = [];
+                    for (let i = MediaPlayer.beatDetection.beatHistory.length - 1; i > 0; i--) {
+                        intervals.push(MediaPlayer.beatDetection.beatHistory[i] - MediaPlayer.beatDetection.beatHistory[i-1]);
+                    }
+                    const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                    if (avgInterval > 0) {
+                        MediaPlayer.beatDetection.bpmEstimate = Math.round(60000 / avgInterval);
+                        MediaPlayer.beatDetection.bpmEstimate = Math.max(60, Math.min(200, MediaPlayer.beatDetection.bpmEstimate));
+                    }
+                }
+                MediaPlayer.beatDetection.beatHistory.push(now);
+                if (MediaPlayer.beatDetection.beatHistory.length > 8) {
+                    MediaPlayer.beatDetection.beatHistory.shift();
+                }
                 
                 if (MediaPlayer.onLifxUpdate) {
-                    MediaPlayer.onLifxUpdate({ type: 'beat', intensity: bass / 255 });
+                    MediaPlayer.onLifxUpdate({ 
+                        type: 'beat', 
+                        intensity: MediaPlayer.beatDetection.beatIntensity,
+                        bpm: MediaPlayer.beatDetection.bpmEstimate
+                    });
                 }
                 
                 pulseVisualization();
+                updateBpmDisplay();
+            }
+            
+            if (MediaPlayer.beatDetection.peakEnergy) {
+                MediaPlayer.beatDetection.peakEnergy *= MediaPlayer.beatDetection.peakDecay;
             }
             
             requestAnimationFrame(detectBeat);
@@ -2738,12 +2793,23 @@ function stopBeatDetection() {
 }
 
 function pulseVisualization() {
-    document.querySelectorAll('.media-visualization-bar').forEach((bar, i) => {
-        const height = 20 + Math.random() * 80;
-        bar.style.height = `${height}%`;
+    const bars = document.querySelectorAll('.media-visualization-bar');
+    const beatIntensity = MediaPlayer.beatDetection.beatIntensity || 1.0;
+    
+    bars.forEach((bar, i) => {
+        const baseHeight = 10 + i * 10;
+        const beatHeight = 20 + (Math.random() * 80 * beatIntensity);
+        const targetHeight = Math.min(100, Math.max(baseHeight, beatHeight));
+        
+        bar.style.transition = 'height 0.08s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        bar.style.height = `${targetHeight}%`;
+        bar.style.filter = `brightness(${1 + beatIntensity * 0.5})`;
+        
         setTimeout(() => {
-            bar.style.height = `${10 + i * 10}%`;
-        }, 100);
+            bar.style.transition = 'height 0.15s ease-out';
+            bar.style.height = `${baseHeight}%`;
+            bar.style.filter = 'brightness(1)';
+        }, 120);
     });
 }
 
