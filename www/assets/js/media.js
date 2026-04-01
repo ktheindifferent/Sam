@@ -40,7 +40,10 @@ const MediaPlayer = {
     sleepTimer: null,
     wakeUpTimer: null,
     playbackHistory: [],
-    favorites: []
+    favorites: [],
+    lifxSyncEnabled: false,
+    touchHoldTimer: null,
+    lastMediaInteraction: 0
 };
 
 // Initialize when DOM is ready
@@ -615,6 +618,64 @@ function updateMuteButton() {
         muteBtn.innerHTML = MediaPlayer.isMuted
             ? '<i class="fas fa-volume-mute"></i>'
             : '<i class="fas fa-volume-up"></i>';
+    }
+}
+
+function showMediaTouchHint(text, icon) {
+    let hint = document.querySelector('.media-center-touch-hint');
+    if (!hint) {
+        hint = document.createElement('div');
+        hint.className = 'media-center-touch-hint';
+        document.body.appendChild(hint);
+    }
+    hint.innerHTML = `<span style="font-size: 32px; display: block; margin-bottom: 10px;">${icon}</span>${text}`;
+    hint.classList.add('visible');
+    setTimeout(() => {
+        hint.classList.remove('visible');
+    }, 1500);
+}
+
+function toggleLifxMediaSync() {
+    MediaPlayer.lifxSyncEnabled = !MediaPlayer.lifxSyncEnabled;
+    
+    const syncBtn = document.querySelector('#lifx-sync-btn');
+    if (syncBtn) {
+        syncBtn.classList.toggle('active', MediaPlayer.lifxSyncEnabled);
+    }
+    
+    if (MediaPlayer.lifxSyncEnabled) {
+        showMediaTouchHint('LIFX Media Sync ON', '🎵💡');
+        showNotification('Lights will sync with music rhythm', 'success');
+    } else {
+        showMediaTouchHint('LIFX Media Sync OFF', '💡');
+        showNotification('LIFX media sync disabled', 'info');
+    }
+}
+
+function pulseLifxWithBeat() {
+    if (!MediaPlayer.lifxSyncEnabled || !MediaPlayer.isPlaying) return;
+    
+    const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
+        ? LifXTouchControls.multiBulbSelection.join(',')
+        : 'all';
+    
+    $.ajax({
+        url: '/api/services/lifx/set_state',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            selector: targets === 'all' ? 'all' : `id:${targets}`,
+            power: 'on',
+            brightness: 0.3 + Math.random() * 0.7,
+            duration: 0.1
+        }),
+        error: () => {}
+    });
+}
+
+function setLifxSceneForMedia(sceneName) {
+    if (LifXTouchControls && typeof LifXTouchControls.applyScene === 'function') {
+        LifXTouchControls.applyScene(sceneName);
     }
 }
 

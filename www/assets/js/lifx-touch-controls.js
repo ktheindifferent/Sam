@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -495,7 +495,10 @@ const LifXTouchControls = {
             romance: { brightness: 50, kelvin: 3000, label: 'Romance' },
             party: { brightness: 100, kelvin: 5500, label: 'Party' },
             golden: { brightness: 70, kelvin: 3200, label: 'Golden' },
-            arctic: { brightness: 80, kelvin: 7000, label: 'Arctic' }
+            arctic: { brightness: 80, kelvin: 7000, label: 'Arctic' },
+            tropical: { brightness: 85, kelvin: 3800, label: 'Tropical' },
+            spring: { brightness: 75, kelvin: 4200, label: 'Spring' },
+            autumn: { brightness: 65, kelvin: 2800, label: 'Autumn' }
         };
         
         const settings = sceneSettings[scene];
@@ -859,7 +862,10 @@ const LifXTouchControls = {
             'romance': '#ff9ff3',
             'party': '#00d4ff',
             'golden': '#f9ca24',
-            'arctic': '#70a1ff'
+            'arctic': '#70a1ff',
+            'tropical': '#00b894',
+            'spring': '#55efc4',
+            'autumn': '#e17055'
         };
         return sceneColors[sceneName] || '#ffffff';
     },
@@ -876,7 +882,10 @@ const LifXTouchControls = {
             'romance': { hue: 320, saturation: 50, brightness: 60, kelvin: 2700 },
             'party': { hue: 180, saturation: 100, brightness: 100, kelvin: 6000 },
             'golden': { hue: 45, saturation: 85, brightness: 90, kelvin: 3000 },
-            'arctic': { hue: 210, saturation: 55, brightness: 85, kelvin: 7000 }
+            'arctic': { hue: 210, saturation: 55, brightness: 85, kelvin: 7000 },
+            'tropical': { hue: 150, saturation: 100, brightness: 72, kelvin: 3800 },
+            'spring': { hue: 140, saturation: 76, brightness: 93, kelvin: 4200 },
+            'autumn': { hue: 30, saturation: 66, brightness: 88, kelvin: 2800 }
         };
         
         const scene = sceneColors[sceneName];

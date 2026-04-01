@@ -529,15 +529,19 @@
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 .media-center-mobile-btn:active {
     transform: scale(0.9);
+    background: rgba(39, 160, 185, 0.5);
 }
 
 .media-center-mobile-btn.active {
     background: #27a0b9;
     color: white;
+    box-shadow: 0 0 15px rgba(39, 160, 185, 0.5);
 }
 
 .media-center-mobile-btn.play-pause {
@@ -545,6 +549,42 @@
     height: 60px;
     background: #27a0b9;
     color: white;
+    box-shadow: 0 0 20px rgba(39, 160, 185, 0.6);
+}
+
+.media-center-mobile-btn i {
+    pointer-events: none;
+}
+
+/* Media center touch feedback */
+.media-center-touch-hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: #00d4ff;
+    padding: 20px 30px;
+    border-radius: 25px;
+    font-size: 18px;
+    font-weight: bold;
+    z-index: 10000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    backdrop-filter: blur(5px);
+}
+
+.media-center-touch-hint.visible {
+    opacity: 1;
+    animation: hint-fade 1.5s ease forwards;
+}
+
+@keyframes hint-fade {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
 }
 
 /* Ambient light sync indicator */
