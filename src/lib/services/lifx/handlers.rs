@@ -569,6 +569,19 @@ const SCENES: &[(&str, u16, u16, u16, u16)] = &[
     ("tropical", 27300, 65535, 47185, 3800),
     ("spring", 25480, 49807, 60948, 4200),
     ("autumn", 5460, 43255, 57671, 2800),
+    ("meditation", 50960, 19660, 22937, 2400),
+    ("gaming", 50960, 52428, 58982, 5500),
+    ("cooking", 6370, 39321, 62259, 4000),
+    ("creative", 52780, 45875, 55705, 4800),
+    ("yoga", 21840, 26214, 32767, 3500),
+    ("movie", 3640, 19660, 22937, 2200),
+    ("study", 36400, 19660, 49151, 4500),
+    ("dinner", 5460, 26214, 36044, 2700),
+    ("morning", 9100, 32767, 55705, 5500),
+    ("goodnight", 43680, 6553, 6553, 2000),
+    ("rainbow", 0, 65535, 52428, 4000),
+    ("fireplace", 5460, 52428, 39321, 2000),
+    ("ice", 36400, 32767, 45875, 8000),
 ];
 
 /// Handle scene operations
@@ -821,11 +834,45 @@ fn handle_effects(request: &Request) -> Response {
                             "cycles": cycles
                         }));
                     },
+                    "color_cycle" => {
+                        // Color cycle effect - slowly transition through colors
+                        let sock_clone = sock.try_clone().ok();
+                        let targets: Vec<(u64, std::net::SocketAddr)> = bulbs_vec.iter().map(|b| (b.target, b.addr)).collect();
+                        let cycle_duration = (total_duration / cycles) as u64;
+                        
+                        thread::spawn(move || {
+                            if let Some(socket) = sock_clone {
+                                for _ in 0..(cycles as u64) {
+                                    for step in 0..=36 {
+                                        let hue = (step * 1820) as u16;
+                                        for (target, addr) in &targets {
+                                            let color = HSBK {
+                                                hue: hue,
+                                                saturation: 65535,
+                                                brightness: 52428,
+                                                kelvin: 4000,
+                                            };
+                                            let _ = handlers.protocol.send_color_command(&socket, *target, *addr, color, 0);
+                                        }
+                                        thread::sleep(Duration::from_millis(cycle_duration / 36));
+                                    }
+                                }
+                            }
+                        });
+                        
+                        return Response::json(&json!({
+                            "success": true,
+                            "message": format!("Color cycle effect started on {} bulbs", bulbs_vec.len()),
+                            "effect": "color_cycle",
+                            "cycles": cycles,
+                            "duration": total_duration
+                        }));
+                    },
                     _ => {
                         return Response::json(&json!({
                             "success": false,
                             "message": format!("Unknown effect: {}", input.effect),
-                            "available_effects": ["pulse", "rainbow", "strobe", "flash"]
+                            "available_effects": ["pulse", "rainbow", "strobe", "flash", "color_cycle"]
                         }));
                     }
                 }

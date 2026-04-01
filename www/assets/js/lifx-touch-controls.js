@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -527,7 +527,10 @@ const LifXTouchControls = {
             study: { brightness: 75, kelvin: 4500, label: 'Study' },
             dinner: { brightness: 55, kelvin: 2700, label: 'Dinner' },
             morning: { brightness: 85, kelvin: 5500, label: 'Morning' },
-            goodnight: { brightness: 10, kelvin: 2000, label: 'Goodnight' }
+            goodnight: { brightness: 10, kelvin: 2000, label: 'Goodnight' },
+            rainbow: { brightness: 80, kelvin: 4000, label: 'Rainbow' },
+            fireplace: { brightness: 60, kelvin: 2000, label: 'Fireplace' },
+            ice: { brightness: 70, kelvin: 8000, label: 'Ice' }
         };
         
         const settings = sceneSettings[scene];
@@ -939,12 +942,22 @@ const LifXTouchControls = {
             'study': '#6ab0de',
             'dinner': '#ffcc5c',
             'morning': '#ffd93d',
-            'goodnight': '#2c3e50'
+            'goodnight': '#2c3e50',
+            'rainbow': '#ff0080',
+            'fireplace': '#ff4500',
+            'ice': '#7fffd4'
         };
         return sceneColors[sceneName] || '#ffffff';
     },
     
     applyScene: function(sceneName) {
+        if (sceneName === 'rainbow') {
+            this.startRainbowCycle();
+            return;
+        } else {
+            this.stopRainbowCycle();
+        }
+        
         const sceneColors = {
             'relax': { hue: 0, saturation: 50, brightness: 60, kelvin: 2700 },
             'focus': { hue: 160, saturation: 60, brightness: 80, kelvin: 5000 },
@@ -969,7 +982,10 @@ const LifXTouchControls = {
             'study': { hue: 200, saturation: 30, brightness: 75, kelvin: 4500 },
             'dinner': { hue: 30, saturation: 40, brightness: 55, kelvin: 2700 },
             'morning': { hue: 50, saturation: 50, brightness: 85, kelvin: 5500 },
-            'goodnight': { hue: 240, saturation: 10, brightness: 10, kelvin: 2000 }
+            'goodnight': { hue: 240, saturation: 10, brightness: 10, kelvin: 2000 },
+            'rainbow': { hue: 0, saturation: 100, brightness: 90, kelvin: 4000 },
+            'fireplace': { hue: 30, saturation: 80, brightness: 60, kelvin: 2000 },
+            'ice': { hue: 200, saturation: 50, brightness: 70, kelvin: 8000 }
         };
         
         const scene = sceneColors[sceneName];
@@ -1275,6 +1291,43 @@ const LifXTouchControls = {
     stopColorCycle: function() {
         this.colorCycleActive = false;
         this.showGestureFeedback('Color cycle OFF', '⬜');
+    },
+    
+    rainbowCycleInterval: null,
+    rainbowHue: 0,
+    
+    startRainbowCycle: function() {
+        if (this.rainbowCycleInterval) return;
+        
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        this.rainbowCycleInterval = setInterval(() => {
+            this.rainbowHue = (this.rainbowHue + 2) % 360;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets.join(',')}`,
+                    color: `hue:${Math.round(this.rainbowHue * 182)} saturation:100%`,
+                    brightness: 80,
+                    duration: 0.3
+                })
+            });
+        }, 50);
+        
+        this.showGestureFeedback('Rainbow cycle started', '🌈');
+    },
+    
+    stopRainbowCycle: function() {
+        if (this.rainbowCycleInterval) {
+            clearInterval(this.rainbowCycleInterval);
+            this.rainbowCycleInterval = null;
+            this.showGestureFeedback('Rainbow cycle stopped', '🌈');
+        }
     }
 };
 

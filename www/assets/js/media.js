@@ -59,7 +59,17 @@ const MediaPlayer = {
     mediaElementSource: null,
     bassBoostGain: null,
     equalizer: null,
-    visualizationData: null
+    visualizationData: null,
+    touchGestures: {
+        enabled: true,
+        sensitivity: 'medium',
+        lastSwipeTime: 0
+    },
+    miniPlayerVisible: false,
+    queuePosition: 0,
+    playbackSpeed: 1.0,
+    lyricsVisible: false,
+    nowPlayingHistory: []
 };
 
 // Initialize when DOM is ready
@@ -1733,7 +1743,150 @@ if (origInitMediaCenter) {
         origInitMediaCenter();
         initSpotifyIntegration();
         loadFavorites();
+        initMiniPlayer();
     };
+}
+
+// Mini player functionality
+function initMiniPlayer() {
+    const miniPlayer = document.getElementById('mini-player');
+    if (miniPlayer) {
+        miniPlayer.style.display = 'none';
+        MediaPlayer.miniPlayerVisible = false;
+    }
+}
+
+function toggleMiniPlayer() {
+    const miniPlayer = document.getElementById('mini-player');
+    if (!miniPlayer) return;
+    
+    if (MediaPlayer.miniPlayerVisible) {
+        miniPlayer.style.display = 'none';
+        MediaPlayer.miniPlayerVisible = false;
+    } else {
+        miniPlayer.style.display = 'block';
+        MediaPlayer.miniPlayerVisible = true;
+        updateMiniPlayerInfo();
+    }
+}
+
+function updateMiniPlayerInfo() {
+    const miniPlayer = document.getElementById('mini-player');
+    if (!miniPlayer || !MediaPlayer.miniPlayerVisible) return;
+    
+    const titleEl = miniPlayer.querySelector('.mini-player-title');
+    const artistEl = miniPlayer.querySelector('.mini-player-artist');
+    const playIcon = document.getElementById('mini-play-icon');
+    
+    if (titleEl && MediaPlayer.currentTrack) {
+        titleEl.textContent = MediaPlayer.currentTrack.title || 'Now Playing';
+    }
+    
+    if (artistEl && MediaPlayer.currentTrack) {
+        artistEl.textContent = MediaPlayer.currentTrack.artist || 'Unknown Artist';
+    }
+    
+    if (playIcon) {
+        playIcon.className = MediaPlayer.isPlaying ? 'fas fa-pause' : 'fas fa-play';
+    }
+}
+
+function showNowPlaying(track) {
+    const toast = document.getElementById('now-playing-toast');
+    if (!toast) return;
+    
+    const titleEl = toast.querySelector('.now-playing-title');
+    const artistEl = toast.querySelector('.now-playing-artist');
+    
+    if (titleEl) titleEl.textContent = track?.title || 'Now Playing';
+    if (artistEl) artistEl.textContent = track?.artist || 'Unknown Artist';
+    
+    toast.classList.add('visible');
+    
+    setTimeout(() => {
+        hideNowPlaying();
+    }, 5000);
+}
+
+function hideNowPlaying() {
+    const toast = document.getElementById('now-playing-toast');
+    if (toast) {
+        toast.classList.remove('visible');
+    }
+}
+
+function createMediaVisualization(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    container.innerHTML = '';
+    container.className = 'media-visualization';
+    
+    for (let i = 0; i < 16; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'media-visualization-bar';
+        bar.style.height = '10px';
+        bar.style.transitionDelay = `${i * 0.02}s`;
+        container.appendChild(bar);
+    }
+    
+    return container;
+}
+
+function updateMediaVisualization() {
+    if (!MediaPlayer.isPlaying || !MediaPlayer.audioContext) {
+        return;
+    }
+    
+    const analyser = MediaPlayer.analyser;
+    const dataArray = MediaPlayer.visualizationData;
+    
+    if (!analyser || !dataArray) return;
+    
+    analyser.getByteFrequencyData(dataArray);
+    
+    const bars = document.querySelectorAll('.media-visualization-bar');
+    const step = Math.floor(dataArray.length / bars.length);
+    
+    bars.forEach((bar, i) => {
+        const value = dataArray[i * step];
+        const height = Math.max(5, (value / 255) * 80);
+        bar.style.height = `${height}px`;
+    });
+    
+    requestAnimationFrame(updateMediaVisualization);
+}
+
+function setPlaybackSpeed(speed) {
+    MediaPlayer.playbackSpeed = speed;
+    showNotification(`Playback speed: ${speed}x`, 'info');
+}
+
+function addToNowPlayingHistory(track) {
+    if (!track) return;
+    
+    MediaPlayer.nowPlayingHistory.unshift({
+        ...track,
+        playedAt: Date.now()
+    });
+    
+    if (MediaPlayer.nowPlayingHistory.length > 20) {
+        MediaPlayer.nowPlayingHistory.pop();
+    }
+    
+    localStorage.setItem('sam_now_playing_history', JSON.stringify(MediaPlayer.nowPlayingHistory));
+}
+
+function getNowPlayingHistory() {
+    try {
+        const stored = localStorage.getItem('sam_now_playing_history');
+        if (stored) {
+            MediaPlayer.nowPlayingHistory = JSON.parse(stored);
+        }
+    } catch (e) {
+        console.warn('Failed to load now playing history:', e);
+    }
+    return MediaPlayer.nowPlayingHistory;
 }
 
 // Original gamepad navigation loop

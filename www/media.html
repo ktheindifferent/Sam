@@ -565,6 +565,45 @@ Licensed under GPLv3....see LICENSE file. -->
   
   <!-- Touch hold progress indicator -->
   <div class="touch-hold-progress" id="touch-hold-progress"></div>
+  
+  <!-- Mini player for floating playback control -->
+  <div class="mini-player" id="mini-player" style="display: none;">
+    <div class="mini-player-content">
+      <div class="mini-player-info">
+        <div class="mini-player-art"></div>
+        <div class="mini-player-text">
+          <div class="mini-player-title">Now Playing</div>
+          <div class="mini-player-artist">Unknown Artist</div>
+        </div>
+      </div>
+      <div class="mini-player-controls">
+        <button class="mini-player-btn" onclick="previousTrack()">
+          <i class="fas fa-step-backward"></i>
+        </button>
+        <button class="mini-player-btn play-pause" onclick="togglePlayPause()">
+          <i class="fas fa-play" id="mini-play-icon"></i>
+        </button>
+        <button class="mini-player-btn" onclick="nextTrack()">
+          <i class="fas fa-step-forward"></i>
+        </button>
+        <button class="mini-player-btn" onclick="toggleMiniPlayer()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Now playing notification toast -->
+  <div class="now-playing-toast" id="now-playing-toast">
+    <div class="now-playing-art"></div>
+    <div class="now-playing-info">
+      <div class="now-playing-title"></div>
+      <div class="now-playing-artist"></div>
+    </div>
+    <button class="now-playing-close" onclick="hideNowPlaying()">
+      <i class="fas fa-times"></i>
+    </button>
+  </div>
 </body>
 
 </html>
