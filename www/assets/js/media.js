@@ -29,7 +29,9 @@ const MediaPlayer = {
     activeSource: null,
     repeatMode: 'off', // off, all, one
     isShuffling: false,
-    mediaSessionActive: false
+    mediaSessionActive: false,
+    ambientLightEnabled: false,
+    bassBoostEnabled: false
 };
 
 // Initialize when DOM is ready
@@ -44,6 +46,7 @@ function initMediaCenter() {
     initSnapcastStatus();
     initMediaSession();
     initVoiceCommands();
+    initAmbientLightSync();
     console.log('Media Center initialized');
 }
 
@@ -124,32 +127,77 @@ function initTouchControls() {
     // Swipe gestures on media player
     const mediaPlayer = document.querySelector('#media-player, #snapcast-player');
     if (mediaPlayer) {
-        onGesture('swipeLeft', function() {
-            nextTrack();
-            showSwipeHint('Next Track ➡️');
-        });
-
-        onGesture('swipeRight', function() {
-            previousTrack();
-            showSwipeHint('Previous Track ⬅️');
-        });
-
-        onGesture('swipeUp', function() {
-            increaseVolume();
-            showSwipeHint('Volume Up 🔊↑');
-        });
-
-        onGesture('swipeDown', function() {
-            decreaseVolume();
-            showSwipeHint('Volume Down 🔊↓');
-        });
+        let touchStartX = 0;
+        let touchStartY = 0;
         
-        // Double tap to toggle play/pause
-        onGesture('tap', function(data) {
-            if (mediaPlayer.contains(document.elementFromPoint(data.x, data.y))) {
+        mediaPlayer.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        
+        mediaPlayer.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            
+            // Detect circular motion for volume quick control
+            if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+                // Tap - toggle play/pause
                 togglePlayPause();
+                showSwipeHint('Play/Pause ⏯️');
+            } else if (Math.abs(deltaX) > Math.abs(deltaY) * 2) {
+                // Horizontal swipe
+                if (deltaX > 50) {
+                    previousTrack();
+                    showSwipeHint('Previous Track ⬅️');
+                } else if (deltaX < -50) {
+                    nextTrack();
+                    showSwipeHint('Next Track ➡️');
+                }
+            } else if (Math.abs(deltaY) > Math.abs(deltaX) * 2) {
+                // Vertical swipe for volume
+                if (deltaY > 50) {
+                    increaseVolume();
+                    showSwipeHint('Volume Up 🔊↑');
+                } else if (deltaY < -50) {
+                    decreaseVolume();
+                    showSwipeHint('Volume Down 🔊↓');
+                }
             }
-        });
+        }, { passive: true });
+        
+        // Pinch gesture for brightness/ambient light
+        let initialPinchDistance = null;
+        mediaPlayer.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                const distance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                
+                if (initialPinchDistance === null) {
+                    initialPinchDistance = distance;
+                } else {
+                    const delta = distance - initialPinchDistance;
+                    if (Math.abs(delta) > 30) {
+                        // Pinch gesture detected
+                        if (MediaPlayer.ambientLightEnabled) {
+                            const brightness = delta > 0 ? 
+                                Math.min(100, MediaPlayer.volume + 10) : 
+                                Math.max(0, MediaPlayer.volume - 10);
+                            setVolume(brightness);
+                            showSwipeHint(`Volume: ${brightness}%`);
+                        }
+                        initialPinchDistance = distance;
+                    }
+                }
+            }
+        }, { passive: true });
+        
+        mediaPlayer.addEventListener('touchstart', () => {
+            initialPinchDistance = null;
+        }, { passive: true });
     }
     
     // Initialize media browser touch controls
@@ -318,6 +366,12 @@ function updatePlayPauseButton() {
         playBtn.innerHTML = MediaPlayer.isPlaying
             ? '<i class="fas fa-pause"></i>'
             : '<i class="fas fa-play"></i>';
+    }
+    
+    // Update mobile play icon too
+    const mobilePlayIcon = document.querySelector('#mobile-play-icon');
+    if (mobilePlayIcon) {
+        mobilePlayIcon.className = MediaPlayer.isPlaying ? 'fas fa-pause' : 'fas fa-play';
     }
 }
 
@@ -691,6 +745,81 @@ function initVoiceCommands() {
         };
         
         console.log('Voice commands initialized');
+    }
+}
+
+// Ambient light sync with LIFX
+function initAmbientLightSync() {
+    const ambientBtn = document.querySelector('#ambient-light-btn');
+    if (ambientBtn) {
+        ambientBtn.addEventListener('click', () => {
+            MediaPlayer.ambientLightEnabled = !MediaPlayer.ambientLightEnabled;
+            ambientBtn.classList.toggle('active', MediaPlayer.ambientLightEnabled);
+            ambientBtn.classList.toggle('syncing', MediaPlayer.ambientLightEnabled);
+            
+            if (MediaPlayer.ambientLightEnabled) {
+                syncLightsToMusic(true);
+                showNotification('Ambient light sync enabled', 'success');
+            } else {
+                syncLightsToMusic(false);
+                showNotification('Ambient light sync disabled', 'info');
+            }
+        });
+    }
+    
+    const bassBtn = document.querySelector('#bass-boost-btn');
+    if (bassBtn) {
+        bassBtn.addEventListener('click', () => {
+            MediaPlayer.bassBoostEnabled = !MediaPlayer.bassBoostEnabled;
+            bassBtn.classList.toggle('active', MediaPlayer.bassBoostEnabled);
+            showNotification(`Bass boost ${MediaPlayer.bassBoostEnabled ? 'enabled' : 'disabled'}`, 'info');
+        });
+    }
+    
+    // Show mobile controls on touch devices
+    if (typeof is_touch_enabled === 'function' && is_touch_enabled()) {
+        const mobileControls = document.querySelector('#media-center-mobile-controls');
+        if (mobileControls) {
+            mobileControls.classList.add('show');
+        }
+    }
+}
+
+// Toggle ambient light for mobile
+function toggleAmbientLight() {
+    const ambientBtn = document.querySelector('#ambient-light-btn');
+    if (ambientBtn) {
+        ambientBtn.click();
+    }
+}
+
+// Sync LIFX lights to music
+function syncLightsToMusic(enable) {
+    if (enable) {
+        // Pulse lights to beat detection (simulated with interval)
+        if (!MediaPlayer.lightSyncInterval) {
+            let hue = 0;
+            MediaPlayer.lightSyncInterval = setInterval(() => {
+                if (MediaPlayer.isPlaying && MediaPlayer.ambientLightEnabled) {
+                    hue = (hue + 30) % 360;
+                    $.ajax({
+                        url: '/api/services/lifx/set_color',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            selector: 'all',
+                            color: `hue:${hue * 182}`,
+                            duration: 0.5
+                        })
+                    });
+                }
+            }, 500);
+        }
+    } else {
+        if (MediaPlayer.lightSyncInterval) {
+            clearInterval(MediaPlayer.lightSyncInterval);
+            MediaPlayer.lightSyncInterval = null;
+        }
     }
 }
 

@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic'],
     startY: null,
     startBrightness: null,
     
@@ -319,6 +319,12 @@ const LifXTouchControls = {
     },
     
     applyQuickSettings: function(bulbId, brightness, kelvin) {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (bulbId ? [bulbId] : (this.selectedBulb ? [this.selectedBulb] : []));
+        
+        if (targets.length === 0) return;
+        
         this.brightnessLevel = parseInt(brightness);
         this.colorTempLevel = parseInt(kelvin);
         
@@ -327,7 +333,7 @@ const LifXTouchControls = {
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
-                selector: `id:${bulbId}`,
+                selector: `id:${targets.join(',')}`,
                 brightness: this.brightnessLevel,
                 duration: 0.5
             }),
@@ -337,12 +343,12 @@ const LifXTouchControls = {
                     method: 'POST',
                     contentType: 'application/json',
                     data: JSON.stringify({
-                        selector: `id:${bulbId}`,
+                        selector: `id:${targets.join(',')}`,
                         color: `kelvin:${this.colorTempLevel}`
                     }),
                     success: () => {
-                        this.updateBulbVisual(bulbId);
-                        showNotification('Settings applied', 'success');
+                        targets.forEach(id => this.updateBulbVisual(id));
+                        showNotification(`Settings applied to ${targets.length} bulb(s)`, 'success');
                     }
                 });
             }
@@ -350,24 +356,26 @@ const LifXTouchControls = {
     },
     
     togglePower: function(bulbId) {
-        bulbId = bulbId || this.selectedBulb || this.getFirstSelectedBulb();
-        if (!bulbId) return;
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (bulbId || this.selectedBulb || this.getFirstSelectedBulb());
         
-        const bulbEl = document.querySelector(`.lifx-bulb-control[data-bulb-id="${bulbId}"]`);
-        const isOn = bulbEl?.classList.contains('power-on');
+        if (!targets || (Array.isArray(targets) && targets.length === 0)) return;
+        
+        const targetArray = Array.isArray(targets) ? targets : [targets];
         
         $.ajax({
             url: '/api/services/lifx/set_state',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
-                selector: `id:${bulbId}`,
-                power: isOn ? 'off' : 'on',
+                selector: `id:${targetArray.join(',')}`,
+                power: 'toggle',
                 duration: 0.3
             }),
             success: () => {
-                this.updateBulbVisual(bulbId);
-                showNotification(`Bulb ${isOn ? 'turned off' : 'turned on'}`, 'info');
+                targetArray.forEach(bulbId => this.updateBulbVisual(bulbId));
+                showNotification(`Power toggled for ${targetArray.length} bulb(s)`, 'info');
             }
         });
     },
@@ -388,23 +396,26 @@ const LifXTouchControls = {
     },
     
     adjustBrightness: function(delta) {
-        if (!this.selectedBulb) return;
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : []);
+        
+        if (targets.length === 0) return;
         
         this.brightnessLevel = Math.max(0, Math.min(100, this.brightnessLevel + delta));
         
-        // Send command to LIFX API
         $.ajax({
             url: '/api/services/lifx/set_state',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
-                selector: `id:${this.selectedBulb}`,
+                selector: `id:${targets.join(',')}`,
                 brightness: this.brightnessLevel,
                 duration: 0.3
             }),
             success: (response) => {
                 console.log('Brightness adjusted:', this.brightnessLevel);
-                this.updateBulbVisual(this.selectedBulb);
+                targets.forEach(bulbId => this.updateBulbVisual(bulbId));
             },
             error: (err) => {
                 console.error('Failed to adjust brightness:', err);
@@ -413,22 +424,25 @@ const LifXTouchControls = {
     },
     
     adjustColorTemp: function(delta) {
-        if (!this.selectedBulb) return;
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : []);
+        
+        if (targets.length === 0) return;
         
         this.colorTempLevel = Math.max(1500, Math.min(9000, this.colorTempLevel + delta));
         
-        // Send command to LIFX API
         $.ajax({
             url: '/api/services/lifx/set_color',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
-                selector: `id:${this.selectedBulb}`,
+                selector: `id:${targets.join(',')}`,
                 color: `kelvin:${this.colorTempLevel}`
             }),
             success: (response) => {
                 console.log('Color temperature adjusted:', this.colorTempLevel);
-                this.updateBulbVisual(this.selectedBulb);
+                targets.forEach(bulbId => this.updateBulbVisual(bulbId));
             },
             error: (err) => {
                 console.error('Failed to adjust color temp:', err);
@@ -437,21 +451,23 @@ const LifXTouchControls = {
     },
     
     nextScene: function() {
-        const scenes = ['relax', 'focus', 'energize', 'night'];
-        const currentIndex = scenes.indexOf(this.currentScene || 'relax');
-        this.currentScene = scenes[(currentIndex + 1) % scenes.length];
+        const currentIndex = this.scenes.indexOf(this.currentScene || 'relax');
+        this.currentScene = this.scenes[(currentIndex + 1) % this.scenes.length];
         this.applyScene(this.currentScene);
     },
     
     previousScene: function() {
-        const scenes = ['relax', 'focus', 'energize', 'night'];
-        const currentIndex = scenes.indexOf(this.currentScene || 'relax');
-        this.currentScene = scenes[(currentIndex - 1 + scenes.length) % scenes.length];
+        const currentIndex = this.scenes.indexOf(this.currentScene || 'relax');
+        this.currentScene = this.scenes[(currentIndex - 1 + this.scenes.length) % this.scenes.length];
         this.applyScene(this.currentScene);
     },
     
     applyScene: function(scene) {
-        if (!this.selectedBulb) return;
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : []);
+        
+        if (targets.length === 0) return;
         
         const sceneSettings = {
             relax: { brightness: 40, kelvin: 2700, label: 'Relax' },
@@ -459,7 +475,12 @@ const LifXTouchControls = {
             energize: { brightness: 100, kelvin: 6500, label: 'Energize' },
             night: { brightness: 20, kelvin: 2000, label: 'Night' },
             sunset: { brightness: 30, kelvin: 2200, label: 'Sunset' },
-            ocean: { brightness: 60, kelvin: 4500, label: 'Ocean' }
+            ocean: { brightness: 60, kelvin: 4500, label: 'Ocean' },
+            reading: { brightness: 75, kelvin: 4500, label: 'Reading' },
+            romance: { brightness: 50, kelvin: 3000, label: 'Romance' },
+            party: { brightness: 100, kelvin: 5500, label: 'Party' },
+            golden: { brightness: 70, kelvin: 3200, label: 'Golden' },
+            arctic: { brightness: 80, kelvin: 7000, label: 'Arctic' }
         };
         
         const settings = sceneSettings[scene];
@@ -467,12 +488,14 @@ const LifXTouchControls = {
             this.brightnessLevel = settings.brightness;
             this.colorTempLevel = settings.kelvin;
             
+            const selector = targets.join(',');
+            
             $.ajax({
                 url: '/api/services/lifx/set_state',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({
-                    selector: `id:${this.selectedBulb}`,
+                    selector: `id:${selector}`,
                     brightness: settings.brightness,
                     duration: 0.5
                 }),
@@ -482,12 +505,13 @@ const LifXTouchControls = {
                         method: 'POST',
                         contentType: 'application/json',
                         data: JSON.stringify({
-                            selector: `id:${this.selectedBulb}`,
+                            selector: `id:${selector}`,
                             color: `kelvin:${settings.kelvin}`
                         }),
                         success: () => {
                             console.log('Scene applied:', scene);
-                            this.updateBulbVisual(this.selectedBulb);
+                            targets.forEach(bulbId => this.updateBulbVisual(bulbId));
+                            this.showGestureFeedback(`Scene: ${settings.label}`, '🎨');
                         }
                     });
                 }
@@ -541,20 +565,24 @@ const LifXTouchControls = {
     },
     
     endBrightnessAdjustment: function() {
-        if (!this.selectedBulb) return;
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : []);
+        
+        if (targets.length === 0) return;
         
         $.ajax({
             url: '/api/services/lifx/set_state',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
-                selector: `id:${this.selectedBulb}`,
+                selector: `id:${targets.join(',')}`,
                 brightness: this.brightnessLevel / 100,
                 duration: 0.3
             }),
             success: () => {
                 console.log('Brightness set to:', this.brightnessLevel);
-                this.updateBulbVisual(this.selectedBulb);
+                targets.forEach(bulbId => this.updateBulbVisual(bulbId));
             }
         });
         
@@ -570,6 +598,77 @@ const LifXTouchControls = {
             el.removeAttribute('data-lifx-touch');
         });
         console.log('LIFX Touch Controls disabled');
+    },
+    
+    clearMultiSelection: function() {
+        document.querySelectorAll('.lifx-bulb-control.multi-selected').forEach(el => {
+            el.classList.remove('multi-selected');
+        });
+        this.multiBulbSelection = [];
+        this.showGestureFeedback('Selection cleared', '✓');
+    },
+    
+    selectAll: function() {
+        const allBulbs = [];
+        document.querySelectorAll('.lifx-bulb-control').forEach(el => {
+            el.classList.add('multi-selected');
+            const bulbId = el.getAttribute('data-bulb-id');
+            if (bulbId) allBulbs.push(bulbId);
+        });
+        this.multiBulbSelection = allBulbs;
+        this.showGestureFeedback(`Selected ${allBulbs.length} bulbs`, '💡');
+    },
+    
+    powerAll: function(powerState) {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : 'all';
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: targets === 'all' ? 'all' : `id:${targets.join(',')}`,
+                power: powerState || 'toggle',
+                duration: 0.3
+            }),
+            success: () => {
+                showNotification(`Power ${powerState || 'toggled'} for all bulbs`, 'info');
+            }
+        });
+    },
+    
+    cycleScene: function() {
+        this.nextScene();
+    },
+    
+    initMobileNav: function() {
+        const nav = document.querySelector('.lifx-mobile-nav');
+        if (!nav) return;
+        
+        nav.innerHTML = `
+            <button class="lifx-mobile-nav-btn" onclick="LifXTouchControls.powerAll('on')" title="All On">
+                <i class="fas fa-power-off"></i>
+                <span>All On</span>
+            </button>
+            <button class="lifx-mobile-nav-btn" onclick="LifXTouchControls.powerAll('off')" title="All Off">
+                <i class="fas fa-power-off"></i>
+                <span>All Off</span>
+            </button>
+            <button class="lifx-mobile-nav-btn" onclick="LifXTouchControls.selectAll()" title="Select All">
+                <i class="fas fa-layer-group"></i>
+                <span>Select</span>
+            </button>
+            <button class="lifx-mobile-nav-btn" onclick="LifXTouchControls.cycleScene()" title="Next Scene">
+                <i class="fas fa-palette"></i>
+                <span>Scene</span>
+            </button>
+            <button class="lifx-mobile-nav-btn" onclick="LifXTouchControls.openQuickSettings()" title="Settings">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </button>
+        `;
     }
 };
 
@@ -580,6 +679,9 @@ document.addEventListener('DOMContentLoaded', function() {
         LifXTouchControls.enable();
         console.log('Touch device detected - LIFX touch controls auto-enabled');
     }
+    
+    // Initialize mobile navigation
+    LifXTouchControls.initMobileNav();
 });
 
 // Export for external use

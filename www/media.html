@@ -521,6 +521,25 @@ Licensed under GPLv3....see LICENSE file. -->
   <script src="/assets/js/nextcloud-media.js"></script>
   <script src="/assets/js/dropbox-media.js"></script>
   <script src="/assets/js/seaweedfs-media.js"></script>
+  
+  <!-- Media center mobile controls -->
+  <div class="media-center-mobile-controls" id="media-center-mobile-controls">
+    <button class="media-center-mobile-btn" onclick="previousTrack()" title="Previous">
+      <i class="fas fa-step-backward"></i>
+    </button>
+    <button class="media-center-mobile-btn play-pause" onclick="togglePlayPause()" title="Play/Pause">
+      <i class="fas fa-play" id="mobile-play-icon"></i>
+    </button>
+    <button class="media-center-mobile-btn" onclick="nextTrack()" title="Next">
+      <i class="fas fa-step-forward"></i>
+    </button>
+    <button class="media-center-mobile-btn" id="ambient-light-btn" onclick="toggleAmbientLight()" title="Ambient Light">
+      <i class="fas fa-lightbulb"></i>
+    </button>
+    <button class="media-center-mobile-btn" id="voice-command-btn" onclick="startVoiceCommand()" title="Voice Command">
+      <i class="fas fa-microphone"></i>
+    </button>
+  </div>
 </body>
 
 </html>

@@ -397,3 +397,201 @@
     70% { box-shadow: 0 0 0 15px rgba(39, 160, 185, 0); }
     100% { box-shadow: 0 0 0 0 rgba(39, 160, 185, 0); }
 }
+
+/* Mobile bottom navigation for LIFX controls */
+.lifx-mobile-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(20, 20, 30, 0.95);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 10px 5px;
+    z-index: 9998;
+    border-top: 1px solid rgba(39, 160, 185, 0.3);
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.lifx-mobile-nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    color: #adb5bd;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: all 0.2s ease;
+    min-width: 60px;
+}
+
+.lifx-mobile-nav-btn:active {
+    transform: scale(0.9);
+}
+
+.lifx-mobile-nav-btn.active {
+    color: #00d4ff;
+    background: rgba(0, 212, 255, 0.1);
+}
+
+.lifx-mobile-nav-btn i {
+    font-size: 20px;
+}
+
+.lifx-mobile-nav-btn span {
+    font-size: 10px;
+    font-weight: 500;
+}
+
+/* Quick action bar */
+.lifx-quick-actions {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(42, 42, 58, 0.5);
+    border-radius: 15px;
+    margin-bottom: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.lifx-quick-action-btn {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 15px;
+    background: rgba(39, 160, 185, 0.2);
+    border: 1px solid rgba(39, 160, 185, 0.3);
+    border-radius: 12px;
+    color: #adb5bd;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 70px;
+}
+
+.lifx-quick-action-btn:active {
+    transform: scale(0.95);
+}
+
+.lifx-quick-action-btn.active {
+    background: rgba(39, 160, 185, 0.4);
+    border-color: #27a0b9;
+    color: #00d4ff;
+}
+
+.lifx-quick-action-btn i {
+    font-size: 18px;
+}
+
+.lifx-quick-action-btn span {
+    font-size: 11px;
+    font-weight: 500;
+}
+
+/* Media center mobile controls */
+.media-center-mobile-controls {
+    display: none;
+    position: fixed;
+    bottom: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 20, 30, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 15px;
+    border-radius: 20px;
+    z-index: 9997;
+    border: 1px solid rgba(39, 160, 185, 0.3);
+    box-shadow: 0 5px 30px rgba(0, 0, 0, 0.4);
+}
+
+.media-center-mobile-controls.show {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.media-center-mobile-btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(39, 160, 185, 0.3);
+    border: none;
+    color: #adb5bd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.media-center-mobile-btn:active {
+    transform: scale(0.9);
+}
+
+.media-center-mobile-btn.active {
+    background: #27a0b9;
+    color: white;
+}
+
+.media-center-mobile-btn.play-pause {
+    width: 60px;
+    height: 60px;
+    background: #27a0b9;
+    color: white;
+}
+
+/* Ambient light sync indicator */
+.ambient-light-indicator {
+    position: relative;
+}
+
+.ambient-light-indicator.syncing::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 10px;
+    height: 10px;
+    background: #00ff88;
+    border-radius: 50%;
+    animation: pulse-sync 1s infinite;
+}
+
+@keyframes pulse-sync {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.2); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* Show mobile nav on small screens */
+@media (max-width: 768px) {
+    .lifx-mobile-nav {
+        display: flex;
+    }
+    
+    .lifx-quick-actions {
+        display: flex;
+    }
+    
+    .media-center-mobile-controls {
+        display: none;
+    }
+    
+    .media-center-mobile-controls.show {
+        display: flex;
+    }
+}
+
+/* Hide mobile nav on large screens */
+@media (min-width: 769px) {
+    .lifx-mobile-nav {
+        display: none;
+    }
+}
