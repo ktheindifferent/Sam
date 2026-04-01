@@ -99,6 +99,10 @@ function initMediaCenter() {
     initVoiceCommands();
     initAmbientLightSync();
     initZonePresets();
+    initMediaTouchGestures();
+    initMiniPlayer();
+    initNowPlayingToast();
+    initEqualizerVisualization();
     console.log('Media Center initialized');
 }
 
@@ -1957,6 +1961,67 @@ function initMiniPlayer() {
     if (miniPlayer) {
         miniPlayer.style.display = 'none';
         MediaPlayer.miniPlayerVisible = false;
+        
+        // Make mini player draggable
+        makeDraggable(miniPlayer);
+        
+        // Auto-hide mini player when playback stops
+        if (typeof MediaPlayer !== 'undefined') {
+            MediaPlayer.autoHideMiniPlayer = true;
+        }
+    }
+}
+
+function makeDraggable(element) {
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    
+    element.onmousedown = dragMouseDown;
+    element.ontouchstart = dragTouchStart;
+    
+    function dragMouseDown(e) {
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.onmouseup = closeDragElement;
+        document.onmousemove = elementDrag;
+    }
+    
+    function elementDrag(e) {
+        e.preventDefault();
+        pos1 = pos3 - e.clientX;
+        pos2 = pos4 - e.clientY;
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        element.style.top = (element.offsetTop - pos2) + 'px';
+        element.style.left = (element.offsetLeft - pos1) + 'px';
+    }
+    
+    function closeDragElement() {
+        document.onmouseup = null;
+        document.onmousemove = null;
+    }
+    
+    function dragTouchStart(e) {
+        const touch = e.touches[0];
+        pos3 = touch.clientX;
+        pos4 = touch.clientY;
+        element.ontouchmove = elementTouchDrag;
+        element.ontouchend = closeTouchDrag;
+    }
+    
+    function elementTouchDrag(e) {
+        const touch = e.touches[0];
+        pos1 = pos3 - touch.clientX;
+        pos2 = pos4 - touch.clientY;
+        pos3 = touch.clientX;
+        pos4 = touch.clientY;
+        element.style.top = (element.offsetTop - pos2) + 'px';
+        element.style.left = (element.offsetLeft - pos1) + 'px';
+    }
+    
+    function closeTouchDrag() {
+        element.ontouchmove = null;
+        element.ontouchend = null;
     }
 }
 
@@ -2059,6 +2124,82 @@ function updateMediaVisualization() {
     });
     
     requestAnimationFrame(updateMediaVisualization);
+}
+
+function initMediaTouchGestures() {
+    const mediaContainer = document.querySelector('.media-center-container') || document.body;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let lastTapTime = 0;
+    
+    mediaContainer.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    
+    mediaContainer.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = touchEndY - touchStartY;
+        const currentTime = Date.now();
+        
+        if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+            const tapLength = currentTime - lastTapTime;
+            if (tapLength < 300 && tapLength > 0) {
+                togglePlayPause();
+                showMediaTouchHint('Play/Pause', '⏯️');
+            }
+            lastTapTime = currentTime;
+        } else if (Math.abs(deltaX) > Math.abs(deltaY) * 2) {
+            if (deltaX > 50) {
+                previousTrack();
+                showMediaTouchHint('Previous', '⏮️');
+            } else if (deltaX < -50) {
+                nextTrack();
+                showMediaTouchHint('Next', '⏭️');
+            }
+        } else if (Math.abs(deltaY) > Math.abs(deltaX) * 2) {
+            if (deltaY > 50) {
+                increaseVolume();
+                showMediaTouchHint('Volume Up', '🔊');
+            } else if (deltaY < -50) {
+                decreaseVolume();
+                showMediaTouchHint('Volume Down', '🔇');
+            }
+        }
+    }, { passive: true });
+}
+
+function initNowPlayingToast() {
+    const toast = document.getElementById('now-playing-toast');
+    if (toast) {
+        toast.style.display = 'none';
+        toast.classList.remove('visible');
+    }
+}
+
+function initEqualizerVisualization() {
+    if (typeof MediaPlayer !== 'undefined') {
+        MediaPlayer.showVisualization = true;
+    }
+}
+
+function showMediaTouchHint(text, icon) {
+    const existingHint = document.querySelector('.media-center-touch-hint');
+    if (existingHint) {
+        existingHint.remove();
+    }
+    
+    const hint = document.createElement('div');
+    hint.className = 'media-center-touch-hint visible';
+    hint.innerHTML = `<span style="font-size: 32px; display: block; margin-bottom: 10px;">${icon}</span>${text}`;
+    document.body.appendChild(hint);
+    
+    setTimeout(() => {
+        hint.classList.remove('visible');
+        setTimeout(() => hint.remove(), 300);
+    }, 1500);
 }
 
 function setPlaybackSpeed(speed) {

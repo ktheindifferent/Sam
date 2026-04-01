@@ -265,7 +265,212 @@ const LifXTouchControls = {
             const bulbEl = document.querySelector(`.lifx-bulb-control[data-bulb-id="${bulbId}"]`);
             if (bulbEl) bulbEl.classList.add('multi-selected');
         }
+        this.updateSelectionToolbar();
         console.log('Multi-bulb selection:', this.multiBulbSelection);
+    },
+    
+    setupMultiSelectMode: function() {
+        this.isMultiSelectMode = false;
+        const multiSelectBtn = document.getElementById('lifx-multi-select-btn');
+        if (multiSelectBtn) {
+            multiSelectBtn.addEventListener('click', () => {
+                this.isMultiSelectMode = !this.isMultiSelectMode;
+                multiSelectBtn.classList.toggle('active', this.isMultiSelectMode);
+                document.querySelectorAll('.lifx-bulb-control').forEach(el => {
+                    el.classList.toggle('multi-selectable', this.isMultiSelectMode);
+                });
+                this.showGestureFeedback(
+                    this.isMultiSelectMode ? 'Multi-Select ON' : 'Multi-Select OFF',
+                    this.isMultiSelectMode ? '✓' : '✗'
+                );
+            });
+        }
+    },
+    
+    updateSelectionToolbar: function() {
+        const toolbar = document.getElementById('lifx-selection-toolbar');
+        const countEl = document.getElementById('lifx-selection-count');
+        if (toolbar && countEl) {
+            countEl.textContent = `${this.multiBulbSelection.length} selected`;
+            toolbar.style.display = this.multiBulbSelection.length > 0 ? 'flex' : 'none';
+        }
+    },
+    
+    powerAllSelected: function(state) {
+        if (this.multiBulbSelection.length === 0) return;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${this.multiBulbSelection.join(',')}`,
+                power: state,
+                duration: 0.5
+            }),
+            success: () => {
+                this.showGestureFeedback(
+                    `Power ${state} ${this.multiBulbSelection.length} bulbs`,
+                    state === 'on' ? '💡' : '🌑'
+                );
+                this.multiBulbSelection = [];
+                this.updateSelectionToolbar();
+            }
+        });
+    },
+    
+    setupTouchHoldProgress: function() {
+        this.touchHoldProgressEl = document.getElementById('touch-hold-progress');
+        this.touchHoldStartTime = 0;
+        this.touchHoldAnimation = null;
+        
+        document.addEventListener('touchstart', (e) => {
+            const bulbEl = e.target.closest('.lifx-bulb-control');
+            if (bulbEl && this.touchHoldProgressEl) {
+                this.touchHoldStartTime = Date.now();
+                this.touchHoldProgressEl.classList.add('visible');
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchend', () => {
+            if (this.touchHoldProgressEl) {
+                this.touchHoldProgressEl.classList.remove('visible');
+            }
+        });
+    },
+    
+    setupQuickActions: function() {
+        const quickActions = document.querySelectorAll('.lifx-quick-action-btn');
+        quickActions.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const action = btn.dataset.action;
+                if (action) {
+                    this.executeQuickAction(action);
+                    btn.classList.toggle('active');
+                }
+            });
+        });
+    },
+    
+    executeQuickAction: function(action) {
+        const selector = this.multiBulbSelection.length > 0 
+            ? `id:${this.multiBulbSelection.join(',')}` 
+            : 'all';
+        
+        const actions = {
+            'party': () => this.applyScene('party', selector),
+            'relax': () => this.applyScene('relax', selector),
+            'focus': () => this.applyScene('focus', selector),
+            'night': () => this.applyScene('night', selector),
+            'rainbow': () => this.startRainbowCycle(selector),
+            'pulse': () => this.startPulseEffect(selector),
+            'breath': () => this.startBreathEffect(selector)
+        };
+        
+        if (actions[action]) {
+            actions[action]();
+        }
+    },
+    
+    applyScene: function(sceneName, selector = 'all') {
+        $.ajax({
+            url: '/api/services/lifx/apply_scene',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ scene: sceneName, selector, duration: 0.5 }),
+            success: () => {
+                this.showGestureFeedback(`Scene: ${sceneName}`, '🎨');
+            }
+        });
+    },
+    
+    startRainbowCycle: function(selector = 'all') {
+        this.colorCycleActive = true;
+        this.colorHue = 0;
+        
+        const cycleRainbow = () => {
+            if (!this.colorCycleActive) return;
+            
+            this.colorHue = (this.colorHue + 5) % 360;
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector,
+                    color: `hue:${this.colorHue * 182} saturation:100%`,
+                    duration: 0.3
+                })
+            });
+            
+            setTimeout(cycleRainbow, 50);
+        };
+        
+        cycleRainbow();
+        this.showGestureFeedback('Rainbow Cycle Started', '🌈');
+    },
+    
+    stopRainbowCycle: function() {
+        this.colorCycleActive = false;
+        this.showGestureFeedback('Rainbow Cycle Stopped', '⏹');
+    },
+    
+    startPulseEffect: function(selector = 'all') {
+        let brightness = 100;
+        let increasing = false;
+        
+        const pulse = () => {
+            if (!this.colorCycleActive) return;
+            
+            brightness = increasing ? brightness + 10 : brightness - 10;
+            if (brightness <= 20 || brightness >= 100) increasing = !increasing;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector,
+                    brightness: brightness / 100,
+                    duration: 0.1
+                })
+            });
+            
+            setTimeout(pulse, 50);
+        };
+        
+        this.colorCycleActive = true;
+        pulse();
+        this.showGestureFeedback('Pulse Effect Started', '💓');
+    },
+    
+    startBreathEffect: function(selector = 'all') {
+        let brightness = 50;
+        let increasing = true;
+        
+        const breath = () => {
+            if (!this.colorCycleActive) return;
+            
+            brightness = increasing ? brightness + 2 : brightness - 2;
+            if (brightness <= 10 || brightness >= 90) increasing = !increasing;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector,
+                    brightness: brightness / 100,
+                    duration: 0.2
+                })
+            });
+            
+            setTimeout(breath, 30);
+        };
+        
+        this.colorCycleActive = true;
+        breath();
+        this.showGestureFeedback('Breath Effect Started', '🌬');
     },
     
     addTouchModeIndicator: function() {
@@ -1170,6 +1375,9 @@ const LifXTouchControls = {
         this.touchSwipeVelocityThreshold = 0.3;
         this.lastTouchPositions = new Map();
         this.touchVelocity = new Map();
+        this.setupMultiSelectMode();
+        this.setupTouchHoldProgress();
+        this.setupQuickActions();
         console.log('Gesture enhancements initialized');
     },
     
