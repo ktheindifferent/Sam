@@ -67,6 +67,18 @@ const LifXTouchControls = {
     accessibilityMode: false,
     highContrastHints: false,
     reducedMotionMode: false,
+    mediaSyncMode: 'beat',
+    beatDetectionSensitivity: 0.7,
+    bpmValue: 0,
+    lastBeatTime: 0,
+    beatDebounce: 100,
+    audioAnalyzer: null,
+    audioContext: null,
+    mediaSyncTargets: [],
+    touchSensitivity: 'medium',
+    swipeEdgeZone: 20,
+    isEdgeSwipe: false,
+    edgeSwipeDirection: null,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -1762,10 +1774,69 @@ const LifXTouchControls = {
                         </button>
                     </div>
                 </div>
+                
+                <div class="touch-sensitivity-panel">
+                    <h4><i class="fas fa-music"></i> Media Sync & Beat Detection</h4>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; color: #adb5bd;">Beat Detection Sensitivity: ${Math.round(this.beatDetectionSensitivity * 100)}%</label>
+                        <input type="range" min="30" max="100" value="${Math.round(this.beatDetectionSensitivity * 100)}" 
+                               oninput="LifXTouchControls.setBeatDetectionSensitivity(this.value / 100)"
+                               style="width: 100%;">
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                        <button class="btn btn-sm ${this.mediaSyncMode === 'beat' ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.setMediaSyncMode('beat')">
+                            <i class="fas fa-heartbeat"></i> Beat Sync
+                        </button>
+                        <button class="btn btn-sm ${this.mediaSyncMode === 'color' ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.setMediaSyncMode('color')">
+                            <i class="fas fa-palette"></i> Color Sync
+                        </button>
+                        <button class="btn btn-sm ${this.mediaSyncMode === 'ambient' ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.setMediaSyncMode('ambient')">
+                            <i class="fas fa-film"></i> Ambient
+                        </button>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-sm ${this.ambientLightSync ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.toggleAmbientLightSync()">
+                            <i class="fas fa-${this.ambientLightSync ? 'check' : 'times'}"></i> Ambient Light Sync
+                        </button>
+                        <button class="btn btn-sm ${this.lifxMediaSyncEnabled ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.toggleMediaSync()">
+                            <i class="fas fa-${this.lifxMediaSyncEnabled ? 'check' : 'times'}"></i> Media Sync
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="touch-sensitivity-panel">
+                    <h4><i class="fas fa-hand-pointer"></i> Edge Swipe Gestures</h4>
+                    <div style="color: #adb5bd; font-size: 12px; margin-bottom: 10px;">
+                        Swipe from screen edges for quick actions (requires edge swipe enabled)
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                        <div style="padding: 10px; background: rgba(0, 212, 255, 0.1); border-radius: 8px; border: 1px solid rgba(0, 212, 255, 0.3);">
+                            <div style="color: #00d4ff; font-weight: bold; font-size: 13px;"><i class="fas fa-arrow-left"></i> Left Edge Swipe</div>
+                            <div style="color: #adb5bd; font-size: 11px; margin-top: 4px;">Quick scenes panel</div>
+                        </div>
+                        <div style="padding: 10px; background: rgba(0, 255, 136, 0.1); border-radius: 8px; border: 1px solid rgba(0, 255, 136, 0.3);">
+                            <div style="color: #00ff88; font-weight: bold; font-size: 13px;"><i class="fas fa-arrow-right"></i> Right Edge Swipe</div>
+                            <div style="color: #adb5bd; font-size: 11px; margin-top: 4px;">Media controls</div>
+                        </div>
+                        <div style="padding: 10px; background: rgba(255, 107, 107, 0.1); border-radius: 8px; border: 1px solid rgba(255, 107, 107, 0.3);">
+                            <div style="color: #ff6b6b; font-weight: bold; font-size: 13px;"><i class="fas fa-arrow-up"></i> Top Edge Swipe</div>
+                            <div style="color: #adb5bd; font-size: 11px; margin-top: 4px;">Brightness boost</div>
+                        </div>
+                        <div style="padding: 10px; background: rgba(255, 193, 7, 0.1); border-radius: 8px; border: 1px solid rgba(255, 193, 7, 0.3);">
+                            <div style="color: #ffc107; font-weight: bold; font-size: 13px;"><i class="fas fa-arrow-down"></i> Bottom Edge Swipe</div>
+                            <div style="color: #adb5bd; font-size: 11px; margin-top: 4px;">Dim lights</div>
+                        </div>
+                    </div>
+                </div>
             `,
             showConfirmButton: false,
             showCloseButton: true,
-            width: '600px'
+            width: '700px'
         });
     },
     
@@ -1911,7 +1982,8 @@ const LifXTouchControls = {
         this.setupQuickActions();
         this.setupZoneControl();
         this.loadRipplePreferences();
-        console.log('Gesture enhancements initialized');
+        this.initEdgeSwipeDetection();
+        console.log('Gesture enhancements initialized with edge swipe detection');
     },
     
     showEnhancedGestureFeedback: function(text, icon, duration = null) {
@@ -2067,6 +2139,108 @@ const LifXTouchControls = {
                 }
             };
         }
+        this.initBeatDetection();
+    },
+    
+    initBeatDetection: function() {
+        const audioElem = document.querySelector('audio, video');
+        if (!audioElem) return;
+        
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.audioAnalyzer = this.audioContext.createAnalyser();
+            const source = this.audioContext.createMediaElementSource(audioElem);
+            source.connect(this.audioAnalyzer);
+            this.audioAnalyzer.connect(this.audioContext.destination);
+            this.audioAnalyzer.fftSize = 256;
+            this.audioAnalyzer.smoothingTimeConstant = 0.8;
+            
+            this.monitorBeat();
+        } catch (e) {
+            console.warn('Beat detection not available:', e);
+        }
+    },
+    
+    monitorBeat: function() {
+        if (!this.audioAnalyzer) return;
+        
+        const bufferLength = this.audioAnalyzer.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        let lastBeatTime = 0;
+        
+        const detectBeat = () => {
+            if (!this.mediaPlaybackActive) {
+                requestAnimationFrame(detectBeat);
+                return;
+            }
+            
+            this.audioAnalyzer.getByteFrequencyData(dataArray);
+            
+            const bass = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+            const mids = dataArray.slice(10, 50).reduce((a, b) => a + b, 0) / 40;
+            const threshold = this.beatDetectionSensitivity * 255;
+            
+            const now = Date.now();
+            if (bass > threshold && now - lastBeatTime > this.beatDebounce) {
+                lastBeatTime = now;
+                this.bpmValue = Math.round(60000 / (now - this.lastBeatTime)) || 0;
+                this.lastBeatTime = now;
+                
+                if (this.mediaSyncMode === 'beat') {
+                    this.triggerBeatEffect();
+                }
+                
+                this.updateBpmDisplay();
+            }
+            
+            requestAnimationFrame(detectBeat);
+        };
+        
+        detectBeat();
+    },
+    
+    triggerBeatEffect: function() {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                brightness: 100,
+                duration: 0.05
+            })
+        });
+        
+        this.showBeatVisualization();
+    },
+    
+    showBeatVisualization: function() {
+        let existing = document.querySelector('.bpm-realtime-indicator');
+        if (!existing) {
+            const indicator = document.createElement('div');
+            indicator.className = 'bpm-realtime-indicator visible';
+            indicator.innerHTML = `
+                <i class="fas fa-heartbeat bpm-icon"></i>
+                <span class="bpm-value" id="bpm-value-display">${this.bpmValue || '--'}</span>
+                <span class="bpm-label">BPM</span>
+            `;
+            document.body.appendChild(indicator);
+            setTimeout(() => indicator.classList.remove('visible'), 2000);
+        } else {
+            const valueEl = existing.querySelector('#bpm-value-display');
+            if (valueEl) valueEl.textContent = this.bpmValue || '--';
+        }
+    },
+    
+    updateBpmDisplay: function() {
+        const bpmDisplay = document.querySelector('.bpm-display .bpm-value');
+        if (bpmDisplay) {
+            bpmDisplay.textContent = this.bpmValue || '--';
+        }
     },
     
     applyMediaLighting: function(mediaData) {
@@ -2097,6 +2271,18 @@ const LifXTouchControls = {
                 })
             });
         }
+    },
+    
+    setMediaSyncMode: function(mode) {
+        this.mediaSyncMode = mode;
+        localStorage.setItem('lifx_media_sync_mode', mode);
+        this.showEnhancedGestureFeedback(`Sync Mode: ${mode}`, '🎵');
+    },
+    
+    setBeatDetectionSensitivity: function(level) {
+        this.beatDetectionSensitivity = Math.max(0.3, Math.min(1.0, level));
+        localStorage.setItem('lifx_beat_sensitivity', this.beatDetectionSensitivity);
+        this.showEnhancedGestureFeedback(`Sensitivity: ${Math.round(this.beatDetectionSensitivity * 100)}%`, '📊');
     },
     
     loadSavedPreferences: function() {
@@ -2152,6 +2338,183 @@ const LifXTouchControls = {
         } else {
             this.stopAmbientSync();
             this.showGestureFeedback('Ambient Sync OFF', '⬜');
+        }
+    },
+    
+    toggleMediaSync: function() {
+        this.lifxMediaSyncEnabled = !this.lifxMediaSyncEnabled;
+        localStorage.setItem('lifx_media_sync_enabled', this.lifxMediaSyncEnabled);
+        
+        if (this.lifxMediaSyncEnabled) {
+            this.showGestureFeedback('Media Sync ON', '🎵');
+        } else {
+            this.showGestureFeedback('Media Sync OFF', '🔇');
+        }
+    },
+    
+    initEdgeSwipeDetection: function() {
+        const edgeZone = this.swipeEdgeZone;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let edgeSwipeDetected = false;
+        let edgeDirection = null;
+        
+        document.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            
+            if (touch.clientX <= edgeZone) {
+                edgeSwipeDetected = true;
+                edgeDirection = 'left';
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+                this.isEdgeSwipe = true;
+            } else if (touch.clientX >= screenWidth - edgeZone) {
+                edgeSwipeDetected = true;
+                edgeDirection = 'right';
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+                this.isEdgeSwipe = true;
+            } else if (touch.clientY <= edgeZone) {
+                edgeSwipeDetected = true;
+                edgeDirection = 'top';
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+                this.isEdgeSwipe = true;
+            } else if (touch.clientY >= screenHeight - edgeZone) {
+                edgeSwipeDetected = true;
+                edgeDirection = 'bottom';
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+                this.isEdgeSwipe = true;
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (!this.isEdgeSwipe || !edgeSwipeDetected) return;
+            
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - touchStartX;
+            const deltaY = touch.clientY - touchStartY;
+            
+            this.edgeSwipeDirection = edgeDirection;
+            
+            if (edgeDirection === 'left' && deltaX > 100) {
+                this.handleEdgeSwipe('left');
+                this.isEdgeSwipe = false;
+                edgeSwipeDetected = false;
+            } else if (edgeDirection === 'right' && deltaX < -100) {
+                this.handleEdgeSwipe('right');
+                this.isEdgeSwipe = false;
+                edgeSwipeDetected = false;
+            } else if (edgeDirection === 'top' && deltaY > 100) {
+                this.handleEdgeSwipe('top');
+                this.isEdgeSwipe = false;
+                edgeSwipeDetected = false;
+            } else if (edgeDirection === 'bottom' && deltaY < -100) {
+                this.handleEdgeSwipe('bottom');
+                this.isEdgeSwipe = false;
+                edgeSwipeDetected = false;
+            }
+        }, { passive: false });
+        
+        document.addEventListener('touchend', () => {
+            this.isEdgeSwipe = false;
+            edgeSwipeDetected = false;
+            this.edgeSwipeDirection = null;
+        });
+    },
+    
+    handleEdgeSwipe: function(direction) {
+        switch(direction) {
+            case 'left':
+                this.showQuickScenesPanel();
+                this.showGestureFeedback('Quick Scenes', '🎨');
+                break;
+            case 'right':
+                this.showMediaControls();
+                this.showGestureFeedback('Media Controls', '🎵');
+                break;
+            case 'top':
+                this.adjustBrightness(30);
+                this.showGestureFeedback('Brightness Boost', '☀️');
+                break;
+            case 'bottom':
+                this.adjustBrightness(-30);
+                this.showGestureFeedback('Dim Lights', '🌙');
+                break;
+        }
+        this.hapticFeedback('success');
+    },
+    
+    showQuickScenesPanel: function() {
+        const scenesPanel = document.createElement('div');
+        scenesPanel.className = 'quick-scenes-panel';
+        scenesPanel.innerHTML = `
+            <div class="quick-scenes-content">
+                <button class="quick-scenes-close" onclick="LifXTouchControls.closeQuickScenesPanel()">
+                    <i class="fas fa-times"></i>
+                </button>
+                <h4><i class="fas fa-palette"></i> Quick Scenes</h4>
+                <div class="quick-scenes-grid">
+                    ${['relax', 'focus', 'energize', 'night', 'party', 'movie', 'romance', 'reading'].map(scene => `
+                        <button class="quick-scene-btn ${scene}" onclick="LifXTouchControls.applyScene('${scene}'); LifXTouchControls.closeQuickScenesPanel()">
+                            <i class="fas fa-lightbulb"></i>
+                            <span>${scene.charAt(0).toUpperCase() + scene.slice(1)}</span>
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(scenesPanel);
+        setTimeout(() => scenesPanel.classList.add('visible'), 10);
+    },
+    
+    closeQuickScenesPanel: function() {
+        const panel = document.querySelector('.quick-scenes-panel');
+        if (panel) {
+            panel.classList.remove('visible');
+            setTimeout(() => panel.remove(), 300);
+        }
+    },
+    
+    showMediaControls: function() {
+        const mediaPanel = document.createElement('div');
+        mediaPanel.className = 'media-controls-panel';
+        mediaPanel.innerHTML = `
+            <div class="media-controls-content">
+                <button class="media-controls-close" onclick="LifXTouchControls.closeMediaControls()">
+                    <i class="fas fa-times"></i>
+                </button>
+                <h4><i class="fas fa-music"></i> Media Sync Controls</h4>
+                <div class="media-sync-options">
+                    <button class="media-sync-btn ${this.mediaSyncMode === 'beat' ? 'active' : ''}" onclick="LifXTouchControls.setMediaSyncMode('beat')">
+                        <i class="fas fa-heartbeat"></i> Beat Sync
+                    </button>
+                    <button class="media-sync-btn ${this.mediaSyncMode === 'color' ? 'active' : ''}" onclick="LifXTouchControls.setMediaSyncMode('color')">
+                        <i class="fas fa-palette"></i> Color Sync
+                    </button>
+                    <button class="media-sync-btn ${this.mediaSyncMode === 'ambient' ? 'active' : ''}" onclick="LifXTouchControls.setMediaSyncMode('ambient')">
+                        <i class="fas fa-film"></i> Ambient
+                    </button>
+                </div>
+                <div class="bpm-display">
+                    <i class="fas fa-heartbeat bpm-icon"></i>
+                    <span class="bpm-value">${this.bpmValue || '--'}</span>
+                    <span class="bpm-label">BPM</span>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(mediaPanel);
+        setTimeout(() => mediaPanel.classList.add('visible'), 10);
+    },
+    
+    closeMediaControls: function() {
+        const panel = document.querySelector('.media-controls-panel');
+        if (panel) {
+            panel.classList.remove('visible');
+            setTimeout(() => panel.remove(), 300);
         }
     },
     
