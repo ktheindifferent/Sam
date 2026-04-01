@@ -67,7 +67,13 @@
             { id: 'aurora', name: 'Aurora', icon: '🌌', hue: 32760, saturation: 45875, brightness: 49151, kelvin: 6000 },
             { id: 'nebula', name: 'Nebula', icon: '🌠', hue: 50960, saturation: 52428, brightness: 45875, kelvin: 4500 },
             { id: 'thunder', name: 'Thunder', icon: '⛈️', hue: 5460, saturation: 39321, brightness: 58982, kelvin: 5000 },
-            { id: 'crystal', name: 'Crystal', icon: '💎', hue: 34580, saturation: 26214, brightness: 52428, kelvin: 7500 }
+            { id: 'crystal', name: 'Crystal', icon: '💎', hue: 34580, saturation: 26214, brightness: 52428, kelvin: 7500 },
+            { id: 'cyberpunk', name: 'Cyberpunk', icon: '🤖', hue: 30940, saturation: 52428, brightness: 58982, kelvin: 4500 },
+            { id: 'vaporwave', name: 'Vaporwave', icon: '🌴', hue: 58240, saturation: 39321, brightness: 52428, kelvin: 4000 },
+            { id: 'halloween', name: 'Halloween', icon: '🎃', hue: 5460, saturation: 52428, brightness: 49151, kelvin: 2800 },
+            { id: 'christmas', name: 'Christmas', icon: '🎄', hue: 5800, saturation: 45875, brightness: 55705, kelvin: 3500 },
+            { id: 'beach', name: 'Beach', icon: '🏖️', hue: 18200, saturation: 32767, brightness: 52428, kelvin: 5000 },
+            { id: 'forest', name: 'Forest', icon: '🌲', hue: 25480, saturation: 39321, brightness: 42598, kelvin: 4200 }
         ],
 
         effectPresets: [

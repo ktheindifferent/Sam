@@ -41,7 +41,12 @@ const TouchMediaEnhancements = (function() {
         pinchThreshold: 0.5,
         doubleTapDelay: 300,
         longPressDelay: 500,
-        hapticFeedback: true
+        hapticFeedback: true,
+        enableDoubleTap: true,
+        enableLongPress: true,
+        enableVoiceControl: false,
+        animationsEnabled: true,
+        lowPowerMode: false
     };
 
     // Initialize all enhancements
@@ -59,6 +64,10 @@ const TouchMediaEnhancements = (function() {
         setupEdgeSwipe();
         setupKeyboardShortcuts();
         setupHapticFeedback();
+        setupDoubleTap();
+        setupLongPress();
+        setupMiniPlayer();
+        setupNowPlayingToast();
         console.log('[TouchMediaEnhancements] Initialized');
     }
 
@@ -522,6 +531,339 @@ const TouchMediaEnhancements = (function() {
                 navigator.vibrate(5);
             }
         });
+    }
+
+    // Double-tap gesture detection
+    function setupDoubleTap() {
+        if (!CONFIG.enableDoubleTap) return;
+        
+        let lastTapTime = 0;
+        let lastTapTarget = null;
+        
+        document.addEventListener('touchend', function(e) {
+            const now = Date.now();
+            const target = e.target.closest('.lifx-bulb-control, .media-item, .scene-item');
+            
+            if (target && now - lastTapTime < CONFIG.doubleTapDelay && target === lastTapTarget) {
+                e.preventDefault();
+                handleDoubleTap(target);
+                lastTapTime = 0;
+                lastTapTarget = null;
+            } else {
+                lastTapTime = now;
+                lastTapTarget = target;
+            }
+        });
+    }
+
+    function handleDoubleTap(target) {
+        if (target.classList.contains('lifx-bulb-control')) {
+            const bulbId = target.dataset.bulbId;
+            if (bulbId) {
+                if (typeof LifXTouchControls !== 'undefined') {
+                    LifXTouchControls.selectBulb(bulbId);
+                    LifXTouchControls.togglePower();
+                }
+                showGestureHint('Power Toggle', 'fa-power-off');
+            }
+        } else if (target.classList.contains('media-item')) {
+            const mediaUrl = target.dataset.url;
+            if (mediaUrl) {
+                openMediaPlayer(mediaUrl, target.dataset.title);
+            }
+        } else if (target.classList.contains('scene-item')) {
+            const sceneName = target.dataset.scene;
+            if (sceneName) {
+                applyQuickScene(sceneName);
+            }
+        }
+        
+        if (CONFIG.hapticFeedback) {
+            navigator.vibrate([10, 30, 10]);
+        }
+    }
+
+    // Long-press gesture detection
+    function setupLongPress() {
+        if (!CONFIG.enableLongPress) return;
+        
+        let pressTimer;
+        let pressTarget = null;
+        let pressStartX = 0;
+        let pressStartY = 0;
+        const moveThreshold = 10;
+        
+        document.addEventListener('touchstart', function(e) {
+            const target = e.target.closest('.lifx-bulb-control, .media-item, .scene-item');
+            if (!target) return;
+            
+            pressTarget = target;
+            pressStartX = e.touches[0].clientX;
+            pressStartY = e.touches[0].clientY;
+            
+            const progressBar = document.getElementById('touch-hold-progress');
+            if (progressBar) {
+                progressBar.innerHTML = '<div class="touch-hold-progress-bar"></div>';
+                progressBar.classList.add('visible');
+            }
+            
+            pressTimer = setTimeout(function() {
+                if (pressTarget) {
+                    handleLongPress(pressTarget);
+                    const bar = progressBar?.querySelector('.touch-hold-progress-bar');
+                    if (bar) bar.style.width = '100%';
+                    setTimeout(() => {
+                        progressBar?.classList.remove('visible');
+                        pressTarget = null;
+                    }, 200);
+                }
+            }, CONFIG.longPressDelay);
+        });
+        
+        document.addEventListener('touchmove', function(e) {
+            if (!pressTarget) return;
+            
+            const deltaX = Math.abs(e.touches[0].clientX - pressStartX);
+            const deltaY = Math.abs(e.touches[0].clientY - pressStartY);
+            
+            if (deltaX > moveThreshold || deltaY > moveThreshold) {
+                clearTimeout(pressTimer);
+                pressTarget = null;
+                document.getElementById('touch-hold-progress')?.classList.remove('visible');
+            }
+        });
+        
+        document.addEventListener('touchend', function(e) {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+            if (pressTarget) {
+                document.getElementById('touch-hold-progress')?.classList.remove('visible');
+                pressTarget = null;
+            }
+        });
+    }
+
+    function handleLongPress(target) {
+        if (target.classList.contains('lifx-bulb-control')) {
+            const bulbId = target.dataset.bulbId;
+            if (bulbId) {
+                if (typeof LifXTouchControls !== 'undefined') {
+                    LifXTouchControls.addToMultiSelect(bulbId);
+                }
+                showGestureHint('Multi-Select', 'fa-users');
+            }
+        } else if (target.classList.contains('media-item')) {
+            showMediaContextMenu(target);
+        } else if (target.classList.contains('scene-item')) {
+            showSceneContextMenu(target);
+        }
+        
+        if (CONFIG.hapticFeedback) {
+            navigator.vibrate([50, 50, 50]);
+        }
+    }
+
+    function showGestureHint(text, iconClass) {
+        let hint = document.querySelector('.gesture-hint-overlay');
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'gesture-hint-overlay';
+            document.body.appendChild(hint);
+        }
+        
+        hint.innerHTML = `
+            <i class="fas ${iconClass}"></i>
+            <div class="hint-text">${text}</div>
+        `;
+        
+        hint.classList.add('visible');
+        setTimeout(() => hint.classList.remove('visible'), 1500);
+    }
+
+    function showMediaContextMenu(target) {
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.innerHTML = `
+            <button onclick="playMedia('${target.dataset.url}')"><i class="fas fa-play"></i> Play</button>
+            <button onclick="addToPlaylist('${target.dataset.url}')"><i class="fas fa-plus"></i> Add to Playlist</button>
+            <button onclick="showMediaInfo('${target.dataset.url}')"><i class="fas fa-info"></i> Info</button>
+        `;
+        menu.style.cssText = `
+            position: fixed;
+            z-index: 10000;
+            background: rgba(30, 30, 45, 0.98);
+            border: 1px solid rgba(39, 160, 185, 0.3);
+            border-radius: 12px;
+            padding: 10px;
+            min-width: 200px;
+        `;
+        
+        const rect = target.getBoundingClientRect();
+        menu.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
+        menu.style.top = Math.min(rect.bottom + 10, window.innerHeight - 150) + 'px';
+        
+        document.body.appendChild(menu);
+        setTimeout(() => menu.remove(), 5000);
+    }
+
+    function showSceneContextMenu(target) {
+        const sceneName = target.dataset.scene;
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.innerHTML = `
+            <button onclick="setAsFavorite('${sceneName}')"><i class="fas fa-star"></i> Favorite</button>
+            <button onclick="editScene('${sceneName}')"><i class="fas fa-edit"></i> Edit</button>
+            <button onclick="scheduleScene('${sceneName}')"><i class="fas fa-clock"></i> Schedule</button>
+        `;
+        menu.style.cssText = `
+            position: fixed;
+            z-index: 10000;
+            background: rgba(30, 30, 45, 0.98);
+            border: 1px solid rgba(39, 160, 185, 0.3);
+            border-radius: 12px;
+            padding: 10px;
+            min-width: 200px;
+        `;
+        
+        const rect = target.getBoundingClientRect();
+        menu.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
+        menu.style.top = Math.min(rect.bottom + 10, window.innerHeight - 150) + 'px';
+        
+        document.body.appendChild(menu);
+        setTimeout(() => menu.remove(), 5000);
+    }
+
+    // Mini Player for floating playback
+    let miniPlayerVisible = false;
+    
+    function setupMiniPlayer() {
+        const miniPlayer = document.getElementById('mini-player');
+        if (!miniPlayer) return;
+        
+        makeDraggable(miniPlayer);
+    }
+
+    function makeDraggable(element) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        
+        element.onmousedown = dragMouseDown;
+        element.ontouchstart = dragTouchStart;
+        
+        function dragMouseDown(e) {
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            document.onmousemove = elementDrag;
+        }
+        
+        function elementDrag(e) {
+            e.preventDefault();
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            element.style.top = (element.offsetTop - pos2) + 'px';
+            element.style.left = (element.offsetLeft - pos1) + 'px';
+            element.style.transform = 'none';
+        }
+        
+        function closeDragElement() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+        }
+        
+        function dragTouchStart(e) {
+            const touch = e.touches[0];
+            pos3 = touch.clientX;
+            pos4 = touch.clientY;
+            document.ontouchend = closeDragElement;
+            document.ontouchmove = dragTouchMove;
+        }
+        
+        function dragTouchMove(e) {
+            const touch = e.touches[0];
+            pos1 = pos3 - touch.clientX;
+            pos2 = pos4 - touch.clientY;
+            pos3 = touch.clientX;
+            pos4 = touch.clientY;
+            element.style.top = (element.offsetTop - pos2) + 'px';
+            element.style.left = (element.offsetLeft - pos1) + 'px';
+            element.style.transform = 'none';
+        }
+    }
+
+    function toggleMiniPlayer() {
+        const miniPlayer = document.getElementById('mini-player');
+        if (miniPlayer) {
+            miniPlayerVisible = !miniPlayerVisible;
+            miniPlayer.classList.toggle('visible', miniPlayerVisible);
+            miniPlayer.style.display = miniPlayerVisible ? 'block' : 'none';
+        }
+    }
+
+    function updateMiniPlayer(info) {
+        const miniPlayer = document.getElementById('mini-player');
+        if (!miniPlayer) return;
+        
+        const title = miniPlayer.querySelector('.mini-player-title');
+        const artist = miniPlayer.querySelector('.mini-player-artist');
+        const playIcon = miniPlayer.querySelector('#mini-play-icon');
+        
+        if (title) title.textContent = info.trackName || 'No Track';
+        if (artist) artist.textContent = info.artistName || 'Unknown Artist';
+        if (playIcon) playIcon.className = info.isPlaying ? 'fas fa-pause' : 'fas fa-play';
+        
+        if (!miniPlayerVisible && info.isPlaying) {
+            toggleMiniPlayer();
+        }
+    }
+
+    // Now Playing Toast notification
+    let nowPlayingTimeout;
+    
+    function setupNowPlayingToast() {
+        const toast = document.getElementById('now-playing-toast');
+        if (!toast) return;
+        
+        const closeBtn = toast.querySelector('.now-playing-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', hideNowPlayingToast);
+        }
+    }
+
+    function showNowPlayingToast(info) {
+        const toast = document.getElementById('now-playing-toast');
+        if (!toast) return;
+        
+        const art = toast.querySelector('.now-playing-art');
+        const title = toast.querySelector('.now-playing-title');
+        const artist = toast.querySelector('.now-playing-artist');
+        
+        if (art) {
+            art.style.backgroundImage = info.artwork ? `url(${info.artwork})` : '';
+            art.style.background = info.artwork ? '' : 'linear-gradient(135deg, #27a0b9, #1f8999)';
+        }
+        if (title) title.textContent = info.trackName || 'No Track';
+        if (artist) artist.textContent = info.artistName || 'Unknown Artist';
+        
+        toast.classList.add('visible');
+        
+        clearTimeout(nowPlayingTimeout);
+        nowPlayingTimeout = setTimeout(hideNowPlayingToast, 5000);
+    }
+
+    function hideNowPlayingToast() {
+        const toast = document.getElementById('now-playing-toast');
+        if (toast) {
+            toast.classList.remove('visible');
+        }
+    }
+
+    function hideNowPlaying() {
+        hideNowPlayingToast();
     }
 
     // Swipe gesture detection
@@ -1285,6 +1627,11 @@ const TouchMediaEnhancements = (function() {
         mediaPrevious,
         mediaNext,
         updateMediaPlayback,
+        updateMiniPlayer,
+        showNowPlayingToast,
+        hideNowPlaying,
+        toggleMiniPlayer,
+        makeDraggable,
         CONFIG
     };
 })();
