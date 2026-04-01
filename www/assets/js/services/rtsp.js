@@ -58,19 +58,20 @@ class RtspThing {
   
     init() {
         rtsp_things.add(this);
-        this.fetchThingData();
-    },
-    
-    fetchThingData() {
-        $.get(`/api/things/${this.oid}`, (data) => {
-            if (data && data.oid) {
-                this.thing = data;
-                this.status = 'connected';
+        var modelref = this;
+        return new Promise((resolve) => {
+            $.get(`/api/things/${this.oid}`, (data) => {
+                if (data && data.oid) {
+                    this.thing = data;
+                    this.status = 'connected';
+                    this.update_html();
+                }
+                resolve(modelref);
+            }).fail(() => {
+                this.status = 'disconnected';
                 this.update_html();
-            }
-        }).fail(() => {
-            this.status = 'disconnected';
-            this.update_html();
+                resolve(modelref);
+            });
         });
     }
 

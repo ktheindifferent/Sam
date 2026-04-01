@@ -1364,18 +1364,69 @@
                 treble: '#00d4ff'
             };
             
+            let peakDetected = false;
+            let maxEnergy = 0;
+            
             bands.forEach((band, index) => {
                 const bar = document.getElementById(`band-${band.toLowerCase()}`);
                 if (bar) {
                     const height = Math.max(5, (bandAverages[band] / 255) * 100);
+                    const energy = bandAverages[band] / 255;
+                    
+                    if (energy > maxEnergy) {
+                        maxEnergy = energy;
+                    }
+                    
                     bar.style.height = `${height}%`;
+                    bar.style.background = bandColors[band];
                     
                     if (bandAverages[band] > 220) {
                         bar.classList.add('peak');
+                        peakDetected = true;
                         setTimeout(() => bar.classList.remove('peak'), 100);
                     }
+                    
+                    const glowIntensity = Math.min(1, energy * 1.5);
+                    bar.style.boxShadow = `0 0 ${10 + glowIntensity * 20}px ${bandColors[band]}`;
                 }
             });
+            
+            if (peakDetected && maxEnergy > 0.85) {
+                this.triggerBeatFlash(maxEnergy);
+            }
+        },
+        
+        triggerBeatFlash(energy) {
+            const flash = document.createElement('div');
+            flash.className = 'beat-flash';
+            flash.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: radial-gradient(circle, rgba(255, 107, 107, ${energy * 0.3}) 0%, transparent 70%);
+                pointer-events: none;
+                z-index: 9999;
+                animation: beat-flash-anim 0.3s ease-out forwards;
+            `;
+            
+            if (!document.getElementById('beat-flash-style')) {
+                const style = document.createElement('style');
+                style.id = 'beat-flash-style';
+                style.textContent = `
+                    @keyframes beat-flash-anim {
+                        0% { opacity: 1; transform: scale(1); }
+                        100% { opacity: 0; transform: scale(1.5); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            document.body.appendChild(flash);
+            setTimeout(() => {
+                if (flash.parentNode) flash.parentNode.removeChild(flash);
+            }, 300);
         },
 
         updateRealtimeBPM() {

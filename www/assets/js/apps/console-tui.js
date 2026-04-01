@@ -138,9 +138,6 @@ $( document ).ready(function() {
       }
       else if(k.keyCode == 38){
         //arrow up
-        // todo - history log
-        // term_history
-        // term_history_selected_line =
         if(term_history_selected_line == undefined){
           term_history_selected_line = term_history.length;
         }

@@ -446,6 +446,21 @@ class SnapControl {
             client.config.volume.muted = mute;
         this.sendRequest('Client.SetVolume', { id: client_id, volume: { muted: client.config.volume.muted, percent: client.config.volume.percent } });
     }
+    batchSetVolume(volumes) {
+        let requests = [];
+        for (let vol of volumes) {
+            let percent = Math.max(0, Math.min(100, vol.percent));
+            requests.push({
+                id: ++this.msg_id,
+                jsonrpc: '2.0',
+                method: 'Client.SetVolume',
+                params: { id: vol.client_id, volume: { muted: vol.muted || false, percent: percent } }
+            });
+        }
+        let msgJson = JSON.stringify(requests);
+        this.connection.send(msgJson);
+        return this.msg_id;
+    }
     setClientName(client_id, name) {
         let client = this.getClient(client_id);
         let current_name = (client.config.name != "") ? client.config.name : client.host.name;
@@ -724,6 +739,7 @@ function setGroupVolume(group_id) {
         ratio = (group_volume - percent) / group_volume;
     else
         ratio = (percent - group_volume) / (100 - group_volume);
+    let batchVolumes = [];
     for (let i = 0; i < group.clients.length; ++i) {
         let new_volume = client_volumes[i];
         if (delta < 0)
@@ -731,12 +747,12 @@ function setGroupVolume(group_id) {
         else
             new_volume += ratio * (100 - client_volumes[i]);
         let client_id = group.clients[i].id;
-        // TODO: use batch request to update all client volumes at once
-        snapcontrol.setVolume(client_id, new_volume);
+        batchVolumes.push({ client_id: client_id, percent: new_volume });
         let slider = document.getElementById('vol_' + client_id);
         if (slider)
             slider.value = String(new_volume);
     }
+    snapcontrol.batchSetVolume(batchVolumes);
 }
 function groupVolumeEnter(group_id) {
     let group = snapcontrol.getGroup(group_id);

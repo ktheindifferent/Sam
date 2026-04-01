@@ -37,32 +37,27 @@ $(document).ready(function() {
     });
    
     $.get(`/api/rooms/${oid}/things`, function( data ) {
-
-
+        var lifxPromises = [];
 
         $(data).each(function() {
             console.log(this);
             things.push(this);
 
             if(this.thing_type == "lifx") {
-
                 var x = new LifXThing(this.oid);
-                x.init();
-
-                
+                lifxPromises.push(x.init());
             }
 
-            // Ugly hack - use timeout to make sure lights load first :(
-            setTimeout(() => { 
+            if(this.thing_type == "rtsp") {
+                var y = new RtspThing(this.oid);
+                lifxPromises.push(y.init());
+            }
+        });
 
-                if(this.thing_type == "rtsp") {
-                    var x = new RtspThing(this.oid);
-                    x.init();
-                }
-
-             }, 10000);
-        
-
+        Promise.all(lifxPromises).then(() => {
+            console.log('All things initialized');
+        }).catch(err => {
+            console.error('Error initializing things:', err);
         });
        
 

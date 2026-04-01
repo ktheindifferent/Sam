@@ -59,7 +59,9 @@ class LifXThing {
         this.update_html();
         var modelref = this;
 
-        $.get("/api/services/lifx/public/list", function( lifx_live_data ) {
+        return new Promise((resolve) => {
+            Promise.all([
+                $.get("/api/services/lifx/public/list", function( lifx_live_data ) {
 
             if(modelref.group_mode){
                
@@ -257,6 +259,100 @@ class LifXThing {
 
 
         
+        }),
+            new Promise((resolve2) => {
+                $.get("/api/services/lifx/private/list", function( lifx_live_data ) {
+
+                    if(modelref.group_mode){
+                       
+                        $(lifx_live_data).each(function() {
+                            if(modelref.oid == this.group.name){
+                                modelref.private_obj = this;
+                                lifx_things.add(modelref);
+                                if(modelref.status == "initialization"){
+                                    modelref.status = "1";
+                                }
+                                if(modelref.status == "1"){
+                                    modelref.status = "2";
+                                }
+                                
+                                if(expectations !== undefined){
+                                    if(expectations == "power:on"){
+                                        if(this.power == "off" && loops < 5){
+                                            loops+=1;
+                                            setTimeout(function() { modelref.init(expectations, loops); }, 100);
+                                            return modelref;
+                                        }
+                                    }
+                                    if(expectations == "power:off"){
+                                        if(this.power == "on" && loops < 5){
+                                            loops+=1;
+                                            setTimeout(function() { modelref.init(expectations, loops); }, 100);
+                                            return modelref;
+                                        }
+                                    }
+                                }
+
+                    
+                
+                                modelref.update_html();
+                
+                
+                                return modelref;
+                            }
+                        });
+          
+                    } else {
+                        $.get("/api/things", function( data ) {
+                            $(data).each(function() {
+                                if(this.oid == modelref.oid){
+                                    var thing = this;
+                                    modelref.thing = this;
+                                    $(lifx_live_data).each(function() {
+                                        if(thing.name == this.label){
+                                            modelref.private_obj = this;
+                                            lifx_things.add(modelref);
+                                            if(modelref.status == "initialization"){
+                                                modelref.status = "1";
+                                            }
+                                            if(modelref.status == "1"){
+                                                modelref.status = "2";
+                                            }
+                                       
+                                        
+                                        
+                                            if(expectations !== undefined){
+                                                if(expectations == "power:on"){
+                                                    if(this.power == "off" && loops < 5){
+                                                        loops+=1;
+                                                        setTimeout(function() { modelref.init(expectations, loops); }, 100);
+                                                        return modelref;
+                                                    }
+                                                }
+                                                if(expectations == "power:off"){
+                                                    if(this.power == "on" && loops < 5){
+                                                        loops+=1;
+                                                        setTimeout(function() { modelref.init(expectations, loops); }, 100);
+                                                        return modelref;
+                                                    }
+                                                }
+                                            }
+                                            modelref.update_html();
+                                            
+                                            return modelref;
+                                        }
+                                    });
+                                    return modelref;
+                                }
+                            });
+                        });
+                    }
+
+                    resolve2();
+                });
+            })
+        ]).then(() => {
+            resolve(modelref);
         });
     }
 
