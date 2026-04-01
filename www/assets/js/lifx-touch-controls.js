@@ -1170,17 +1170,30 @@ const LifXTouchControls = {
             'light': [30],
             'success': [50, 50, 50],
             'error': [100, 50, 100],
+            'warning': [75, 50, 75],
             'selection': [40, 30, 40],
             'brightness': [25, 25, 25],
             'colortemp': [35, 35],
             'scene': [60, 40, 60],
             'power': [100, 50, 100, 50, 100],
-            'gesture': [45, 45]
+            'gesture': [45, 45],
+            'beat': [20],
+            'doubleTap': [30, 30, 30],
+            'longPress': [80, 40, 80],
+            'swipe': [35, 35],
+            'pinch': [40, 30, 40],
+            'zone': [50, 40, 50],
+            'media': [30, 30, 30, 30]
         };
         
         const basePattern = basePatterns[pattern] || basePatterns['default'];
         const scaledPattern = basePattern.map(duration => Math.round(duration * intensity));
-        navigator.vibrate(scaledPattern);
+        
+        try {
+            navigator.vibrate(scaledPattern);
+        } catch (e) {
+            console.warn('Haptic feedback failed:', e);
+        }
     },
     
     setGestureSensitivity: function(level) {
@@ -2144,9 +2157,17 @@ const LifXTouchControls = {
     
     initBeatDetection: function() {
         const audioElem = document.querySelector('audio, video');
-        if (!audioElem) return;
+        if (!audioElem) {
+            console.log('No audio/video element found for beat detection');
+            return;
+        }
         
         try {
+            if (this.audioContext && this.audioContext.state === 'running') {
+                console.log('Beat detection already initialized');
+                return;
+            }
+            
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             this.audioAnalyzer = this.audioContext.createAnalyser();
             const source = this.audioContext.createMediaElementSource(audioElem);
@@ -2155,9 +2176,23 @@ const LifXTouchControls = {
             this.audioAnalyzer.fftSize = 256;
             this.audioAnalyzer.smoothingTimeConstant = 0.8;
             
+            this.mediaPlaybackActive = true;
             this.monitorBeat();
+            console.log('Beat detection initialized successfully');
         } catch (e) {
             console.warn('Beat detection not available:', e);
+            this.showBeatDetectionFallback();
+        }
+    },
+    
+    showBeatDetectionFallback: function() {
+        console.log('Using fallback beat detection via media player events');
+        if (typeof MediaPlayer !== 'undefined') {
+            MediaPlayer.onBeat = (beatData) => {
+                if (this.lifxMediaSyncEnabled && beatData) {
+                    this.triggerBeatEffect();
+                }
+            };
         }
     },
     

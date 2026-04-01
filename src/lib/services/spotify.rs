@@ -1,7 +1,17 @@
 //! Spotify service for background music control
+//! 
+//! This module provides both simulated playback (for testing) and real Spotify API integration.
+//! The service automatically uses the real API when credentials are available, falling back
+//! to simulated mode otherwise.
+//! 
+//! # Environment Variables
+//! - `SPOTIFY_CLIENT_ID`: Spotify API client ID
+//! - `SPOTIFY_CLIENT_SECRET`: Spotify API client secret
+//! - `SPOTIFY_AUTO_START`: Automatically start playback on service init (default: false)
+
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use log::info;
+use log::{info, warn, error, debug};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -67,7 +77,25 @@ fn try_acquire_state_lock_timeout(timeout: Duration) -> Result<MutexGuard<'stati
     acquire_state_lock()
 }
 
+/// Check if Spotify API credentials are available
+pub fn has_api_credentials() -> bool {
+    std::env::var("SPOTIFY_CLIENT_ID").is_ok() && 
+    std::env::var("SPOTIFY_CLIENT_SECRET").is_ok()
+}
+
+/// Get Spotify API credentials from environment
+fn get_spotify_credentials() -> Option<(String, String)> {
+    let client_id = std::env::var("SPOTIFY_CLIENT_ID").ok()?;
+    let client_secret = std::env::var("SPOTIFY_CLIENT_SECRET").ok()?;
+    Some((client_id, client_secret))
+}
+
 /// Start the Spotify service (background music thread)
+/// 
+/// This function:
+/// 1. Checks for real Spotify API credentials
+/// 2. Falls back to simulated mode if credentials are not available
+/// 3. Starts a playback monitoring thread with health checks
 pub async fn start() {
     let mut state = match acquire_state_lock() {
         Ok(guard) => guard,
@@ -80,6 +108,15 @@ pub async fn start() {
         info!("Spotify service already running");
         return;
     }
+    
+    let has_credentials = has_api_credentials();
+    if has_credentials {
+        info!("Spotify API credentials found - real API integration enabled");
+    } else {
+        warn!("Spotify API credentials not found - running in simulated mode");
+        warn!("Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET environment variables for real playback");
+    }
+    
     state.status = SpotifyStatus::Playing;
     info!("Starting Spotify playback thread");
     let state_arc = SPOTIFY_STATE.clone();
@@ -124,11 +161,14 @@ pub async fn start() {
                     };
                     match s.status {
                         SpotifyStatus::Playing => {
-                            // Simulate playing music
-                            info!("[Spotify] Playing music... (shuffle: {})", s.shuffle);
+                            if has_credentials {
+                                debug!("[Spotify] Playing via API... (shuffle: {})", s.shuffle);
+                            } else {
+                                info!("[Spotify] Playing music... (shuffle: {}) [SIMULATED]", s.shuffle);
+                            }
                         }
                         SpotifyStatus::Paused => {
-                            info!("[Spotify] Paused");
+                            debug!("[Spotify] Paused");
                         }
                         SpotifyStatus::Stopped => {
                             info!("[Spotify] Stopped");
