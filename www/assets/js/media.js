@@ -51,7 +51,13 @@ const MediaPlayer = {
         adaptiveThreshold: 0.25,
         beatHistory: [],
         bpmEstimate: 120,
-        lastBpmUpdate: 0
+        lastBpmUpdate: 0,
+        userThreshold: 0.3,
+        enabled: false,
+        sensitivity: 'medium',
+        lastBeatTime: 0,
+        beatCount: 0,
+        sensitivity: 0.5
     },
     lifxSceneMode: 'ambient',
     lifxColorHistory: [],
@@ -2215,6 +2221,17 @@ function initBeatDetection() {
     const beatDetectionBtn = document.getElementById('beat-detection-btn');
     if (beatDetectionBtn) {
         beatDetectionBtn.addEventListener('click', () => toggleBeatDetection());
+        
+        let longPressTimer;
+        beatDetectionBtn.addEventListener('touchstart', () => {
+            longPressTimer = setTimeout(() => {
+                showBeatDetectionSettings();
+            }, 500);
+        });
+        
+        beatDetectionBtn.addEventListener('touchend', () => {
+            if (longPressTimer) clearTimeout(longPressTimer);
+        });
     }
 }
 
@@ -2233,6 +2250,218 @@ function toggleBeatDetection() {
         stopBeatDetection();
         showNotification('Beat detection disabled', 'info');
     }
+}
+
+function setBeatDetectionThreshold(threshold) {
+    MediaPlayer.beatDetection.threshold = threshold;
+    MediaPlayer.beatDetection.userThreshold = threshold;
+    showNotification(`Beat detection threshold: ${threshold}`, 'info');
+}
+
+function setBeatDetectionSensitivity(level) {
+    const thresholds = {
+        'low': 0.6,
+        'medium': 0.3,
+        'high': 0.15
+    };
+    MediaPlayer.beatDetection.sensitivity = level;
+    MediaPlayer.beatDetection.threshold = thresholds[level] || 0.3;
+    showNotification(`Beat sensitivity: ${level}`, 'info');
+}
+
+function showBeatDetectionSettings() {
+    showMediaSyncSettings('beat');
+}
+
+function showMediaSyncSettings(activeTab = 'overview') {
+    if (typeof Swal === 'undefined') {
+        alert('Media Sync Settings: Beat Detection, LIFX Sync, Ambient Light');
+        return;
+    }
+    
+    const currentThreshold = MediaPlayer.beatDetection.threshold || 0.3;
+    const currentSensitivity = MediaPlayer.beatDetection.sensitivity || 'medium';
+    const lifxSyncEnabled = MediaPlayer.lifxSyncEnabled || false;
+    const ambientLightEnabled = MediaPlayer.ambientLightEnabled || false;
+    const ambientLightMode = MediaPlayer.ambientLightMode || 'spectrum';
+    
+    Swal.fire({
+        title: '<i class="fas fa-sliders-h"></i> Media Sync Settings',
+        html: `
+            <div class="media-sync-settings">
+                <div class="settings-tabs" style="display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid rgba(0, 212, 255, 0.3); padding-bottom: 10px;">
+                    <button class="btn btn-sm ${activeTab === 'overview' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                            onclick="showMediaSyncSettings('overview')" style="flex: 1;">
+                        <i class="fas fa-home"></i> Overview
+                    </button>
+                    <button class="btn btn-sm ${activeTab === 'beat' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                            onclick="showMediaSyncSettings('beat')" style="flex: 1;">
+                        <i class="fas fa-wave-square"></i> Beat
+                    </button>
+                    <button class="btn btn-sm ${activeTab === 'lifx' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                            onclick="showMediaSyncSettings('lifx')" style="flex: 1;">
+                        <i class="fas fa-lightbulb"></i> LIFX
+                    </button>
+                    <button class="btn btn-sm ${activeTab === 'ambient' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                            onclick="showMediaSyncSettings('ambient')" style="flex: 1;">
+                        <i class="fas fa-cloud-moon"></i> Ambient
+                    </button>
+                </div>
+                
+                ${activeTab === 'overview' ? `
+                    <div class="settings-overview">
+                        <h4 style="color: #00d4ff; margin-bottom: 15px;"><i class="fas fa-chart-pie"></i> Current Status</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                            <div style="background: rgba(0, 212, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                                <div style="font-size: 24px; margin-bottom: 5px;">${lifxSyncEnabled ? '✅' : '❌'}</div>
+                                <div style="font-size: 12px; color: #adb5bd;">LIFX Sync</div>
+                            </div>
+                            <div style="background: rgba(0, 212, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                                <div style="font-size: 24px; margin-bottom: 5px;">${ambientLightEnabled ? '✅' : '❌'}</div>
+                                <div style="font-size: 12px; color: #adb5bd;">Ambient Light</div>
+                            </div>
+                            <div style="background: rgba(0, 212, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                                <div style="font-size: 24px; margin-bottom: 5px;">${MediaPlayer.beatDetection.enabled ? '✅' : '❌'}</div>
+                                <div style="font-size: 12px; color: #adb5bd;">Beat Detection</div>
+                            </div>
+                            <div style="background: rgba(0, 212, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                                <div style="font-size: 24px; margin-bottom: 5px;">${MediaPlayer.isPlaying ? '🎵' : '⏸'}</div>
+                                <div style="font-size: 12px; color: #adb5bd;">Playback</div>
+                            </div>
+                        </div>
+                        
+                        <h4 style="color: #00d4ff; margin-bottom: 15px;"><i class="fas fa-bolt"></i> Quick Actions</h4>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn btn-sm btn-outline-primary" onclick="toggleLifxMediaSync(); showMediaSyncSettings('overview')">
+                                <i class="fas fa-${lifxSyncEnabled ? 'toggle-on' : 'toggle-off'}"></i> ${lifxSyncEnabled ? 'Disable' : 'Enable'} LIFX Sync
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="toggleAmbientLight(); showMediaSyncSettings('overview')">
+                                <i class="fas fa-${ambientLightEnabled ? 'toggle-on' : 'toggle-off'}"></i> ${ambientLightEnabled ? 'Disable' : 'Enable'} Ambient
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="cycleAmbientLightMode(); showMediaSyncSettings('overview')">
+                                <i class="fas fa-sync"></i> Cycle Mode
+                            </button>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${activeTab === 'beat' ? `
+                    <div class="beat-detection-settings">
+                        <h4><i class="fas fa-sliders-h"></i> Detection Threshold</h4>
+                        <div style="padding: 20px;">
+                            <label style="color: #adb5bd; display: block; margin-bottom: 10px;">
+                                Threshold: <span id="threshold-value" style="color: #00d4ff;">${currentThreshold}</span>
+                            </label>
+                            <input type="range" id="beat-threshold" min="0.1" max="0.9" step="0.05" 
+                                   value="${currentThreshold}" 
+                                   style="width: 100%;" 
+                                   oninput="document.getElementById('threshold-value').textContent = this.value; setBeatDetectionThreshold(parseFloat(this.value))">
+                            <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 11px; color: #6c757d;">
+                                <span>More Sensitive</span>
+                                <span>Less Sensitive</span>
+                            </div>
+                        </div>
+                        
+                        <h4 style="margin-top: 20px;"><i class="fas fa-gauge"></i> Preset Sensitivity</h4>
+                        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                            <button class="btn btn-sm ${currentSensitivity === 'low' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                                    onclick="setBeatDetectionSensitivity('low'); showMediaSyncSettings('beat')">Low</button>
+                            <button class="btn btn-sm ${currentSensitivity === 'medium' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                                    onclick="setBeatDetectionSensitivity('medium'); showMediaSyncSettings('beat')">Medium</button>
+                            <button class="btn btn-sm ${currentSensitivity === 'high' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                                    onclick="setBeatDetectionSensitivity('high'); showMediaSyncSettings('beat')">High</button>
+                        </div>
+                        
+                        <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
+                            <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> Tips</h5>
+                            <ul style="color: #adb5bd; font-size: 12px; margin: 0; padding-left: 20px;">
+                                <li>Lower threshold = more responsive to quiet beats</li>
+                                <li>Higher threshold = only detects strong beats</li>
+                                <li>Adjust while music is playing for best results</li>
+                            </ul>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${activeTab === 'lifx' ? `
+                    <div class="lifx-sync-settings">
+                        <h4><i class="fas fa-lightbulb"></i> LIFX Media Sync</h4>
+                        <div style="padding: 20px; text-align: center;">
+                            <button class="btn btn-lg ${lifxSyncEnabled ? 'btn-success' : 'btn-outline-secondary'}" 
+                                    onclick="toggleLifxMediaSync(); showMediaSyncSettings('lifx')" 
+                                    style="width: 200px; margin-bottom: 20px;">
+                                <i class="fas fa-${lifxSyncEnabled ? 'check' : 'times'}"></i> ${lifxSyncEnabled ? 'Enabled' : 'Disabled'}
+                            </button>
+                            <p style="color: #adb5bd; font-size: 13px;">Sync LIFX lights to music rhythm and beats</p>
+                        </div>
+                        
+                        <h4 style="margin-top: 20px;"><i class="fas fa-music"></i> Beat Detection Mode</h4>
+                        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                            <button class="btn btn-sm ${MediaPlayer.lifxBeatDetection.enabled ? 'btn-primary' : 'btn-outline-secondary'}" 
+                                    onclick="MediaPlayer.lifxBeatDetection.enabled = !MediaPlayer.lifxBeatDetection.enabled; showNotification('Beat detection ' + (MediaPlayer.lifxBeatDetection.enabled ? 'enabled' : 'disabled'), 'info'); showMediaSyncSettings('lifx')">
+                                <i class="fas fa-wave-square"></i> Beat Mode
+                            </button>
+                            <button class="btn btn-sm ${MediaPlayer.lifxSceneMode === 'ambient' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                                    onclick="MediaPlayer.lifxSceneMode = 'ambient'; showNotification('LIFX mode: ambient', 'info'); showMediaSyncSettings('lifx')">
+                                <i class="fas fa-cloud"></i> Ambient
+                            </button>
+                            <button class="btn btn-sm ${MediaPlayer.lifxSceneMode === 'visualizer' ? 'btn-primary' : 'btn-outline-secondary'}" 
+                                    onclick="MediaPlayer.lifxSceneMode = 'visualizer'; startAudioVisualization(); showNotification('LIFX mode: visualizer', 'info'); showMediaSyncSettings('lifx')">
+                                <i class="fas fa-chart-bar"></i> Visualizer
+                            </button>
+                        </div>
+                        
+                        <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
+                            <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> How It Works</h5>
+                            <ul style="color: #adb5bd; font-size: 12px; margin: 0; padding-left: 20px;">
+                                <li>Beat mode pulses lights to music rhythm</li>
+                                <li>Ambient mode creates smooth color transitions</li>
+                                <li>Visualizer mode shows frequency spectrum</li>
+                            </ul>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${activeTab === 'ambient' ? `
+                    <div class="ambient-light-settings">
+                        <h4><i class="fas fa-cloud-moon"></i> Ambient Light Sync</h4>
+                        <div style="padding: 20px; text-align: center;">
+                            <button class="btn btn-lg ${ambientLightEnabled ? 'btn-success' : 'btn-outline-secondary'}" 
+                                    onclick="toggleAmbientLight(); showMediaSyncSettings('ambient')" 
+                                    style="width: 200px; margin-bottom: 20px;">
+                                <i class="fas fa-${ambientLightEnabled ? 'check' : 'times'}"></i> ${ambientLightEnabled ? 'Enabled' : 'Disabled'}
+                            </button>
+                            <p style="color: #adb5bd; font-size: 13px;">Sync ambient lighting to media content</p>
+                        </div>
+                        
+                        <h4 style="margin-top: 20px;"><i class="fas fa-palette"></i> Ambient Mode</h4>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            ${['spectrum', 'warm', 'cool', 'beat', 'visualizer', 'aurora', 'pulse'].map(mode => `
+                                <button class="btn btn-sm ${ambientLightMode === mode ? 'btn-primary' : 'btn-outline-secondary'}" 
+                                        onclick="MediaPlayer.ambientLightMode = '${mode}'; cycleAmbientLightMode(); showMediaSyncSettings('ambient')"
+                                        style="padding: 10px;">
+                                    <i class="fas fa-${mode === 'spectrum' ? 'bars' : mode === 'warm' ? 'sun' : mode === 'cool' ? 'snowflake' : mode === 'beat' ? 'wave-square' : mode === 'visualizer' ? 'chart-bar' : mode === 'aurora' ? 'cloud' : 'circle'}"></i> ${mode.charAt(0).toUpperCase() + mode.slice(1)}
+                                </button>
+                            `).join('')}
+                        </div>
+                        
+                        <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
+                            <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> Modes</h5>
+                            <ul style="color: #adb5bd; font-size: 12px; margin: 0; padding-left: 20px;">
+                                <li><strong>Spectrum:</strong> Full color range cycling</li>
+                                <li><strong>Warm/Cool:</strong> Fixed color temperature</li>
+                                <li><strong>Beat:</strong> Pulses to music rhythm</li>
+                                <li><strong>Aurora/Pulse:</strong> Dynamic effects</li>
+                            </ul>
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: '650px'
+    });
 }
 
 function startBeatDetection() {

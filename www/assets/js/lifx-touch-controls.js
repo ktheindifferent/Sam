@@ -48,6 +48,9 @@ const LifXTouchControls = {
     colorHue: 0,
     touchHoldProgressEl: null,
     lastGestureHint: null,
+    touchRippleEnabled: true,
+    showGestureHints: true,
+    gestureHintDuration: 1000,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -78,6 +81,11 @@ const LifXTouchControls = {
         
         // Initialize gesture history
         this.gestureHistory = [];
+        
+        // Add touch ripple effect handler
+        if (this.touchRippleEnabled) {
+            this.initTouchRipple();
+        }
         
         // Register gesture callbacks with debouncing
         if (typeof onGesture === 'function') {
@@ -930,7 +938,7 @@ const LifXTouchControls = {
         if (newBrightness !== this.brightnessLevel) {
             const stepSize = Math.abs(newBrightness - this.brightnessLevel);
             this.brightnessLevel = newBrightness;
-            this.showGestureFeedback(`${this.brightnessLevel}%`, '🔆');
+            this.showBrightnessFeedback(this.brightnessLevel);
             if (stepSize >= 5) {
                 this.hapticFeedback('brightness', Math.min(0.5, stepSize / 20));
             }
@@ -1460,15 +1468,162 @@ const LifXTouchControls = {
         });
     },
     
+    showTouchSensitivityPanel: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Touch Settings: Gesture sensitivity, haptic feedback, visual feedback');
+            return;
+        }
+        
+        const current = localStorage.getItem('lifx_gesture_sensitivity') || 'medium';
+        const currentSensitivityDesc = {
+            'low': 'Requires larger movements',
+            'medium': 'Balanced responsiveness',
+            'high': 'Most responsive'
+        };
+        
+        Swal.fire({
+            title: '<i class="fas fa-fingerprint"></i> Touch Sensitivity Settings',
+            html: `
+                <div class="touch-sensitivity-panel">
+                    <h4><i class="fas fa-sliders-h"></i> Gesture Sensitivity</h4>
+                    <div class="sensitivity-option ${current === 'low' ? 'active' : ''}" onclick="LifXTouchControls.setGestureSensitivityLevel('low')">
+                        <div class="sensitivity-option-label">
+                            <span class="sensitivity-option-icon">🐢</span>
+                            <div>
+                                <div>Low</div>
+                                <div class="sensitivity-option-description">Requires larger movements - fewer accidental triggers</div>
+                            </div>
+                        </div>
+                        ${current === 'low' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                    </div>
+                    <div class="sensitivity-option ${current === 'medium' ? 'active' : ''}" onclick="LifXTouchControls.setGestureSensitivityLevel('medium')">
+                        <div class="sensitivity-option-label">
+                            <span class="sensitivity-option-icon">🚶</span>
+                            <div>
+                                <div>Medium</div>
+                                <div class="sensitivity-option-description">Balanced responsiveness - recommended for most users</div>
+                            </div>
+                        </div>
+                        ${current === 'medium' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                    </div>
+                    <div class="sensitivity-option ${current === 'high' ? 'active' : ''}" onclick="LifXTouchControls.setGestureSensitivityLevel('high')">
+                        <div class="sensitivity-option-label">
+                            <span class="sensitivity-option-icon">🐇</span>
+                            <div>
+                                <div>High</div>
+                                <div class="sensitivity-option-description">Most responsive - detects subtle movements</div>
+                            </div>
+                        </div>
+                        ${current === 'high' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                    </div>
+                </div>
+                
+                <div class="touch-sensitivity-panel">
+                    <h4><i class="fas fa-eye"></i> Visual Feedback</h4>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-sm ${this.touchRippleEnabled ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.toggleTouchRipple()">
+                            <i class="fas fa-${this.touchRippleEnabled ? 'check' : 'times'}"></i> Touch Ripples
+                        </button>
+                        <button class="btn btn-sm ${this.showGestureHints ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.toggleGestureHints()">
+                            <i class="fas fa-${this.showGestureHints ? 'check' : 'times'}"></i> Gesture Hints
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="touch-sensitivity-panel">
+                    <h4><i class="fas fa-mobile-alt"></i> Haptic Feedback</h4>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-sm ${this.hapticEnabled ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.toggleHapticFeedback()">
+                            <i class="fas fa-${this.hapticEnabled ? 'check' : 'times'}"></i> Vibration
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="LifXTouchControls.testHapticFeedback()">
+                            <i class="fas fa-play"></i> Test
+                        </button>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '600px'
+        });
+    },
+    
+    toggleTouchRipple: function() {
+        this.touchRippleEnabled = !this.touchRippleEnabled;
+        localStorage.setItem('lifx_touch_ripple', this.touchRippleEnabled);
+        this.showTouchSensitivityPanel();
+        this.showEnhancedGestureFeedback(
+            this.touchRippleEnabled ? 'Touch Ripples ON' : 'Touch Ripples OFF',
+            this.touchRippleEnabled ? '💧' : '🚫'
+        );
+    },
+    
+    toggleGestureHints: function() {
+        this.showGestureHints = !this.showGestureHints;
+        localStorage.setItem('lifx_gesture_hints', this.showGestureHints);
+        this.showTouchSensitivityPanel();
+        this.showEnhancedGestureFeedback(
+            this.showGestureHints ? 'Gesture Hints ON' : 'Gesture Hints OFF',
+            this.showGestureHints ? '👆' : '🔇'
+        );
+    },
+    
+    toggleHapticFeedback: function() {
+        this.hapticEnabled = !this.hapticEnabled;
+        localStorage.setItem('lifx_haptic', this.hapticEnabled);
+        this.showTouchSensitivityPanel();
+        this.showEnhancedGestureFeedback(
+            this.hapticEnabled ? 'Haptic Feedback ON' : 'Haptic Feedback OFF',
+            this.hapticEnabled ? '📳' : '🔕'
+        );
+    },
+    
+    testHapticFeedback: function() {
+        this.hapticFeedback('success');
+        this.showEnhancedGestureFeedback('Test Vibration', '📳', 500);
+    },
+    
     savePreferences: function() {
         const prefs = {
             brightnessLevel: this.brightnessLevel,
             colorTempLevel: this.colorTempLevel,
             currentScene: this.currentScene,
             ambientLightSync: this.ambientLightSync,
-            hapticEnabled: this.hapticEnabled
+            hapticEnabled: this.hapticEnabled,
+            touchRippleEnabled: this.touchRippleEnabled,
+            showGestureHints: this.showGestureHints
         };
         localStorage.setItem('lifx_preferences', JSON.stringify(prefs));
+    },
+    
+    initTouchRipple: function() {
+        document.addEventListener('touchstart', (e) => {
+            const bulbEl = e.target.closest('.lifx-bulb-control, .lifx-bulb-card');
+            if (!bulbEl) return;
+            
+            const touch = e.touches[0];
+            const rect = bulbEl.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            
+            const ripple = document.createElement('span');
+            ripple.className = 'lifx-touch-ripple';
+            ripple.style.left = (x - 25) + 'px';
+            ripple.style.top = (y - 25) + 'px';
+            ripple.style.width = '50px';
+            ripple.style.height = '50px';
+            
+            bulbEl.appendChild(ripple);
+            
+            setTimeout(() => {
+                if (ripple.parentNode) {
+                    ripple.parentNode.removeChild(ripple);
+                }
+            }, 600);
+        }, { passive: true });
     },
     
     initGestureEnhancements: function() {
@@ -1481,6 +1636,46 @@ const LifXTouchControls = {
         this.setupQuickActions();
         this.setupZoneControl();
         console.log('Gesture enhancements initialized');
+    },
+    
+    showEnhancedGestureFeedback: function(text, icon, duration = null) {
+        if (!this.showGestureHints) return;
+        
+        const hintDuration = duration || this.gestureHintDuration;
+        
+        if (this.lastGestureHint && this.lastGestureHint.parentNode) {
+            this.lastGestureHint.parentNode.removeChild(this.lastGestureHint);
+        }
+        
+        const hint = document.createElement('div');
+        hint.className = 'lifx-gesture-hint enhanced visible';
+        hint.innerHTML = `
+            <span class="gesture-icon">${icon}</span>
+            <span class="gesture-text">${text}</span>
+        `;
+        document.body.appendChild(hint);
+        this.lastGestureHint = hint;
+        
+        setTimeout(() => {
+            hint.classList.remove('visible');
+            setTimeout(() => {
+                if (hint.parentNode) hint.parentNode.removeChild(hint);
+                if (this.lastGestureHint === hint) this.lastGestureHint = null;
+            }, 300);
+        }, hintDuration);
+    },
+    
+    showBrightnessFeedback: function(value) {
+        const feedback = document.createElement('div');
+        feedback.className = 'touch-feedback-brightness visible';
+        feedback.textContent = value + '%';
+        document.body.appendChild(feedback);
+        
+        setTimeout(() => {
+            if (feedback.parentNode) {
+                feedback.parentNode.removeChild(feedback);
+            }
+        }, 1000);
     },
     
     setupZoneControl: function() {
@@ -1616,6 +1811,12 @@ const LifXTouchControls = {
                 console.error('Failed to load LIFX preferences:', e);
             }
         }
+        
+        const touchRipple = localStorage.getItem('lifx_touch_ripple');
+        if (touchRipple !== null) this.touchRippleEnabled = touchRipple === 'true';
+        
+        const gestureHints = localStorage.getItem('lifx_gesture_hints');
+        if (gestureHints !== null) this.showGestureHints = gestureHints === 'true';
     },
     
     toggleAmbientLightSync: function() {
