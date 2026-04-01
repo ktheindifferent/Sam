@@ -2428,7 +2428,7 @@ const LifXTouchControls = {
     
     showSensitivitySelector: function() {
         if (typeof Swal === 'undefined') {
-            alert('Gesture Sensitivity: low, medium, high');
+            alert('Gesture Sensitivity: low, medium, high, very_high');
             return;
         }
         
@@ -2436,13 +2436,15 @@ const LifXTouchControls = {
         Swal.fire({
             title: 'Gesture Sensitivity',
             html: `
-                <div style="display: flex; gap: 10px; justify-content: center;">
+                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                     <button class="btn btn-sm ${current === 'low' ? 'btn-primary' : 'btn-outline-primary'}" 
                             onclick="LifXTouchControls.setGestureSensitivityLevel('low')">Low</button>
                     <button class="btn btn-sm ${current === 'medium' ? 'btn-primary' : 'btn-outline-primary'}" 
                             onclick="LifXTouchControls.setGestureSensitivityLevel('medium')">Medium</button>
                     <button class="btn btn-sm ${current === 'high' ? 'btn-primary' : 'btn-outline-primary'}" 
                             onclick="LifXTouchControls.setGestureSensitivityLevel('high')">High</button>
+                    <button class="btn btn-sm ${current === 'very_high' ? 'btn-primary' : 'btn-outline-primary'}" 
+                            onclick="LifXTouchControls.setGestureSensitivityLevel('very_high')">Very High</button>
                 </div>
             `,
             showConfirmButton: false,

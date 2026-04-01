@@ -412,23 +412,75 @@ fn toggle_mute() -> Response {
 
 /// Skip to next track
 fn next_track() -> Response {
-    // Note: Snapcast itself doesn't have track navigation - this depends on the source
-    // For librespot (Spotify), we'd need to control Spotify directly
-    // This is a placeholder that could be extended based on the active source
+    if crate::services::spotify::has_api_credentials() {
+        let spotify_api = crate::services::spotify::SpotifyApi::new(
+            std::env::var("SPOTIFY_CLIENT_ID").unwrap_or_default(),
+            std::env::var("SPOTIFY_CLIENT_SECRET").unwrap_or_default(),
+        );
+        
+        match tokio::runtime::Handle::try_current() {
+            Ok(rt) => {
+                let api_mut = &mut spotify_api.clone();
+                match rt.block_on(api_mut.next_track()) {
+                    Ok(_) => {
+                        return Response::json(&json!({
+                            "success": true,
+                            "message": "Skipped to next track via Spotify API",
+                            "source": "spotify"
+                        }));
+                    }
+                    Err(e) => {
+                        log::warn!("Spotify next track failed: {}", e);
+                    }
+                }
+            }
+            Err(_) => {
+                log::warn!("No tokio runtime available for Spotify API call");
+            }
+        }
+    }
     
     Response::json(&json!({
-        "success": true,
-        "message": "Next track command sent (source-dependent)",
-        "note": "Track navigation depends on the active media source (Spotify, pipe, etc.)"
+        "success": false,
+        "message": "Track navigation not available - requires Spotify API credentials or active source",
+        "hint": "Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET environment variables"
     }))
 }
 
 /// Go to previous track
 fn previous_track() -> Response {
+    if crate::services::spotify::has_api_credentials() {
+        let spotify_api = crate::services::spotify::SpotifyApi::new(
+            std::env::var("SPOTIFY_CLIENT_ID").unwrap_or_default(),
+            std::env::var("SPOTIFY_CLIENT_SECRET").unwrap_or_default(),
+        );
+        
+        match tokio::runtime::Handle::try_current() {
+            Ok(rt) => {
+                let api_mut = &mut spotify_api.clone();
+                match rt.block_on(api_mut.previous_track()) {
+                    Ok(_) => {
+                        return Response::json(&json!({
+                            "success": true,
+                            "message": "Skipped to previous track via Spotify API",
+                            "source": "spotify"
+                        }));
+                    }
+                    Err(e) => {
+                        log::warn!("Spotify previous track failed: {}", e);
+                    }
+                }
+            }
+            Err(_) => {
+                log::warn!("No tokio runtime available for Spotify API call");
+            }
+        }
+    }
+    
     Response::json(&json!({
-        "success": true,
-        "message": "Previous track command sent (source-dependent)",
-        "note": "Track navigation depends on the active media source (Spotify, pipe, etc.)"
+        "success": false,
+        "message": "Track navigation not available - requires Spotify API credentials or active source",
+        "hint": "Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET environment variables"
     }))
 }
 

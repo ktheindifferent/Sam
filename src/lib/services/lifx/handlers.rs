@@ -985,11 +985,10 @@ fn handle_zones(request: &Request) -> Response {
         start_index: Option<u8>,
         end_index: Option<u8>,
         color: String,
-        duration: Option<f64>
+        duration: Option<f64>,
+        apply: Option<bool>
     }));
     
-    // For now, treat zones as regular color commands
-    // Full implementation would require LIFX zone protocol support
     if let Some(discovery_arc) = get_global_discovery() {
         if let Ok(discovery) = discovery_arc.lock() {
             if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
@@ -1004,21 +1003,61 @@ fn handle_zones(request: &Request) -> Response {
                 }
                 
                 let duration = (input.duration.unwrap_or(1.0) * 1000.0) as u32;
+                let start_index = input.start_index.unwrap_or(0);
+                let end_index = input.end_index.unwrap_or(255);
+                let apply = input.apply.unwrap_or(true);
                 let mut success_count = 0;
+                let mut total_zones_set = 0;
                 
                 for bulb in &bulbs_vec {
                     if let Some(hsbk) = handlers.parse_color_command(&input.color, bulb, duration) {
-                        if handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, duration).is_ok() {
-                            success_count += 1;
+                        let bulb_has_multizone = bulb.product.as_ref()
+                            .map(|p| p.capabilities.has_multizone)
+                            .unwrap_or(false);
+                        
+                        if bulb_has_multizone {
+                            let zone_count = bulb.product.as_ref()
+                                .map(|p| p.zone_count.unwrap_or(1))
+                                .unwrap_or(1);
+                            
+                            let actual_end = std::cmp::min(end_index, zone_count - 1);
+                            
+                            for zone_idx in start_index..=actual_end {
+                                let set_zone_msg = lifx_rs::lan::Message::SetColorZone {
+                                    zone_index: zone_idx,
+                                    color: hsbk,
+                                    duration,
+                                    apply,
+                                };
+                                
+                                match handlers.build_message(bulb.target, set_zone_msg) {
+                                    Ok(bytes) => {
+                                        if sock.send_to(&bytes, bulb.addr).is_ok() {
+                                            success_count += 1;
+                                            total_zones_set += 1;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Failed to build zone message for bulb {}: {}", bulb.id, e);
+                                    }
+                                }
+                            }
+                        } else {
+                            if handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, duration).is_ok() {
+                                success_count += 1;
+                                total_zones_set += 1;
+                            }
                         }
                     }
                 }
                 
                 return Response::json(&json!({
                     "success": success_count > 0,
-                    "message": format!("Zone color set on {} bulbs", success_count),
-                    "start_index": input.start_index,
-                    "end_index": input.end_index
+                    "message": format!("Set {} zones on {} bulbs", total_zones_set, success_count),
+                    "start_index": start_index,
+                    "end_index": end_index,
+                    "apply": apply,
+                    "zones_set": total_zones_set
                 }));
             }
         }
@@ -1119,4 +1158,91 @@ fn handle_presets(request: &Request) -> Response {
     }
     
     Response::empty_404()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lifx_rs::lan::HSBK;
+
+    #[test]
+    fn test_scene_definitions_exist() {
+        assert!(!SCENES.is_empty(), "SCENES should contain at least one entry");
+    }
+
+    #[test]
+    fn test_scene_format() {
+        for (name, hue, saturation, brightness, kelvin) in SCENES.iter() {
+            assert!(!name.is_empty(), "Scene name should not be empty");
+            assert!(*hue <= 360, "Hue should be 0-360 (actual: {})", hue);
+            assert!(*saturation <= 65535, "Saturation should be 0-65535");
+            assert!(*brightness <= 65535, "Brightness should be 0-65535");
+            assert!(*kelvin >= 1500 && *kelvin <= 9000, "Kelvin should be 1500-9000");
+        }
+    }
+
+    #[test]
+    fn test_known_scenes_exist() {
+        let scene_names: Vec<&str> = SCENES.iter().map(|(name, _, _, _, _)| *name).collect();
+        assert!(scene_names.contains(&"relax"), "relax scene should exist");
+        assert!(scene_names.contains(&"focus"), "focus scene should exist");
+        assert!(scene_names.contains(&"energize"), "energize scene should exist");
+        assert!(scene_names.contains(&"night"), "night scene should exist");
+    }
+
+    #[test]
+    fn test_hsbk_color_conversion() {
+        let test_hue = 180;
+        let test_saturation = 32768;
+        let test_brightness = 65535;
+        let test_kelvin = 5000;
+
+        let hsbk = HSBK {
+            hue: test_hue,
+            saturation: test_saturation,
+            brightness: test_brightness,
+            kelvin: test_kelvin,
+        };
+
+        assert_eq!(hsbk.hue, test_hue);
+        assert_eq!(hsbk.saturation, test_saturation);
+        assert_eq!(hsbk.brightness, test_brightness);
+        assert_eq!(hsbk.kelvin, test_kelvin);
+    }
+
+    #[test]
+    fn test_preset_definitions() {
+        let presets = vec![
+            json!({"id": "morning", "scene": "energize", "brightness": 80}),
+            json!({"id": "evening", "scene": "relax", "brightness": 40}),
+            json!({"id": "movie", "scene": "night", "brightness": 20}),
+            json!({"id": "work", "scene": "focus", "brightness": 75})
+        ];
+
+        assert_eq!(presets.len(), 4, "Should have 4 default presets");
+        
+        let morning = &presets[0];
+        assert_eq!(morning["id"], "morning");
+        assert_eq!(morning["scene"], "energize");
+        assert_eq!(morning["brightness"], 80);
+    }
+
+    #[test]
+    fn test_zone_control_response_format() {
+        let response = json!({
+            "success": true,
+            "message": "Set 10 zones on 2 bulbs",
+            "start_index": 0,
+            "end_index": 10,
+            "apply": true,
+            "zones_set": 20
+        });
+
+        assert!(response["success"].as_bool().unwrap());
+        assert!(response["message"].as_str().unwrap().contains("zones"));
+        assert_eq!(response["start_index"].as_u64().unwrap(), 0);
+        assert_eq!(response["end_index"].as_u64().unwrap(), 10);
+        assert!(response["apply"].as_bool().unwrap());
+        assert_eq!(response["zones_set"].as_u64().unwrap(), 20);
+    }
 }

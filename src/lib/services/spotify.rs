@@ -396,6 +396,40 @@ impl SpotifyApi {
         let json: serde_json::Value = res.json().await.map_err(|e| format!("JSON error: {e}"))?;
         Ok(json.to_string())
     }
+
+    /// Skip to next track
+    pub async fn next_track(&self) -> Result<(), String> {
+        let token = self.access_token.as_ref().ok_or("No access token")?;
+        let res = self
+            .client
+            .post("https://api.spotify.com/v1/me/player/next")
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| format!("Request error: {e}"))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            Err(format!("Spotify next track failed: {}", res.status()))
+        }
+    }
+
+    /// Skip to previous track
+    pub async fn previous_track(&self) -> Result<(), String> {
+        let token = self.access_token.as_ref().ok_or("No access token")?;
+        let res = self
+            .client
+            .post("https://api.spotify.com/v1/me/player/previous")
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| format!("Request error: {e}"))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            Err(format!("Spotify previous track failed: {}", res.status()))
+        }
+    }
 }
 
 #[cfg(test)]
