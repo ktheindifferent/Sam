@@ -109,6 +109,10 @@ const LifXTouchControls = {
     isEdgeSwipe: false,
     edgeSwipeDirection: null,
     touchpadModeEnabled: false,
+    quickActionsEnabled: true,
+    adaptiveBrightnessEnabled: true,
+    ambientLightSensor: null,
+    gestureMacros: {},
     touchpadX: 0,
     touchpadY: 0,
     microGestureEnabled: true,
@@ -8703,6 +8707,445 @@ const LifXTouchControls = {
             return this.multiBulbSelection[0];
         }
         return null;
+    },
+
+    initEnhancedTouchInterface: function() {
+        this.touchZones = {};
+        this.activeZone = null;
+        this.zoneBoundaries = { top: 0, bottom: 0, left: 0, right: 0 };
+        this.lastTouchZone = null;
+        
+        const zones = [
+            { id: 'topLeft', icon: '🏠', action: 'home' },
+            { id: 'topRight', icon: '🎵', action: 'media' },
+            { id: 'bottomLeft', icon: '💡', action: 'lights' },
+            { id: 'bottomRight', icon: '⚙️', action: 'settings' }
+        ];
+        
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1 && this.isEdgeTouch(e.touches[0])) {
+                this.activeZone = this.getTouchZone(e.touches[0]);
+                this.showZoneHint(this.activeZone);
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchend', (e) => {
+            if (this.activeZone) {
+                const changedTouch = e.changedTouches[0];
+                const zone = this.getTouchZone(changedTouch);
+                if (zone === this.activeZone) {
+                    this.executeZoneAction(this.activeZone);
+                }
+                this.activeZone = null;
+                this.hideZoneHint();
+            }
+        });
+    },
+    
+    isEdgeTouch: function(touch) {
+        const edgeThreshold = 50;
+        return touch.clientX < edgeThreshold || 
+               touch.clientX > window.innerWidth - edgeThreshold ||
+               touch.clientY < edgeThreshold || 
+               touch.clientY > window.innerHeight - edgeThreshold;
+    },
+    
+    getTouchZone: function(touch) {
+        const halfWidth = window.innerWidth / 2;
+        const halfHeight = window.innerHeight / 2;
+        
+        if (touch.clientY < halfHeight) {
+            return touch.clientX < halfWidth ? 'topLeft' : 'topRight';
+        }
+        return touch.clientX < halfWidth ? 'bottomLeft' : 'bottomRight';
+    },
+    
+    showZoneHint: function(zone) {
+        let hint = document.querySelector('.zone-hint');
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'zone-hint';
+            hint.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 20px;
+                font-size: 24px;
+                z-index: 10000;
+                animation: fadeIn 0.2s ease;
+            `;
+            document.body.appendChild(hint);
+        }
+        
+        const zoneIcons = {
+            topLeft: '🏠 Home',
+            topRight: '🎵 Media',
+            bottomLeft: '💡 Lights',
+            bottomRight: '⚙️ Settings'
+        };
+        
+        hint.textContent = zoneIcons[zone] || zone;
+    },
+    
+    hideZoneHint: function() {
+        const hint = document.querySelector('.zone-hint');
+        if (hint) hint.remove();
+    },
+    
+    executeZoneAction: function(zone) {
+        const actions = {
+            topLeft: () => this.showDashboard(),
+            topRight: () => this.showMediaPanel(),
+            bottomLeft: () => this.showLightControls(),
+            bottomRight: () => this.showSettingsPanel()
+        };
+        
+        if (actions[zone]) {
+            actions[zone]();
+            this.hapticFeedback('success');
+        }
+    },
+    
+    showDashboard: function() {
+        window.location.href = '/';
+    },
+    
+    showMediaPanel: function() {
+        const mediaPanel = document.getElementById('media-controls-panel');
+        if (mediaPanel) {
+            mediaPanel.classList.add('visible');
+            this.showGestureFeedback('Media Controls', '🎵');
+        }
+    },
+    
+    showLightControls: function() {
+        const lifxSection = document.querySelector('.dashboard-card:has(#lifx-quick-scenes)');
+        if (lifxSection) {
+            lifxSection.scrollIntoView({ behavior: 'smooth' });
+            this.showGestureFeedback('Light Controls', '💡');
+        }
+    },
+    
+    showSettingsPanel: function() {
+        this.showTouchSensitivityPanel();
+    },
+
+    initMediaCenterIntegration: function() {
+        this.mediaPlaybackActive = false;
+        this.currentMediaTitle = '';
+        this.currentMediaArtist = '';
+        this.mediaLifxSyncEnabled = false;
+        
+        if (typeof MediaPlayer !== 'undefined') {
+            MediaPlayer.onStateChange = (state) => {
+                this.mediaPlaybackActive = state.isPlaying;
+                if (state.isPlaying && this.mediaLifxSyncEnabled) {
+                    this.startMediaLightSync();
+                } else {
+                    this.stopMediaLightSync();
+                }
+            };
+            
+            MediaPlayer.onTrackChange = (track) => {
+                this.currentMediaTitle = track.title;
+                this.currentMediaArtist = track.artist;
+                if (this.mediaLifxSyncEnabled) {
+                    this.pulseForNewTrack();
+                }
+            };
+        }
+        
+        this.addMediaSyncButton();
+    },
+    
+    addMediaSyncButton: function() {
+        let mediaSyncBtn = document.getElementById('lifx-media-sync-btn');
+        if (!mediaSyncBtn && document.querySelector('#lifx-quick-scenes')) {
+            mediaSyncBtn = document.createElement('button');
+            mediaSyncBtn.id = 'lifx-media-sync-btn';
+            mediaSyncBtn.className = 'btn btn-primary-custom';
+            mediaSyncBtn.style.cssText = 'min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #00ff88, #00d4ff); margin-top: 15px;';
+            mediaSyncBtn.innerHTML = '<i class="fas fa-music"></i><br><small>Media Sync</small>';
+            mediaSyncBtn.onclick = () => this.toggleMediaSync();
+            
+            const scenesContainer = document.querySelector('#lifx-quick-scenes');
+            if (scenesContainer && scenesContainer.parentNode) {
+                scenesContainer.parentNode.insertBefore(mediaSyncBtn, scenesContainer.nextSibling);
+            }
+        }
+    },
+    
+    toggleMediaSync: function() {
+        this.mediaLifxSyncEnabled = !this.mediaLifxSyncEnabled;
+        
+        if (this.mediaLifxSyncEnabled) {
+            this.startMediaLightSync();
+            this.showGestureFeedback('Media Sync ON', '🎵');
+            this.hapticFeedback('success');
+        } else {
+            this.stopMediaLightSync();
+            this.showGestureFeedback('Media Sync OFF', '🔇');
+            this.hapticFeedback('light');
+        }
+        
+        const btn = document.getElementById('lifx-media-sync-btn');
+        if (btn) {
+            btn.style.background = this.mediaLifxSyncEnabled ? 
+                'linear-gradient(135deg, #00ff88, #00d4ff)' : 
+                'linear-gradient(135deg, #666, #999)';
+        }
+    },
+    
+    startMediaLightSync: function() {
+        if (this.mediaSyncInterval) {
+            clearInterval(this.mediaSyncInterval);
+        }
+        
+        this.mediaSyncInterval = setInterval(() => {
+            if (this.mediaPlaybackActive && typeof MediaPlayer !== 'undefined') {
+                this.syncLightsToMedia();
+            }
+        }, 100);
+        
+        console.log('Media light sync started');
+    },
+    
+    stopMediaLightSync: function() {
+        if (this.mediaSyncInterval) {
+            clearInterval(this.mediaSyncInterval);
+            this.mediaSyncInterval = null;
+        }
+        console.log('Media light sync stopped');
+    },
+    
+    syncLightsToMedia: function() {
+        if (typeof MediaPlayer === 'undefined' || !MediaPlayer.lifxBeatDetection) return;
+        
+        const beatData = MediaPlayer.lifxBeatDetection;
+        
+        if (beatData.beatDetected) {
+            this.flashLightsOnBeat();
+            beatData.beatDetected = false;
+        }
+        
+        if (this.mediaSyncMode === 'spectrum' && beatData.frequencyData) {
+            this.adjustLightsToFrequency(beatData.frequencyData);
+        }
+    },
+    
+    flashLightsOnBeat: function() {
+        const bulbs = this.multiBulbSelection.length > 0 ? 
+            this.multiBulbSelection : [this.selectedBulb];
+        
+        bulbs.forEach(bulbId => {
+            if (bulbId && typeof sendLifxCommand !== 'undefined') {
+                sendLifxCommand('set_brightness', {
+                    bulb_id: bulbId,
+                    brightness: 1.0,
+                    duration: 0.1
+                });
+            }
+        });
+        
+        setTimeout(() => {
+            bulbs.forEach(bulbId => {
+                if (bulbId && typeof sendLifxCommand !== 'undefined') {
+                    sendLifxCommand('set_brightness', {
+                        bulb_id: bulbId,
+                        brightness: this.brightnessLevel / 100,
+                        duration: 0.3
+                    });
+                }
+            });
+        }, 100);
+    },
+    
+    adjustLightsToFrequency: function(frequencyData) {
+        if (!frequencyData || frequencyData.length === 0) return;
+        
+        const bassLevel = frequencyData[0] / 255;
+        const midLevel = frequencyData[Math.floor(frequencyData.length / 2)] / 255;
+        const trebleLevel = frequencyData[frequencyData.length - 1] / 255;
+        
+        const hue = (bassLevel * 360) % 360;
+        const saturation = midLevel * 100;
+        const brightness = Math.max(0.2, 1 - trebleLevel);
+        
+        const bulbs = this.multiBulbSelection.length > 0 ? 
+            this.multiBulbSelection : [this.selectedBulb];
+        
+        bulbs.forEach(bulbId => {
+            if (bulbId && typeof sendLifxCommand !== 'undefined') {
+                sendLifxCommand('set_color', {
+                    bulb_id: bulbId,
+                    hue: hue,
+                    saturation: saturation,
+                    brightness: brightness,
+                    duration: 0.2
+                });
+            }
+        });
+    },
+    
+    pulseForNewTrack: function() {
+        const bulbs = this.multiBulbSelection.length > 0 ? 
+            this.multiBulbSelection : [this.selectedBulb];
+        
+        const colors = ['#00ff88', '#00d4ff', '#ff0088', '#ff8800'];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        
+        bulbs.forEach((bulbId, index) => {
+            setTimeout(() => {
+                if (bulbId && typeof sendLifxCommand !== 'undefined') {
+                    sendLifxCommand('set_color', {
+                        bulb_id: bulbId,
+                        color: color,
+                        brightness: 1.0,
+                        duration: 0.3
+                    });
+                }
+            }, index * 100);
+        });
+    },
+
+    initQuickActionPresets: function() {
+        this.quickActionPresets = {
+            'doubleTap': 'toggle_power',
+            'longPress': 'brightness_adjust',
+            'swipeUp': 'scene_next',
+            'swipeDown': 'scene_prev',
+            'swipeLeft': 'color_cooler',
+            'swipeRight': 'color_warmer',
+            'pinchOut': 'brightness_max',
+            'pinchIn': 'brightness_min',
+            'threeFingerSwipeUp': 'party_mode',
+            'threeFingerSwipeDown': 'relax_mode'
+        };
+        
+        this.loadQuickActionPresets();
+    },
+    
+    loadQuickActionPresets: function() {
+        const saved = localStorage.getItem('lifx_quick_actions');
+        if (saved) {
+            try {
+                this.quickActionPresets = JSON.parse(saved);
+            } catch (e) {
+                console.warn('Failed to load quick action presets');
+            }
+        }
+    },
+    
+    saveQuickActionPresets: function() {
+        localStorage.setItem('lifx_quick_actions', JSON.stringify(this.quickActionPresets));
+    },
+    
+    executeQuickAction: function(gestureType) {
+        const action = this.quickActionPresets[gestureType];
+        if (!action) return;
+        
+        const actions = {
+            'toggle_power': () => this.togglePower(),
+            'brightness_adjust': () => this.showBrightnessSlider(),
+            'scene_next': () => this.nextScene(),
+            'scene_prev': () => this.previousScene(),
+            'color_cooler': () => this.adjustColorTemp(-200),
+            'color_warmer': () => this.adjustColorTemp(200),
+            'brightness_max': () => { this.brightnessLevel = 100; this.adjustBrightness(0); },
+            'brightness_min': () => { this.brightnessLevel = 10; this.adjustBrightness(0); },
+            'party_mode': () => this.activatePartyMode(),
+            'relax_mode': () => this.applyScene('relax')
+        };
+        
+        if (actions[action]) {
+            actions[action]();
+            this.showGestureFeedback(action.replace('_', ' ').toUpperCase(), '⚡');
+        }
+    },
+
+    createRadialMenu: function() {
+        const menu = document.createElement('div');
+        menu.id = 'lifx-radial-menu';
+        menu.className = 'lifx-radial-menu';
+        menu.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            z-index: 10000;
+        `;
+        
+        const items = [
+            { icon: '💡', action: 'power', angle: 0 },
+            { icon: '🎨', action: 'color', angle: 72 },
+            { icon: '☀️', action: 'brightness', angle: 144 },
+            { icon: '🎵', action: 'media', angle: 216 },
+            { icon: '⚙️', action: 'settings', angle: 288 }
+        ];
+        
+        items.forEach(item => {
+            const btn = document.createElement('button');
+            btn.className = 'radial-menu-btn';
+            btn.innerHTML = item.icon;
+            btn.style.cssText = `
+                position: absolute;
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                background: rgba(255, 255, 255, 0.1);
+                color: white;
+                font-size: 24px;
+                cursor: pointer;
+                transform: rotate(${item.angle}deg) translate(100px) rotate(-${item.angle}deg);
+            `;
+            btn.onclick = () => {
+                this.executeRadialAction(item.action);
+                this.hideRadialMenu();
+            };
+            menu.appendChild(btn);
+        });
+        
+        document.body.appendChild(menu);
+    },
+    
+    showRadialMenu: function() {
+        const menu = document.getElementById('lifx-radial-menu');
+        if (menu) {
+            menu.style.display = 'block';
+            menu.style.animation = 'scaleIn 0.2s ease';
+            this.hapticFeedback('success');
+        }
+    },
+    
+    hideRadialMenu: function() {
+        const menu = document.getElementById('lifx-radial-menu');
+        if (menu) {
+            menu.style.display = 'none';
+        }
+    },
+    
+    executeRadialAction: function(action) {
+        const actions = {
+            'power': () => this.togglePower(),
+            'color': () => this.showQuickColorPicker(),
+            'brightness': () => this.showBrightnessSlider(),
+            'media': () => this.showMediaPanel(),
+            'settings': () => this.showTouchSensitivityPanel()
+        };
+        
+        if (actions[action]) {
+            actions[action]();
+        }
     }
 };
 
@@ -8732,10 +9175,15 @@ document.addEventListener('DOMContentLoaded', function() {
     LifXTouchControls.initAdvancedGestureModes();
     LifXTouchControls.initMediaCenterIntegration();
     LifXTouchControls.initMediaSync();
+    LifXTouchControls.initEnhancedTouchInterface();
+    LifXTouchControls.initQuickActionPresets();
     
     // Initialize quick actions and gesture shortcuts
     LifXTouchControls.initQuickActions();
     LifXTouchControls.initGestureShortcuts();
+    
+    // Create radial menu for quick access
+    LifXTouchControls.createRadialMenu();
     
     // Expose global functions for voice and accessibility
     window.startLifxVoiceCommand = () => LifXTouchControls.initVoiceControl();
