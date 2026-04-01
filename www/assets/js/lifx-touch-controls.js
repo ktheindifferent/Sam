@@ -732,6 +732,11 @@ const LifXTouchControls = {
         this.isMultiSelectMode = false;
         this.isDragSelecting = false;
         this.dragSelectionState = false;
+        this.isLassoGestureActive = false;
+        this.lassoPath = [];
+        this.lassoSvg = null;
+        this.lassoPathElement = null;
+        
         const multiSelectBtn = document.getElementById('lifx-multi-select-btn');
         if (multiSelectBtn) {
             multiSelectBtn.addEventListener('click', () => {
@@ -751,17 +756,23 @@ const LifXTouchControls = {
             const bulbEl = e.target.closest('.lifx-bulb-control');
             if (bulbEl && this.isMultiSelectMode) {
                 this.touchHoldTimer = setTimeout(() => {
-                    this.isDragSelecting = true;
+                    this.isLassoGestureActive = true;
+                    this.lassoPath = [{ x: e.touches[0].clientX, y: e.touches[0].clientY }];
                     this.dragSelectionState = !bulbEl.classList.contains('selected');
                     this.hapticFeedback('light');
+                    this.createLassoVisual();
                 }, this.touchHoldDelay);
             }
         }, { passive: true });
         
         document.addEventListener('touchmove', (e) => {
-            if (!this.isDragSelecting) return;
+            if (!this.isLassoGestureActive) return;
             e.preventDefault();
             const touch = e.touches[0];
+            const currentPoint = { x: touch.clientX, y: touch.clientY };
+            this.lassoPath.push(currentPoint);
+            this.updateLassoVisual(currentPoint);
+            
             const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
             elements.forEach(el => {
                 const bulbEl = el.closest('.lifx-bulb-control');
@@ -773,8 +784,69 @@ const LifXTouchControls = {
         
         document.addEventListener('touchend', () => {
             if (this.touchHoldTimer) clearTimeout(this.touchHoldTimer);
-            this.isDragSelecting = false;
+            if (this.isLassoGestureActive) {
+                this.closeLassoVisual();
+                this.isLassoGestureActive = false;
+                this.lassoPath = [];
+            }
         });
+    },
+    
+    createLassoVisual: function() {
+        if (this.lassoSvg) return;
+        
+        this.lassoSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        this.lassoSvg.style.position = 'fixed';
+        this.lassoSvg.style.top = '0';
+        this.lassoSvg.style.left = '0';
+        this.lassoSvg.style.width = '100%';
+        this.lassoSvg.style.height = '100%';
+        this.lassoSvg.style.pointerEvents = 'none';
+        this.lassoSvg.style.zIndex = '9999';
+        
+        this.lassoPathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        this.lassoPathElement.setAttribute('fill', 'rgba(0, 212, 255, 0.2)');
+        this.lassoPathElement.setAttribute('stroke', 'rgba(0, 212, 255, 0.8)');
+        this.lassoPathElement.setAttribute('stroke-width', '3');
+        this.lassoPathElement.setAttribute('stroke-dasharray', '10,5');
+        
+        this.lassoSvg.appendChild(this.lassoPathElement);
+        document.body.appendChild(this.lassoSvg);
+    },
+    
+    updateLassoVisual: function(currentPoint) {
+        if (!this.lassoSvg || this.lassoPath.length < 2) return;
+        
+        let pathData = `M ${this.lassoPath[0].x} ${this.lassoPath[0].y}`;
+        for (let i = 1; i < this.lassoPath.length; i++) {
+            pathData += ` L ${this.lassoPath[i].x} ${this.lassoPath[i].y}`;
+        }
+        
+        this.lassoPathElement.setAttribute('d', pathData);
+    },
+    
+    closeLassoVisual: function() {
+        if (!this.lassoSvg) return;
+        
+        let pathData = `M ${this.lassoPath[0].x} ${this.lassoPath[0].y}`;
+        for (let i = 1; i < this.lassoPath.length; i++) {
+            pathData += ` L ${this.lassoPath[i].x} ${this.lassoPath[i].y}`;
+        }
+        pathData += ' Z';
+        
+        this.lassoPathElement.setAttribute('d', pathData);
+        this.lassoPathElement.style.transition = 'opacity 0.3s ease';
+        this.lassoPathElement.style.opacity = '0';
+        
+        setTimeout(() => {
+            if (this.lassoSvg.parentNode) {
+                this.lassoSvg.parentNode.removeChild(this.lassoSvg);
+            }
+            this.lassoSvg = null;
+            this.lassoPathElement = null;
+        }, 300);
+        
+        this.showEnhancedGestureFeedback(`${this.multiBulbSelection.length} bulbs selected`, '💡');
     },
     
     toggleBulbSelection: function(bulbEl, forceSelect = null) {
@@ -3752,6 +3824,109 @@ const LifXTouchControls = {
         });
     },
     
+    colorPaintingActive: false,
+    colorPaintingBrushSize: 1,
+    colorPaintingCurrentColor: '#00d4ff',
+    colorPaintingHistory: [],
+    
+    toggleColorPainting: function() {
+        this.colorPaintingActive = !this.colorPaintingActive;
+        if (this.colorPaintingActive) {
+            this.showEnhancedGestureFeedback('Color Painting ON - Drag across zones', '🎨');
+            this.initColorPaintingMode();
+        } else {
+            this.showEnhancedGestureFeedback('Color Painting OFF', '🎨');
+        }
+    },
+    
+    initColorPaintingMode: function() {
+        if (!this.colorPaintingActive) return;
+        
+        const zoneContainer = document.querySelector('.zone-visualization, .zone-grid');
+        if (!zoneContainer) return;
+        
+        zoneContainer.style.cursor = 'crosshair';
+        zoneContainer.addEventListener('mousedown', this.handlePaintStart.bind(this));
+        zoneContainer.addEventListener('mousemove', this.handlePaintMove.bind(this));
+        zoneContainer.addEventListener('mouseup', this.handlePaintEnd.bind(this));
+        zoneContainer.addEventListener('touchstart', this.handlePaintStart.bind(this), { passive: true });
+        zoneContainer.addEventListener('touchmove', this.handlePaintMove.bind(this), { passive: false });
+        zoneContainer.addEventListener('touchend', this.handlePaintEnd.bind(this));
+    },
+    
+    handlePaintStart: function(e) {
+        if (!this.colorPaintingActive) return;
+        e.preventDefault();
+        const zoneEl = e.target.closest('[data-zone]');
+        if (zoneEl) {
+            const zoneIndex = parseInt(zoneEl.dataset.zone);
+            this.paintZone(zoneIndex);
+        }
+    },
+    
+    handlePaintMove: function(e) {
+        if (!this.colorPaintingActive || e.buttons !== 1) return;
+        e.preventDefault();
+        
+        const touch = e.touches ? e.touches[0] : e;
+        const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
+        
+        for (const el of elements) {
+            const zoneEl = el.closest('[data-zone]');
+            if (zoneEl) {
+                const zoneIndex = parseInt(zoneEl.dataset.zone);
+                const lastPainted = this.colorPaintingHistory[this.colorPaintingHistory.length - 1];
+                if (lastPainted !== zoneIndex) {
+                    this.paintZone(zoneIndex);
+                    this.colorPaintingHistory.push(zoneIndex);
+                }
+                break;
+            }
+        }
+    },
+    
+    handlePaintEnd: function() {
+        if (!this.colorPaintingActive) return;
+        this.colorPaintingHistory = [];
+    },
+    
+    paintZone: function(zoneIndex) {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : []);
+        
+        if (targets.length === 0) return;
+        
+        const rgb = this.hexToRgb(this.colorPaintingCurrentColor);
+        const hsv = this.rgbToHsv(rgb.r, rgb.g, rgb.b);
+        
+        $.ajax({
+            url: '/api/services/lifx/zones',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                start_index: zoneIndex,
+                end_index: zoneIndex,
+                color: `hue:${Math.round(hsv.h * 182)} saturation:${Math.round(hsv.s * 100)}% brightness:${Math.round(hsv.v * 100)}%`,
+                duration: 0.3
+            }),
+            success: () => {
+                this.hapticFeedback('light', 0.3);
+            }
+        });
+    },
+    
+    setColorPaintingColor: function(hexColor) {
+        this.colorPaintingCurrentColor = hexColor;
+        this.showEnhancedGestureFeedback(`Brush color: ${hexColor}`, '🎨');
+    },
+    
+    setColorPaintingBrushSize: function(size) {
+        this.colorPaintingBrushSize = size;
+        this.showEnhancedGestureFeedback(`Brush size: ${size}`, '🖌️');
+    },
+    
     initMediaSync: function() {
         if (typeof MediaPlayer !== 'undefined') {
             MediaPlayer.onLifxUpdate = (data) => {
@@ -3762,6 +3937,95 @@ const LifXTouchControls = {
         }
         this.initBeatDetection();
         this.initBpmRealtimeDisplay();
+        this.initMediaSessionIntegration();
+    },
+    
+    initMediaSessionIntegration: function() {
+        if (!('mediaSession' in navigator)) {
+            console.log('Media Session API not supported');
+            return;
+        }
+        
+        navigator.mediaSession.setActionHandler('play', () => {
+            this.handleMediaSessionAction('play');
+        });
+        
+        navigator.mediaSession.setActionHandler('pause', () => {
+            this.handleMediaSessionAction('pause');
+        });
+        
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+            this.handleMediaSessionAction('previous');
+        });
+        
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+            this.handleMediaSessionAction('next');
+        });
+        
+        navigator.mediaSession.setActionHandler('stop', () => {
+            this.handleMediaSessionAction('stop');
+        });
+        
+        console.log('Media Session API integration initialized');
+    },
+    
+    handleMediaSessionAction: function(action) {
+        console.log('Media Session action:', action);
+        
+        switch(action) {
+            case 'play':
+                if (typeof MediaPlayer !== 'undefined' && MediaPlayer.togglePlayPause) {
+                    MediaPlayer.isPlaying = true;
+                    this.mediaPlaybackActive = true;
+                    this.updateMediaSessionMetadata();
+                }
+                break;
+            case 'pause':
+                if (typeof MediaPlayer !== 'undefined' && MediaPlayer.togglePlayPause) {
+                    MediaPlayer.isPlaying = false;
+                    this.mediaPlaybackActive = false;
+                }
+                break;
+            case 'previous':
+                if (typeof MediaPlayer !== 'undefined' && MediaPlayer.previousTrack) {
+                    MediaPlayer.previousTrack();
+                    setTimeout(() => this.updateMediaSessionMetadata(), 500);
+                }
+                break;
+            case 'next':
+                if (typeof MediaPlayer !== 'undefined' && MediaPlayer.nextTrack) {
+                    MediaPlayer.nextTrack();
+                    setTimeout(() => this.updateMediaSessionMetadata(), 500);
+                }
+                break;
+            case 'stop':
+                this.mediaPlaybackActive = false;
+                break;
+        }
+        
+        this.showEnhancedGestureFeedback(`Media: ${action}`, '🎵');
+    },
+    
+    updateMediaSessionMetadata: function() {
+        if (!('mediaSession' in navigator)) return;
+        
+        const trackInfo = typeof MediaPlayer !== 'undefined' ? MediaPlayer.currentTrack : null;
+        
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: trackInfo?.title || 'Unknown Track',
+            artist: trackInfo?.artist || 'Unknown Artist',
+            album: trackInfo?.album || 'Unknown Album',
+            artwork: [
+                { src: '/assets/img/media-placeholder.png', sizes: '96x96', type: 'image/png' },
+                { src: '/assets/img/media-placeholder.png', sizes: '128x128', type: 'image/png' },
+                { src: '/assets/img/media-placeholder.png', sizes: '192x192', type: 'image/png' },
+                { src: '/assets/img/media-placeholder.png', sizes: '256x256', type: 'image/png' },
+                { src: '/assets/img/media-placeholder.png', sizes: '384x384', type: 'image/png' },
+                { src: '/assets/img/media-placeholder.png', sizes: '512x512', type: 'image/png' }
+            ]
+        });
+        
+        navigator.mediaSession.playbackState = this.mediaPlaybackActive ? 'playing' : 'paused';
     },
     
     initBpmRealtimeDisplay: function() {
@@ -4021,6 +4285,8 @@ const LifXTouchControls = {
         const bufferLength = this.audioAnalyzer.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
         let lastBeatTime = 0;
+        const bpmHistory = [];
+        const maxBpmHistory = 8;
         
         const detectBeat = () => {
             if (!this.mediaPlaybackActive) {
@@ -4036,8 +4302,25 @@ const LifXTouchControls = {
             
             const now = Date.now();
             if (bass > threshold && now - lastBeatTime > this.beatDebounce) {
+                const rawBpm = Math.round(60000 / (now - this.lastBeatTime));
+                
+                if (rawBpm >= 60 && rawBpm <= 200) {
+                    bpmHistory.push(rawBpm);
+                    if (bpmHistory.length > maxBpmHistory) {
+                        bpmHistory.shift();
+                    }
+                    
+                    const sortedBpm = [...bpmHistory].sort((a, b) => a - b);
+                    const medianBpm = sortedBpm[Math.floor(sortedBpm.length / 2)];
+                    
+                    const alpha = 0.3;
+                    const smoothedBpm = Math.round(alpha * medianBpm + (1 - alpha) * (this.bpmValue || medianBpm));
+                    
+                    this.bpmValue = smoothedBpm;
+                    this.bpmSmoothed = smoothedBpm;
+                }
+                
                 lastBeatTime = now;
-                this.bpmValue = Math.round(60000 / (now - this.lastBeatTime)) || 0;
                 this.lastBeatTime = now;
                 
                 if (this.mediaSyncMode === 'beat') {
@@ -6150,6 +6433,109 @@ const LifXTouchControls = {
     
     applySceneFromName: function(sceneName) {
         this.applyScene(sceneName);
+    },
+    
+    recordGestureSuccess: function() {
+        if (this.adaptiveSensitivityEnabled) {
+            this.gestureSuccessCount++;
+            this.updateGestureAccuracy();
+        }
+    },
+    
+    recordGestureFailure: function() {
+        if (this.adaptiveSensitivityEnabled) {
+            this.gestureFailCount++;
+            this.updateGestureAccuracy();
+        }
+    },
+    
+    updateGestureAccuracy: function() {
+        const total = this.gestureSuccessCount + this.gestureFailCount;
+        if (total < 5) return;
+        
+        this.gestureAccuracyScore = Math.round((this.gestureSuccessCount / total) * 100);
+        
+        if (total >= 10 && this.adaptiveSensitivityEnabled) {
+            this.autoAdjustSensitivity();
+        }
+    },
+    
+    autoAdjustSensitivity: function() {
+        const accuracy = this.gestureAccuracyScore;
+        const currentLevel = this.touchSensitivity;
+        
+        if (accuracy < 70 && currentLevel !== 'low') {
+            this.touchSensitivity = currentLevel === 'high' ? 'medium' : 'low';
+            this.applySensitivitySettings();
+            this.showEnhancedGestureFeedback('Reduced sensitivity for better accuracy', '🎯');
+            this.saveGestureSensitivity();
+        } else if (accuracy > 90 && currentLevel !== 'high') {
+            this.touchSensitivity = currentLevel === 'low' ? 'medium' : 'high';
+            this.applySensitivitySettings();
+            this.showEnhancedGestureFeedback('Increased sensitivity for faster response', '⚡');
+            this.saveGestureSensitivity();
+        }
+        
+        this.gestureSuccessCount = 0;
+        this.gestureFailCount = 0;
+    },
+    
+    calculateTouchVelocity: function(currentX, currentY, timestamp) {
+        const lastX = this.lastTouchCoordinates.x;
+        const lastY = this.lastTouchCoordinates.y;
+        const lastTime = this.gestureStartTime;
+        
+        const deltaX = currentX - lastX;
+        const deltaY = currentY - lastY;
+        const deltaTime = timestamp - lastTime;
+        
+        if (deltaTime > 0) {
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const velocity = distance / deltaTime;
+            
+            this.touchVelocityHistory.push(velocity);
+            if (this.touchVelocityHistory.length > this.maxVelocityHistory) {
+                this.touchVelocityHistory.shift();
+            }
+            
+            const avgVelocity = this.touchVelocityHistory.reduce((a, b) => a + b, 0) / this.touchVelocityHistory.length;
+            this.touchVelocity = avgVelocity;
+            this.lastGestureVelocity = avgVelocity;
+            
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                this.touchDirection = deltaX > 0 ? 'right' : 'left';
+            } else {
+                this.touchDirection = deltaY > 0 ? 'down' : 'up';
+            }
+        }
+        
+        this.lastTouchCoordinates = { x: currentX, y: currentY };
+    },
+    
+    getVelocityBasedThreshold: function(baseThreshold) {
+        const velocityFactor = Math.max(0.5, Math.min(1.5, 1.0 - (this.touchVelocity - 0.5)));
+        return baseThreshold * velocityFactor;
+    },
+    
+    resetGestureAccuracy: function() {
+        this.gestureSuccessCount = 0;
+        this.gestureFailCount = 0;
+        this.gestureAccuracyScore = 100;
+        this.touchVelocityHistory = [];
+    },
+    
+    getGestureAccuracyScore: function() {
+        return this.gestureAccuracyScore;
+    },
+    
+    isHighVelocityGesture: function() {
+        return this.touchVelocity > 1.5;
+    },
+    
+    shouldIgnoreGesture: function() {
+        if (!this.adaptiveSensitivityEnabled) return false;
+        const accuracy = this.gestureAccuracyScore;
+        return accuracy < 50 && this.touchVelocity < 0.3;
     }
 };
 
