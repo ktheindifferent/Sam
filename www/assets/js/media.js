@@ -3745,3 +3745,424 @@ function updateLoop() {
         rAF(updateLoop);
     }, 160);
 }
+
+// Enhanced Beat Detection Calibration
+const BeatDetectionCalibration = {
+    isActive: false,
+    calibrationData: [],
+    thresholdHistory: [],
+    sensitivityHistory: [],
+    
+    start: function() {
+        this.isActive = true;
+        this.calibrationData = [];
+        this.thresholdHistory = [];
+        this.sensitivityHistory = [];
+        this.updateVisualization();
+        showNotification('Beat detection calibration started', 'info');
+    },
+    
+    stop: function() {
+        this.isActive = false;
+        showNotification('Beat detection calibration stopped', 'info');
+    },
+    
+    addDataPoint: function(energy, threshold, sensitivity) {
+        if (!this.isActive) return;
+        
+        this.calibrationData.push({ energy, threshold, sensitivity, time: Date.now() });
+        this.thresholdHistory.push(threshold);
+        this.sensitivityHistory.push(sensitivity);
+        
+        if (this.calibrationData.length > 100) {
+            this.calibrationData.shift();
+        }
+        if (this.thresholdHistory.length > 50) {
+            this.thresholdHistory.shift();
+            this.sensitivityHistory.shift();
+        }
+        
+        this.updateVisualization();
+    },
+    
+    updateVisualization: function() {
+        const barsContainer = document.querySelector('.beat-energy-visualization');
+        if (!barsContainer) return;
+        
+        barsContainer.innerHTML = '';
+        const barCount = 20;
+        
+        for (let i = 0; i < barCount; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'beat-energy-bar';
+            
+            if (this.calibrationData.length > 0) {
+                const dataIndex = Math.floor((this.calibrationData.length / barCount) * i);
+                const data = this.calibrationData[dataIndex] || { energy: 0 };
+                const height = Math.max(5, data.energy * 100);
+                bar.style.height = `${height}%`;
+                
+                if (data.energy > (data.threshold || 0.3)) {
+                    bar.classList.add('peak');
+                }
+            } else {
+                bar.style.height = '5%';
+            }
+            
+            barsContainer.appendChild(bar);
+        }
+    },
+    
+    autoCalibrate: function() {
+        if (this.calibrationData.length < 20) {
+            showNotification('Need more data for calibration. Play music for a few seconds.', 'warning');
+            return;
+        }
+        
+        const energies = this.calibrationData.map(d => d.energy);
+        const avgEnergy = energies.reduce((a, b) => a + b, 0) / energies.length;
+        const maxEnergy = Math.max(...energies);
+        const minEnergy = Math.min(...energies);
+        
+        const optimalThreshold = avgEnergy + ((maxEnergy - avgEnergy) * 0.3);
+        
+        if (MediaPlayer.beatDetection) {
+            MediaPlayer.beatDetection.threshold = Math.max(0.1, Math.min(0.9, optimalThreshold));
+            MediaPlayer.beatDetection.userThreshold = Math.max(0.1, Math.min(0.9, optimalThreshold));
+        }
+        
+        showNotification(`Auto-calibrated threshold: ${optimalThreshold.toFixed(3)}`, 'success');
+        this.stop();
+    },
+    
+    reset: function() {
+        this.calibrationData = [];
+        this.thresholdHistory = [];
+        this.sensitivityHistory = [];
+        this.updateVisualization();
+        showNotification('Calibration data reset', 'info');
+    }
+};
+
+// Enhanced Scene Presets
+const EnhancedScenePresets = {
+    presets: {
+        'meditation': { hue: 280, saturation: 60, brightness: 30, temperature: 4000, name: 'Meditation', emoji: '🧘' },
+        'gaming': { hue: 300, saturation: 90, brightness: 80, temperature: 6500, name: 'Gaming', emoji: '🎮' },
+        'cooking': { hue: 30, saturation: 70, brightness: 90, temperature: 4500, name: 'Cooking', emoji: '🍳' },
+        'creative': { hue: 290, saturation: 75, brightness: 70, temperature: 5500, name: 'Creative', emoji: '🎨' },
+        'yoga': { hue: 150, saturation: 50, brightness: 60, temperature: 4000, name: 'Yoga', emoji: '🧘‍♀️' },
+        'movie': { hue: 25, saturation: 60, brightness: 40, temperature: 2700, name: 'Movie', emoji: '🎬' },
+        'study': { hue: 210, saturation: 40, brightness: 80, temperature: 6000, name: 'Study', emoji: '📚' },
+        'dinner': { hue: 35, saturation: 65, brightness: 50, temperature: 3000, name: 'Dinner', emoji: '🍽️' },
+        'morning': { hue: 45, saturation: 50, brightness: 70, temperature: 5000, name: 'Morning', emoji: '🌅' },
+        'goodnight': { hue: 220, saturation: 20, brightness: 15, temperature: 2700, name: 'Goodnight', emoji: '🌙' },
+        'rainbow': { hue: 0, saturation: 100, brightness: 90, temperature: 5500, name: 'Rainbow', emoji: '🌈', special: 'rainbow' },
+        'fireplace': { hue: 15, saturation: 80, brightness: 60, temperature: 2200, name: 'Fireplace', emoji: '🔥', special: 'flicker' },
+        'ice': { hue: 170, saturation: 60, brightness: 80, temperature: 8000, name: 'Ice', emoji: '🧊' },
+        'aurora': { hue: 140, saturation: 70, brightness: 65, temperature: 6000, name: 'Aurora', emoji: '🌌', special: 'aurora' },
+        'nebula': { hue: 270, saturation: 85, brightness: 55, temperature: 7000, name: 'Nebula', emoji: '☄️', special: 'nebula' },
+        'thunder': { hue: 50, saturation: 40, brightness: 85, temperature: 9000, name: 'Thunder', emoji: '⚡', special: 'thunder' },
+        'cosmic': { hue: 260, saturation: 90, brightness: 50, temperature: 8000, name: 'Cosmic', emoji: '🌠', special: 'cosmic' },
+        'dream': { hue: 190, saturation: 60, brightness: 45, temperature: 4500, name: 'Dream', emoji: '💭', special: 'dream' },
+        'chill': { hue: 230, saturation: 45, brightness: 55, temperature: 3500, name: 'Chill', emoji: '😌' },
+        'adventure': { hue: 35, saturation: 85, brightness: 75, temperature: 5000, name: 'Adventure', emoji: '🗺️', special: 'adventure' },
+        'festival': { hue: 320, saturation: 95, brightness: 85, temperature: 6000, name: 'Festival', emoji: '🎉', special: 'festival' }
+    },
+    
+    currentScene: null,
+    
+    apply: function(sceneName) {
+        const scene = this.presets[sceneName];
+        if (!scene) return;
+        
+        this.currentScene = sceneName;
+        
+        const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
+            ? LifXTouchControls.multiBulbSelection.join(',')
+            : 'all';
+        
+        if (scene.special) {
+            this.applySpecialEffect(scene.special, targets);
+        } else {
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets}`,
+                    color: `hue:${scene.hue * 182} saturation:${scene.saturation}% brightness:${scene.brightness / 100}`,
+                    kelvin: scene.temperature,
+                    duration: 0.5
+                })
+            });
+        }
+        
+        this.showSceneIndicator(scene);
+        showNotification(`Scene: ${scene.name}`, 'info');
+    },
+    
+    applySpecialEffect: function(effect, targets) {
+        switch(effect) {
+            case 'rainbow':
+                MediaPlayer.lifxSyncMode = 'rainbow';
+                break;
+            case 'flicker':
+                startFireEffect();
+                break;
+            case 'aurora':
+                startAuroraEffect();
+                break;
+            case 'nebula':
+            case 'cosmic':
+            case 'dream':
+            case 'adventure':
+            case 'festival':
+            case 'thunder':
+                this.startDynamicEffect(effect, targets);
+                break;
+        }
+    },
+    
+    startDynamicEffect: function(effectName, targets) {
+        const effects = {
+            'nebula': { hues: [270, 300, 330], duration: 4000, brightness: [40, 70] },
+            'cosmic': { hues: [260, 290, 320], duration: 5000, brightness: [30, 60] },
+            'dream': { hues: [180, 200, 220], duration: 6000, brightness: [35, 55] },
+            'adventure': { hues: [30, 40, 50], duration: 3000, brightness: [60, 85] },
+            'festival': { hues: [320, 340, 0, 200], duration: 2000, brightness: [70, 95] },
+            'thunder': { hues: [50, 0], duration: 2000, brightness: [40, 100], flash: true }
+        };
+        
+        const effect = effects[effectName];
+        if (!effect) return;
+        
+        let hueIndex = 0;
+        let brightnessUp = true;
+        let currentBrightness = effect.brightness[0];
+        
+        const interval = setInterval(() => {
+            if (this.currentScene !== effectName) {
+                clearInterval(interval);
+                return;
+            }
+            
+            const hue = effect.hues[hueIndex % effect.hues.length];
+            
+            if (effect.flash && Math.random() > 0.7) {
+                currentBrightness = 100;
+            } else {
+                currentBrightness += brightnessUp ? 5 : -5;
+                if (currentBrightness >= effect.brightness[1]) brightnessUp = false;
+                if (currentBrightness <= effect.brightness[0]) brightnessUp = true;
+            }
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets}`,
+                    color: `hue:${hue * 182} saturation:80% brightness:${currentBrightness / 100}`,
+                    duration: effect.duration / 1000
+                })
+            });
+            
+            hueIndex++;
+        }, effect.duration / 4);
+    },
+    
+    showSceneIndicator: function(scene) {
+        let indicator = document.querySelector('.scene-indicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.className = 'scene-indicator';
+            document.body.appendChild(indicator);
+        }
+        
+        indicator.className = `scene-indicator ${this.currentScene}`;
+        indicator.innerHTML = `${scene.emoji} ${scene.name}`;
+        indicator.style.display = 'block';
+        
+        setTimeout(() => {
+            indicator.style.display = 'none';
+        }, 3000);
+    },
+    
+    showSceneSelector: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Scene Selector requires SweetAlert2');
+            return;
+        }
+        
+        const sceneKeys = Object.keys(this.presets);
+        const scenesHtml = sceneKeys.map(key => {
+            const scene = this.presets[key];
+            const gradient = this.getSceneGradient(key);
+            return `
+                <div class="scene-preview-item-enhanced ${this.currentScene === key ? 'active' : ''}" 
+                     onclick="EnhancedScenePresets.apply('${key}'); if (typeof Swal !== 'undefined') Swal.close();">
+                    <div class="scene-gradient-preview" style="${gradient}"></div>
+                    <div class="scene-preview-emoji">${scene.emoji}</div>
+                    <div class="scene-preview-label-enhanced">${scene.name}</div>
+                </div>
+            `;
+        }).join('');
+        
+        Swal.fire({
+            title: '<i class="fas fa-palette"></i> Scene Presets',
+            html: `
+                <div class="scene-preview-grid-enhanced">
+                    ${scenesHtml}
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '600px'
+        });
+    },
+    
+    getSceneGradient: function(sceneName) {
+        const gradients = {
+            'meditation': 'background: linear-gradient(135deg, #9b59b6, #8e44ad);',
+            'gaming': 'background: linear-gradient(135deg, #9b59b6, #e91e63);',
+            'cooking': 'background: linear-gradient(135deg, #f39c12, #e67e22);',
+            'creative': 'background: linear-gradient(135deg, #8e44ad, #9b59b6);',
+            'yoga': 'background: linear-gradient(135deg, #27ae60, #2ecc71);',
+            'movie': 'background: linear-gradient(135deg, #d35400, #e67e22);',
+            'study': 'background: linear-gradient(135deg, #3498db, #2980b9);',
+            'dinner': 'background: linear-gradient(135deg, #f39c12, #d35400);',
+            'morning': 'background: linear-gradient(135deg, #f1c40f, #f39c12);',
+            'goodnight': 'background: linear-gradient(135deg, #2c3e50, #34495e);',
+            'rainbow': 'background: linear-gradient(135deg, #ff0080, #00ff80, #0080ff); background-size: 200% 200%;',
+            'fireplace': 'background: linear-gradient(135deg, #ff4500, #ff8c00);',
+            'ice': 'background: linear-gradient(135deg, #7fffd4, #00ced1);',
+            'aurora': 'background: linear-gradient(135deg, #00ff88, #00ced1, #0080ff);',
+            'nebula': 'background: linear-gradient(135deg, #9b59b6, #e91e63, #3498db);',
+            'thunder': 'background: linear-gradient(135deg, #f1c40f, #fff);',
+            'cosmic': 'background: linear-gradient(135deg, #4a0072, #7b1fa2, #e91e63);',
+            'dream': 'background: linear-gradient(135deg, #4fc3f7, #4dd0e1, #80cbc4);',
+            'chill': 'background: linear-gradient(135deg, #5c6bc0, #7986cb, #90a4ae);',
+            'adventure': 'background: linear-gradient(135deg, #ff6f00, #ff8f00, #ffa000);',
+            'festival': 'background: linear-gradient(135deg, #e91e63, #9c27b0, #ff4081);'
+        };
+        return gradients[sceneName] || 'background: linear-gradient(135deg, #27a0b9, #00d4ff);';
+    }
+};
+
+// Real-time BPM Indicator
+function showBpmIndicator() {
+    let indicator = document.querySelector('.bpm-realtime-indicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.className = 'bpm-realtime-indicator';
+        indicator.innerHTML = `
+            <i class="fas fa-heartbeat bpm-icon"></i>
+            <span class="bpm-value" id="realtime-bpm-value">--</span>
+            <span class="bpm-label">BPM</span>
+        `;
+        document.body.appendChild(indicator);
+    }
+    
+    indicator.classList.add('visible');
+    updateBpmValue();
+}
+
+function hideBpmIndicator() {
+    const indicator = document.querySelector('.bpm-realtime-indicator');
+    if (indicator) {
+        indicator.classList.remove('visible');
+        setTimeout(() => indicator.remove(), 300);
+    }
+}
+
+function updateBpmValue() {
+    const valueEl = document.getElementById('realtime-bpm-value');
+    const bpmDisplay = document.querySelector('#bpm-display');
+    
+    if (MediaPlayer.lifxBeatDetection && MediaPlayer.lifxBeatDetection.bpmEstimate) {
+        const bpm = Math.round(MediaPlayer.lifxBeatDetection.bpmEstimate);
+        if (valueEl) valueEl.textContent = bpm;
+    } else if (MediaPlayer.beatDetection && MediaPlayer.beatDetection.bpmEstimate) {
+        const bpm = Math.round(MediaPlayer.beatDetection.bpmEstimate);
+        if (valueEl) valueEl.textContent = bpm;
+    }
+    
+    setTimeout(() => updateBpmValue(), 500);
+}
+
+// Enhanced Touch Feedback
+function showEnhancedTouchFeedback(x, y, type, message) {
+    const feedback = document.createElement('div');
+    feedback.className = 'touch-gesture-feedback';
+    feedback.innerHTML = `<div class="swipe-indicator">${message}</div>`;
+    document.body.appendChild(feedback);
+    
+    setTimeout(() => {
+        feedback.querySelector('.swipe-indicator').classList.add('visible');
+    }, 10);
+    
+    setTimeout(() => {
+        feedback.remove();
+    }, 1000);
+}
+
+// Media Sync Quick Settings
+function showMediaSyncQuickSettings() {
+    if (typeof Swal === 'undefined') {
+        alert('Media Sync Quick Settings requires SweetAlert2');
+        return;
+    }
+    
+    Swal.fire({
+        title: '<i class="fas fa-sliders-h"></i> Quick Settings',
+        html: `
+            <div class="media-sync-quick-settings">
+                <div class="media-sync-quick-setting ${MediaPlayer.lifxSyncEnabled ? 'active' : ''}" onclick="toggleLifxMediaSync(); showMediaSyncQuickSettings();">
+                    <i class="fas fa-${MediaPlayer.lifxSyncEnabled ? 'check-circle' : 'circle'}"></i>
+                    <span>LIFX Sync</span>
+                </div>
+                <div class="media-sync-quick-setting ${MediaPlayer.ambientLightEnabled ? 'active' : ''}" onclick="toggleAmbientLight(); showMediaSyncQuickSettings();">
+                    <i class="fas fa-${MediaPlayer.ambientLightEnabled ? 'lightbulb' : 'lightbulb-slash'}"></i>
+                    <span>Ambient Light</span>
+                </div>
+                <div class="media-sync-quick-setting ${MediaPlayer.beatDetection.enabled ? 'active' : ''}" onclick="toggleBeatDetection(); showMediaSyncQuickSettings();">
+                    <i class="fas fa-${MediaPlayer.beatDetection.enabled ? 'wave-square' : 'wave-square'}"></i>
+                    <span>Beat Detection</span>
+                </div>
+                <div class="media-sync-quick-setting" onclick="showBeatDetectionCalibration(); if (typeof Swal !== 'undefined') Swal.close();">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>Calibrate</span>
+                </div>
+            </div>
+            <div class="beat-detection-calibration">
+                <h4><i class="fas fa-chart-bar"></i> Real-time Energy</h4>
+                <div class="beat-energy-visualization"></div>
+                <div class="calibration-controls">
+                    <button class="btn btn-sm btn-primary" onclick="BeatDetectionCalibration.start()">Start</button>
+                    <button class="btn btn-sm btn-success" onclick="BeatDetectionCalibration.autoCalibrate()">Auto</button>
+                    <button class="btn btn-sm btn-secondary" onclick="BeatDetectionCalibration.reset()">Reset</button>
+                    <button class="btn btn-sm btn-danger" onclick="BeatDetectionCalibration.stop(); showMediaSyncQuickSettings();">Stop</button>
+                </div>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: '500px'
+    });
+}
+
+function showBeatDetectionCalibration() {
+    BeatDetectionCalibration.start();
+}
+
+// Initialize enhanced media features
+function initEnhancedMediaFeatures() {
+    console.log('Enhanced media features initialized');
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        showBpmIndicator();
+    });
+}
+
+initEnhancedMediaFeatures();
