@@ -51,6 +51,11 @@ const LifXTouchControls = {
     touchRippleEnabled: true,
     showGestureHints: true,
     gestureHintDuration: 1000,
+    enhancedRippleMode: false,
+    rippleColor: 'rgba(0, 212, 255, 0.6)',
+    rippleSize: 50,
+    rippleDuration: 600,
+    glowEffectEnabled: true,
     voiceControlEnabled: false,
     zonePresets: {},
     effectQueue: [],
@@ -663,32 +668,120 @@ const LifXTouchControls = {
         }, duration);
     },
     
-    showGestureTutorial: function() {
+    showGestureTutorial: function(force = false) {
+        if (!force && localStorage.getItem('lifxGestureTutorialShown')) {
+            return;
+        }
+        
         const tutorial = document.createElement('div');
-        tutorial.className = 'lifx-gesture-tutorial active';
+        tutorial.className = 'lifx-gesture-tutorial active enhanced';
         tutorial.innerHTML = `
             <div class="lifx-gesture-tutorial-content">
-                <h3>👆 LIFX Touch Gestures</h3>
-                <div class="lifx-gesture-tutorial-item">
-                    <div class="lifx-gesture-tutorial-icon">⬆️⬇️</div>
-                    <div class="lifx-gesture-tutorial-text"><strong>Swipe Up/Down</strong><br>Adjust brightness</div>
+                <div class="tutorial-header">
+                    <h3>👆 LIFX Touch Gestures</h3>
+                    <p class="tutorial-subtitle">Interactive guide for controlling your lights</p>
                 </div>
-                <div class="lifx-gesture-tutorial-item">
-                    <div class="lifx-gesture-tutorial-icon">➡️⬅️</div>
-                    <div class="lifx-gesture-tutorial-text"><strong>Swipe Left/Right</strong><br>Adjust color temperature</div>
+                
+                <div class="tutorial-section">
+                    <h4><i class="fas fa-hand-pointer"></i> Basic Gestures</h4>
+                    <div class="lifx-gesture-tutorial-grid">
+                        <div class="lifx-gesture-tutorial-item enhanced">
+                            <div class="lifx-gesture-tutorial-icon">⬆️⬇️</div>
+                            <div class="lifx-gesture-tutorial-text">
+                                <strong>Swipe Up/Down</strong>
+                                <span>Adjust brightness</span>
+                            </div>
+                        </div>
+                        <div class="lifx-gesture-tutorial-item enhanced">
+                            <div class="lifx-gesture-tutorial-icon">➡️⬅️</div>
+                            <div class="lifx-gesture-tutorial-text">
+                                <strong>Swipe Left/Right</strong>
+                                <span>Adjust color temperature</span>
+                            </div>
+                        </div>
+                        <div class="lifx-gesture-tutorial-item enhanced">
+                            <div class="lifx-gesture-tutorial-icon">🤏</div>
+                            <div class="lifx-gesture-tutorial-text">
+                                <strong>Pinch In/Out</strong>
+                                <span>Cycle through scenes</span>
+                            </div>
+                        </div>
+                        <div class="lifx-gesture-tutorial-item enhanced">
+                            <div class="lifx-gesture-tutorial-icon">🖱️</div>
+                            <div class="lifx-gesture-tutorial-text">
+                                <strong>Tap</strong>
+                                <span>Select bulb</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="lifx-gesture-tutorial-item">
-                    <div class="lifx-gesture-tutorial-icon">🤏</div>
-                    <div class="lifx-gesture-tutorial-text"><strong>Pinch</strong><br>Cycle through scenes</div>
+                
+                <div class="tutorial-section">
+                    <h4><i class="fas fa-star"></i> Advanced Features</h4>
+                    <div class="lifx-gesture-tutorial-grid">
+                        <div class="lifx-gesture-tutorial-item enhanced">
+                            <div class="lifx-gesture-tutorial-icon">✋</div>
+                            <div class="lifx-gesture-tutorial-text">
+                                <strong>Long Press</strong>
+                                <span>Quick settings menu</span>
+                            </div>
+                        </div>
+                        <div class="lifx-gesture-tutorial-item enhanced">
+                            <div class="lifx-gesture-tutorial-icon">👆👆</div>
+                            <div class="lifx-gesture-tutorial-text">
+                                <strong>Double Tap</strong>
+                                <span>Toggle power</span>
+                            </div>
+                        </div>
+                        <div class="lifx-gesture-tutorial-item enhanced">
+                            <div class="lifx-gesture-tutorial-icon">⊕</div>
+                            <div class="lifx-gesture-tutorial-text">
+                                <strong>Ctrl+Tap</strong>
+                                <span>Multi-select bulbs</span>
+                            </div>
+                        </div>
+                        <div class="lifx-gesture-tutorial-item enhanced">
+                            <div class="lifx-gesture-tutorial-icon">💧</div>
+                            <div class="lifx-gesture-tutorial-text">
+                                <strong>Touch Ripples</strong>
+                                <span>Visual feedback on touch</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="lifx-gesture-tutorial-item">
-                    <div class="lifx-gesture-tutorial-icon">🖱️</div>
-                    <div class="lifx-gesture-tutorial-text"><strong>Tap</strong><br>Select bulb<br><strong>Ctrl+Tap</strong> for multi-select</div>
+                
+                <div class="tutorial-footer">
+                    <div class="tutorial-tips">
+                        <i class="fas fa-lightbulb"></i>
+                        <p>Tip: Customize sensitivity and visual feedback in Touch Settings!</p>
+                    </div>
+                    <button class="lifx-gesture-tutorial-close" onclick="LifXTouchControls.closeGestureTutorial()">
+                        <i class="fas fa-check"></i> Got It!
+                    </button>
                 </div>
-                <button class="lifx-gesture-tutorial-close" onclick="this.closest('.lifx-gesture-tutorial').remove()">Got It!</button>
             </div>
         `;
         document.body.appendChild(tutorial);
+        localStorage.setItem('lifxGestureTutorialShown', 'true');
+    },
+    
+    closeGestureTutorial: function() {
+        const tutorial = document.querySelector('.lifx-gesture-tutorial');
+        if (tutorial) {
+            tutorial.classList.remove('active');
+            setTimeout(() => {
+                if (tutorial.parentNode) {
+                    tutorial.parentNode.removeChild(tutorial);
+                }
+            }, 300);
+        }
+        localStorage.setItem('lifxGestureTutorialShown', 'true');
+    },
+    
+    resetGestureTutorial: function() {
+        localStorage.removeItem('lifxGestureTutorialShown');
+        this.showGestureTutorial(true);
+        showNotification('Gesture tutorial reset', 'info');
     },
     
     openQuickSettings: function() {
@@ -1622,10 +1715,38 @@ const LifXTouchControls = {
                                 onclick="LifXTouchControls.toggleTouchRipple()">
                             <i class="fas fa-${this.touchRippleEnabled ? 'check' : 'times'}"></i> Touch Ripples
                         </button>
+                        <button class="btn btn-sm ${this.enhancedRippleMode ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.toggleEnhancedRipple()">
+                            <i class="fas fa-${this.enhancedRippleMode ? 'check' : 'times'}"></i> Enhanced Ripples
+                        </button>
+                        <button class="btn btn-sm ${this.glowEffectEnabled ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.toggleGlowEffect()">
+                            <i class="fas fa-${this.glowEffectEnabled ? 'check' : 'times'}"></i> Glow Effect
+                        </button>
                         <button class="btn btn-sm ${this.showGestureHints ? 'btn-success' : 'btn-outline-secondary'}" 
                                 onclick="LifXTouchControls.toggleGestureHints()">
                             <i class="fas fa-${this.showGestureHints ? 'check' : 'times'}"></i> Gesture Hints
                         </button>
+                        <button class="btn btn-sm ${this.highContrastHints ? 'btn-success' : 'btn-outline-secondary'}" 
+                                onclick="LifXTouchControls.toggleHighContrast()">
+                            <i class="fas fa-${this.highContrastHints ? 'check' : 'times'}"></i> High Contrast
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="touch-sensitivity-panel">
+                    <h4><i class="fas fa-palette"></i> Ripple Customization</h4>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; color: #adb5bd;">Ripple Size: ${this.rippleSize}px</label>
+                        <input type="range" min="30" max="100" value="${this.rippleSize}" 
+                               oninput="LifXTouchControls.setRippleSize(this.value)"
+                               style="width: 100%;">
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        ${['#00d4ff', '#ff6b6b', '#4ecdc4', '#ffe66d', '#ff9f43', '#a55eea'].map(color => `
+                            <button class="btn btn-sm" style="width: 35px; height: 35px; border-radius: 50%; background: ${color}; border: 2px solid ${this.rippleColor === color ? '#fff' : 'transparent'};" 
+                                    onclick="LifXTouchControls.setRippleColor('${color}')"></button>
+                        `).join('')}
                     </div>
                 </div>
                 
@@ -1658,6 +1779,28 @@ const LifXTouchControls = {
         );
     },
     
+    toggleEnhancedRipple: function() {
+        this.enhancedRippleMode = !this.enhancedRippleMode;
+        localStorage.setItem('lifx_enhanced_ripple', this.enhancedRippleMode);
+        this.showTouchSensitivityPanel();
+        this.showEnhancedGestureFeedback(
+            this.enhancedRippleMode ? 'Enhanced Ripples ON' : 'Enhanced Ripples OFF',
+            this.enhancedRippleMode ? '✨' : '💧'
+        );
+    },
+    
+    setRippleColor: function(color) {
+        this.rippleColor = color;
+        localStorage.setItem('lifx_ripple_color', color);
+        this.showEnhancedGestureFeedback('Ripple color updated', '🎨');
+    },
+    
+    setRippleSize: function(size) {
+        this.rippleSize = Math.max(30, Math.min(100, size));
+        localStorage.setItem('lifx_ripple_size', this.rippleSize);
+        this.showEnhancedGestureFeedback(`Ripple size: ${this.rippleSize}px`, '📏');
+    },
+    
     toggleGestureHints: function() {
         this.showGestureHints = !this.showGestureHints;
         localStorage.setItem('lifx_gesture_hints', this.showGestureHints);
@@ -1665,6 +1808,26 @@ const LifXTouchControls = {
         this.showEnhancedGestureFeedback(
             this.showGestureHints ? 'Gesture Hints ON' : 'Gesture Hints OFF',
             this.showGestureHints ? '👆' : '🔇'
+        );
+    },
+    
+    toggleGlowEffect: function() {
+        this.glowEffectEnabled = !this.glowEffectEnabled;
+        localStorage.setItem('lifx_glow_effect', this.glowEffectEnabled);
+        this.showTouchSensitivityPanel();
+        this.showEnhancedGestureFeedback(
+            this.glowEffectEnabled ? 'Glow Effect ON' : 'Glow Effect OFF',
+            this.glowEffectEnabled ? '✨' : '💡'
+        );
+    },
+    
+    toggleHighContrast: function() {
+        this.highContrastHints = !this.highContrastHints;
+        localStorage.setItem('lifx_high_contrast', this.highContrastHints);
+        this.showTouchSensitivityPanel();
+        this.showEnhancedGestureFeedback(
+            this.highContrastHints ? 'High Contrast ON' : 'High Contrast OFF',
+            this.highContrastHints ? '🔲' : '⬜'
         );
     },
     
@@ -1691,7 +1854,12 @@ const LifXTouchControls = {
             ambientLightSync: this.ambientLightSync,
             hapticEnabled: this.hapticEnabled,
             touchRippleEnabled: this.touchRippleEnabled,
-            showGestureHints: this.showGestureHints
+            showGestureHints: this.showGestureHints,
+            enhancedRippleMode: this.enhancedRippleMode,
+            glowEffectEnabled: this.glowEffectEnabled,
+            highContrastHints: this.highContrastHints,
+            rippleColor: this.rippleColor,
+            rippleSize: this.rippleSize
         };
         localStorage.setItem('lifx_preferences', JSON.stringify(prefs));
     },
@@ -1707,11 +1875,21 @@ const LifXTouchControls = {
             const y = touch.clientY - rect.top;
             
             const ripple = document.createElement('span');
-            ripple.className = 'lifx-touch-ripple';
-            ripple.style.left = (x - 25) + 'px';
-            ripple.style.top = (y - 25) + 'px';
-            ripple.style.width = '50px';
-            ripple.style.height = '50px';
+            ripple.className = 'lifx-touch-ripple' + (this.enhancedRippleMode ? ' enhanced' : '');
+            ripple.style.left = (x - this.rippleSize / 2) + 'px';
+            ripple.style.top = (y - this.rippleSize / 2) + 'px';
+            ripple.style.width = this.rippleSize + 'px';
+            ripple.style.height = this.rippleSize + 'px';
+            
+            if (this.enhancedRippleMode) {
+                ripple.style.background = `radial-gradient(circle, ${this.rippleColor} 0%, transparent 70%)`;
+                ripple.style.animationDuration = (this.rippleDuration / 1000) + 's';
+                
+                if (this.glowEffectEnabled) {
+                    bulbEl.classList.add('touch-glow');
+                    setTimeout(() => bulbEl.classList.remove('touch-glow'), 300);
+                }
+            }
             
             bulbEl.appendChild(ripple);
             
@@ -1719,7 +1897,7 @@ const LifXTouchControls = {
                 if (ripple.parentNode) {
                     ripple.parentNode.removeChild(ripple);
                 }
-            }, 600);
+            }, this.rippleDuration);
         }, { passive: true });
     },
     
@@ -1732,6 +1910,7 @@ const LifXTouchControls = {
         this.setupTouchHoldProgress();
         this.setupQuickActions();
         this.setupZoneControl();
+        this.loadRipplePreferences();
         console.log('Gesture enhancements initialized');
     },
     
@@ -1745,7 +1924,7 @@ const LifXTouchControls = {
         }
         
         const hint = document.createElement('div');
-        hint.className = 'lifx-gesture-hint enhanced visible';
+        hint.className = 'lifx-gesture-hint enhanced visible' + (this.highContrastHints ? ' high-contrast' : '');
         hint.innerHTML = `
             <span class="gesture-icon">${icon}</span>
             <span class="gesture-text">${text}</span>
@@ -1760,6 +1939,32 @@ const LifXTouchControls = {
                 if (this.lastGestureHint === hint) this.lastGestureHint = null;
             }, 300);
         }, hintDuration);
+    },
+    
+    showGestureTrail: function(x, y, gesture) {
+        if (!this.touchRippleEnabled) return;
+        
+        const trail = document.createElement('div');
+        trail.className = 'lifx-gesture-trail';
+        trail.style.left = x + 'px';
+        trail.style.top = y + 'px';
+        trail.innerHTML = `<span class="trail-icon">${gesture}</span>`;
+        document.body.appendChild(trail);
+        
+        this.touchGestureTrail.push({ element: trail, createdAt: Date.now() });
+        
+        if (this.touchGestureTrail.length > this.maxTrailLength) {
+            const oldTrail = this.touchGestureTrail.shift();
+            if (oldTrail.element.parentNode) {
+                oldTrail.element.parentNode.removeChild(oldTrail.element);
+            }
+        }
+        
+        setTimeout(() => {
+            if (trail.parentNode) {
+                trail.parentNode.removeChild(trail);
+            }
+        }, 1000);
     },
     
     showBrightnessFeedback: function(value) {
@@ -1904,6 +2109,13 @@ const LifXTouchControls = {
                 if (prefs.currentScene) this.currentScene = prefs.currentScene;
                 if (prefs.ambientLightSync !== undefined) this.ambientLightSync = prefs.ambientLightSync;
                 if (prefs.hapticEnabled !== undefined) this.hapticEnabled = prefs.hapticEnabled;
+                if (prefs.touchRippleEnabled !== undefined) this.touchRippleEnabled = prefs.touchRippleEnabled;
+                if (prefs.showGestureHints !== undefined) this.showGestureHints = prefs.showGestureHints;
+                if (prefs.enhancedRippleMode !== undefined) this.enhancedRippleMode = prefs.enhancedRippleMode;
+                if (prefs.glowEffectEnabled !== undefined) this.glowEffectEnabled = prefs.glowEffectEnabled;
+                if (prefs.highContrastHints !== undefined) this.highContrastHints = prefs.highContrastHints;
+                if (prefs.rippleColor) this.rippleColor = prefs.rippleColor;
+                if (prefs.rippleSize) this.rippleSize = prefs.rippleSize;
             } catch (e) {
                 console.error('Failed to load LIFX preferences:', e);
             }
@@ -1914,6 +2126,20 @@ const LifXTouchControls = {
         
         const gestureHints = localStorage.getItem('lifx_gesture_hints');
         if (gestureHints !== null) this.showGestureHints = gestureHints === 'true';
+    },
+    
+    loadRipplePreferences: function() {
+        const enhancedRipple = localStorage.getItem('lifx_enhanced_ripple');
+        if (enhancedRipple !== null) this.enhancedRippleMode = enhancedRipple === 'true';
+        
+        const rippleColor = localStorage.getItem('lifx_ripple_color');
+        if (rippleColor !== null) this.rippleColor = rippleColor;
+        
+        const rippleSize = localStorage.getItem('lifx_ripple_size');
+        if (rippleSize !== null) this.rippleSize = parseInt(rippleSize);
+        
+        const glowEffect = localStorage.getItem('lifx_glow_effect');
+        if (glowEffect !== null) this.glowEffectEnabled = glowEffect === 'true';
     },
     
     toggleAmbientLightSync: function() {

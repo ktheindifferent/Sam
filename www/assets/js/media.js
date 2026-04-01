@@ -42,6 +42,7 @@ const MediaPlayer = {
     playbackHistory: [],
     favorites: [],
     lifxSyncEnabled: false,
+    lifxSyncMode: 'pulse',
     touchHoldTimer: null,
     lastMediaInteraction: 0,
     lifxBeatDetection: {
@@ -130,7 +131,15 @@ function initMediaCenter() {
     initMiniPlayer();
     initNowPlayingToast();
     initEqualizerVisualization();
+    loadMediaSyncPreferences();
     console.log('Media Center initialized');
+}
+
+function loadMediaSyncPreferences() {
+    const savedSyncMode = localStorage.getItem('lifx_sync_mode');
+    if (savedSyncMode) {
+        MediaPlayer.lifxSyncMode = savedSyncMode;
+    }
 }
 
 // Gamepad support
@@ -849,6 +858,25 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
         ? LifXTouchControls.multiBulbSelection.join(',')
         : 'all';
     
+    const syncMode = MediaPlayer.lifxSyncMode || 'pulse';
+    
+    if (syncMode === 'rainbow') {
+        pulseLifxRainbow(beatStrength, targets);
+    } else if (syncMode === 'ambient') {
+        pulseLifxAmbient(beatStrength, targets);
+    } else if (syncMode === 'strobe') {
+        pulseLifxStrobe(beatStrength, targets);
+    } else if (syncMode === 'zone') {
+        pulseLifxZone(beatStrength, targets);
+    } else {
+        pulseLifxStandard(beatStrength, targets, bpm, intensity);
+    }
+    
+    updateBpmDisplay();
+}
+
+function pulseLifxStandard(beatStrength, targets, bpm, intensity) {
+    const beatDetection = MediaPlayer.beatDetection;
     const hueStep = Math.max(5, 30 - (intensity * 20));
     const hue = beatDetection.lastHue || 0;
     const newHue = (hue + hueStep) % 360;
@@ -885,8 +913,146 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
         }),
         error: () => {}
     });
+}
+
+function pulseLifxRainbow(beatStrength, targets) {
+    const beatDetection = MediaPlayer.beatDetection;
+    beatDetection.rainbowHue = (beatDetection.rainbowHue || 0) + 20;
+    if (beatDetection.rainbowHue >= 360) beatDetection.rainbowHue = 0;
     
-    updateBpmDisplay();
+    const brightness = 0.5 + (beatStrength * 0.5);
+    
+    $.ajax({
+        url: '/api/services/lifx/set_color',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            selector: targets === 'all' ? 'all' : `id:${targets}`,
+            color: `hue:${Math.round(beatDetection.rainbowHue * 182)} saturation:100% brightness:${brightness * 100}%`,
+            duration: 0.1
+        })
+    });
+}
+
+function pulseLifxAmbient(beatStrength, targets) {
+    const video = document.querySelector('video');
+    if (!video) return pulseLifxStandard(beatStrength, targets, 120, beatStrength);
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 10;
+    canvas.height = 10;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, 10, 10);
+    const imageData = ctx.getImageData(0, 0, 10, 10);
+    const data = imageData.data;
+    
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+    }
+    const pixelCount = data.length / 4;
+    r = Math.round(r / pixelCount);
+    g = Math.round(g / pixelCount);
+    b = Math.round(b / pixelCount);
+    
+    const rgb = { r, g, b };
+    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    const brightness = 0.3 + (beatStrength * 0.7);
+    
+    $.ajax({
+        url: '/api/services/lifx/set_color',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            selector: targets === 'all' ? 'all' : `id:${targets}`,
+            color: `hue:${Math.round(hsv.h * 182)} saturation:${Math.round(hsv.s * 100)}% brightness:${brightness * 100}%`,
+            duration: 0.15
+        })
+    });
+}
+
+function pulseLifxStrobe(beatStrength, targets) {
+    const beatDetection = MediaPlayer.beatDetection;
+    const flashIntensity = beatStrength > 0.7 ? 1.0 : 0.5;
+    const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff', '#ffffff'];
+    
+    if (!beatDetection.strobeIndex) beatDetection.strobeIndex = 0;
+    const color = colors[beatDetection.strobeIndex % colors.length];
+    beatDetection.strobeIndex++;
+    
+    const rgb = hexToRgb(color);
+    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    
+    $.ajax({
+        url: '/api/services/lifx/set_color',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            selector: targets === 'all' ? 'all' : `id:${targets}`,
+            color: `hue:${Math.round(hsv.h * 182)} saturation:${Math.round(hsv.s * 100)}% brightness:${flashIntensity * 100}%`,
+            duration: 0.05
+        })
+    });
+}
+
+function pulseLifxZone(beatStrength, targets) {
+    const beatDetection = MediaPlayer.beatDetection;
+    const zones = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const zoneIndex = (beatDetection.zoneIndex || 0) % zones.length;
+    beatDetection.zoneIndex = zoneIndex + 1;
+    
+    const hue = (zoneIndex * 36) + (beatStrength * 20);
+    const brightness = 0.4 + (beatStrength * 0.6);
+    
+    $.ajax({
+        url: '/api/services/lifx/zones',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            selector: targets === 'all' ? 'all' : `id:${targets}`,
+            start_index: zoneIndex,
+            end_index: zoneIndex,
+            color: `hue:${Math.round(hue * 182)} saturation:80% brightness:${brightness * 100}%`,
+            duration: 0.1
+        })
+    });
+}
+
+function setLifxSyncMode(mode) {
+    MediaPlayer.lifxSyncMode = mode;
+    localStorage.setItem('lifx_sync_mode', mode);
+    showMediaTouchHint(`Sync Mode: ${mode}`, '🎵');
+    showNotification(`LIFX sync mode set to ${mode}`, 'info');
+}
+
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 255, g: 255, b: 255 };
+}
+
+function rgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+    const d = max - min;
+    s = max === 0 ? 0 : d / max;
+    if (max === min) {
+        h = 0;
+    } else {
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return { h, s, v };
 }
 
 function setLifxSceneForMedia(sceneName) {
@@ -2884,6 +3050,17 @@ function showMediaSyncSettings(activeTab = 'overview') {
                             <p style="color: #adb5bd; font-size: 13px;">Sync LIFX lights to music rhythm and beats</p>
                         </div>
                         
+                        <h4 style="margin-top: 20px;"><i class="fas fa-bolt"></i> Sync Mode</h4>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px;">
+                            ${['pulse', 'rainbow', 'ambient', 'strobe', 'zone'].map(mode => `
+                                <button class="btn btn-sm ${MediaPlayer.lifxSyncMode === mode ? 'btn-primary' : 'btn-outline-secondary'}" 
+                                        onclick="setLifxSyncMode('${mode}'); showMediaSyncSettings('lifx')"
+                                        style="padding: 12px;">
+                                    <i class="fas fa-${mode === 'pulse' ? 'heart' : mode === 'rainbow' ? 'rainbow' : mode === 'ambient' ? 'cloud' : mode === 'strobe' ? 'bolt' : 'bars'}"></i> ${mode.charAt(0).toUpperCase() + mode.slice(1)}
+                                </button>
+                            `).join('')}
+                        </div>
+                        
                         <h4 style="margin-top: 20px;"><i class="fas fa-music"></i> Beat Detection Mode</h4>
                         <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                             <button class="btn btn-sm ${MediaPlayer.lifxBeatDetection.enabled ? 'btn-primary' : 'btn-outline-secondary'}" 
@@ -2901,11 +3078,13 @@ function showMediaSyncSettings(activeTab = 'overview') {
                         </div>
                         
                         <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
-                            <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> How It Works</h5>
+                            <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> Sync Modes</h5>
                             <ul style="color: #adb5bd; font-size: 12px; margin: 0; padding-left: 20px;">
-                                <li>Beat mode pulses lights to music rhythm</li>
-                                <li>Ambient mode creates smooth color transitions</li>
-                                <li>Visualizer mode shows frequency spectrum</li>
+                                <li><strong>Pulse:</strong> Classic beat-synced pulsing</li>
+                                <li><strong>Rainbow:</strong> Cycles colors on each beat</li>
+                                <li><strong>Ambient:</strong> Matches screen colors</li>
+                                <li><strong>Strobe:</strong> Flashing party effect</li>
+                                <li><strong>Zone:</strong> Sequential zone lighting</li>
                             </ul>
                         </div>
                     </div>
