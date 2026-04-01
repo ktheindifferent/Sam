@@ -95,7 +95,13 @@
             { id: 'halloween', name: 'Halloween', icon: '🎃', hue: 5460, saturation: 52428, brightness: 49151, kelvin: 2800 },
             { id: 'christmas', name: 'Christmas', icon: '🎄', hue: 5800, saturation: 45875, brightness: 55705, kelvin: 3500 },
             { id: 'beach', name: 'Beach', icon: '🏖️', hue: 18200, saturation: 32767, brightness: 52428, kelvin: 5000 },
-            { id: 'forest', name: 'Forest', icon: '🌲', hue: 25480, saturation: 39321, brightness: 42598, kelvin: 4200 }
+            { id: 'forest', name: 'Forest', icon: '🌲', hue: 25480, saturation: 39321, brightness: 42598, kelvin: 4200 },
+            { id: 'yoga', name: 'Yoga', icon: '🧘', hue: 25480, saturation: 26214, brightness: 39321, kelvin: 3800 },
+            { id: 'cooking', name: 'Cooking', icon: '🍳', hue: 5460, saturation: 32767, brightness: 58982, kelvin: 4500 },
+            { id: 'creative', name: 'Creative', icon: '🎨', hue: 58240, saturation: 45875, brightness: 52428, kelvin: 5000 },
+            { id: 'dinner', name: 'Dinner', icon: '🍽️', hue: 6000, saturation: 26214, brightness: 32767, kelvin: 3000 },
+            { id: 'spa', name: 'Spa', icon: '💆', hue: 32760, saturation: 19660, brightness: 26214, kelvin: 3500 },
+            { id: 'festival', name: 'Festival', icon: '🎪', hue: 27300, saturation: 58982, brightness: 65535, kelvin: 4200 }
         ],
 
         effectPresets: [
@@ -1416,11 +1422,15 @@
             this.mediaPlayers = {
                 spotify: null,
                 youtube: null,
-                plex: null
+                plex: null,
+                tidal: null,
+                apple_music: null,
+                radio: null
             };
             
             this.connectSpotify();
             this.setupMediaSyncButton();
+            this.setupNowPlayingDisplay();
         },
         
         async connectSpotify() {
@@ -1465,6 +1475,40 @@
                 this.toggleMediaSync();
                 syncBtn.classList.toggle('active', this.state.mediaSyncActive);
             });
+            
+            this.setupMediaSyncModes();
+        },
+        
+        setupMediaSyncModes() {
+            const modeButtons = document.querySelectorAll('.media-sync-mode-btn');
+            modeButtons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const mode = e.currentTarget.dataset.mode;
+                    this.setMediaSyncMode(mode);
+                    modeButtons.forEach(b => b.classList.remove('active'));
+                    e.currentTarget.classList.add('active');
+                });
+            });
+        },
+        
+        setMediaSyncMode(mode) {
+            this.state.mediaSyncMode = mode;
+            this.showToast(`Media sync mode: ${mode}`, 'info');
+            
+            switch(mode) {
+                case 'beat':
+                    this.startBeatDetection();
+                    break;
+                case 'ambient':
+                    this.startAmbientAnalysis();
+                    break;
+                case 'spectrum':
+                    this.startSpectrumAnalysis();
+                    break;
+                case 'off':
+                    this.disableMediaSync();
+                    break;
+            }
         },
         
         toggleMediaSync() {

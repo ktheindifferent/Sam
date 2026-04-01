@@ -1,0 +1,955 @@
+/**
+ * SAM LIFX Enhanced Controls CSS
+ * Advanced styling for lighting control interface
+ */
+
+:root {
+    --lifx-primary: #27a0b9;
+    --lifx-secondary: #ff6b6b;
+    --lifx-accent: #00d4ff;
+    --lifx-bg-dark: #1a1a2e;
+    --lifx-bg-light: #16213e;
+    --lifx-surface: #0f3460;
+    --lifx-text: #eaeaea;
+    --lifx-text-muted: #adb5bd;
+    --lifx-success: #4ade80;
+    --lifx-warning: #fbbf24;
+    --lifx-error: #ef4444;
+    --lifx-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* Main Container */
+.lifx-controls-container {
+    position: relative;
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    background: var(--lifx-bg-dark);
+    border-radius: 16px;
+}
+
+.lifx-controls-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--lifx-gradient);
+    border-radius: 16px 16px 0 0;
+}
+
+/* Header */
+.lifx-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.lifx-header h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--lifx-text);
+    margin: 0;
+}
+
+.lifx-header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Connection Status */
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 15px;
+    background: var(--lifx-surface);
+    border-radius: 20px;
+    font-size: 0.85rem;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--lifx-text-muted);
+}
+
+.status-indicator.connected {
+    background: var(--lifx-success);
+    box-shadow: 0 0 10px var(--lifx-success);
+}
+
+.status-indicator.disconnected {
+    background: var(--lifx-error);
+}
+
+.status-indicator.error {
+    background: var(--lifx-warning);
+}
+
+/* Lights Grid */
+.lifx-lights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.lifx-light-card {
+    position: relative;
+    background: var(--lifx-surface);
+    border-radius: 12px;
+    padding: 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+
+.lifx-light-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.lifx-light-card.on {
+    border-color: var(--lifx-primary);
+}
+
+.lifx-light-card.selected {
+    border-color: var(--lifx-accent);
+    box-shadow: 0 0 20px rgba(39, 160, 185, 0.4);
+}
+
+.light-toggle {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.light-toggle:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.toggle-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--lifx-text-muted);
+    transition: all 0.3s ease;
+}
+
+.toggle-indicator.active {
+    background: var(--lifx-primary);
+    box-shadow: 0 0 15px var(--lifx-primary);
+}
+
+.light-info {
+    flex: 1;
+}
+
+.light-info h4 {
+    margin: 0 0 5px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--lifx-text);
+}
+
+.light-info small {
+    font-size: 0.75rem;
+    color: var(--lifx-text-muted);
+}
+
+.light-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.light-settings-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.1);
+    color: var(--lifx-text);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 1rem;
+}
+
+.light-settings-btn:hover {
+    background: var(--lifx-primary);
+    transform: rotate(30deg);
+}
+
+.light-preview {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--lifx-primary);
+    box-shadow: 0 0 15px currentColor;
+}
+
+/* Empty State */
+.lifx-empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--lifx-text-muted);
+}
+
+.lifx-empty-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+.lifx-empty-state p {
+    font-size: 1.25rem;
+    margin-bottom: 10px;
+}
+
+.lifx-empty-state small {
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
+/* Control Panel */
+.lifx-control-panel {
+    position: fixed;
+    top: 0;
+    right: -500px;
+    width: 450px;
+    height: 100vh;
+    background: var(--lifx-bg-light);
+    box-shadow: -10px 0 40px rgba(0,0,0,0.4);
+    z-index: 1000;
+    transition: right 0.3s ease;
+    overflow-y: auto;
+}
+
+.lifx-control-panel.visible {
+    right: 0;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.panel-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: var(--lifx-text);
+}
+
+.close-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.1);
+    color: var(--lifx-text);
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+    background: var(--lifx-error);
+    transform: rotate(90deg);
+}
+
+.panel-content {
+    padding: 20px;
+}
+
+/* Color Picker */
+.color-picker-section {
+    margin-bottom: 25px;
+}
+
+#lifx-color-wheel {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: crosshair;
+}
+
+/* Sliders */
+.sliders-section {
+    margin-bottom: 25px;
+}
+
+.slider-group {
+    margin-bottom: 20px;
+}
+
+.slider-group label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--lifx-text);
+}
+
+.slider-group input[type="range"] {
+    width: 100%;
+    height: 8px;
+    -webkit-appearance: none;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    outline: none;
+}
+
+.slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--lifx-primary);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(39, 160, 185, 0.5);
+    transition: transform 0.2s ease;
+}
+
+.slider-group input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+/* Preset Section */
+.preset-section {
+    margin-bottom: 25px;
+}
+
+.preset-section h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--lifx-text);
+    margin-bottom: 15px;
+}
+
+.preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.preset-btn {
+    padding: 12px 10px;
+    background: var(--lifx-surface);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: var(--lifx-text);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.preset-btn:hover {
+    background: var(--lifx-primary);
+    border-color: var(--lifx-primary);
+    transform: translateY(-2px);
+}
+
+.preset-btn .scene-icon {
+    font-size: 1.5rem;
+}
+
+/* Scenes Grid */
+.lifx-scenes-grid {
+    margin-bottom: 30px;
+}
+
+.scene-category {
+    margin-bottom: 25px;
+}
+
+.scene-category h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--lifx-text);
+    margin-bottom: 15px;
+}
+
+.scene-scroll {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--lifx-primary) var(--lifx-surface);
+}
+
+.scene-scroll::-webkit-scrollbar {
+    height: 6px;
+}
+
+.scene-scroll::-webkit-scrollbar-track {
+    background: var(--lifx-surface);
+    border-radius: 3px;
+}
+
+.scene-scroll::-webkit-scrollbar-thumb {
+    background: var(--lifx-primary);
+    border-radius: 3px;
+}
+
+.scene-card {
+    flex-shrink: 0;
+    width: 100px;
+    padding: 15px 10px;
+    background: var(--lifx-surface);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.scene-card:hover {
+    background: var(--lifx-primary);
+    border-color: var(--lifx-primary);
+    transform: translateY(-3px);
+}
+
+.scene-icon {
+    display: block;
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+
+.scene-name {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--lifx-text);
+}
+
+/* Effects List */
+.lifx-effects-list {
+    margin-bottom: 30px;
+}
+
+.effect-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: var(--lifx-surface);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    transition: all 0.2s ease;
+}
+
+.effect-item:hover {
+    background: rgba(39, 160, 185, 0.15);
+}
+
+.effect-item.warning {
+    border-left: 3px solid var(--lifx-warning);
+}
+
+.effect-info {
+    flex: 1;
+}
+
+.effect-name {
+    display: block;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--lifx-text);
+    margin-bottom: 4px;
+}
+
+.effect-info small {
+    font-size: 0.8rem;
+    color: var(--lifx-text-muted);
+}
+
+.effect-btn {
+    padding: 8px 20px;
+    background: var(--lifx-primary);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.effect-btn:hover {
+    background: var(--lifx-secondary);
+    transform: scale(1.05);
+}
+
+.effect-btn:active {
+    transform: scale(0.95);
+}
+
+/* Quick Actions */
+.lifx-quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 30px;
+}
+
+.quick-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 15px;
+    background: var(--lifx-surface);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    color: var(--lifx-text);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.quick-action-btn:hover {
+    background: var(--lifx-primary);
+    border-color: var(--lifx-primary);
+    transform: translateY(-2px);
+}
+
+.quick-action-btn span {
+    font-size: 1.5rem;
+}
+
+/* Brightness Master Control */
+.brightness-master {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 20px;
+    background: var(--lifx-surface);
+    border-radius: 12px;
+    margin-bottom: 25px;
+}
+
+.brightness-master label {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--lifx-text);
+}
+
+.brightness-master input[type="range"] {
+    flex: 1;
+    height: 8px;
+    -webkit-appearance: none;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    outline: none;
+}
+
+.brightness-master input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 24px;
+    height: 24px;
+    background: var(--lifx-primary);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(39, 160, 185, 0.5);
+}
+
+/* Temperature Slider */
+.temperature-slider {
+    padding: 20px;
+    background: var(--lifx-surface);
+    border-radius: 12px;
+    margin-bottom: 25px;
+}
+
+.temperature-scale {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 0.75rem;
+    color: var(--lifx-text-muted);
+}
+
+/* Group Select */
+.group-select-wrapper {
+    margin-bottom: 20px;
+}
+
+.group-select-wrapper label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--lifx-text);
+}
+
+#lifx-group-select {
+    width: 100%;
+    padding: 12px 15px;
+    background: var(--lifx-bg-dark);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    color: var(--lifx-text);
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+#lifx-group-select:focus {
+    outline: none;
+    border-color: var(--lifx-primary);
+}
+
+/* Multi-select Toggle */
+.multi-select-toggle {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--lifx-gradient);
+    border: none;
+    color: #fff;
+    font-size: 1.5rem;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.5);
+    transition: all 0.3s ease;
+    z-index: 100;
+}
+
+.multi-select-toggle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 30px rgba(102, 126, 234, 0.7);
+}
+
+.multi-select-toggle.active {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { box-shadow: 0 4px 20px rgba(102, 126, 234, 0.5); }
+    50% { box-shadow: 0 4px 40px rgba(102, 126, 234, 0.8); }
+}
+
+/* Toast Notifications */
+@keyframes lifx-toast-slide {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes lifx-toast-fade {
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+}
+
+.lifx-toast {
+    backdrop-filter: blur(10px);
+}
+
+.lifx-toast-success {
+    border-color: var(--lifx-success);
+}
+
+.lifx-toast-error {
+    border-color: var(--lifx-error);
+}
+
+.lifx-toast-warning {
+    border-color: var(--lifx-warning);
+}
+
+.lifx-toast-info {
+    border-color: var(--lifx-primary);
+}
+
+/* Onboarding */
+.lifx-onboarding {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.onboarding-content {
+    background: var(--lifx-bg-light);
+    border-radius: 20px;
+    padding: 40px;
+    max-width: 500px;
+    text-align: center;
+}
+
+.onboarding-content h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--lifx-text);
+    margin-bottom: 10px;
+}
+
+.onboarding-content > p {
+    font-size: 1.1rem;
+    color: var(--lifx-text-muted);
+    margin-bottom: 30px;
+}
+
+.onboarding-steps {
+    margin-bottom: 30px;
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: var(--lifx-surface);
+    border-radius: 12px;
+    margin-bottom: 10px;
+}
+
+.step-icon {
+    font-size: 2rem;
+}
+
+.onboarding-complete-btn {
+    padding: 15px 40px;
+    background: var(--lifx-gradient);
+    border: none;
+    border-radius: 30px;
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.onboarding-complete-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 30px rgba(102, 126, 234, 0.5);
+}
+
+/* Settings Modal */
+.lifx-settings-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.settings-content {
+    background: var(--lifx-bg-light);
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 450px;
+    width: 90%;
+}
+
+.settings-content h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--lifx-text);
+    margin-bottom: 25px;
+}
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.setting-item label {
+    font-size: 1rem;
+    color: var(--lifx-text);
+}
+
+.setting-item input[type="range"] {
+    width: 120px;
+}
+
+.setting-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.settings-close {
+    width: 100%;
+    padding: 15px;
+    margin-top: 20px;
+    background: var(--lifx-primary);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.settings-close:hover {
+    background: var(--lifx-secondary);
+}
+
+/* Help Modal */
+.lifx-help-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.help-content {
+    background: var(--lifx-bg-light);
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+}
+
+.help-content h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--lifx-text);
+    margin-bottom: 20px;
+}
+
+.help-content ul {
+    list-style: none;
+    padding: 0;
+}
+
+.help-content li {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    color: var(--lifx-text-muted);
+    font-size: 0.95rem;
+}
+
+.help-content li:last-child {
+    border-bottom: none;
+}
+
+.help-close {
+    width: 100%;
+    padding: 15px;
+    margin-top: 20px;
+    background: var(--lifx-primary);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.help-close:hover {
+    background: var(--lifx-secondary);
+}
+
+/* Energy Display */
+.energy-stat {
+    text-align: center;
+}
+
+.energy-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--lifx-success);
+}
+
+.energy-label {
+    font-size: 0.85rem;
+    color: var(--lifx-text-muted);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .lifx-lights-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .lifx-control-panel {
+        width: 100%;
+        right: -100%;
+    }
+    
+    .preset-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    
+    .quick-action-btn {
+        padding: 12px 8px;
+        font-size: 0.8rem;
+    }
+    
+    .quick-action-btn span {
+        font-size: 1.2rem;
+    }
+}
+
+/* Touch Optimizations */
+@media (hover: none) and (pointer: coarse) {
+    .lifx-light-card:active {
+        transform: scale(0.98);
+    }
+    
+    .preset-btn:active,
+    .scene-card:active,
+    .quick-action-btn:active {
+        transform: scale(0.95);
+    }
+    
+    .multi-select-toggle:active {
+        transform: scale(0.9);
+    }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
