@@ -33,7 +33,15 @@ const TouchMediaEnhancements = (function() {
         touchSensitivity: 'medium',
         enableRipple: true,
         enableGestureTrails: true,
-        enableBpmDisplay: true
+        enableBpmDisplay: true,
+        enableKeyboardShortcuts: true,
+        enableEdgeSwipe: true,
+        enableThreeFingerSwipe: true,
+        swipeThreshold: 50,
+        pinchThreshold: 0.5,
+        doubleTapDelay: 300,
+        longPressDelay: 500,
+        hapticFeedback: true
     };
 
     // Initialize all enhancements
@@ -47,6 +55,10 @@ const TouchMediaEnhancements = (function() {
         setupMediaVisualizer();
         setupSwipeGestures();
         setupMultiSelectGestures();
+        setupPinchZoom();
+        setupEdgeSwipe();
+        setupKeyboardShortcuts();
+        setupHapticFeedback();
         console.log('[TouchMediaEnhancements] Initialized');
     }
 
@@ -313,6 +325,202 @@ const TouchMediaEnhancements = (function() {
             }
             
             dragStart = null;
+        });
+    }
+
+    // Pinch-to-zoom gesture for brightness control
+    function setupPinchZoom() {
+        let initialDistance = null;
+        let initialBrightness = 50;
+        
+        document.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 2) {
+                initialDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                initialBrightness = LifXTouchControls.state.brightness || 50;
+                if (CONFIG.hapticFeedback) {
+                    navigator.vibrate?.(10);
+                }
+            }
+        });
+        
+        document.addEventListener('touchmove', function(e) {
+            if (e.touches.length !== 2 || initialDistance === null) return;
+            e.preventDefault();
+            
+            const currentDistance = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            
+            const delta = currentDistance - initialDistance;
+            const brightnessChange = (delta / 10);
+            const newBrightness = Math.max(0, Math.min(100, initialBrightness + brightnessChange));
+            
+            if (typeof LifXTouchControls !== 'undefined') {
+                LifXTouchControls.setBrightness(Math.round(newBrightness));
+            }
+            
+            const pinchIndicator = document.querySelector('.pinch-brightness-indicator');
+            if (!pinchIndicator) {
+                const indicator = document.createElement('div');
+                indicator.className = 'pinch-brightness-indicator';
+                indicator.innerHTML = `<i class="fas fa-sun"></i> <span>${Math.round(newBrightness)}%</span>`;
+                document.body.appendChild(indicator);
+                setTimeout(() => indicator.classList.add('visible'), 10);
+            } else {
+                pinchIndicator.querySelector('span').textContent = `${Math.round(newBrightness)}%`;
+            }
+        });
+        
+        document.addEventListener('touchend', function(e) {
+            if (e.touches.length < 2) {
+                initialDistance = null;
+                const indicator = document.querySelector('.pinch-brightness-indicator');
+                if (indicator) {
+                    indicator.classList.remove('visible');
+                    setTimeout(() => indicator.remove(), 300);
+                }
+            }
+        });
+    }
+
+    // Edge swipe for quick panel access
+    function setupEdgeSwipe() {
+        if (!CONFIG.enableEdgeSwipe) return;
+        
+        let touchStartX = null;
+        let touchStartY = null;
+        const edgeThreshold = 30;
+        
+        document.addEventListener('touchstart', function(e) {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        });
+        
+        document.addEventListener('touchend', function(e) {
+            const touchEndX = e.changedTouches[0].screenX;
+            const touchEndY = e.changedTouches[0].screenY;
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            
+            if (touchStartX < edgeThreshold && deltaX > 100) {
+                handleEdgeSwipe('left-edge');
+            } else if (touchStartX > window.innerWidth - edgeThreshold && deltaX < -100) {
+                handleEdgeSwipe('right-edge');
+            } else if (touchStartY < edgeThreshold && deltaY > 100) {
+                handleEdgeSwipe('top-edge');
+            } else if (touchStartY > window.innerHeight - edgeThreshold && deltaY < -100) {
+                handleEdgeSwipe('bottom-edge');
+            }
+        });
+    }
+
+    function handleEdgeSwipe(edge) {
+        console.log(`[TouchMediaEnhancements] Edge swipe: ${edge}`);
+        
+        switch(edge) {
+            case 'left-edge':
+                toggleQuickScenesPanel();
+                break;
+            case 'right-edge':
+                toggleMediaSyncPanel();
+                break;
+            case 'top-edge':
+                document.querySelector('.header')?.classList.toggle('expanded');
+                break;
+            case 'bottom-edge':
+                document.getElementById('media-controls-panel')?.classList.toggle('expanded');
+                break;
+        }
+        
+        if (CONFIG.hapticFeedback) {
+            navigator.vibrate?.(15);
+        }
+    }
+
+    // Keyboard shortcuts for media control
+    function setupKeyboardShortcuts() {
+        if (!CONFIG.enableKeyboardShortcuts) return;
+        
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            switch(e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    mediaPlayPause();
+                    break;
+                case 'ArrowRight':
+                    mediaNext();
+                    break;
+                case 'ArrowLeft':
+                    mediaPrevious();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (typeof LifXTouchControls !== 'undefined') {
+                        const current = LifXTouchControls.state.brightness || 50;
+                        LifXTouchControls.setBrightness(Math.min(100, current + 10));
+                    }
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (typeof LifXTouchControls !== 'undefined') {
+                        const current = LifXTouchControls.state.brightness || 50;
+                        LifXTouchControls.setBrightness(Math.max(0, current - 10));
+                    }
+                    break;
+                case 'KeyM':
+                    if (e.ctrlKey) {
+                        e.preventDefault();
+                        toggleMediaSyncPanel();
+                    }
+                    break;
+                case 'KeyL':
+                    if (e.ctrlKey) {
+                        e.preventDefault();
+                        document.getElementById('lifx-color-picker-container')?.classList.toggle('visible');
+                    }
+                    break;
+                case 'KeyB':
+                    if (e.ctrlKey) {
+                        e.preventDefault();
+                        setMediaSyncMode('beat');
+                    }
+                    break;
+                case 'KeyS':
+                    if (e.ctrlKey) {
+                        e.preventDefault();
+                        toggleQuickScenesPanel();
+                    }
+                    break;
+            }
+        });
+        
+        console.log('[TouchMediaEnhancements] Keyboard shortcuts enabled');
+    }
+
+    // Haptic feedback for touch interactions
+    function setupHapticFeedback() {
+        if (!CONFIG.hapticFeedback || !navigator.vibrate) {
+            console.log('[TouchMediaEnhancements] Haptic feedback not available');
+            return;
+        }
+        
+        document.addEventListener('click', function(e) {
+            const target = e.target.closest('button, .btn, [role="button"]');
+            if (target) {
+                navigator.vibrate(10);
+            }
+        });
+        
+        document.addEventListener('touchstart', function(e) {
+            if (e.target.closest('.lifx-bulb-control')) {
+                navigator.vibrate(5);
+            }
         });
     }
 

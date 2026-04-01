@@ -7121,3 +7121,103 @@
     0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
     100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
+
+/* Pinch Brightness Indicator */
+.pinch-brightness-indicator {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    background: rgba(30, 30, 46, 0.95);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 200, 100, 0.5);
+    border-radius: 20px;
+    padding: 20px 30px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    z-index: 99999;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 10px 40px rgba(255, 200, 100, 0.3);
+}
+
+.pinch-brightness-indicator.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.pinch-brightness-indicator i {
+    font-size: 32px;
+    color: #ffc864;
+    animation: sun-pulse 1s ease-in-out infinite;
+}
+
+@keyframes sun-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+.pinch-brightness-indicator span {
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Edge Swipe Zone */
+.edge-swipe-zone {
+    position: fixed;
+    z-index: 99998;
+    pointer-events: none;
+    transition: background 0.2s ease;
+}
+
+.edge-swipe-zone.left-edge {
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 30px;
+    background: linear-gradient(to right, rgba(0, 212, 255, 0.1), transparent);
+}
+
+.edge-swipe-zone.right-edge {
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 30px;
+    background: linear-gradient(to left, rgba(0, 212, 255, 0.1), transparent);
+}
+
+.edge-swipe-zone.active {
+    background: linear-gradient(to right, rgba(0, 212, 255, 0.2), transparent);
+}
+
+/* Keyboard Shortcut Hint */
+.keyboard-shortcut-hint {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(30, 30, 46, 0.9);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 12px;
+    padding: 10px 20px;
+    color: #adb5bd;
+    font-size: 12px;
+    z-index: 99997;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.keyboard-shortcut-hint kbd {
+    background: rgba(0, 212, 255, 0.2);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-family: monospace;
+    color: #00d4ff;
+}
