@@ -832,6 +832,9 @@
 .scene-indicator.meditation { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
 .scene-indicator.gaming { background: linear-gradient(135deg, #9b59b6, #e91e63); }
 .scene-indicator.cooking { background: linear-gradient(135deg, #f39c12, #e67e22); }
+.scene-indicator.creative { background: linear-gradient(135deg, #8e44ad, #9b59b6); }
+.scene-indicator.yoga { background: linear-gradient(135deg, #27ae60, #2ecc71); }
+.scene-indicator.movie { background: linear-gradient(135deg, #d35400, #e67e22); }
 
 /* Ambient light sync indicator */
 .ambient-light-sync-active {
@@ -960,4 +963,84 @@
     border-radius: 50%;
     background: #00ff88;
     animation: pulse-sync 1s infinite;
+}
+
+/* Media discovery panel */
+.media-discovery-item {
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.media-discovery-item:hover {
+    border-color: #00d4ff;
+    background: rgba(42, 42, 58, 0.8) !important;
+    transform: scale(1.05);
+}
+
+/* Equalizer visualization */
+.equalizer-visualization {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 3px;
+    height: 60px;
+    padding: 10px;
+}
+
+.equalizer-bar {
+    width: 8px;
+    background: linear-gradient(to top, #27a0b9, #00d4ff);
+    border-radius: 4px 4px 0 0;
+    transition: height 0.05s ease;
+}
+
+/* Audio visualization indicator */
+.audio-visualizer-active {
+    animation: visualizer-glow 2s ease-in-out infinite;
+}
+
+@keyframes visualizer-glow {
+    0%, 100% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(0, 212, 255, 0.8); }
+}
+
+/* Enhanced mobile controls for media */
+@media (max-width: 768px) {
+    .media-center-mobile-controls {
+        padding: 10px;
+    }
+    
+    .media-center-mobile-btn {
+        width: 45px;
+        height: 45px;
+    }
+    
+    .media-center-mobile-btn.play-pause {
+        width: 55px;
+        height: 55px;
+    }
+}
+
+/* Media loading skeleton */
+.media-skeleton {
+    background: linear-gradient(90deg, rgba(42, 42, 58, 0.5) 25%, rgba(42, 42, 58, 0.8) 50%, rgba(42, 42, 58, 0.5) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 8px;
+}
+
+@keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Discovery panel responsive */
+@media (max-width: 600px) {
+    .media-discovery-item {
+        padding: 8px;
+    }
+    
+    .media-discovery-item div:last-child {
+        font-size: 9px;
+    }
 }

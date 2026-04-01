@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -517,7 +517,13 @@ const LifXTouchControls = {
             arctic: { brightness: 80, kelvin: 7000, label: 'Arctic' },
             tropical: { brightness: 85, kelvin: 3800, label: 'Tropical' },
             spring: { brightness: 75, kelvin: 4200, label: 'Spring' },
-            autumn: { brightness: 65, kelvin: 2800, label: 'Autumn' }
+            autumn: { brightness: 65, kelvin: 2800, label: 'Autumn' },
+            meditation: { brightness: 35, kelvin: 2400, label: 'Meditation' },
+            gaming: { brightness: 90, kelvin: 5500, label: 'Gaming' },
+            cooking: { brightness: 95, kelvin: 4000, label: 'Cooking' },
+            creative: { brightness: 85, kelvin: 4800, label: 'Creative' },
+            yoga: { brightness: 50, kelvin: 3500, label: 'Yoga' },
+            movie: { brightness: 35, kelvin: 2200, label: 'Movie' }
         };
         
         const settings = sceneSettings[scene];
@@ -919,7 +925,13 @@ const LifXTouchControls = {
             'arctic': '#70a1ff',
             'tropical': '#00b894',
             'spring': '#55efc4',
-            'autumn': '#e17055'
+            'autumn': '#e17055',
+            'meditation': '#9b59b6',
+            'gaming': '#e91e63',
+            'cooking': '#f39c12',
+            'creative': '#8e44ad',
+            'yoga': '#27ae60',
+            'movie': '#d35400'
         };
         return sceneColors[sceneName] || '#ffffff';
     },
@@ -942,7 +954,10 @@ const LifXTouchControls = {
             'autumn': { hue: 30, saturation: 66, brightness: 88, kelvin: 2800 },
             'meditation': { hue: 280, saturation: 30, brightness: 40, kelvin: 2400 },
             'gaming': { hue: 280, saturation: 80, brightness: 90, kelvin: 5500 },
-            'cooking': { hue: 35, saturation: 60, brightness: 95, kelvin: 4000 }
+            'cooking': { hue: 35, saturation: 60, brightness: 95, kelvin: 4000 },
+            'creative': { hue: 290, saturation: 70, brightness: 85, kelvin: 4800 },
+            'yoga': { hue: 120, saturation: 40, brightness: 50, kelvin: 3500 },
+            'movie': { hue: 20, saturation: 30, brightness: 35, kelvin: 2200 }
         };
         
         const scene = sceneColors[sceneName];
@@ -1104,6 +1119,150 @@ const LifXTouchControls = {
         if (active && this.ambientLightSync) {
             this.startAmbientSync();
         }
+    },
+    
+    showColorPicker: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Color picker requires SweetAlert2');
+            return;
+        }
+        
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        Swal.fire({
+            title: 'Color Picker',
+            html: `
+                <div style="padding: 20px;">
+                    <input type="color" id="color-picker-input" value="${this.hsvToRgb(this.colorHue || 0, 1, 1)}" 
+                           style="width: 200px; height: 200px; cursor: pointer; border: none;">
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn btn-sm btn-outline-primary" onclick="LifXTouchControls.applyPickedColor('${targets.join(',')}')">Apply</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="LifXTouchControls.cycleThroughColors('${targets.join(',')}')">Cycle Colors</button>
+                    </div>
+                    <div style="margin-top: 15px; display: flex; gap: 5px; justify-content: center; flex-wrap: wrap;">
+                        ${['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff', '#ff8000', '#8000ff'].map(color => 
+                            `<button class="btn btn-sm" style="background: ${color}; width: 30px; height: 30px; border-radius: 50%; padding: 0;" 
+                                     onclick="LifXTouchControls.applyQuickColor('${color}', '${targets.join(',')}')"></button>`
+                        ).join('')}
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '400px'
+        });
+    },
+    
+    hsvToRgb: function(h, s, v) {
+        let r, g, b;
+        const i = Math.floor(h * 6);
+        const f = h * 6 - i;
+        const p = v * (1 - s);
+        const q = v * (1 - f * s);
+        const t = v * (1 - (1 - f) * s);
+        
+        switch (i % 6) {
+            case 0: r = v; g = t; b = p; break;
+            case 1: r = q; g = v; b = p; break;
+            case 2: r = p; g = v; b = t; break;
+            case 3: r = p; g = q; b = v; break;
+            case 4: r = t; g = p; b = v; break;
+            case 5: r = v; g = p; b = q; break;
+        }
+        
+        const toHex = c => {
+            const hex = Math.round(c * 255).toString(16);
+            return hex.length === 1 ? '0' + hex : hex;
+        };
+        
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    },
+    
+    applyPickedColor: function(targetString) {
+        const colorInput = document.getElementById('color-picker-input');
+        if (!colorInput) return;
+        
+        const hex = colorInput.value;
+        this.applyColorFromHex(hex, targetString);
+        if (typeof Swal !== 'undefined') Swal.close();
+    },
+    
+    applyQuickColor: function(hex, targetString) {
+        this.applyColorFromHex(hex, targetString);
+        if (typeof Swal !== 'undefined') Swal.close();
+    },
+    
+    applyColorFromHex: function(hex, targetString) {
+        const targets = targetString.split(',');
+        const rgb = this.hexToRgb(hex);
+        const hsv = this.rgbToHsv(rgb.r, rgb.g, rgb.b);
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${Math.round(hsv.h * 182)} saturation:${Math.round(hsv.s * 100)}%`,
+                duration: 0.5
+            }),
+            success: () => {
+                this.showGestureFeedback('Color applied', '🎨');
+                targets.forEach(bulbId => this.updateBulbVisual(bulbId));
+            }
+        });
+    },
+    
+    hexToRgb: function(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : { r: 255, g: 255, b: 255 };
+    },
+    
+    cycleThroughColors: function(targetString) {
+        const targets = targetString.split(',');
+        let hue = 0;
+        const cycleInterval = setInterval(() => {
+            if (!this.colorCycleActive) {
+                clearInterval(cycleInterval);
+                return;
+            }
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: `id:${targets.join(',')}`,
+                    color: `hue:${hue * 182} saturation:100%`,
+                    duration: 0.3
+                })
+            });
+            
+            hue = (hue + 0.02) % 1;
+        }, 100);
+        
+        this.colorCycleActive = true;
+        this.showGestureFeedback('Color cycle started', '🌈');
+        
+        setTimeout(() => {
+            this.colorCycleActive = false;
+        }, 10000);
+    },
+    
+    startColorCycle: function() {
+        this.colorCycleActive = true;
+        this.showGestureFeedback('Color cycle ON', '🌈');
+    },
+    
+    stopColorCycle: function() {
+        this.colorCycleActive = false;
+        this.showGestureFeedback('Color cycle OFF', '⬜');
     }
 };
 

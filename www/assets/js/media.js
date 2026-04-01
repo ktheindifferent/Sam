@@ -53,7 +53,13 @@ const MediaPlayer = {
     lifxColorHistory: [],
     lifxScreenAnalyzer: null,
     zonePresets: {},
-    lastZoneAdjustment: 0
+    lastZoneAdjustment: 0,
+    audioContext: null,
+    analyser: null,
+    mediaElementSource: null,
+    bassBoostGain: null,
+    equalizer: null,
+    visualizationData: null
 };
 
 // Initialize when DOM is ready
@@ -997,6 +1003,8 @@ function initAmbientLightSync() {
         bassBtn.addEventListener('click', () => {
             MediaPlayer.bassBoostEnabled = !MediaPlayer.bassBoostEnabled;
             bassBtn.classList.toggle('active', MediaPlayer.bassBoostEnabled);
+            initAudioContext();
+            applyBassBoost(MediaPlayer.bassBoostEnabled);
             showNotification(`Bass boost ${MediaPlayer.bassBoostEnabled ? 'enabled' : 'disabled'}`, 'info');
         });
     }
@@ -1024,16 +1032,227 @@ function initAmbientLightSync() {
             sleepTimerBtn.innerHTML = '<i class="fas fa-clock"></i>';
             sleepTimerBtn.onclick = showSleepTimerDialog;
             mobileControls.appendChild(sleepTimerBtn);
+            
+            // Add equalizer button
+            const eqBtn = document.createElement('button');
+            eqBtn.className = 'media-center-mobile-btn';
+            eqBtn.id = 'equalizer-btn';
+            eqBtn.innerHTML = '<i class="fas fa-sliders-h"></i>';
+            eqBtn.onclick = showEqualizerDialog;
+            mobileControls.appendChild(eqBtn);
         }
     }
 }
 
+// Audio context for advanced audio processing
+function initAudioContext() {
+    if (MediaPlayer.audioContext) return;
+    
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        
+        MediaPlayer.audioContext = new AudioContext();
+        MediaPlayer.analyser = MediaPlayer.audioContext.createAnalyser();
+        MediaPlayer.analyser.fftSize = 256;
+        MediaPlayer.visualizationData = new Uint8Array(MediaPlayer.analyser.frequencyBinCount);
+        
+        // Create equalizer
+        MediaPlayer.equalizer = {
+            low: MediaPlayer.audioContext.createBiquadFilter(),
+            mid: MediaPlayer.audioContext.createBiquadFilter(),
+            high: MediaPlayer.audioContext.createBiquadFilter()
+        };
+        
+        MediaPlayer.equalizer.low.type = 'lowshelf';
+        MediaPlayer.equalizer.low.frequency.value = 200;
+        
+        MediaPlayer.equalizer.mid.type = 'peaking';
+        MediaPlayer.equalizer.mid.frequency.value = 1000;
+        MediaPlayer.equalizer.mid.Q.value = 1;
+        
+        MediaPlayer.equalizer.high.type = 'highshelf';
+        MediaPlayer.equalizer.high.frequency.value = 3000;
+        
+        // Create bass boost
+        MediaPlayer.bassBoostGain = MediaPlayer.audioContext.createGain();
+        MediaPlayer.bassBoostGain.gain.value = 0;
+        
+        console.log('Audio context initialized');
+    } catch (e) {
+        console.warn('Audio context init failed:', e);
+    }
+}
+
+function applyBassBoost(enabled) {
+    if (!MediaPlayer.audioContext) return;
+    
+    MediaPlayer.bassBoostGain.gain.value = enabled ? 0.3 : 0;
+    showNotification(`Bass boost ${enabled ? 'active' : 'disabled'}`, 'info');
+}
+
+function setEqualizerBands(low, mid, high) {
+    if (!MediaPlayer.equalizer) return;
+    
+    MediaPlayer.equalizer.low.gain.value = low;
+    MediaPlayer.equalizer.mid.gain.value = mid;
+    MediaPlayer.equalizer.high.gain.value = high;
+}
+
+function showEqualizerDialog() {
+    if (typeof Swal === 'undefined') {
+        alert('Equalizer requires SweetAlert2');
+        return;
+    }
+    
+    initAudioContext();
+    
+    Swal.fire({
+        title: 'Equalizer',
+        html: `
+            <div style="padding: 20px;">
+                <div style="margin-bottom: 20px;">
+                    <label style="color: #adb5bd; display: block; margin-bottom: 10px;">Bass (200Hz)</label>
+                    <input type="range" id="eq-low" min="-12" max="12" value="0" step="1" 
+                           style="width: 100%;" oninput="updateEqualizerDisplay()">
+                    <span id="eq-low-value" style="color: #00d4ff;">0 dB</span>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="color: #adb5bd; display: block; margin-bottom: 10px;">Mid (1kHz)</label>
+                    <input type="range" id="eq-mid" min="-12" max="12" value="0" step="1" 
+                           style="width: 100%;" oninput="updateEqualizerDisplay()">
+                    <span id="eq-mid-value" style="color: #00d4ff;">0 dB</span>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="color: #adb5bd; display: block; margin-bottom: 10px;">Treble (3kHz)</label>
+                    <input type="range" id="eq-high" min="-12" max="12" value="0" step="1" 
+                           style="width: 100%;" oninput="updateEqualizerDisplay()">
+                    <span id="eq-high-value" style="color: #00d4ff;">0 dB</span>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                    <button class="btn btn-sm btn-outline-primary" onclick="applyEqualizerPreset('flat')">Flat</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="applyEqualizerPreset('bass')">Bass Boost</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="applyEqualizerPreset('vocal')">Vocal</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="applyEqualizerPreset('bright')">Bright</button>
+                </div>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: '400px'
+    });
+}
+
+function updateEqualizerDisplay() {
+    const low = document.getElementById('eq-low');
+    const mid = document.getElementById('eq-mid');
+    const high = document.getElementById('eq-high');
+    
+    if (low) document.getElementById('eq-low-value').textContent = `${low.value > 0 ? '+' : ''}${low.value} dB`;
+    if (mid) document.getElementById('eq-mid-value').textContent = `${mid.value > 0 ? '+' : ''}${mid.value} dB`;
+    if (high) document.getElementById('eq-high-value').textContent = `${high.value > 0 ? '+' : ''}${high.value} dB`;
+    
+    setEqualizerBands(parseInt(low?.value || 0), parseInt(mid?.value || 0), parseInt(high?.value || 0));
+}
+
+function applyEqualizerPreset(preset) {
+    const presets = {
+        flat: [0, 0, 0],
+        bass: [8, 2, 4],
+        vocal: [-2, 4, 2],
+        bright: [2, 0, 6],
+        rock: [5, 3, 6],
+        jazz: [4, 2, 5],
+        classical: [6, 2, 4],
+        pop: [3, 4, 5]
+    };
+    
+    const [low, mid, high] = presets[preset] || [0, 0, 0];
+    setEqualizerBands(low, mid, high);
+    
+    // Update sliders
+    const lowSlider = document.getElementById('eq-low');
+    const midSlider = document.getElementById('eq-mid');
+    const highSlider = document.getElementById('eq-high');
+    
+    if (lowSlider) lowSlider.value = low;
+    if (midSlider) midSlider.value = mid;
+    if (highSlider) highSlider.value = high;
+    
+    updateEqualizerDisplay();
+    showNotification(`Equalizer preset: ${preset}`, 'info');
+}
+
 // Cycle through ambient light modes
 function cycleAmbientLightMode() {
-    const modes = ['spectrum', 'warm', 'cool', 'beat'];
+    const modes = ['spectrum', 'warm', 'cool', 'beat', 'visualizer'];
     const currentIndex = modes.indexOf(MediaPlayer.ambientLightMode || 'spectrum');
     MediaPlayer.ambientLightMode = modes[(currentIndex + 1) % modes.length];
     showNotification(`Ambient mode: ${MediaPlayer.ambientLightMode}`, 'info');
+    
+    if (MediaPlayer.ambientLightMode === 'visualizer') {
+        startAudioVisualization();
+    } else {
+        stopAudioVisualization();
+    }
+}
+
+// Audio visualization for LIFX lights
+function startAudioVisualization() {
+    if (!MediaPlayer.audioContext) {
+        initAudioContext();
+    }
+    
+    if (!MediaPlayer.visualizationActive && MediaPlayer.audioContext && MediaPlayer.analyser) {
+        MediaPlayer.visualizationActive = true;
+        visualizeAudio();
+    }
+}
+
+function stopAudioVisualization() {
+    MediaPlayer.visualizationActive = false;
+}
+
+function visualizeAudio() {
+    if (!MediaPlayer.visualizationActive || !MediaPlayer.isPlaying) {
+        setTimeout(() => visualizeAudio(), 100);
+        return;
+    }
+    
+    const analyser = MediaPlayer.analyser;
+    const dataArray = MediaPlayer.visualizationData;
+    analyser.getByteFrequencyData(dataArray);
+    
+    // Calculate average energy in different frequency bands
+    const bass = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+    const mid = dataArray.slice(10, 50).reduce((a, b) => a + b, 0) / 40;
+    const treble = dataArray.slice(50, 128).reduce((a, b) => a + b, 0) / 78;
+    
+    // Map to colors
+    const bassHue = (bass / 255) * 60; // Reds to yellows
+    const midHue = ((mid / 255) * 120) + 120; // Greens to cyans
+    const trebleHue = ((treble / 255) * 120) + 240; // Blues to magentas
+    
+    const dominantHue = bass > mid && bass > treble ? bassHue :
+                        mid > treble ? midHue : trebleHue;
+    
+    const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
+        ? LifXTouchControls.multiBulbSelection.join(',')
+        : 'all';
+    
+    $.ajax({
+        url: '/api/services/lifx/set_color',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            selector: targets === 'all' ? 'all' : `id:${targets}`,
+            color: `hue:${Math.round(dominantHue * 182)} saturation:${Math.round((Math.max(bass, mid, treble) / 255) * 100)}%`,
+            brightness: Math.round(Math.max(bass, mid, treble) / 255 * 100),
+            duration: 0.1
+        })
+    });
+    
+    setTimeout(() => visualizeAudio(), 100);
 }
 
 // Sleep timer dialog
@@ -1235,6 +1454,95 @@ function loadFavorites() {
         console.warn('Failed to load favorites:', e);
     }
 }
+
+// Media discovery - find similar content
+const MediaDiscovery = {
+    relatedContent: [],
+    discoveryHistory: [],
+    
+    findSimilar: function(currentMedia) {
+        if (!currentMedia || !currentMedia.genre) {
+            return this.getPopularContent();
+        }
+        
+        return this.relatedContent.filter(item => 
+            item.genre === currentMedia.genre && 
+            item.id !== currentMedia.id
+        ).slice(0, 10);
+    },
+    
+    getPopularContent: function() {
+        return this.relatedContent.slice(0, 10);
+    },
+    
+    addToHistory: function(media) {
+        this.discoveryHistory.unshift(media);
+        if (this.discoveryHistory.length > 50) {
+            this.discoveryHistory.pop();
+        }
+        localStorage.setItem('sam_media_history', JSON.stringify(this.discoveryHistory));
+    },
+    
+    getHistory: function() {
+        try {
+            const stored = localStorage.getItem('sam_media_history');
+            if (stored) {
+                this.discoveryHistory = JSON.parse(stored);
+            }
+        } catch (e) {
+            console.warn('Failed to load history:', e);
+        }
+        return this.discoveryHistory;
+    },
+    
+    showDiscoveryPanel: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Discovery requires SweetAlert2');
+            return;
+        }
+        
+        const history = this.getHistory();
+        const popular = this.getPopularContent();
+        
+        Swal.fire({
+            title: 'Discover Content',
+            html: `
+                <div style="text-align: left; padding: 10px;">
+                    <h4 style="color: #00d4ff; margin-bottom: 15px;">Recently Played</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+                        ${history.slice(0, 6).map(item => `
+                            <div class="media-discovery-item" style="background: rgba(42,42,58,0.5); padding: 10px; border-radius: 8px; cursor: pointer;"
+                                 onclick="MediaDiscovery.playDiscoveredItem('${item.id || ''}')">
+                                <div style="font-size: 24px; text-align: center;">${item.icon || '🎵'}</div>
+                                <div style="font-size: 11px; text-align: center; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.title || 'Unknown'}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <h4 style="color: #00d4ff; margin-bottom: 15px;">Popular Now</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                        ${popular.slice(0, 6).map(item => `
+                            <div class="media-discovery-item" style="background: rgba(42,42,58,0.5); padding: 10px; border-radius: 8px; cursor: pointer;"
+                                 onclick="MediaDiscovery.playDiscoveredItem('${item.id || ''}')">
+                                <div style="font-size: 24px; text-align: center;">${item.icon || '🎵'}</div>
+                                <div style="font-size: 11px; text-align: center; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.title || 'Unknown'}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '600px'
+        });
+    },
+    
+    playDiscoveredItem: function(itemId) {
+        if (itemId) {
+            showNotification(`Playing: ${itemId}`, 'info');
+        }
+        if (typeof Swal !== 'undefined') Swal.close();
+    }
+};
 
 // Spotify integration helpers
 const SpotifyControls = {
