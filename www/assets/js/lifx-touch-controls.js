@@ -5714,6 +5714,18 @@ const LifXTouchControls = {
             case 'spectrum':
                 this.applySpectrumSyncEffect(targets);
                 break;
+            case 'strobe':
+                this.applyStrobeEffect(targets, intensity);
+                break;
+            case 'fade':
+                this.applyFadeEffect(targets, intensity);
+                break;
+            case 'rainbow':
+                this.applyRainbowEffect(targets, intensity);
+                break;
+            case 'energy':
+                this.applyEnergyReactiveEffect(targets, intensity);
+                break;
         }
         
         this.showBeatVisualization();
@@ -5805,6 +5817,91 @@ const LifXTouchControls = {
             data: JSON.stringify({
                 selector: `id:${targets.join(',')}`,
                 color: `hue:${Math.round(hue)},saturation:80%,brightness:${Math.round(brightness)}%`,
+                duration: 0.08
+            })
+        });
+    },
+    
+    applyStrobeEffect: function(targets, intensity) {
+        const flashBrightness = 80 + intensity * 20;
+        const flashDuration = 0.02 + (1 - intensity) * 0.03;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                brightness: Math.round(flashBrightness),
+                duration: flashDuration
+            })
+        });
+        
+        setTimeout(() => {
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: `id:${targets.join(',')}`,
+                    brightness: 30,
+                    duration: 0.02
+                })
+            });
+        }, flashDuration * 1000);
+    },
+    
+    applyFadeEffect: function(targets, intensity) {
+        const bassBand = this.frequencyBands.bass.value;
+        const hue = (bassBand / 255) * 360;
+        const brightness = 20 + intensity * 50;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${Math.round(hue)},saturation:60%,brightness:${Math.round(brightness)}%`,
+                duration: 0.5
+            })
+        });
+    },
+    
+    applyRainbowEffect: function(targets, intensity) {
+        const timeBasedHue = (Date.now() / 50) % 360;
+        const bassBand = this.frequencyBands.bass.value;
+        const hueShift = (bassBand / 255) * 60;
+        const finalHue = (timeBasedHue + hueShift) % 360;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${Math.round(finalHue)},saturation:100%,brightness:${40 + intensity * 40}%`,
+                duration: 0.1
+            })
+        });
+    },
+    
+    applyEnergyReactiveEffect: function(targets, intensity) {
+        const bands = this.frequencyBands;
+        const totalEnergy = (bands.subBass.value + bands.bass.value + bands.mid.value + bands.treble.value) / 4;
+        const normalizedEnergy = totalEnergy / 255;
+        
+        const hue = (normalizedEnergy * 280) % 360;
+        const saturation = 40 + normalizedEnergy * 60;
+        const brightness = 30 + normalizedEnergy * 70;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${Math.round(hue)},saturation:${Math.round(saturation)}%,brightness:${Math.round(brightness)}%`,
                 duration: 0.08
             })
         });
@@ -5962,7 +6059,11 @@ const LifXTouchControls = {
         'ambient': { name: 'Ambient', icon: '🌊', description: 'Smooth color transitions' },
         'bass': { name: 'Bass Boost', icon: '🔊', description: 'Emphasize low frequencies' },
         'spectrum': { name: 'Full Spectrum', icon: '🌈', description: 'Use all frequency bands' },
-        'pulse': { name: 'Pulse Mode', icon: '💓', description: 'Rhythmic pulsing effect' }
+        'pulse': { name: 'Pulse Mode', icon: '💓', description: 'Rhythmic pulsing effect' },
+        'strobe': { name: 'Strobe', icon: '⚡', description: 'High-energy strobe effect' },
+        'fade': { name: 'Fade Mode', icon: '🌅', description: 'Smooth fade transitions' },
+        'rainbow': { name: 'Rainbow Cycle', icon: '🌈', description: 'Rainbow color cycling' },
+        'energy': { name: 'Energy Reactive', icon: '🔥', description: 'React to audio energy levels' }
     },
     
     setMediaSyncMode: function(mode) {
@@ -6002,6 +6103,22 @@ const LifXTouchControls = {
             case 'spectrum':
                 this.beatDetectionSensitivity = 0.6;
                 console.log('Full Spectrum mode: Balanced sensitivity');
+                break;
+            case 'strobe':
+                this.beatDetectionSensitivity = 0.75;
+                console.log('Strobe mode: High sensitivity for rapid flashes');
+                break;
+            case 'fade':
+                this.beatDetectionSensitivity = 0.45;
+                console.log('Fade mode: Low sensitivity for smooth transitions');
+                break;
+            case 'rainbow':
+                this.beatDetectionSensitivity = 0.6;
+                console.log('Rainbow mode: Balanced sensitivity for color cycling');
+                break;
+            case 'energy':
+                this.beatDetectionSensitivity = 0.55;
+                console.log('Energy Reactive mode: Dynamic sensitivity based on audio energy');
                 break;
         }
     },
