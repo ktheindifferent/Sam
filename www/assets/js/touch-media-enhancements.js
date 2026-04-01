@@ -829,63 +829,111 @@ const TouchMediaEnhancements = (function() {
         
         const bpmStat = document.getElementById('bpm-stat');
         const intensityStat = document.getElementById('intensity-stat');
+        const syncStat = document.getElementById('sync-stat');
         
         let sum = 0;
         let maxFreq = 0;
-        let bassEnergy = 0;
-        let midEnergy = 0;
-        let trebleEnergy = 0;
+        let subBass = 0, bass = 0, lowMid = 0, mid = 0, highMid = 0, treble = 0;
+        
+        const bands = {
+            subBass: { start: 0, end: 4, value: 0, count: 0 },
+            bass: { start: 4, end: 10, value: 0, count: 0 },
+            lowMid: { start: 10, end: 18, value: 0, count: 0 },
+            mid: { start: 18, end: 28, value: 0, count: 0 },
+            highMid: { start: 28, end: 40, value: 0, count: 0 },
+            treble: { start: 40, end: 64, value: 0, count: 0 }
+        };
         
         for (let i = 0; i < dataArray.length; i++) {
             sum += dataArray[i];
             if (dataArray[i] > maxFreq) maxFreq = dataArray[i];
             
-            if (i < 8) bassEnergy += dataArray[i];
-            else if (i < 32) midEnergy += dataArray[i];
-            else trebleEnergy += dataArray[i];
+            for (const [bandName, band] of Object.entries(bands)) {
+                if (i >= band.start && i < band.end) {
+                    band.value += dataArray[i];
+                    band.count++;
+                }
+            }
             
             if (mediaVisualizerBars[i]) {
-                const height = Math.max(5, (dataArray[i] / 255) * 100);
+                const normalizedValue = dataArray[i] / 255;
+                const height = Math.max(5, normalizedValue * 120);
+                const hue = (i / dataArray.length) * 360;
+                
                 mediaVisualizerBars[i].style.height = `${height}px`;
+                mediaVisualizerBars[i].style.background = `hsla(${hue}, 80%, ${40 + normalizedValue * 30}%, ${0.7 + normalizedValue * 0.3})`;
+                mediaVisualizerBars[i].style.boxShadow = `0 0 ${Math.floor(normalizedValue * 20)}px hsla(${hue}, 80%, 50%, ${0.3 + normalizedValue * 0.4})`;
                 
                 if (dataArray[i] > 220) {
                     mediaVisualizerBars[i].classList.add('peak');
+                    mediaVisualizerBars[i].style.transform = 'scale(1.05)';
                 } else {
                     mediaVisualizerBars[i].classList.remove('peak');
+                    mediaVisualizerBars[i].style.transform = 'scale(1)';
                 }
             }
         }
         
+        for (const [bandName, band] of Object.entries(bands)) {
+            const avg = band.count > 0 ? band.value / band.count : 0;
+            const bandEl = document.getElementById(`band-${bandName}`);
+            if (bandEl) {
+                bandEl.style.height = `${Math.max(10, (avg / 255) * 100)}%`;
+                bandEl.style.background = getBandColor(bandName, avg / 255);
+                bandEl.style.boxShadow = `0 0 ${Math.floor((avg / 255) * 15)}px ${getBandColor(bandName, avg / 255)}`;
+            }
+        }
+        
         const avgIntensity = sum / dataArray.length;
-        const bassAvg = bassEnergy / 8;
+        const bassAvg = bands.bass.value / bands.bass.count;
+        const subBassAvg = bands.subBass.value / bands.subBass.count;
         
         detectBeat(dataArray);
         
         if (intensityStat) intensityStat.textContent = `${Math.floor((avgIntensity / 255) * 100)}%`;
+        if (syncStat) syncStat.textContent = mediaSyncActive ? mediaSyncMode.charAt(0).toUpperCase() + mediaSyncMode.slice(1) : 'Off';
         
         if (mediaSyncActive && mediaSyncMode === 'beat') {
-            updateLifxFromAudio(dataArray, maxFreq, bassAvg);
+            updateLifxFromAudio(dataArray, maxFreq, bassAvg, subBassAvg);
         }
         
         requestAnimationFrame(updateBeatVisualization);
     }
     
-    function updateLifxFromAudio(dataArray, peak, bassAvg) {
+    function getBandColor(bandName, intensity) {
+        const colors = {
+            subBass: `hsla(0, 80%, ${50 + intensity * 20}%, ${0.6 + intensity * 0.4})`,
+            bass: `hsla(30, 80%, ${50 + intensity * 20}%, ${0.6 + intensity * 0.4})`,
+            lowMid: `hsla(60, 80%, ${50 + intensity * 20}%, ${0.6 + intensity * 0.4})`,
+            mid: `hsla(120, 80%, ${50 + intensity * 20}%, ${0.6 + intensity * 0.4})`,
+            highMid: `hsla(180, 80%, ${50 + intensity * 20}%, ${0.6 + intensity * 0.4})`,
+            treble: `hsla(240, 80%, ${50 + intensity * 20}%, ${0.6 + intensity * 0.4})`
+        };
+        return colors[bandName] || colors.mid;
+    }
+    
+    function updateLifxFromAudio(dataArray, peak, bassAvg, subBassAvg) {
         const normalizedPeak = peak / 255;
         const normalizedBass = bassAvg / 255;
+        const normalizedSubBass = subBassAvg / 255;
         
-        const hue = (Date.now() / 30) % 360;
-        const saturation = Math.min(100, normalizedPeak * 100);
-        const brightness = Math.min(100, 20 + normalizedBass * 80);
+        const bassImpact = normalizedSubBass > 0.7 ? 1.3 : 1.0;
+        const hue = ((Date.now() / 30) + (normalizedBass * 60)) % 360;
+        const saturation = Math.min(100, 50 + normalizedPeak * 50);
+        const brightness = Math.min(100, 30 + normalizedBass * 70);
+        const temperature = 2700 + (normalizedPeak * 2300);
         
         if (typeof LifXTouchControls !== 'undefined') {
             const event = new CustomEvent('lifx-media-sync', {
                 detail: {
                     hue: hue,
                     saturation: saturation,
-                    brightness: brightness,
+                    brightness: brightness * bassImpact,
+                    temperature: temperature,
                     intensity: normalizedPeak,
-                    bassEnergy: normalizedBass
+                    bassEnergy: normalizedBass,
+                    subBassEnergy: normalizedSubBass,
+                    isBeat: normalizedSubBass > 0.75
                 }
             });
             document.dispatchEvent(event);

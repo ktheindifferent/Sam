@@ -1421,23 +1421,78 @@ const LifXTouchControls = {
     },
     
     showGestureFeedback: function(text, icon, duration = 1000) {
+        if (this.reducedMotionMode) {
+            duration = 300;
+        }
+        
         if (this.lastGestureHint && this.lastGestureHint.parentNode) {
             this.lastGestureHint.parentNode.removeChild(this.lastGestureHint);
         }
         
         const hint = document.createElement('div');
-        hint.className = 'lifx-gesture-hint visible';
-        hint.innerHTML = `<span style="font-size: 24px; display: block; margin-bottom: 5px;">${icon}</span>${text}`;
+        hint.className = 'lifx-gesture-hint visible enhanced';
+        if (this.highContrastHints) {
+            hint.classList.add('high-contrast');
+        }
+        hint.innerHTML = `
+            <div class="gesture-icon" style="animation: gesture-bounce 0.5s ease;">${icon}</div>
+            <span class="gesture-text">${text}</span>
+        `;
         document.body.appendChild(hint);
         this.lastGestureHint = hint;
         
+        if (this.showGestureHints) {
+            this.createGestureTrail(hint);
+        }
+        
         setTimeout(() => {
-            hint.classList.remove('visible');
-            setTimeout(() => {
-                if (hint.parentNode) hint.parentNode.removeChild(hint);
-                if (this.lastGestureHint === hint) this.lastGestureHint = null;
-            }, 300);
+            if (hint.parentNode) {
+                hint.classList.remove('visible');
+                setTimeout(() => {
+                    if (hint.parentNode) hint.parentNode.removeChild(hint);
+                    if (this.lastGestureHint === hint) this.lastGestureHint = null;
+                }, 300);
+            }
         }, duration);
+    },
+    
+    createGestureTrail: function(hintElement) {
+        if (this.reducedMotionMode) return;
+        
+        const rect = hintElement.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        for (let i = 0; i < 3; i++) {
+            setTimeout(() => {
+                const trail = document.createElement('div');
+                trail.className = 'lifx-gesture-trail';
+                trail.style.left = (centerX + (Math.random() - 0.5) * 40) + 'px';
+                trail.style.top = (centerY + (Math.random() - 0.5) * 40) + 'px';
+                trail.style.width = (20 + Math.random() * 15) + 'px';
+                trail.style.height = trail.style.width;
+                document.body.appendChild(trail);
+                
+                setTimeout(() => {
+                    if (trail.parentNode) trail.parentNode.removeChild(trail);
+                }, 800);
+            }, i * 100);
+        }
+    },
+    
+    showEnhancedGestureFeedback: function(text, icon, duration = 1200) {
+        if (this.isModalOpen()) return;
+        
+        this.showGestureFeedback(text, icon, duration);
+        
+        const feedback = document.createElement('div');
+        feedback.className = 'touch-gesture-feedback active';
+        feedback.innerHTML = `<div class="swipe-indicator visible">${icon}</div>`;
+        document.body.appendChild(feedback);
+        
+        setTimeout(() => {
+            if (feedback.parentNode) feedback.parentNode.removeChild(feedback);
+        }, duration + 200);
     },
     
     showGestureTutorial: function(force = false) {
@@ -2083,6 +2138,10 @@ const LifXTouchControls = {
     hapticFeedback: function(pattern = 'default', intensity = 1.0) {
         if (!this.hapticEnabled || !navigator.vibrate) return;
         
+        if (this.pressureSensitiveEnabled && this.touchPressure > 0) {
+            intensity = Math.min(1.5, intensity * (1 + this.touchPressure / 100));
+        }
+        
         const basePatterns = {
             'default': [50],
             'light': [30],
@@ -2109,7 +2168,20 @@ const LifXTouchControls = {
             'media_sync_bass': [25, 15, 25],
             'media_sync_spectrum': [20, 20, 20, 20],
             'gesture_preview': [30, 20, 30, 20, 30, 20, 30],
-            'tutorial': [50, 30, 50, 30, 50]
+            'tutorial': [50, 30, 50, 30, 50],
+            'ripple': [15, 20, 15],
+            'trail': [20, 15, 20, 15],
+            'macro': [40, 30, 40, 30, 40],
+            'preset': [55, 35, 55],
+            'group': [45, 35, 45, 35],
+            'effect_start': [60, 40, 60, 40, 60],
+            'effect_stop': [30, 30],
+            'color_pick': [25, 20, 25],
+            'favorite': [35, 25, 35, 25, 35],
+            'undo': [40, 30, 40],
+            'redo': [40, 30, 40, 30],
+            'multi_select': [30, 25, 30, 25, 30],
+            'batch_operation': [50, 40, 50, 40, 50, 40, 50]
         };
         
         const basePattern = basePatterns[pattern] || basePatterns['default'];
@@ -2120,6 +2192,21 @@ const LifXTouchControls = {
         } catch (e) {
             console.warn('Haptic feedback failed:', e);
         }
+    },
+    
+    hapticSequence: function(patterns, delays) {
+        if (!this.hapticEnabled || !navigator.vibrate) return;
+        
+        let index = 0;
+        const playNext = () => {
+            if (index >= patterns.length) return;
+            this.hapticFeedback(patterns[index]);
+            setTimeout(() => {
+                index++;
+                if (index < patterns.length) playNext();
+            }, delays[index] || 100);
+        };
+        playNext();
     },
     
     setGestureSensitivity: function(level) {
@@ -3334,35 +3421,48 @@ const LifXTouchControls = {
             const bulbEl = e.target.closest('.lifx-bulb-control, .lifx-bulb-card');
             if (!bulbEl) return;
             
-            const touch = e.touches[0];
+            const touches = Array.from(e.touches);
             const rect = bulbEl.getBoundingClientRect();
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
             
-            const ripple = document.createElement('span');
-            ripple.className = 'lifx-touch-ripple' + (this.enhancedRippleMode ? ' enhanced' : '');
-            ripple.style.left = (x - this.rippleSize / 2) + 'px';
-            ripple.style.top = (y - this.rippleSize / 2) + 'px';
-            ripple.style.width = this.rippleSize + 'px';
-            ripple.style.height = this.rippleSize + 'px';
-            
-            if (this.enhancedRippleMode) {
-                ripple.style.background = `radial-gradient(circle, ${this.rippleColor} 0%, transparent 70%)`;
-                ripple.style.animationDuration = (this.rippleDuration / 1000) + 's';
+            touches.forEach((touch, index) => {
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
                 
-                if (this.glowEffectEnabled) {
-                    bulbEl.classList.add('touch-glow');
-                    setTimeout(() => bulbEl.classList.remove('touch-glow'), 300);
+                const velocity = this.getTouchVelocity(touch);
+                const sizeMultiplier = 1 + Math.min(velocity, 1.5);
+                
+                const rippleSize = this.rippleSize * sizeMultiplier;
+                const ripple = document.createElement('span');
+                ripple.className = 'lifx-touch-ripple' + (this.enhancedRippleMode ? ' enhanced' : '');
+                ripple.style.left = (x - rippleSize / 2) + 'px';
+                ripple.style.top = (y - rippleSize / 2) + 'px';
+                ripple.style.width = rippleSize + 'px';
+                ripple.style.height = rippleSize + 'px';
+                
+                if (this.enhancedRippleMode) {
+                    const bulbState = this.getBulbState(bulbEl);
+                    const rippleColor = this.getRippleColorForState(bulbState);
+                    ripple.style.background = `radial-gradient(circle, ${rippleColor} 0%, transparent 70%)`;
+                    ripple.style.animationDuration = (this.rippleDuration / 1000) + 's';
+                    
+                    if (this.glowEffectEnabled) {
+                        bulbEl.classList.add('touch-glow');
+                        setTimeout(() => bulbEl.classList.remove('touch-glow'), 300);
+                    }
                 }
-            }
-            
-            bulbEl.appendChild(ripple);
-            
-            setTimeout(() => {
-                if (ripple.parentNode) {
-                    ripple.parentNode.removeChild(ripple);
+                
+                if (this.multiBulbSelection && this.multiBulbSelection.size > 1 && index === 0) {
+                    this.createMultiSelectRipple(bulbEl, x, y);
                 }
-            }, this.rippleDuration);
+                
+                bulbEl.appendChild(ripple);
+                
+                setTimeout(() => {
+                    if (ripple.parentNode) {
+                        ripple.parentNode.removeChild(ripple);
+                    }
+                }, this.rippleDuration);
+            });
         }, { passive: true });
     },
     
@@ -3554,6 +3654,88 @@ const LifXTouchControls = {
         if (currentIndex > 0) {
             this.setGestureSensitivityLevel(levels[currentIndex - 1]);
         }
+    },
+    
+    getTouchVelocity: function(touch) {
+        if (!this.lastTouchPositions.has(touch.identifier)) {
+            return 0;
+        }
+        
+        const lastPos = this.lastTouchPositions.get(touch.identifier);
+        const deltaX = touch.clientX - lastPos.x;
+        const deltaY = touch.clientY - lastPos.y;
+        const deltaTime = Date.now() - lastPos.time;
+        
+        if (deltaTime === 0) return 0;
+        
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const velocity = distance / deltaTime;
+        
+        this.lastTouchPositions.set(touch.identifier, {
+            x: touch.clientX,
+            y: touch.clientY,
+            time: Date.now()
+        });
+        
+        return Math.min(velocity, 10);
+    },
+    
+    getBulbState: function(bulbEl) {
+        const bulbId = bulbEl.dataset.bulbId;
+        if (!bulbId) return { on: false, brightness: 0, color: '#000000' };
+        
+        const bulbData = this.bulbs.find(b => b.id === bulbId);
+        if (!bulbData) return { on: false, brightness: 0, color: '#000000' };
+        
+        return {
+            on: bulbData.power || false,
+            brightness: bulbData.brightness || 0,
+            color: bulbData.color || '#000000',
+            temperature: bulbData.temperature || 3500
+        };
+    },
+    
+    getRippleColorForState: function(bulbState) {
+        if (!bulbState.on) {
+            return 'rgba(255, 255, 255, 0.3)';
+        }
+        
+        const brightnessFactor = bulbState.brightness / 100;
+        
+        if (bulbState.color && bulbState.color !== '#000000') {
+            const hex = bulbState.color.replace('#', '');
+            const r = parseInt(hex.substr(0, 2), 16);
+            const g = parseInt(hex.substr(2, 2), 16);
+            const b = parseInt(hex.substr(4, 2), 16);
+            return `rgba(${r}, ${g}, ${b}, ${0.4 + brightnessFactor * 0.4})`;
+        }
+        
+        const kelvin = bulbState.temperature || 3500;
+        if (kelvin < 2500) {
+            return `rgba(255, 180, 100, ${0.4 + brightnessFactor * 0.4})`;
+        } else if (kelvin < 4000) {
+            return `rgba(255, 220, 180, ${0.4 + brightnessFactor * 0.4})`;
+        } else {
+            return `rgba(180, 220, 255, ${0.4 + brightnessFactor * 0.4})`;
+        }
+    },
+    
+    createMultiSelectRipple: function(bulbEl, x, y) {
+        if (!this.multiBulbSelection || this.multiBulbSelection.size <= 1) return;
+        
+        const selectionRipple = document.createElement('div');
+        selectionRipple.className = 'lifx-multi-select-ripple';
+        selectionRipple.style.left = x + 'px';
+        selectionRipple.style.top = y + 'px';
+        selectionRipple.innerHTML = `<span class="ripple-count">${this.multiBulbSelection.size}</span>`;
+        
+        bulbEl.appendChild(selectionRipple);
+        
+        setTimeout(() => {
+            if (selectionRipple.parentNode) {
+                selectionRipple.parentNode.removeChild(selectionRipple);
+            }
+        }, this.rippleDuration);
     },
     
     saveAdaptiveSensitivityStats: function() {
