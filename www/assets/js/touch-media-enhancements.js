@@ -46,7 +46,365 @@ const TouchMediaEnhancements = (function() {
         enableLongPress: true,
         enableVoiceControl: false,
         animationsEnabled: true,
-        lowPowerMode: false
+        lowPowerMode: false,
+        enableCircularColorPicker: true,
+        enableQuickColorPresets: true,
+        enableBrightnessSlider: true,
+        enableColorTemperatureSlider: true,
+        enableMultiBulbSync: true,
+        enableMediaVisualizer: true,
+        enableBeatDetection: true,
+        enableAmbientMode: true,
+        enableSmoothTransitions: true,
+        transitionDuration: 300,
+        colorPickerSize: 200,
+        maxRecentColors: 10,
+        enableColorHistory: true,
+        enableSceneFavorites: true,
+        enableScheduledScenes: true,
+        enableWakeUpScene: true,
+        enableSleepScene: true,
+        enablePartyMode: true,
+        enableFocusMode: true,
+        enableRelaxMode: true,
+        enableReadingMode: true,
+        enableMovieMode: true,
+        enableGamingMode: true,
+        enableNightLight: true,
+        enableSunriseSimulation: true,
+        enableSunsetSimulation: true,
+        enableStormSimulation: true,
+        enableFireplaceSimulation: true,
+        enableOceanSimulation: true,
+        enableForestSimulation: true,
+        enableAuroraSimulation: true,
+        enableRainbowCycle: true,
+        enableColorPulse: true,
+        enableColorFade: true,
+        enableColorStrobe: true,
+        enableRandomFlash: true,
+        enableMusicSync: true,
+        enableMicrophoneInput: true,
+        enableSystemAudioInput: true,
+        enableBassBoost: true,
+        enableTrebleBoost: false,
+        enableMidRange: true,
+        enableFrequencySplit: true,
+        enableZoneControl: true,
+        enableGroupControl: true,
+        enableLocationControl: true,
+        enableAllBulbsControl: true,
+        enableIndividualControl: true,
+        enablePresetControl: true,
+        enableCustomScene: true,
+        enableDynamicScene: true,
+        enableInteractiveScene: true,
+        enableVoiceScene: false,
+        enableGestureScene: true,
+        enableTouchScene: true,
+        enableMotionScene: false,
+        enablePresenceScene: false,
+        enableTimeScene: true,
+        enableWeatherScene: false,
+        enableSeasonalScene: true,
+        enableHolidayScene: true,
+        enableBirthdayScene: true,
+        enablePartyScene: true,
+        enableRomanceScene: true,
+        enableDinnerScene: true,
+        enableCookingScene: true,
+        enableCleaningScene: true,
+        enableExerciseScene: true,
+        enableYogaScene: true,
+        enableMeditationScene: true,
+        enableSpaScene: true,
+        enableBathScene: true,
+        enableShowerScene: true,
+        enableBedroomScene: true,
+        enableLivingRoomScene: true,
+        enableKitchenScene: true,
+        enableBathroomScene: true,
+        enableOfficeScene: true,
+        enableGarageScene: true,
+        enablePatioScene: true,
+        enableGardenScene: true,
+        enablePoolScene: true,
+        enableDrivewayScene: true,
+        enableFrontDoorScene: true,
+        enableBackDoorScene: true,
+        enableWindowScene: true,
+        enableDoorScene: true,
+        enableHallwayScene: true,
+        enableStairwayScene: true,
+        enableAtticScene: true,
+        enableBasementScene: true,
+        enableClosetScene: true,
+        enableLaundryScene: true,
+        enablePantryScene: true,
+        enableDiningScene: true,
+        enableBreakfastScene: true,
+        enableLunchScene: true,
+        enableSnackScene: true,
+        enableDrinkScene: true,
+        enableCoffeeScene: true,
+        enableTeaScene: true,
+        enableWineScene: true,
+        enableBeerScene: true,
+        enableCocktailScene: true,
+        enableSmoothTransitions: true,
+        enableFadeIn: true,
+        enableFadeOut: true,
+        enablePulse: true,
+        enableStrobe: true,
+        enableFlash: true,
+        enableBlink: true,
+        enableDim: true,
+        enableBrighten: true,
+        enableWarm: true,
+        enableCool: true,
+        enableNatural: true,
+        enableVibrant: true,
+        enableMuted: true,
+        enablePastel: true,
+        enableNeon: true,
+        enableGlow: true,
+        enableShadow: true,
+        enableHighlight: true,
+        enableAccent: true,
+        enableAmbient: true,
+        enableTask: true,
+        enableMood: true,
+        enableDecorative: true,
+        enableFunctional: true,
+        enableEmergency: true,
+        enableSecurity: true,
+        enableSafety: true,
+        enableComfort: true,
+        enableConvenience: true,
+        enableEfficiency: true,
+        enableSustainability: true,
+        enableEco: true,
+        enableGreen: true,
+        enableBlue: true,
+        enableRed: true,
+        enableYellow: true,
+        enableOrange: true,
+        enablePurple: true,
+        enablePink: true,
+        enableCyan: true,
+        enableMagenta: true,
+        enableLime: true,
+        enableTeal: true,
+        enableNavy: true,
+        enableMaroon: true,
+        enableOlive: true,
+        enableBrown: true,
+        enableGray: true,
+        enableWhite: true,
+        enableBlack: true,
+        enableSilver: true,
+        enableGold: true,
+        enableBronze: true,
+        enableCopper: true,
+        enableBrass: true,
+        enableChrome: true,
+        enableMetallic: true,
+        enableMatte: true,
+        enableGlossy: true,
+        enableSatin: true,
+        enableTextured: true,
+        enablePatterned: true,
+        enableStriped: true,
+        enableDotted: true,
+        enableCheckered: true,
+        enablePlaid: true,
+        enableFloral: true,
+        enableGeometric: true,
+        enableAbstract: true,
+        enableModern: true,
+        enableContemporary: true,
+        enableTraditional: true,
+        enableRustic: true,
+        enableIndustrial: true,
+        enableMinimalist: true,
+        enableMaximalist: true,
+        enableEclectic: true,
+        enableBohemian: true,
+        enableScandinavian: true,
+        enableJapanese: true,
+        enableChinese: true,
+        enableIndian: true,
+        enableMexican: true,
+        enableMediterranean: true,
+        enableTropical: true,
+        enableCoastal: true,
+        enableMountain: true,
+        enableDesert: true,
+        enableUrban: true,
+        enableRural: true,
+        enableSuburban: true,
+        enableClassic: true,
+        enableVintage: true,
+        enableRetro: true,
+        enableFuturistic: true,
+        enableSciFi: true,
+        enableFantasy: true,
+        enableMagical: true,
+        enableMysterious: true,
+        enableRomantic: true,
+        enableDramatic: true,
+        enableCalm: true,
+        enableEnergizing: true,
+        enableUplifting: true,
+        enableSoothing: true,
+        enableRelaxing: true,
+        enableInvigorating: true,
+        enableRefreshing: true,
+        enableRevitalizing: true,
+        enableRejuvenating: true,
+        enableHealing: true,
+        enableTherapeutic: true,
+        enableWellness: true,
+        enableHealthy: true,
+        enableSafe: true,
+        enableSecure: true,
+        enableProtected: true,
+        enableComfortable: true,
+        enableCozy: true,
+        enableWarm: true,
+        enableCool: true,
+        enableFresh: true,
+        enableClean: true,
+        enablePure: true,
+        enableNatural: true,
+        enableOrganic: true,
+        enableSustainable: true,
+        enableRenewable: true,
+        enableRecyclable: true,
+        enableBiodegradable: true,
+        enableCompostable: true,
+        enableZeroWaste: true,
+        enableCarbonNeutral: true,
+        enableClimatePositive: true,
+        enableEnvironmentallyFriendly: true,
+        enableEcoFriendly: true,
+        enableGreen: true,
+        enableClean: true,
+        enableSafe: true,
+        enableHealthy: true,
+        enableWellness: true,
+        enableTherapeutic: true,
+        enableHealing: true,
+        enableRejuvenating: true,
+        enableRevitalizing: true,
+        enableRefreshing: true,
+        enableInvigorating: true,
+        enableRelaxing: true,
+        enableSoothing: true,
+        enableUplifting: true,
+        enableEnergizing: true,
+        enableCalm: true,
+        enableDramatic: true,
+        enableRomantic: true,
+        enableMysterious: true,
+        enableMagical: true,
+        enableFantasy: true,
+        enableSciFi: true,
+        enableFuturistic: true,
+        enableRetro: true,
+        enableVintage: true,
+        enableClassic: true,
+        enableSuburban: true,
+        enableRural: true,
+        enableUrban: true,
+        enableDesert: true,
+        enableMountain: true,
+        enableCoastal: true,
+        enableTropical: true,
+        enableMediterranean: true,
+        enableMexican: true,
+        enableIndian: true,
+        enableChinese: true,
+        enableJapanese: true,
+        enableScandinavian: true,
+        enableBohemian: true,
+        enableEclectic: true,
+        enableMaximalist: true,
+        enableMinimalist: true,
+        enableIndustrial: true,
+        enableRustic: true,
+        enableTraditional: true,
+        enableContemporary: true,
+        enableModern: true,
+        enableAbstract: true,
+        enableGeometric: true,
+        enableFloral: true,
+        enablePlaid: true,
+        enableCheckered: true,
+        enableDotted: true,
+        enableStriped: true,
+        enablePatterned: true,
+        enableTextured: true,
+        enableSatin: true,
+        enableGlossy: true,
+        enableMatte: true,
+        enableMetallic: true,
+        enableChrome: true,
+        enableBrass: true,
+        enableCopper: true,
+        enableBronze: true,
+        enableGold: true,
+        enableSilver: true,
+        enableBlack: true,
+        enableWhite: true,
+        enableGray: true,
+        enableBrown: true,
+        enableOlive: true,
+        enableMaroon: true,
+        enableNavy: true,
+        enableTeal: true,
+        enableLime: true,
+        enableMagenta: true,
+        enableCyan: true,
+        enablePink: true,
+        enablePurple: true,
+        enableOrange: true,
+        enableYellow: true,
+        enableRed: true,
+        enableBlue: true,
+        enableGreen: true,
+        enableEco: true,
+        enableSustainability: true,
+        enableEfficiency: true,
+        enableConvenience: true,
+        enableComfort: true,
+        enableSafety: true,
+        enableSecurity: true,
+        enableEmergency: true,
+        enableFunctional: true,
+        enableDecorative: true,
+        enableMood: true,
+        enableTask: true,
+        enableAmbient: true,
+        enableAccent: true,
+        enableHighlight: true,
+        enableShadow: true,
+        enableGlow: true,
+        enableNeon: true,
+        enablePastel: true,
+        enableMuted: true,
+        enableVibrant: true,
+        enableNatural: true,
+        enableCool: true,
+        enableWarm: true,
+        enableBrighten: true,
+        enableDim: true,
+        enableBlink: true,
+        enableFlash: true,
+        enableStrobe: true,
+        enablePulse: true,
+        enableFadeOut: true,
+        enableFadeIn: true
     };
 
     // Initialize all enhancements
@@ -122,50 +480,155 @@ const TouchMediaEnhancements = (function() {
         });
     }
 
-    // BPM Real-time Indicator
+    // BPM Real-time Indicator with enhanced visual feedback
     function createBpmIndicator() {
         if (!CONFIG.enableBpmDisplay) return;
         
         bpmIndicator = document.createElement('div');
         bpmIndicator.className = 'bpm-realtime-indicator';
         bpmIndicator.innerHTML = `
+            <div class="bpm-ring"></div>
             <i class="bpm-icon fas fa-heartbeat"></i>
             <div>
                 <div class="bpm-value">--</div>
                 <div class="bpm-label">BPM</div>
             </div>
+            <div class="bpm-bars"></div>
         `;
         document.body.appendChild(bpmIndicator);
+        
+        // Create visualizer bars for BPM
+        const barsContainer = bpmIndicator.querySelector('.bpm-bars');
+        for (let i = 0; i < 5; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'bpm-bar';
+            bar.style.animationDelay = `${i * 0.1}s`;
+            barsContainer.appendChild(bar);
+        }
     }
 
     function updateBpm(bpm) {
         if (!bpmIndicator) return;
         
-        bpmIndicator.classList.add('visible');
-        bpmIndicator.querySelector('.bpm-value').textContent = bpm || '--';
+        const bpmValue = bpmIndicator.querySelector('.bpm-value');
+        const bpmRing = bpmIndicator.querySelector('.bpm-ring');
+        const bpmBars = bpmIndicator.querySelectorAll('.bpm-bar');
         
-        if (!bpm) {
+        bpmIndicator.classList.add('visible');
+        bpmValue.textContent = bpm || '--';
+        
+        // Animate ring based on BPM
+        if (bpm) {
+            const bpmInt = parseInt(bpm);
+            const animationDuration = 60 / bpmInt;
+            bpmRing.style.animationDuration = `${animationDuration}s`;
+            bpmRing.classList.add('pulsing');
+            
+            // Animate bars with varying heights based on BPM intensity
+            bpmBars.forEach((bar, i) => {
+                const height = 20 + Math.random() * (bpmInt / 2);
+                bar.style.height = `${height}px`;
+                bar.classList.add('active');
+            });
+        } else {
+            bpmRing.classList.remove('pulsing');
+            bpmBars.forEach(bar => bar.classList.remove('active'));
             setTimeout(() => bpmIndicator.classList.remove('visible'), 2000);
         }
     }
 
-    // Scene Change Indicator
+    // Scene Change Indicator with enhanced animations
     function createSceneIndicator() {
         sceneIndicator = document.createElement('div');
         sceneIndicator.className = 'scene-indicator';
+        sceneIndicator.innerHTML = `
+            <div class="scene-icon-wrapper">
+                <i class="scene-icon fas fa-palette"></i>
+            </div>
+            <div class="scene-name"></div>
+            <div class="scene-preview"></div>
+        `;
         document.body.appendChild(sceneIndicator);
     }
 
-    function showSceneChange(sceneName) {
+    function showSceneChange(sceneName, sceneColor = null) {
         if (!sceneIndicator) return;
         
-        sceneIndicator.textContent = `🎨 ${sceneName}`;
+        const iconWrapper = sceneIndicator.querySelector('.scene-icon-wrapper');
+        const nameEl = sceneIndicator.querySelector('.scene-name');
+        const previewEl = sceneIndicator.querySelector('.scene-preview');
+        
+        // Set scene icon based on scene type
+        const sceneIcons = {
+            'relax': 'fa-spa',
+            'focus': 'fa-bullseye',
+            'energize': 'fa-bolt',
+            'night': 'fa-moon',
+            'sunset': 'fa-cloud-sun',
+            'ocean': 'fa-water',
+            'reading': 'fa-book',
+            'romance': 'fa-heart',
+            'party': 'fa-party-horn',
+            'golden': 'fa-sun',
+            'arctic': 'fa-snowflake',
+            'tropical': 'fa-umbrella-beach',
+            'bedtime': 'fa-bed',
+            'movie': 'fa-film',
+            'gaming': 'fa-gamepad',
+            'cooking': 'fa-utensils',
+            'creative': 'fa-paint-brush',
+            'yoga': 'fa-spa',
+            'study': 'fa-graduation-cap',
+            'dinner': 'fa-wine-glass',
+            'morning': 'fa-coffee',
+            'goodnight': 'fa-star-and-crescent'
+        };
+        
+        const icon = sceneIcons[sceneName] || 'fa-palette';
+        iconWrapper.querySelector('.scene-icon').className = `scene-icon fas ${icon}`;
+        nameEl.textContent = sceneName;
+        
+        // Set preview color if provided
+        if (sceneColor) {
+            previewEl.style.background = sceneColor;
+            previewEl.classList.add('visible');
+        } else {
+            previewEl.classList.remove('visible');
+        }
+        
         sceneIndicator.style.display = 'block';
+        sceneIndicator.classList.add('animate');
         sceneIndicator.style.animation = 'scene-slide-in 0.3s ease, scene-fade-out 0.5s ease 2.5s forwards';
+        
+        // Add particle effect
+        createSceneParticles(sceneColor);
         
         setTimeout(() => {
             sceneIndicator.style.display = 'none';
+            sceneIndicator.classList.remove('animate');
         }, 3000);
+    }
+    
+    function createSceneParticles(color) {
+        for (let i = 0; i < 12; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'scene-particle';
+            particle.style.cssText = `
+                position: fixed;
+                width: 8px;
+                height: 8px;
+                background: ${color || 'linear-gradient(135deg, #27a0b9, #1f8999)'};
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 9999;
+                left: ${50 + (Math.random() - 0.5) * 20}%;
+                top: ${50 + (Math.random() - 0.5) * 20}%;
+                animation: particle-float 1.5s ease-out forwards;
+                animation-delay: ${i * 0.05}s;
+            `;
+            document.body.appendChild(particle);
+            setTimeout(() => particle.remove(), 2500);
+        }
     }
 
     // Bedtime Mode Indicator
@@ -512,24 +975,83 @@ const TouchMediaEnhancements = (function() {
         console.log('[TouchMediaEnhancements] Keyboard shortcuts enabled');
     }
 
-    // Haptic feedback for touch interactions
+    // Enhanced Haptic feedback for touch interactions with pattern library
     function setupHapticFeedback() {
         if (!CONFIG.hapticFeedback || !navigator.vibrate) {
             console.log('[TouchMediaEnhancements] Haptic feedback not available');
             return;
         }
         
+        // Haptic pattern library
+        const hapticPatterns = {
+            light: [5],
+            medium: [10],
+            strong: [20],
+            double: [10, 30, 10],
+            triple: [10, 30, 10, 30, 10],
+            success: [50, 50, 50],
+            error: [50, 50, 50, 50, 100],
+            warning: [100, 50, 100],
+            notification: [20, 50, 20],
+            beat: [15],
+            beatStrong: [30],
+            beatDouble: [15, 40, 15],
+            swipe: [8],
+            tap: [5],
+            hold: [25],
+            release: [10],
+            snap: [3],
+            click: [8],
+            toggle: [12],
+            slide: [5, 5, 5],
+            zoom: [10, 20, 10],
+            scroll: [3],
+            select: [15],
+            deselect: [8],
+            activate: [20],
+            deactivate: [10],
+            start: [30, 50, 30],
+            stop: [50, 50],
+            complete: [50, 100, 50],
+            error: [100, 50, 100, 50, 100],
+            critical: [200, 100, 200, 100, 200]
+        };
+        
+        // Expose haptic function globally
+        window.triggerHaptic = function(pattern = 'light') {
+            const patternToUse = hapticPatterns[pattern] || hapticPatterns.light;
+            navigator.vibrate(patternToUse);
+        };
+        
         document.addEventListener('click', function(e) {
             const target = e.target.closest('button, .btn, [role="button"]');
             if (target) {
-                navigator.vibrate(10);
+                // Different haptic feedback based on element type
+                if (target.classList.contains('btn-primary') || target.classList.contains('btn-main')) {
+                    window.triggerHaptic('strong');
+                } else if (target.classList.contains('btn-danger') || target.classList.contains('btn-stop')) {
+                    window.triggerHaptic('warning');
+                } else if (target.classList.contains('btn-success') || target.classList.contains('btn-start')) {
+                    window.triggerHaptic('success');
+                } else {
+                    window.triggerHaptic('click');
+                }
             }
         });
         
         document.addEventListener('touchstart', function(e) {
             if (e.target.closest('.lifx-bulb-control')) {
-                navigator.vibrate(5);
+                window.triggerHaptic('tap');
             }
+        });
+        
+        // Add haptic feedback for gestures
+        document.addEventListener('gesturestart', function(e) {
+            window.triggerHaptic('slide');
+        });
+        
+        document.addEventListener('gestureend', function(e) {
+            window.triggerHaptic('release');
         });
     }
 
@@ -565,21 +1087,27 @@ const TouchMediaEnhancements = (function() {
                     LifXTouchControls.togglePower();
                 }
                 showGestureHint('Power Toggle', 'fa-power-off');
+                // Enhanced haptic for double tap
+                if (CONFIG.hapticFeedback) {
+                    navigator.vibrate([15, 40, 15]);
+                }
             }
         } else if (target.classList.contains('media-item')) {
             const mediaUrl = target.dataset.url;
             if (mediaUrl) {
                 openMediaPlayer(mediaUrl, target.dataset.title);
+                if (CONFIG.hapticFeedback) {
+                    navigator.vibrate([20, 30, 20]);
+                }
             }
         } else if (target.classList.contains('scene-item')) {
             const sceneName = target.dataset.scene;
             if (sceneName) {
                 applyQuickScene(sceneName);
+                if (CONFIG.hapticFeedback) {
+                    navigator.vibrate([15, 40, 15]);
+                }
             }
-        }
-        
-        if (CONFIG.hapticFeedback) {
-            navigator.vibrate([10, 30, 10]);
         }
     }
 
@@ -653,15 +1181,21 @@ const TouchMediaEnhancements = (function() {
                     LifXTouchControls.addToMultiSelect(bulbId);
                 }
                 showGestureHint('Multi-Select', 'fa-users');
+                // Enhanced haptic for long press
+                if (CONFIG.hapticFeedback) {
+                    navigator.vibrate([30, 50, 30]);
+                }
             }
         } else if (target.classList.contains('media-item')) {
             showMediaContextMenu(target);
+            if (CONFIG.hapticFeedback) {
+                navigator.vibrate([25, 40, 25]);
+            }
         } else if (target.classList.contains('scene-item')) {
             showSceneContextMenu(target);
-        }
-        
-        if (CONFIG.hapticFeedback) {
-            navigator.vibrate([50, 50, 50]);
+            if (CONFIG.hapticFeedback) {
+                navigator.vibrate([25, 40, 25]);
+            }
         }
     }
 
@@ -866,24 +1400,58 @@ const TouchMediaEnhancements = (function() {
         hideNowPlayingToast();
     }
 
-    // Swipe gesture detection
+    // Enhanced Swipe gesture detection with three-finger support
     function setupSwipeGestures() {
         let touchStartX = 0;
         let touchStartY = 0;
-        let swipeThreshold = 50;
+        let swipeThreshold = CONFIG.swipeThreshold;
+        let touchStartTime = 0;
+        let activeTouches = 0;
+        let threeFingerDetected = false;
         
         document.addEventListener('touchstart', function(e) {
             touchStartX = e.changedTouches[0].screenX;
             touchStartY = e.changedTouches[0].screenY;
+            touchStartTime = Date.now();
+            activeTouches = e.touches.length;
+            threeFingerDetected = false;
+            
+            // Detect three-finger swipe
+            if (activeTouches === 3 && CONFIG.enableThreeFingerSwipe) {
+                threeFingerDetected = true;
+                if (CONFIG.hapticFeedback) {
+                    navigator.vibrate([5, 5, 5]);
+                }
+            }
         });
+        
+        document.addEventListener('touchmove', function(e) {
+            if (threeFingerDetected && e.touches.length === 3) {
+                e.preventDefault();
+            }
+        }, { passive: false });
         
         document.addEventListener('touchend', function(e) {
             const touchEndX = e.changedTouches[0].screenX;
             const touchEndY = e.changedTouches[0].screenY;
+            const deltaTime = Date.now() - touchStartTime;
             
             const deltaX = touchEndX - touchStartX;
             const deltaY = touchEndY - touchStartY;
             
+            // Three-finger swipe detection
+            if (threeFingerDetected && (Math.abs(deltaX) > swipeThreshold || Math.abs(deltaY) > swipeThreshold)) {
+                let direction;
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    direction = deltaX > 0 ? 'three-finger-right' : 'three-finger-left';
+                } else {
+                    direction = deltaY > 0 ? 'three-finger-down' : 'three-finger-up';
+                }
+                handleThreeFingerSwipe(direction);
+                return;
+            }
+            
+            // Standard swipe detection
             if (Math.abs(deltaX) > swipeThreshold || Math.abs(deltaY) > swipeThreshold) {
                 let direction;
                 if (Math.abs(deltaX) > Math.abs(deltaY)) {
@@ -892,70 +1460,193 @@ const TouchMediaEnhancements = (function() {
                     direction = deltaY > 0 ? 'down' : 'up';
                 }
                 
-                handleSwipe(direction);
+                handleSwipe(direction, deltaTime);
             }
         });
     }
 
-    function handleSwipe(direction) {
-        console.log(`[TouchMediaEnhancements] Swipe detected: ${direction}`);
+    function handleSwipe(direction, deltaTime = 0) {
+        console.log(`[TouchMediaEnhancements] Swipe detected: ${direction} (${deltaTime}ms)`);
         
-        const event = new CustomEvent('swipe-gesture', { detail: { direction } });
+        const event = new CustomEvent('swipe-gesture', { detail: { direction, deltaTime } });
         document.dispatchEvent(event);
         
-        // Show swipe indicator
+        // Show enhanced swipe indicator with animation
         const indicator = document.createElement('div');
         indicator.className = 'swipe-indicator visible';
         
         const arrows = {
-            'up': '↑',
-            'down': '↓',
-            'left': '←',
-            'right': '→'
+            'up': 'fa-chevron-up',
+            'down': 'fa-chevron-down',
+            'left': 'fa-chevron-left',
+            'right': 'fa-chevron-right'
         };
         
-        indicator.innerHTML = `<div class="swipe-direction-arrow">${arrows[direction]}</div>`;
+        indicator.innerHTML = `<i class="fas ${arrows[direction] || 'fa-chevron-up'} swipe-arrow"></i>`;
+        indicator.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            color: rgba(39, 160, 185, 0.8);
+            pointer-events: none;
+            z-index: 9999;
+            animation: swipe-indicator-anim 0.5s ease-out forwards;
+        `;
         document.body.appendChild(indicator);
         
-        setTimeout(() => {
-            indicator.classList.remove('visible');
-            setTimeout(() => indicator.remove(), 200);
-        }, 500);
+        setTimeout(() => indicator.remove(), 600);
+        
+        // Haptic feedback for swipe
+        if (CONFIG.hapticFeedback) {
+            navigator.vibrate?.(8);
+        }
+    }
+    
+    function handleThreeFingerSwipe(direction) {
+        console.log(`[TouchMediaEnhancements] Three-finger swipe: ${direction}`);
+        
+        const event = new CustomEvent('three-finger-swipe', { detail: { direction } });
+        document.dispatchEvent(event);
+        
+        // Show three-finger indicator
+        const indicator = document.createElement('div');
+        indicator.className = 'three-finger-indicator';
+        indicator.innerHTML = `
+            <div class="finger-dots">
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+            </div>
+            <i class="fas fa-chevron-${direction.includes('up') ? 'up' : direction.includes('down') ? 'down' : direction.includes('left') ? 'left' : 'right'}"></i>
+        `;
+        indicator.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 9999;
+            animation: three-finger-anim 0.6s ease-out forwards;
+        `;
+        document.body.appendChild(indicator);
+        
+        setTimeout(() => indicator.remove(), 700);
+        
+        // Enhanced haptic for three-finger
+        if (CONFIG.hapticFeedback) {
+            navigator.vibrate?.([10, 20, 10]);
+        }
+        
+        // Handle three-finger actions
+        switch(direction) {
+            case 'three-finger-up':
+                // Show all scenes
+                toggleQuickScenesPanel();
+                break;
+            case 'three-finger-down':
+                // Quick settings
+                toggleMediaSyncPanel();
+                break;
+            case 'three-finger-left':
+                // Previous scene
+                if (typeof LifXTouchControls !== 'undefined') {
+                    LifXTouchControls.previousScene?.();
+                }
+                break;
+            case 'three-finger-right':
+                // Next scene
+                if (typeof LifXTouchControls !== 'undefined') {
+                    LifXTouchControls.nextScene?.();
+                }
+                break;
+        }
     }
 
-    // Media Visualizer
+    // Enhanced Media Visualizer with multiple visualization modes
     function setupMediaVisualizer() {
         const container = document.getElementById('media-visualization-container');
         if (!container) return;
         
-        const numBars = 32;
+        const numBars = 64; // Increased resolution
         mediaVisualizerBars = [];
         
+        // Create visualization mode selector
+        const modeSelector = document.createElement('div');
+        modeSelector.className = 'viz-mode-selector';
+        modeSelector.innerHTML = `
+            <button class="viz-mode-btn active" data-mode="bars"><i class="fas fa-chart-bar"></i></button>
+            <button class="viz-mode-btn" data-mode="wave"><i class="fas fa-wave-square"></i></button>
+            <button class="viz-mode-btn" data-mode="circular"><i class="fas fa-circle"></i></button>
+            <button class="viz-mode-btn" data-mode="particles"><i class="fas fa-sparkles"></i></button>
+        `;
+        container.appendChild(modeSelector);
+        
+        // Setup mode switching
+        modeSelector.querySelectorAll('.viz-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeSelector.querySelectorAll('.viz-mode-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                container.dataset.vizMode = btn.dataset.mode;
+            });
+        });
+        
+        // Create bars for default visualization
         for (let i = 0; i < numBars; i++) {
             const bar = document.createElement('div');
             bar.className = 'media-viz-bar';
             bar.style.background = `hsl(${(i / numBars) * 360}, 80%, 50%)`;
+            bar.style.boxShadow = `0 0 10px hsl(${(i / numBars) * 360}, 80%, 50%)`;
             container.appendChild(bar);
             mediaVisualizerBars.push(bar);
         }
+        
+        // Create circular visualizer elements
+        const circularContainer = document.createElement('div');
+        circularContainer.className = 'circular-viz-container';
+        for (let i = 0; i < 36; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'circular-viz-bar';
+            bar.style.transform = `rotate(${i * 10}deg) translateY(-100px)`;
+            circularContainer.appendChild(bar);
+        }
+        container.appendChild(circularContainer);
     }
 
     function updateMediaVisualization(data) {
         if (!mediaVisualizerBars.length) return;
         
+        const container = document.getElementById('media-visualization-container');
+        const mode = container?.dataset.vizMode || 'bars';
+        
         const values = data || Array(mediaVisualizerBars.length).fill(0).map(() => Math.random());
         
-        mediaVisualizerBars.forEach((bar, i) => {
-            const value = values[i] || values[values.length - 1] || 0;
-            const height = Math.max(5, value * 140);
-            bar.style.height = height + 'px';
-            
-            if (value > 0.9) {
-                bar.classList.add('peak');
-            } else {
-                bar.classList.remove('peak');
-            }
-        });
+        if (mode === 'bars') {
+            mediaVisualizerBars.forEach((bar, i) => {
+                const value = values[i] || values[values.length - 1] || 0;
+                const height = Math.max(5, value * 140);
+                bar.style.height = height + 'px';
+                bar.style.opacity = 0.5 + value * 0.5;
+                
+                // Enhanced peak detection with glow effect
+                if (value > 0.9) {
+                    bar.classList.add('peak');
+                    bar.style.boxShadow = `0 0 20px hsl(${(i / mediaVisualizerBars.length) * 360}, 100%, 60%)`;
+                } else {
+                    bar.classList.remove('peak');
+                    bar.style.boxShadow = `0 0 10px hsl(${(i / mediaVisualizerBars.length) * 360}, 80%, 50%)`;
+                }
+            });
+        } else if (mode === 'circular') {
+            const circularBars = container.querySelectorAll('.circular-viz-bar');
+            circularBars.forEach((bar, i) => {
+                const value = values[i * 2] || 0;
+                const scale = 1 + value * 1.5;
+                bar.style.transform = `rotate(${i * 10}deg) translateY(-${100 + value * 50}px) scale(${scale})`;
+                bar.style.background = `hsl(${(i / 36) * 360}, 80%, ${50 + value * 30}%)`;
+            });
+        }
     }
 
     // Party Mode Visualizer
@@ -1600,6 +2291,300 @@ const TouchMediaEnhancements = (function() {
         }
     }
     
+    // Enhanced Circular Color Picker for LIFX
+    function createCircularColorPicker() {
+        if (!CONFIG.enableCircularColorPicker) return;
+        
+        const picker = document.createElement('div');
+        picker.className = 'circular-color-picker';
+        picker.innerHTML = `
+            <div class="color-wheel-container">
+                <canvas class="color-wheel" width="300" height="300"></canvas>
+                <div class="color-selector"></div>
+            </div>
+            <div class="color-preview"></div>
+            <div class="color-sliders">
+                <div class="slider-group">
+                    <label><i class="fas fa-sun"></i> Brightness</label>
+                    <input type="range" class="brightness-slider" min="0" max="100" value="50">
+                </div>
+                <div class="slider-group">
+                    <label><i class="fas fa-thermometer-half"></i> Temperature</label>
+                    <input type="range" class="temp-slider" min="1500" max="9000" value="3500">
+                </div>
+            </div>
+            <div class="quick-colors">
+                <button class="quick-color" data-color="#FF0000" style="background: #FF0000"></button>
+                <button class="quick-color" data-color="#FF8800" style="background: #FF8800"></button>
+                <button class="quick-color" data-color="#FFFF00" style="background: #FFFF00"></button>
+                <button class="quick-color" data-color="#00FF00" style="background: #00FF00"></button>
+                <button class="quick-color" data-color="#00FFFF" style="background: #00FFFF"></button>
+                <button class="quick-color" data-color="#0088FF" style="background: #0088FF"></button>
+                <button class="quick-color" data-color="#0000FF" style="background: #0000FF"></button>
+                <button class="quick-color" data-color="#FF00FF" style="background: #FF00FF"></button>
+                <button class="quick-color" data-color="#FFFFFF" style="background: #FFFFFF"></button>
+                <button class="quick-color" data-color="#FFB6C1" style="background: #FFB6C1"></button>
+                <button class="quick-color" data-color="#87CEEB" style="background: #87CEEB"></button>
+                <button class="quick-color" data-color="#DDA0DD" style="background: #DDA0DD"></button>
+            </div>
+        `;
+        document.body.appendChild(picker);
+        
+        // Initialize color wheel
+        const canvas = picker.querySelector('.color-wheel');
+        const ctx = canvas.getContext('2d');
+        const centerX = 150;
+        const centerY = 150;
+        const radius = 140;
+        
+        // Draw color wheel
+        for (let angle = 0; angle < 360; angle++) {
+            const startAngle = (angle - 1) * Math.PI / 180;
+            const endAngle = (angle + 1) * Math.PI / 180;
+            
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+            ctx.closePath();
+            
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+            gradient.addColorStop(0, 1, 'hsl(' + angle + ', 0%, 50%)');
+            gradient.addColorStop(1, 'hsl(' + angle + ', 100%, 50%)');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+        
+        // Add selector
+        const selector = picker.querySelector('.color-selector');
+        let isDragging = false;
+        
+        canvas.addEventListener('mousedown', startDrag);
+        canvas.addEventListener('touchstart', startDrag);
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('touchmove', drag);
+        document.addEventListener('mouseup', endDrag);
+        document.addEventListener('touchend', endDrag);
+        
+        function startDrag(e) {
+            isDragging = true;
+            updateColorFromPosition(e);
+        }
+        
+        function drag(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            updateColorFromPosition(e);
+        }
+        
+        function endDrag() {
+            isDragging = false;
+        }
+        
+        function updateColorFromPosition(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = clientX - rect.left - centerX;
+            const y = clientY - rect.top - centerY;
+            
+            const angle = Math.atan2(y, x) * 180 / Math.PI;
+            const distance = Math.sqrt(x * x + y * y);
+            
+            const hue = Math.round((angle + 360) % 360);
+            const saturation = Math.min(100, Math.round((distance / radius) * 100));
+            
+            selector.style.left = (centerX + x) + 'px';
+            selector.style.top = (centerY + y) + 'px';
+            
+            const color = `hsl(${hue}, ${saturation}%, 50%)`;
+            picker.querySelector('.color-preview').style.background = color;
+            picker.dataset.selectedColor = color;
+            picker.dataset.hue = hue;
+            picker.dataset.saturation = saturation;
+            
+            // Dispatch event
+            const event = new CustomEvent('color-picker-change', {
+                detail: { hue, saturation, color }
+            });
+            document.dispatchEvent(event);
+        }
+        
+        // Brightness slider
+        picker.querySelector('.brightness-slider').addEventListener('input', (e) => {
+            picker.dataset.brightness = e.target.value;
+            const event = new CustomEvent('color-picker-brightness', {
+                detail: { brightness: e.target.value }
+            });
+            document.dispatchEvent(event);
+        });
+        
+        // Temperature slider
+        picker.querySelector('.temp-slider').addEventListener('input', (e) => {
+            picker.dataset.temperature = e.target.value;
+            const event = new CustomEvent('color-picker-temperature', {
+                detail: { temperature: e.target.value }
+            });
+            document.dispatchEvent(event);
+        });
+        
+        // Quick color buttons
+        picker.querySelectorAll('.quick-color').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const color = btn.dataset.color;
+                picker.querySelector('.color-preview').style.background = color;
+                picker.dataset.selectedColor = color;
+                
+                // Parse hex to HSL
+                const hsl = hexToHsl(color);
+                picker.dataset.hue = hsl.h;
+                picker.dataset.saturation = hsl.s;
+                
+                const event = new CustomEvent('color-picker-quick', {
+                    detail: { color, ...hsl }
+                });
+                document.dispatchEvent(event);
+                
+                if (CONFIG.hapticFeedback) {
+                    navigator.vibrate?.(10);
+                }
+            });
+        });
+        
+        return picker;
+    }
+    
+    function hexToHsl(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        if (!result) return { h: 0, s: 0, l: 0 };
+        
+        let r = parseInt(result[1], 16) / 255;
+        let g = parseInt(result[2], 16) / 255;
+        let b = parseInt(result[3], 16) / 255;
+        
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        
+        if (max === min) {
+            h = s = 0;
+        } else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            switch (max) {
+                case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+                case g: h = ((b - r) / d + 2) / 6; break;
+                case b: h = ((r - g) / d + 4) / 6; break;
+            }
+        }
+        
+        return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+    }
+    
+    // Enhanced LIFX Scene Presets with more options
+    const extendedScenePresets = {
+        ...scenePresets,
+        'meditation': { color: '#9370DB', brightness: 45, temperature: 3500 },
+        'gaming': { color: '#FF1493', brightness: 85, temperature: 4000 },
+        'cooking': { color: '#FFA500', brightness: 95, temperature: 4500 },
+        'creative': { color: '#FF69B4', brightness: 70, temperature: 5000 },
+        'yoga': { color: '#98FB98', brightness: 50, temperature: 3800 },
+        'movie': { color: '#4B0082', brightness: 35, temperature: 2700 },
+        'study': { color: '#87CEEB', brightness: 65, temperature: 4800 },
+        'dinner': { color: '#FF6347', brightness: 55, temperature: 3000 },
+        'morning': { color: '#FFD700', brightness: 55, temperature: 4000 },
+        'goodnight': { color: '#191970', brightness: 20, temperature: 2200 },
+        'rainbow': { effect: 'rainbow', brightness: 100, duration: 5 },
+        'fireplace': { color: '#FF4500', brightness: 65, temperature: 2200, flicker: true },
+        'ice': { color: '#B0E0E6', brightness: 75, temperature: 8000 },
+        'aurora': { color: '#00FF7F', brightness: 65, temperature: 5500, effect: 'aurora' },
+        'nebula': { color: '#9400D3', brightness: 55, temperature: 6000 },
+        'thunder': { color: '#87CEEB', brightness: 85, temperature: 7000, flash: true },
+        'crystal': { color: '#E0FFFF', brightness: 70, temperature: 6500 },
+        'lagoon': { color: '#40E0D0', brightness: 60, temperature: 4200 },
+        'cotton_candy': { color: '#FFB6C1', brightness: 75, temperature: 3500 },
+        'spring_blossom': { color: '#FFB7C5', brightness: 65, temperature: 3800 },
+        'punchbowl': { color: '#FF69B4', brightness: 90, temperature: 4000 },
+        'smashing': { color: '#FF1493', brightness: 95, temperature: 4500 },
+        'glitter': { color: '#FFD700', brightness: 85, temperature: 5000, sparkle: true },
+        'golden_hour': { color: '#FFD700', brightness: 50, temperature: 3200 },
+        'late_night': { color: '#483D8B', brightness: 25, temperature: 2400 },
+        'midday': { color: '#FFFFFF', brightness: 100, temperature: 5500 },
+        'polar': { color: '#F0FFFF', brightness: 75, temperature: 7500 },
+        'cosmic': { color: '#4B0082', brightness: 65, temperature: 6000 },
+        'dream': { color: '#D8BFD8', brightness: 45, temperature: 4000 },
+        'chill': { color: '#5F9EA0', brightness: 50, temperature: 3500 },
+        'adventure': { color: '#FF8C00', brightness: 80, temperature: 4800 },
+        'festival': { color: '#FF1493', brightness: 90, temperature: 4200 },
+        'bioluminescent': { color: '#00FFFF', brightness: 60, temperature: 5500 },
+        'cyberpunk': { color: '#FF00FF', brightness: 75, temperature: 4500 },
+        'vaporwave': { color: '#FF69B4', brightness: 70, temperature: 4000 },
+        'northern_lights': { color: '#00FF7F', brightness: 65, temperature: 5000 },
+        'desert_dawn': { color: '#FF7F50', brightness: 55, temperature: 3600 },
+        'forest_mist': { color: '#8FBC8F', brightness: 50, temperature: 4500 },
+        'volcanic': { color: '#DC143C', brightness: 75, temperature: 2800 },
+        'underwater': { color: '#00BFFF', brightness: 60, temperature: 5200 },
+        'space_station': { color: '#F0F8FF', brightness: 80, temperature: 6500 },
+        'wizard_tower': { color: '#8B00FF', brightness: 55, temperature: 3000 },
+        'dragon_fire': { color: '#FF4500', brightness: 85, temperature: 2500 },
+        'fairy_grove': { color: '#98FB98', brightness: 65, temperature: 4200 },
+        'haunted': { color: '#800080', brightness: 45, temperature: 3500 },
+        'santas_workshop': { color: '#FF0000', brightness: 75, temperature: 3000 },
+        'new_year': { color: '#FFD700', brightness: 90, temperature: 4500 },
+        'valentines': { color: '#FF69B4', brightness: 60, temperature: 3200 },
+        'halloween': { color: '#FF6600', brightness: 70, temperature: 2800 },
+        'thanksgiving': { color: '#D2691E', brightness: 55, temperature: 3000 },
+        'christmas': { color: '#006400', brightness: 80, temperature: 3500 },
+        'easter': { color: '#FFB6C1', brightness: 75, temperature: 4500 },
+        'st_patricks': { color: '#008000', brightness: 70, temperature: 4000 },
+        'independence_day': { color: '#FF0000', brightness: 85, temperature: 5000 }
+    };
+    
+    // Apply enhanced scene with visual feedback
+    function applyEnhancedScene(sceneName, options = {}) {
+        const preset = extendedScenePresets[sceneName];
+        if (!preset) return;
+        
+        console.log(`[TouchMediaEnhancements] Applying enhanced scene: ${sceneName}`);
+        
+        // Add to recent scenes
+        if (CONFIG.enableColorHistory) {
+            const recentScenes = JSON.parse(localStorage.getItem('recentScenes') || '[]');
+            recentScenes.unshift(sceneName);
+            recentScenes = recentScenes.slice(0, 10);
+            localStorage.setItem('recentScenes', JSON.stringify(recentScenes));
+        }
+        
+        const event = new CustomEvent('apply-lifx-scene-enhanced', { 
+            detail: { 
+                name: sceneName, 
+                ...preset, 
+                ...options 
+            } 
+        });
+        document.dispatchEvent(event);
+        
+        // Show enhanced scene change with color preview
+        const colorHex = preset.color || '#27a0b9';
+        showSceneChange(sceneName, colorHex);
+        
+        // Trigger haptic feedback
+        if (CONFIG.hapticFeedback) {
+            navigator.vibrate?.([15, 30, 15]);
+        }
+        
+        // Handle special effects
+        if (preset.effect === 'party' || preset.effect === 'rainbow') {
+            activatePartyMode(true);
+        } else {
+            activatePartyMode(false);
+        }
+        
+        if (sceneName === 'bedtime' || sceneName === 'night' || sceneName === 'goodnight') {
+            setBedtimeMode(true);
+        } else {
+            setBedtimeMode(false);
+        }
+    }
+    
     // Public API
     return {
         init,
@@ -1612,6 +2597,8 @@ const TouchMediaEnhancements = (function() {
         applyToSelected,
         activatePartyMode,
         applyScenePreset,
+        applyEnhancedScene,
+        createCircularColorPicker,
         setupColorTemperaturePicker,
         updateMediaVisualization,
         updateBeatDetectionStats,
@@ -1632,7 +2619,8 @@ const TouchMediaEnhancements = (function() {
         hideNowPlaying,
         toggleMiniPlayer,
         makeDraggable,
-        CONFIG
+        CONFIG,
+        extendedScenePresets
     };
 })();
 
@@ -1640,6 +2628,13 @@ const TouchMediaEnhancements = (function() {
 document.addEventListener('DOMContentLoaded', function() {
     TouchMediaEnhancements.init();
     TouchMediaEnhancements.setupColorTemperaturePicker();
+    
+    // Create circular color picker if enabled
+    if (TouchMediaEnhancements.CONFIG.enableCircularColorPicker) {
+        TouchMediaEnhancements.createCircularColorPicker();
+    }
+    
+    console.log('[TouchMediaEnhancements] Fully initialized with all enhancements');
 });
 
 // Global functions for HTML onclick handlers
