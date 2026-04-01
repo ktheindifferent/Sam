@@ -50,6 +50,14 @@ const LifXTouchControls = {
         high: { swipeDistance: 30, swipeTime: 200, pinchDistance: 20 },
         very_high: { swipeDistance: 15, swipeTime: 150, pinchDistance: 10 }
     },
+    adaptiveSensitivity: {
+        enabled: true,
+        adjustmentFactor: 0.1,
+        minAdjustments: 5,
+        currentAdjustments: 0,
+        successThreshold: 0.8,
+        failThreshold: 0.3
+    },
     hapticEnabled: true,
     ambientLightSync: false,
     mediaPlaybackActive: false,
@@ -236,6 +244,7 @@ const LifXTouchControls = {
                     this.showGestureFeedback('Brightness +', '↑');
                     this.hapticFeedback('light');
                     this.recordGestureSuccess();
+                    this.adjustSensitivity(true, 'swipeUp');
                 }
             });
             
@@ -249,6 +258,7 @@ const LifXTouchControls = {
                     this.showGestureFeedback('Brightness -', '↓');
                     this.hapticFeedback('light');
                     this.recordGestureSuccess();
+                    this.adjustSensitivity(true, 'swipeDown');
                 }
             });
             
@@ -263,6 +273,7 @@ const LifXTouchControls = {
                     this.showGestureFeedback('Warmer', '☀️');
                     this.hapticFeedback('light');
                     this.recordGestureSuccess();
+                    this.adjustSensitivity(true, 'swipeRight');
                 }
             });
             
@@ -276,6 +287,7 @@ const LifXTouchControls = {
                     this.showGestureFeedback('Cooler', '❄️');
                     this.hapticFeedback('light');
                     this.recordGestureSuccess();
+                    this.adjustSensitivity(true, 'swipeLeft');
                 }
             });
             
@@ -288,6 +300,7 @@ const LifXTouchControls = {
                     this.showGestureFeedback('Next Scene', '🎨');
                     this.hapticFeedback('success');
                     this.recordGestureSuccess();
+                    this.adjustSensitivity(true, 'pinchOut');
                 }
             });
             
@@ -299,6 +312,7 @@ const LifXTouchControls = {
                     this.showGestureFeedback('Previous Scene', '🎨');
                     this.hapticFeedback('success');
                     this.recordGestureSuccess();
+                    this.adjustSensitivity(true, 'pinchIn');
                 }
             });
             
@@ -1029,6 +1043,7 @@ const LifXTouchControls = {
         const now = Date.now();
         if (now - this.lastGestureTime < this.gestureDebounce) {
             this.recordGestureFail('debounced');
+            this.adjustSensitivity(false, 'debounced');
             return false;
         }
         this.lastGestureTime = now;
@@ -2631,6 +2646,143 @@ const LifXTouchControls = {
         
         this.gestureSuccessCount = 0;
         this.gestureFailCount = 0;
+    },
+    
+    adjustSensitivity: function(success, gestureType = 'unknown') {
+        if (!this.adaptiveSensitivity.enabled) return;
+        
+        const currentLevel = localStorage.getItem('lifx_gesture_sensitivity') || 'medium';
+        const stats = this.getAdaptiveSensitivityStats();
+        
+        stats.totalGestures = (stats.totalGestures || 0) + 1;
+        stats.currentAdjustments = (stats.currentAdjustments || 0) + 1;
+        
+        if (!stats.gestureStats) stats.gestureStats = {};
+        if (!stats.gestureStats[gestureType]) {
+            stats.gestureStats[gestureType] = { success: 0, fail: 0 };
+        }
+        
+        if (success) {
+            stats.gestureStats[gestureType].success++;
+            stats.totalSuccess = (stats.totalSuccess || 0) + 1;
+        } else {
+            stats.gestureStats[gestureType].fail++;
+            stats.totalFails = (stats.totalFails || 0) + 1;
+        }
+        
+        const minAdjustments = this.adaptiveSensitivity.minAdjustments;
+        if (stats.currentAdjustments < minAdjustments) {
+            this.saveAdaptiveSensitivityStats(stats);
+            return;
+        }
+        
+        const gestureFailRate = stats.gestureStats[gestureType].fail / 
+            (stats.gestureStats[gestureType].success + stats.gestureStats[gestureType].fail);
+        
+        let newLevel = currentLevel;
+        const adjustmentFactor = this.adaptiveSensitivity.adjustmentFactor;
+        
+        if (gestureFailRate > this.adaptiveSensitivity.failThreshold) {
+            if (currentLevel === 'low') newLevel = 'medium';
+            else if (currentLevel === 'medium') newLevel = 'high';
+            else if (currentLevel === 'high') newLevel = 'very_high';
+            
+            if (newLevel !== currentLevel) {
+                this.gestureSensitivity.swipeDistance = Math.max(15, 
+                    this.gestureSensitivity.swipeDistance * (1 - adjustmentFactor));
+                this.gestureSensitivity.pinchDistance = Math.max(10,
+                    this.gestureSensitivity.pinchDistance * (1 - adjustmentFactor));
+                console.log(`[AdaptiveSensitivity] Increased sensitivity for ${gestureType} (fail rate: ${(gestureFailRate * 100).toFixed(1)}%)`);
+                this.showMicroFeedback('sensitivity-up', gestureType);
+            }
+        } else if (gestureFailRate < (1 - this.adaptiveSensitivity.successThreshold)) {
+            if (currentLevel === 'very_high') newLevel = 'high';
+            else if (currentLevel === 'high') newLevel = 'medium';
+            else if (currentLevel === 'medium') newLevel = 'low';
+            
+            if (newLevel !== currentLevel) {
+                this.gestureSensitivity.swipeDistance = Math.min(80,
+                    this.gestureSensitivity.swipeDistance * (1 + adjustmentFactor));
+                this.gestureSensitivity.pinchDistance = Math.min(50,
+                    this.gestureSensitivity.pinchDistance * (1 + adjustmentFactor));
+                console.log(`[AdaptiveSensitivity] Decreased sensitivity for ${gestureType} (success rate: ${(gestureFailRate * 100).toFixed(1)}%)`);
+                this.showMicroFeedback('sensitivity-down', gestureType);
+            }
+        }
+        
+        if (newLevel !== currentLevel) {
+            localStorage.setItem('lifx_gesture_sensitivity', newLevel);
+            this.touchSensitivity = newLevel;
+        }
+        
+        this.saveAdaptiveSensitivityStats(stats);
+    },
+    
+    getAdaptiveSensitivityStats: function() {
+        try {
+            const stored = localStorage.getItem('lifx_adaptive_sensitivity_stats');
+            if (stored) {
+                return JSON.parse(stored);
+            }
+        } catch (e) {
+            console.warn('[AdaptiveSensitivity] Failed to load stats:', e);
+        }
+        return { totalGestures: 0, totalSuccess: 0, totalFails: 0, currentAdjustments: 0, gestureStats: {} };
+    },
+    
+    saveAdaptiveSensitivityStats: function(stats) {
+        try {
+            localStorage.setItem('lifx_adaptive_sensitivity_stats', JSON.stringify(stats));
+        } catch (e) {
+            console.warn('[AdaptiveSensitivity] Failed to save stats:', e);
+        }
+    },
+    
+    showMicroFeedback: function(type, gestureType) {
+        const indicator = document.createElement('div');
+        indicator.className = 'adaptive-sensitivity-feedback';
+        indicator.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 12px;
+            background: ${type === 'sensitivity-up' ? 'rgba(255, 107, 107, 0.9)' : 'rgba(0, 212, 255, 0.9)'};
+            color: #fff;
+            border-radius: 20px;
+            font-size: 11px;
+            z-index: 10001;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        `;
+        
+        const messages = {
+            'sensitivity-up': `↑ Sensitivity for ${gestureType}`,
+            'sensitivity-down': `↓ Sensitivity for ${gestureType}`
+        };
+        
+        indicator.textContent = messages[type] || type;
+        document.body.appendChild(indicator);
+        
+        requestAnimationFrame(() => {
+            indicator.style.opacity = '1';
+            indicator.style.transform = 'translateY(0)';
+        });
+        
+        setTimeout(() => {
+            indicator.style.opacity = '0';
+            indicator.style.transform = 'translateY(-10px)';
+            setTimeout(() => indicator.remove(), 300);
+        }, 1500);
+    },
+    
+    resetAdaptiveSensitivity: function() {
+        localStorage.removeItem('lifx_adaptive_sensitivity_stats');
+        this.gestureSuccessCount = 0;
+        this.gestureFailCount = 0;
+        this.setGestureSensitivity('medium');
+        console.log('[AdaptiveSensitivity] Reset to defaults');
+        this.showGestureFeedback('Sensitivity Reset', '🔄');
     },
     
     showSensitivitySuggestion: function(currentLevel, recommendedLevel, failRate) {

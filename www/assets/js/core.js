@@ -220,7 +220,23 @@ var TouchGestures = {
         longPress: []
     },
     longPressTimer: null,
-    longPressDuration: 500
+    longPressDuration: 500,
+    adaptiveSensitivity: {
+        enabled: true,
+        baseMinSwipeDistance: 50,
+        adjustmentFactor: 0.1,
+        successThreshold: 0.8,
+        failThreshold: 0.3,
+        gestureStats: {},
+        totalAdjustments: 0
+    },
+    sensitivityLevel: 'medium',
+    sensitivityLevels: {
+        low: { minSwipeDistance: 80, maxSwipeTime: 400 },
+        medium: { minSwipeDistance: 50, maxSwipeTime: 300 },
+        high: { minSwipeDistance: 30, maxSwipeTime: 200 },
+        very_high: { minSwipeDistance: 15, maxSwipeTime: 150 }
+    }
 };
 
 function is_touch_enabled() {
@@ -396,11 +412,121 @@ function triggerCallbacks(gestureType, data) {
     callbacks.forEach(cb => {
         try {
             cb(data);
+            TouchGestures.recordGestureSuccess(gestureType);
         } catch (e) {
             console.error('Gesture callback error:', e);
+            TouchGestures.recordGestureFail(gestureType);
         }
     });
 }
+
+// Adaptive sensitivity methods for TouchGestures
+TouchGestures.recordGestureSuccess = function(gestureType) {
+    if (!this.adaptiveSensitivity.enabled) return;
+    
+    if (!this.adaptiveSensitivity.gestureStats[gestureType]) {
+        this.adaptiveSensitivity.gestureStats[gestureType] = { success: 0, fail: 0 };
+    }
+    this.adaptiveSensitivity.gestureStats[gestureType].success++;
+    this.adaptiveSensitivity.totalAdjustments++;
+    
+    this.saveAdaptiveSensitivity();
+    this.checkAndAdjustSensitivity(gestureType);
+};
+
+TouchGestures.recordGestureFail = function(gestureType) {
+    if (!this.adaptiveSensitivity.enabled) return;
+    
+    if (!this.adaptiveSensitivity.gestureStats[gestureType]) {
+        this.adaptiveSensitivity.gestureStats[gestureType] = { success: 0, fail: 0 };
+    }
+    this.adaptiveSensitivity.gestureStats[gestureType].fail++;
+    this.adaptiveSensitivity.totalAdjustments++;
+    
+    this.saveAdaptiveSensitivity();
+    this.checkAndAdjustSensitivity(gestureType);
+};
+
+TouchGestures.checkAndAdjustSensitivity = function(gestureType) {
+    const stats = this.adaptiveSensitivity.gestureStats[gestureType];
+    if (!stats || (stats.success + stats.fail) < 5) return;
+    
+    const failRate = stats.fail / (stats.success + stats.fail);
+    const currentLevel = this.sensitivityLevel;
+    
+    if (failRate > this.adaptiveSensitivity.failThreshold) {
+        this.setSensitivityLevel(this.getNextSensitivityLevel(currentLevel, 'up'));
+    } else if (failRate < (1 - this.adaptiveSensitivity.successThreshold)) {
+        this.setSensitivityLevel(this.getNextSensitivityLevel(currentLevel, 'down'));
+    }
+};
+
+TouchGestures.getNextSensitivityLevel = function(currentLevel, direction) {
+    const order = ['low', 'medium', 'high', 'very_high'];
+    const currentIndex = order.indexOf(currentLevel);
+    
+    if (direction === 'up') {
+        return order[Math.min(currentIndex + 1, order.length - 1)];
+    } else {
+        return order[Math.max(currentIndex - 1, 0)];
+    }
+};
+
+TouchGestures.setSensitivityLevel = function(level) {
+    if (this.sensitivityLevel === level) return;
+    
+    this.sensitivityLevel = level;
+    const settings = this.sensitivityLevels[level];
+    this.minSwipeDistance = settings.minSwipeDistance;
+    this.maxSwipeTime = settings.maxSwipeTime;
+    
+    console.log(`[TouchGestures] Sensitivity adjusted to ${level}: swipeDistance=${this.minSwipeDistance}px`);
+    this.saveAdaptiveSensitivity();
+};
+
+TouchGestures.saveAdaptiveSensitivity = function() {
+    try {
+        localStorage.setItem('touch_gestures_sensitivity', JSON.stringify({
+            level: this.sensitivityLevel,
+            stats: this.adaptiveSensitivity.gestureStats,
+            totalAdjustments: this.adaptiveSensitivity.totalAdjustments
+        }));
+    } catch (e) {
+        console.warn('[TouchGestures] Failed to save sensitivity settings:', e);
+    }
+};
+
+TouchGestures.loadAdaptiveSensitivity = function() {
+    try {
+        const stored = localStorage.getItem('touch_gestures_sensitivity');
+        if (stored) {
+            const data = JSON.parse(stored);
+            if (data.level && this.sensitivityLevels[data.level]) {
+                this.sensitivityLevel = data.level;
+                this.minSwipeDistance = this.sensitivityLevels[data.level].minSwipeDistance;
+                this.maxSwipeTime = this.sensitivityLevels[data.level].maxSwipeTime;
+            }
+            if (data.stats) {
+                this.adaptiveSensitivity.gestureStats = data.stats;
+            }
+        }
+    } catch (e) {
+        console.warn('[TouchGestures] Failed to load sensitivity settings:', e);
+    }
+};
+
+TouchGestures.resetAdaptiveSensitivity = function() {
+    this.sensitivityLevel = 'medium';
+    this.minSwipeDistance = 50;
+    this.maxSwipeTime = 300;
+    this.adaptiveSensitivity.gestureStats = {};
+    this.adaptiveSensitivity.totalAdjustments = 0;
+    localStorage.removeItem('touch_gestures_sensitivity');
+    console.log('[TouchGestures] Sensitivity reset to defaults');
+};
+
+// Load saved sensitivity on init
+TouchGestures.loadAdaptiveSensitivity();
 
 // Show visual feedback for swipe gestures
 function showSwipeHint(text) {

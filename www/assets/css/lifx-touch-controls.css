@@ -1723,6 +1723,22 @@
     100% { opacity: 0; }
 }
 
+@keyframes beat-pulse-expand {
+    0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1.5);
+        opacity: 0;
+    }
+}
+
+.beat-pulse-visual {
+    pointer-events: none;
+    border-radius: 50%;
+}
+
 /* Frequency band visualization */
 .frequency-bands {
     display: flex;

@@ -966,6 +966,11 @@ const TouchMediaEnhancements = (function() {
     let lastBeatTime = 0;
     let beatThreshold = 0.8;
     let bpmHistory = [];
+    let beatEnergyHistory = [];
+    let maxBeatEnergyHistory = 10;
+    let consecutiveBeatCount = 0;
+    let beatConfidence = 0;
+    let lastBeatEnergy = 0;
     
     function initAudioAnalyzer() {
         if (!audioContext) {
@@ -982,15 +987,30 @@ const TouchMediaEnhancements = (function() {
         const bassRange = dataArray.slice(0, 8);
         const bassAvg = bassRange.reduce((a, b) => a + b, 0) / bassRange.length;
         const bassPeak = Math.max(...bassRange);
+        const currentBeatEnergy = bassAvg / 255;
+        
+        beatEnergyHistory.push(currentBeatEnergy);
+        if (beatEnergyHistory.length > maxBeatEnergyHistory) {
+            beatEnergyHistory.shift();
+        }
+        
+        const avgEnergy = beatEnergyHistory.reduce((a, b) => a + b, 0) / beatEnergyHistory.length;
+        const energyChange = currentBeatEnergy - lastBeatEnergy;
         
         const now = Date.now();
         const timeSinceLastBeat = now - lastBeatTime;
         
-        const adaptiveThreshold = Math.max(0.6, Math.min(0.9, beatThreshold - (bassAvg / 255) * 0.2));
+        const dynamicThreshold = Math.max(0.5, Math.min(0.95, 
+            beatThreshold - (avgEnergy * 0.15) - (Math.max(0, energyChange) * 0.1)
+        ));
         
-        if (bassPeak > adaptiveThreshold * 255 && timeSinceLastBeat > 200) {
+        if (bassPeak > dynamicThreshold * 255 && timeSinceLastBeat > 150) {
             lastBeatTime = now;
             beatHistory.push(now);
+            consecutiveBeatCount++;
+            lastBeatEnergy = currentBeatEnergy;
+            
+            beatConfidence = Math.min(1.0, beatConfidence + 0.1);
             
             if (beatHistory.length > 2) {
                 const intervals = [];
@@ -1008,25 +1028,39 @@ const TouchMediaEnhancements = (function() {
                 
                 if (detectedBpm > 60 && detectedBpm < 200) {
                     bpmHistory.push(detectedBpm);
-                    if (bpmHistory.length > 8) bpmHistory.shift();
+                    if (bpmHistory.length > 12) bpmHistory.shift();
                     
                     const weights = bpmHistory.map((_, i) => i + 1);
                     const weightedSum = bpmHistory.reduce((sum, bpm, i) => sum + bpm * weights[i], 0);
                     const weightTotal = weights.reduce((a, b) => a + b, 0);
                     const smoothedBpm = Math.round(weightedSum / weightTotal);
                     updateBpm(smoothedBpm);
+                    updateBeatDetectionStats({
+                        bpm: smoothedBpm,
+                        confidence: beatConfidence,
+                        lastBeat: now / 1000,
+                        energy: currentBeatEnergy,
+                        consecutiveBeats: consecutiveBeatCount
+                    });
                     
                     if (mediaSyncActive && mediaSyncMode === 'beat') {
                         triggerLifxBeat();
+                        triggerBeatVisualization(currentBeatEnergy);
                     }
                     
                     return true;
                 }
             }
+        } else {
+            beatConfidence = Math.max(0, beatConfidence - 0.02);
+            if (timeSinceLastBeat > 3000) {
+                consecutiveBeatCount = 0;
+            }
         }
         
-        if (beatHistory.length > 0 && now - beatHistory[beatHistory.length - 1] > 2000) {
+        if (beatHistory.length > 0 && now - beatHistory[beatHistory.length - 1] > 5000) {
             beatHistory.shift();
+            beatConfidence = Math.max(0, beatConfidence - 0.1);
         }
         
         return false;
@@ -1037,6 +1071,43 @@ const TouchMediaEnhancements = (function() {
             detail: { timestamp: Date.now() }
         });
         document.dispatchEvent(event);
+    }
+    
+    function triggerBeatVisualization(energy) {
+        const visualizerContainer = document.getElementById('beat-visualization');
+        if (!visualizerContainer) return;
+        
+        const beatPulse = document.createElement('div');
+        beatPulse.className = 'beat-pulse-visual';
+        beatPulse.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: ${100 + (energy * 150)}px;
+            height: ${100 + (energy * 150)}px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 212, 255, ${0.3 + energy * 0.4}) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 100;
+            animation: beat-pulse-expand 0.6s ease-out forwards;
+        `;
+        
+        visualizerContainer.appendChild(beatPulse);
+        setTimeout(() => beatPulse.remove(), 600);
+        
+        const bars = visualizerContainer.querySelectorAll('.beat-bar');
+        bars.forEach((bar, i) => {
+            const delay = i * 0.02;
+            setTimeout(() => {
+                bar.style.background = `hsla(${(i / bars.length) * 360}, 100%, ${50 + energy * 30}%, ${0.7 + energy * 0.3})`;
+                bar.style.boxShadow = `0 0 ${Math.floor(energy * 20)}px hsla(${(i / bars.length) * 360}, 100%, 50%, ${0.5 + energy * 0.3})`;
+                setTimeout(() => {
+                    bar.style.background = '';
+                    bar.style.boxShadow = '';
+                }, 200);
+            }, delay);
+        });
     }
     
     function updateBeatVisualization() {
