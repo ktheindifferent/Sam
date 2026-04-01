@@ -69,7 +69,16 @@ const MediaPlayer = {
     queuePosition: 0,
     playbackSpeed: 1.0,
     lyricsVisible: false,
-    nowPlayingHistory: []
+    nowPlayingHistory: [],
+    ambientLightMode: 'spectrum',
+    lifxBeatHistory: [],
+    visualizationActive: false,
+    colorCycleActive: false,
+    partyMode: false,
+    lightSyncInterval: null,
+    beatDetectionInterval: null,
+    auroraInterval: null,
+    pulseInterval: null
 };
 
 // Initialize when DOM is ready
@@ -1132,14 +1141,17 @@ function detectAudioBeat() {
     const trebleRange = dataArray.slice(50, 128);
     const trebleEnergy = trebleRange.reduce((a, b) => a + b, 0) / trebleRange.length / 255;
     
+    const avgEnergy = (bassEnergy + midEnergy + trebleEnergy) / 3;
+    const dynamicThreshold = Math.max(0.2, Math.min(0.4, avgEnergy * 0.8));
+    
     const beatStrength = (bassEnergy * 0.6) + (midEnergy * 0.3) + (trebleEnergy * 0.1);
     
-    if (beatStrength > MediaPlayer.lifxBeatDetection.threshold) {
+    if (beatStrength > dynamicThreshold) {
         const now = Date.now();
         const timeSinceLastBeat = now - MediaPlayer.lifxBeatDetection.lastBeat;
         
         if (timeSinceLastBeat > MediaPlayer.lifxBeatDetection.beatCooldown) {
-            const normalizedStrength = Math.min(1.0, (beatStrength - MediaPlayer.lifxBeatDetection.threshold) / 0.5);
+            const normalizedStrength = Math.min(1.0, (beatStrength - dynamicThreshold) / 0.3);
             pulseLifxWithBeat(normalizedStrength);
             return normalizedStrength;
         }
@@ -1268,15 +1280,21 @@ function applyEqualizerPreset(preset) {
 
 // Cycle through ambient light modes
 function cycleAmbientLightMode() {
-    const modes = ['spectrum', 'warm', 'cool', 'beat', 'visualizer'];
+    const modes = ['spectrum', 'warm', 'cool', 'beat', 'visualizer', 'aurora', 'pulse'];
     const currentIndex = modes.indexOf(MediaPlayer.ambientLightMode || 'spectrum');
     MediaPlayer.ambientLightMode = modes[(currentIndex + 1) % modes.length];
     showNotification(`Ambient mode: ${MediaPlayer.ambientLightMode}`, 'info');
     
     if (MediaPlayer.ambientLightMode === 'visualizer') {
         startAudioVisualization();
+    } else if (MediaPlayer.ambientLightMode === 'aurora') {
+        startAuroraEffect();
+    } else if (MediaPlayer.ambientLightMode === 'pulse') {
+        startPulseEffect();
     } else {
         stopAudioVisualization();
+        stopAuroraEffect();
+        stopPulseEffect();
     }
 }
 
@@ -1294,6 +1312,85 @@ function startAudioVisualization() {
 
 function stopAudioVisualization() {
     MediaPlayer.visualizationActive = false;
+}
+
+// Aurora borealis effect
+function startAuroraEffect() {
+    if (!MediaPlayer.auroraInterval) {
+        let hue1 = 120;
+        let hue2 = 180;
+        let hue3 = 240;
+        
+        MediaPlayer.auroraInterval = setInterval(() => {
+            const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
+                ? LifXTouchControls.multiBulbSelection.join(',')
+                : 'all';
+            
+            const brightness = 40 + Math.sin(Date.now() / 1000) * 20;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets}`,
+                    color: `hue:${Math.round(hue1 * 182)} saturation:80%`,
+                    brightness: brightness / 100,
+                    duration: 1.0
+                })
+            });
+            
+            hue1 = (hue1 + 0.5) % 360;
+            hue2 = (hue2 + 0.3) % 360;
+            hue3 = (hue3 + 0.7) % 360;
+        }, 100);
+        
+        showNotification('Aurora effect started', 'info');
+    }
+}
+
+function stopAuroraEffect() {
+    if (MediaPlayer.auroraInterval) {
+        clearInterval(MediaPlayer.auroraInterval);
+        MediaPlayer.auroraInterval = null;
+        showNotification('Aurora effect stopped', 'info');
+    }
+}
+
+// Pulse effect
+function startPulseEffect() {
+    if (!MediaPlayer.pulseInterval) {
+        MediaPlayer.pulseInterval = setInterval(() => {
+            const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
+                ? LifXTouchControls.multiBulbSelection.join(',')
+                : 'all';
+            
+            const brightness = 30 + Math.sin(Date.now() / 500) * 30;
+            const hue = (Date.now() / 50) % 360;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets}`,
+                    color: `hue:${Math.round(hue * 182)} saturation:70%`,
+                    brightness: brightness / 100,
+                    duration: 0.5
+                })
+            });
+        }, 100);
+        
+        showNotification('Pulse effect started', 'info');
+    }
+}
+
+function stopPulseEffect() {
+    if (MediaPlayer.pulseInterval) {
+        clearInterval(MediaPlayer.pulseInterval);
+        MediaPlayer.pulseInterval = null;
+        showNotification('Pulse effect stopped', 'info');
+    }
 }
 
 function visualizeAudio() {

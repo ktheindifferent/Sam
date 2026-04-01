@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice', 'aurora', 'nebula', 'thunder'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -42,6 +42,10 @@ const LifXTouchControls = {
     hapticEnabled: true,
     ambientLightSync: false,
     mediaPlaybackActive: false,
+    colorCycleActive: false,
+    colorHue: 0,
+    touchHoldProgressEl: null,
+    lastGestureHint: null,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -170,13 +174,15 @@ const LifXTouchControls = {
             }
         });
         
-        // Touch and hold for brightness adjustment
+        // Touch and hold for brightness adjustment with visual progress
         document.addEventListener('touchstart', (e) => {
             const bulbEl = e.target.closest('.lifx-bulb-control, .lifx-bulb-card');
             if (bulbEl) {
                 const bulbId = bulbEl.getAttribute('data-bulb-id');
+                this.showTouchHoldProgress();
                 this.touchHoldTimer = setTimeout(() => {
                     this.startBrightnessAdjustment(bulbId, e.touches[0].clientY);
+                    this.hideTouchHoldProgress();
                 }, this.touchHoldDelay);
             }
         }, { passive: true });
@@ -197,6 +203,7 @@ const LifXTouchControls = {
             if (this.selectedBulb) {
                 this.endBrightnessAdjustment();
             }
+            this.hideTouchHoldProgress();
         });
         
         // Keyboard accessibility
@@ -272,17 +279,24 @@ const LifXTouchControls = {
         }, 5000);
     },
     
-    showGestureFeedback: function(text, icon) {
+    showGestureFeedback: function(text, icon, duration = 1000) {
+        if (this.lastGestureHint && this.lastGestureHint.parentNode) {
+            this.lastGestureHint.parentNode.removeChild(this.lastGestureHint);
+        }
+        
         const hint = document.createElement('div');
         hint.className = 'lifx-gesture-hint visible';
         hint.innerHTML = `<span style="font-size: 24px; display: block; margin-bottom: 5px;">${icon}</span>${text}`;
         document.body.appendChild(hint);
+        this.lastGestureHint = hint;
+        
         setTimeout(() => {
             hint.classList.remove('visible');
             setTimeout(() => {
                 if (hint.parentNode) hint.parentNode.removeChild(hint);
+                if (this.lastGestureHint === hint) this.lastGestureHint = null;
             }, 300);
-        }, 1000);
+        }, duration);
     },
     
     showGestureTutorial: function() {
@@ -530,7 +544,10 @@ const LifXTouchControls = {
             goodnight: { brightness: 10, kelvin: 2000, label: 'Goodnight' },
             rainbow: { brightness: 80, kelvin: 4000, label: 'Rainbow' },
             fireplace: { brightness: 60, kelvin: 2000, label: 'Fireplace' },
-            ice: { brightness: 70, kelvin: 8000, label: 'Ice' }
+            ice: { brightness: 70, kelvin: 8000, label: 'Ice' },
+            aurora: { brightness: 75, kelvin: 6000, label: 'Aurora' },
+            nebula: { brightness: 65, kelvin: 5000, label: 'Nebula' },
+            thunder: { brightness: 100, kelvin: 7000, label: 'Thunder' }
         };
         
         const settings = sceneSettings[scene];
@@ -945,7 +962,10 @@ const LifXTouchControls = {
             'goodnight': '#2c3e50',
             'rainbow': '#ff0080',
             'fireplace': '#ff4500',
-            'ice': '#7fffd4'
+            'ice': '#7fffd4',
+            'aurora': '#00ff88',
+            'nebula': '#9b59b6',
+            'thunder': '#f1c40f'
         };
         return sceneColors[sceneName] || '#ffffff';
     },
@@ -985,7 +1005,10 @@ const LifXTouchControls = {
             'goodnight': { hue: 240, saturation: 10, brightness: 10, kelvin: 2000 },
             'rainbow': { hue: 0, saturation: 100, brightness: 90, kelvin: 4000 },
             'fireplace': { hue: 30, saturation: 80, brightness: 60, kelvin: 2000 },
-            'ice': { hue: 200, saturation: 50, brightness: 70, kelvin: 8000 }
+            'ice': { hue: 200, saturation: 50, brightness: 70, kelvin: 8000 },
+            'aurora': { hue: 140, saturation: 100, brightness: 75, kelvin: 6000 },
+            'nebula': { hue: 280, saturation: 80, brightness: 65, kelvin: 5000 },
+            'thunder': { hue: 50, saturation: 90, brightness: 100, kelvin: 7000 }
         };
         
         const scene = sceneColors[sceneName];
@@ -1033,9 +1056,55 @@ const LifXTouchControls = {
         
         if (this.gestureHistory.length > 0) {
             undoBtn.classList.add('visible');
+            undoBtn.setAttribute('title', `Undo last action (${this.gestureHistory.length} available)`);
         } else {
             undoBtn.classList.remove('visible');
+            undoBtn.setAttribute('title', 'Undo Last Gesture');
         }
+    },
+    
+    showTouchHoldProgress: function() {
+        if (!this.touchHoldProgressEl) {
+            this.touchHoldProgressEl = document.getElementById('touch-hold-progress');
+        }
+        if (this.touchHoldProgressEl) {
+            this.touchHoldProgressEl.classList.add('visible');
+        }
+    },
+    
+    hideTouchHoldProgress: function() {
+        if (this.touchHoldProgressEl) {
+            this.touchHoldProgressEl.classList.remove('visible');
+        }
+    },
+    
+    setGestureSensitivityLevel: function(level) {
+        this.setGestureSensitivity(level);
+        this.showGestureFeedback(`Sensitivity: ${level}`, '✓');
+    },
+    
+    showSensitivitySelector: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Gesture Sensitivity: low, medium, high');
+            return;
+        }
+        
+        const current = localStorage.getItem('lifx_gesture_sensitivity') || 'medium';
+        Swal.fire({
+            title: 'Gesture Sensitivity',
+            html: `
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="btn btn-sm ${current === 'low' ? 'btn-primary' : 'btn-outline-primary'}" 
+                            onclick="LifXTouchControls.setGestureSensitivityLevel('low')">Low</button>
+                    <button class="btn btn-sm ${current === 'medium' ? 'btn-primary' : 'btn-outline-primary'}" 
+                            onclick="LifXTouchControls.setGestureSensitivityLevel('medium')">Medium</button>
+                    <button class="btn btn-sm ${current === 'high' ? 'btn-primary' : 'btn-outline-primary'}" 
+                            onclick="LifXTouchControls.setGestureSensitivityLevel('high')">High</button>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true
+        });
     },
     
     savePreferences: function() {
