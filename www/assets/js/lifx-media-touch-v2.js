@@ -14,7 +14,11 @@
             enableMediaSync: true,
             beatDetectionThreshold: 0.75,
             colorTransitionDuration: 1000,
-            gestureHoldDuration: 500
+            gestureHoldDuration: 500,
+            swipeThreshold: 50,
+            doubleTapDelay: 300,
+            rippleDuration: 400,
+            gestureTrailSize: 20
         },
 
         state: {
@@ -30,7 +34,13 @@
             bedtimeModeActive: false,
             circadianActive: false,
             lastTouchTime: 0,
-            gestureHistory: []
+            lastTapTime: 0,
+            gestureHistory: [],
+            touchHoldProgress: 0,
+            isTouchHoldActive: false,
+            frequencyData: new Uint8Array(6),
+            beatHistory: [],
+            adaptiveThreshold: 0.75
         },
 
         scenePresets: [
@@ -127,6 +137,7 @@
             }
             
             this.showTouchRipple(e, target);
+            this.startTouchHoldTimer(target);
         },
 
         handleTouchMove(e) {
@@ -140,11 +151,14 @@
             
             if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
                 target.classList.remove('touch-active');
+                this.cancelTouchHoldTimer();
             }
             
             if (this.config.enableGestureTrails) {
                 this.showGestureTrail(touch.clientX, touch.clientY);
             }
+            
+            this.updateTouchHoldProgress(target, deltaX, deltaY);
         },
 
         handleTouchEnd(e) {
@@ -157,13 +171,21 @@
             const deltaX = touch.clientX - startX;
             const deltaY = touch.clientY - startY;
             const duration = Date.now() - startTime;
+            const currentTime = Date.now();
             
             target.classList.remove('touch-active');
+            this.cancelTouchHoldTimer();
             
-            if (duration > this.config.gestureHoldDuration && Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) {
+            if (this.state.isTouchHoldActive) {
                 this.handleLongPress(target, e);
-            } else if (Math.abs(deltaX) > 50 || Math.abs(deltaY) > 50) {
+                this.state.isTouchHoldActive = false;
+            } else if (Math.abs(deltaX) > this.config.swipeThreshold || Math.abs(deltaY) > this.config.swipeThreshold) {
                 this.handleSwipe(target, deltaX > 0 ? 'right' : 'left', deltaY > 0 ? 'down' : 'up');
+            } else if (duration < this.config.doubleTapDelay && currentTime - this.state.lastTapTime < this.config.doubleTapDelay) {
+                this.handleDoubleTap(target, e);
+                this.state.lastTapTime = 0;
+            } else {
+                this.state.lastTapTime = currentTime;
             }
         },
 
@@ -220,6 +242,84 @@
 
         handleGestureEnd(e) {
             e.preventDefault();
+        },
+
+        touchHoldTimer: null,
+
+        startTouchHoldTimer(target) {
+            this.cancelTouchHoldTimer();
+            this.state.touchHoldProgress = 0;
+            this.state.isTouchHoldActive = true;
+            
+            const startTime = Date.now();
+            const duration = this.config.gestureHoldDuration;
+            
+            this.touchHoldTimer = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(100, (elapsed / duration) * 100);
+                this.state.touchHoldProgress = progress;
+                
+                if (progress >= 100) {
+                    this.cancelTouchHoldTimer();
+                }
+            }, 50);
+        },
+
+        cancelTouchHoldTimer() {
+            if (this.touchHoldTimer) {
+                clearInterval(this.touchHoldTimer);
+                this.touchHoldTimer = null;
+            }
+            this.state.touchHoldProgress = 0;
+        },
+
+        updateTouchHoldProgress(target, deltaX, deltaY) {
+            if (!this.state.isTouchHoldActive) return;
+            
+            const movement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            if (movement > 20) {
+                this.cancelTouchHoldTimer();
+                this.state.isTouchHoldActive = false;
+            }
+        },
+
+        handleDoubleTap(target, e) {
+            const bulbId = target.dataset.bulbId;
+            
+            if (bulbId) {
+                this.toggleBulbPower(bulbId, 'toggle');
+                this.showTouchFeedback(target, 'Double Tap');
+            }
+            
+            if (this.config.enableHapticFeedback && navigator.vibrate) {
+                navigator.vibrate([15, 50, 15]);
+            }
+        },
+
+        showTouchFeedback(target, message) {
+            const feedback = document.createElement('div');
+            feedback.className = 'touch-feedback-message';
+            feedback.textContent = message;
+            feedback.style.position = 'absolute';
+            feedback.style.top = '50%';
+            feedback.style.left = '50%';
+            feedback.style.transform = 'translate(-50%, -50%)';
+            feedback.style.color = '#00d4ff';
+            feedback.style.fontWeight = 'bold';
+            feedback.style.fontSize = '14px';
+            feedback.style.textShadow = '0 0 10px rgba(0, 212, 255, 0.8)';
+            feedback.style.pointerEvents = 'none';
+            feedback.style.opacity = '0';
+            feedback.style.transition = 'opacity 0.2s ease';
+            
+            target.style.position = 'relative';
+            target.appendChild(feedback);
+            
+            setTimeout(() => feedback.style.opacity = '1', 10);
+            setTimeout(() => {
+                feedback.style.opacity = '0';
+                setTimeout(() => feedback.remove(), 200);
+            }, 800);
         },
 
         showTouchRipple(e, target) {
@@ -855,12 +955,68 @@
         },
 
         setupMediaPlayers() {
-            // Initialize media player connections
             this.mediaPlayers = {
                 spotify: null,
                 youtube: null,
                 plex: null
             };
+            
+            this.connectSpotify();
+            this.setupMediaSyncButton();
+        },
+        
+        async connectSpotify() {
+            try {
+                const response = await fetch('/api/services/spotify/status');
+                const data = await response.json();
+                if (data.connected) {
+                    this.mediaPlayers.spotify = data;
+                    this.startMediaPlaybackMonitor();
+                }
+            } catch (error) {
+                console.warn('Spotify not available');
+            }
+        },
+        
+        startMediaPlaybackMonitor() {
+            setInterval(async () => {
+                try {
+                    const response = await fetch('/api/services/spotify/now-playing');
+                    const data = await response.json();
+                    if (data.track) {
+                        this.updateMediaDisplay(data.track);
+                    }
+                } catch (error) {
+                    // Silent fail - media may not be playing
+                }
+            }, 5000);
+        },
+        
+        updateMediaDisplay(track) {
+            const trackName = document.getElementById('media-track-name');
+            const artistName = document.getElementById('media-artist-name');
+            if (trackName) trackName.textContent = track.name || 'No Track';
+            if (artistName) artistName.textContent = track.artist || 'Unknown Artist';
+        },
+        
+        setupMediaSyncButton() {
+            const syncBtn = document.getElementById('media-sync-toggle');
+            if (!syncBtn) return;
+            
+            syncBtn.addEventListener('click', () => {
+                this.toggleMediaSync();
+                syncBtn.classList.toggle('active', this.state.mediaSyncActive);
+            });
+        },
+        
+        toggleMediaSync() {
+            if (this.state.mediaSyncActive) {
+                this.disableMediaSync();
+                this.showToast('Media sync disabled', 'info');
+            } else {
+                this.enableMediaSync();
+                this.showToast('Media sync enabled - lights will pulse to the beat!', 'success');
+            }
         },
 
         setupLightGroups() {
@@ -948,39 +1104,171 @@
             const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
             this.analyser.getByteFrequencyData(dataArray);
             
-            const bassRange = dataArray.slice(0, 8);
-            const bassAvg = bassRange.reduce((a, b) => a + b, 0) / bassRange.length;
+            this.state.frequencyData = new Uint8Array(6);
             
-            if (bassAvg / 255 > this.config.beatDetectionThreshold) {
-                this.triggerBeatEffect();
+            const bands = {
+                subBass: dataArray.slice(0, 4),
+                bass: dataArray.slice(4, 10),
+                lowMid: dataArray.slice(10, 20),
+                mid: dataArray.slice(20, 40),
+                highMid: dataArray.slice(40, 80),
+                treble: dataArray.slice(80, 128)
+            };
+            
+            const bandAverages = {
+                subBass: bands.subBass.reduce((a, b) => a + b, 0) / bands.subBass.length,
+                bass: bands.bass.reduce((a, b) => a + b, 0) / bands.bass.length,
+                lowMid: bands.lowMid.reduce((a, b) => a + b, 0) / bands.lowMid.length,
+                mid: bands.mid.reduce((a, b) => a + b, 0) / bands.mid.length,
+                highMid: bands.highMid.reduce((a, b) => a + b, 0) / bands.highMid.length,
+                treble: bands.treble.reduce((a, b) => a + b, 0) / bands.treble.length
+            };
+            
+            this.state.frequencyData[0] = bandAverages.subBass;
+            this.state.frequencyData[1] = bandAverages.bass;
+            this.state.frequencyData[2] = bandAverages.lowMid;
+            this.state.frequencyData[3] = bandAverages.mid;
+            this.state.frequencyData[4] = bandAverages.highMid;
+            this.state.frequencyData[5] = bandAverages.treble;
+            
+            const bassEnergy = (bandAverages.subBass + bandAverages.bass) / 2;
+            const totalEnergy = Object.values(bandAverages).reduce((a, b) => a + b, 0) / 6;
+            
+            this.state.beatHistory.push(bassEnergy);
+            if (this.state.beatHistory.length > 20) {
+                this.state.beatHistory.shift();
             }
             
+            const avgEnergy = this.state.beatHistory.reduce((a, b) => a + b, 0) / this.state.beatHistory.length;
+            const variance = this.state.beatHistory.reduce((sum, val) => sum + Math.pow(val - avgEnergy, 2), 0) / this.state.beatHistory.length;
+            const stdDev = Math.sqrt(variance);
+            
+            this.state.adaptiveThreshold = Math.max(0.5, Math.min(0.9, 
+                (avgEnergy / 255) + (stdDev / 50)
+            ));
+            
+            const beatThreshold = Math.max(
+                this.state.adaptiveThreshold,
+                this.config.beatDetectionThreshold
+            );
+            
+            const isBeat = (bassEnergy / 255) > beatThreshold && bassEnergy > 180;
+            
+            if (isBeat && Date.now() - this.state.lastBeatTime > 200) {
+                this.state.lastBeatTime = Date.now();
+                this.state.bpmDetected = Math.round(60000 / (Date.now() - (this.state.lastBeatTime || Date.now() - 500)));
+                this.triggerBeatEffect(bandAverages);
+                this.updateFrequencyVisualization(bandAverages);
+            }
+            
+            this.updateRealtimeBPM();
             requestAnimationFrame(this.detectBeats.bind(this));
         },
 
-        triggerBeatEffect() {
-            if (this.state.mediaSyncActive) {
+        triggerBeatEffect(bandAverages = {}) {
+            if (!this.state.mediaSyncActive) return;
+            
+            const intensity = Math.min(1, (bandAverages.bass || 200) / 255);
+            const duration = 80 + (1 - intensity) * 120;
+            
+            fetch('/api/services/lifx/set_state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    selector: 'all',
+                    brightness: Math.min(1, 0.7 + intensity * 0.3),
+                    duration: duration / 1000
+                })
+            });
+            
+            setTimeout(() => {
                 fetch('/api/services/lifx/set_state', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         selector: 'all',
-                        brightness: 1.0
+                        brightness: this.state.brightnessLevel / 100,
+                        duration: 0.2
                     })
                 });
-                
-                setTimeout(() => {
-                    fetch('/api/services/lifx/set_state', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            selector: 'all',
-                            brightness: this.state.brightnessLevel / 100
-                        })
-                    });
-                }, 100);
+            }, duration);
+            
+            this.showBeatFlashOverlay(intensity);
+        },
+
+        showBeatFlashOverlay(intensity) {
+            let overlay = document.querySelector('.lifx-beat-flash-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'lifx-beat-flash-overlay';
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: radial-gradient(circle, rgba(0, 212, 255, ${0.15 * intensity}) 0%, transparent 70%);
+                    pointer-events: none;
+                    z-index: 99998;
+                    opacity: 0;
+                    transition: opacity 0.08s ease;
+                `;
+                document.body.appendChild(overlay);
             }
-        }
+            
+            overlay.style.opacity = intensity * 0.3;
+            setTimeout(() => {
+                overlay.style.opacity = 0;
+            }, 80);
+        },
+
+        updateFrequencyVisualization(bandAverages) {
+            const vizContainer = document.querySelector('.frequency-viz');
+            if (!vizContainer) return;
+            
+            const bands = ['subBass', 'bass', 'lowMid', 'mid', 'highMid', 'treble'];
+            const bandColors = {
+                subBass: '#ff4545',
+                bass: '#ff6b6b',
+                lowMid: '#ffa500',
+                mid: '#ffc93c',
+                highMid: '#7fdbca',
+                treble: '#00d4ff'
+            };
+            
+            bands.forEach((band, index) => {
+                const bar = document.getElementById(`band-${band.toLowerCase()}`);
+                if (bar) {
+                    const height = Math.max(5, (bandAverages[band] / 255) * 100);
+                    bar.style.height = `${height}%`;
+                    
+                    if (bandAverages[band] > 220) {
+                        bar.classList.add('peak');
+                        setTimeout(() => bar.classList.remove('peak'), 100);
+                    }
+                }
+            });
+        },
+
+        updateRealtimeBPM() {
+            const bpmDisplay = document.querySelector('.bpm-value');
+            const bpmIndicator = document.querySelector('.bpm-realtime-indicator');
+            
+            if (!bpmDisplay) return;
+            
+            const now = Date.now();
+            const lastBeat = this.state.lastBeatTime || 0;
+            
+            if (now - lastBeat < 2000 && this.state.mediaSyncActive) {
+                if (bpmIndicator) bpmIndicator.classList.add('visible');
+                bpmDisplay.textContent = this.state.bpmDetected || '--';
+                bpmDisplay.style.color = '#ff6b6b';
+            } else {
+                if (bpmIndicator) bpmIndicator.classList.remove('visible');
+                bpmDisplay.textContent = '--';
+                bpmDisplay.style.color = '#adb5bd';
+            }
+        },
     };
 
     window.LIFXMediaTouchV2 = LIFXMediaTouchV2;
