@@ -1232,7 +1232,7 @@ const LifXTouchControls = {
         });
     },
     
-    adjustColorTemp: function(delta, smooth = true) {
+    adjustColorTemp: function(delta, smooth = true, applyImmediately = false) {
         const targets = this.multiBulbSelection.length > 0 
             ? this.multiBulbSelection 
             : (this.selectedBulb ? [this.selectedBulb] : []);
@@ -1241,6 +1241,12 @@ const LifXTouchControls = {
         
         const newColorTemp = Math.max(1500, Math.min(9000, this.colorTempLevel + delta));
         const duration = smooth && Math.abs(delta) < 500 ? 0.3 : 0.1;
+        
+        // Update preview immediately for touch adjustments
+        if (applyImmediately) {
+            this.colorTempLevel = newColorTemp;
+            targets.forEach(bulbId => this.updateBulbColorTempPreview(bulbId, newColorTemp));
+        }
         
         $.ajax({
             url: '/api/services/lifx/set_color',
@@ -1257,11 +1263,76 @@ const LifXTouchControls = {
                 targets.forEach(bulbId => this.updateBulbVisual(bulbId));
                 const intensity = Math.min(1.0, 0.5 + (Math.abs(delta) / 1000));
                 this.hapticFeedback('colortemp', intensity);
+                this.showColorTempFeedback(newColorTemp);
             },
             error: (err) => {
                 console.error('Failed to adjust color temp:', err);
             }
         });
+    },
+    
+    updateBulbColorTempPreview: function(bulbId, kelvin) {
+        const bulbEl = document.querySelector(`.lifx-bulb-control[data-bulb-id="${bulbId}"]`);
+        if (!bulbEl) return;
+        
+        // Calculate color based on kelvin value
+        const color = this.kelvinToRgb(kelvin);
+        const rgbaColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.4)`;
+        
+        // Update visual indicator
+        bulbEl.style.borderColor = rgbaColor;
+        bulbEl.style.boxShadow = `0 0 20px ${rgbaColor}`;
+        
+        // Add temperature label
+        let tempLabel = kelvin < 3000 ? 'Warm' : kelvin < 5000 ? 'Neutral' : 'Cool';
+        let existingLabel = bulbEl.querySelector('.temp-label');
+        if (!existingLabel) {
+            existingLabel = document.createElement('span');
+            existingLabel.className = 'temp-label';
+            existingLabel.style.cssText = 'position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;';
+            bulbEl.appendChild(existingLabel);
+        }
+        existingLabel.textContent = `${tempLabel} ${kelvin}K`;
+        setTimeout(() => existingLabel.remove(), 500);
+    },
+    
+    kelvinToRgb: function(kelvin) {
+        // Simplified kelvin to RGB conversion
+        const temp = kelvin / 100;
+        let r, g, b;
+        
+        if (temp <= 66) {
+            r = 255;
+            g = Math.max(0, Math.min(255, 99.4708025861 * Math.log(temp) - 161.1195681661));
+        } else {
+            r = Math.max(0, Math.min(255, 329.698727446 * Math.pow(temp - 60, -0.1332047592)));
+            g = Math.max(0, Math.min(255, 288.1221695283 * Math.pow(temp - 60, -0.0755148492)));
+        }
+        
+        if (temp >= 66) {
+            b = 255;
+        } else if (temp <= 19) {
+            b = 0;
+        } else {
+            b = Math.max(0, Math.min(255, 138.5177312231 * Math.log(temp - 10) - 305.0447927307));
+        }
+        
+        return { r: Math.round(r), g: Math.round(g), b: Math.round(b) };
+    },
+    
+    showColorTempFeedback: function(kelvin) {
+        let icon = '❄️';
+        let label = 'Cooler';
+        
+        if (kelvin < 3000) {
+            icon = '🔥';
+            label = 'Warmer';
+        } else if (kelvin < 5000) {
+            icon = '☀️';
+            label = 'Neutral';
+        }
+        
+        this.showGestureFeedback(`${label} ${kelvin}K`, icon);
     },
     
     nextScene: function() {
@@ -1459,16 +1530,48 @@ const LifXTouchControls = {
         if (!this.selectedBulb || this.startY === undefined) return;
         
         const delta = this.startY - currentY;
-        const brightnessDelta = Math.round((delta / 200) * 100);
+        const sensitivity = this.touchSensitivityLevels[this.touchSensitivity] || this.touchSensitivityLevels.medium;
+        const brightnessDelta = Math.round((delta / sensitivity.swipeDistance) * 100);
         const newBrightness = Math.max(0, Math.min(100, this.startBrightness + brightnessDelta));
         
         if (newBrightness !== this.brightnessLevel) {
             const stepSize = Math.abs(newBrightness - this.brightnessLevel);
+            const previousBrightness = this.brightnessLevel;
             this.brightnessLevel = newBrightness;
+            
+            // Show real-time visual feedback
             this.showBrightnessFeedback(this.brightnessLevel);
+            this.updateBulbBrightnessPreview(this.selectedBulb, this.brightnessLevel);
+            
+            // Provide haptic feedback on significant changes
             if (stepSize >= 5) {
                 this.hapticFeedback('brightness', Math.min(0.5, stepSize / 20));
             }
+            
+            // Record gesture for undo
+            if (!this.gestureHistory.length || this.gestureHistory[this.gestureHistory.length - 1].type !== 'brightness') {
+                this.recordGesture('brightness', newBrightness - previousBrightness, previousBrightness, [this.selectedBulb]);
+            }
+        }
+    },
+    
+    updateBulbBrightnessPreview: function(bulbId, brightness) {
+        const bulbEl = document.querySelector(`.lifx-bulb-control[data-bulb-id="${bulbId}"]`);
+        if (!bulbEl) return;
+        
+        // Update visual brightness indicator
+        const brightnessPercent = brightness + '%';
+        bulbEl.style.setProperty('--brightness-level', brightnessPercent);
+        
+        // Add glow effect based on brightness
+        const glowIntensity = brightness / 100;
+        bulbEl.style.boxShadow = `0 0 ${10 + glowIntensity * 30}px rgba(0, 212, 255, ${0.3 + glowIntensity * 0.5})`;
+        
+        // Update brightness level indicator if present
+        const indicator = bulbEl.querySelector('.brightness-level');
+        if (indicator) {
+            indicator.textContent = brightness + '%';
+            indicator.style.opacity = brightness > 0 ? 1 : 0.5;
         }
     },
     

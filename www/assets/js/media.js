@@ -885,6 +885,66 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
     updateBpmDisplay();
 }
 
+function showBeatFlashEffect(intensity) {
+    if (intensity < 0.3) return;
+    
+    let flashEl = document.getElementById('beat-flash-overlay');
+    if (!flashEl) {
+        flashEl = document.createElement('div');
+        flashEl.id = 'beat-flash-overlay';
+        flashEl.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:9998;opacity:0;transition:opacity 0.1s ease;';
+        document.body.appendChild(flashEl);
+    }
+    
+    const color = intensity > 0.8 ? 'rgba(255, 107, 107, 0.2)' : 
+                  intensity > 0.5 ? 'rgba(0, 212, 255, 0.15)' : 
+                  'rgba(0, 255, 136, 0.1)';
+    flashEl.style.background = `radial-gradient(circle, ${color} 0%, transparent 70%)`;
+    
+    requestAnimationFrame(() => {
+        flashEl.style.opacity = intensity * 0.6;
+        setTimeout(() => {
+            flashEl.style.opacity = '0';
+        }, 80);
+    });
+}
+
+function updateFrequencyVisualization(dataArray, beatIntensity) {
+    const vizContainer = document.getElementById('beat-energy-viz');
+    if (!vizContainer) return;
+    
+    const bands = [
+        { name: 'subBass', range: [0, 2], label: 'Sub' },
+        { name: 'bass', range: [2, 5], label: 'Bass' },
+        { name: 'lowMid', range: [5, 15], label: 'Low' },
+        { name: 'mid', range: [15, 30], label: 'Mid' },
+        { name: 'highMid', range: [30, 60], label: 'High' },
+        { name: 'treble', range: [60, 128], label: 'Tri' }
+    ];
+    
+    bands.forEach(band => {
+        const bandData = dataArray.slice(band.range[0], band.range[1]);
+        const bandEnergy = bandData.reduce((a, b) => a + b, 0) / bandData.length;
+        const normalizedEnergy = bandEnergy / 255;
+        const barEl = document.getElementById(`band-${band.name}`);
+        
+        if (barEl) {
+            const heightPercent = Math.max(5, Math.min(100, normalizedEnergy * 100));
+            barEl.style.height = `${heightPercent}%`;
+            
+            if (beatIntensity > 0.7 && normalizedEnergy > 0.8) {
+                barEl.classList.add('peak');
+                setTimeout(() => barEl.classList.remove('peak'), 100);
+            }
+        }
+    });
+    
+    const realtimeBpmEl = document.getElementById('realtime-bpm');
+    if (realtimeBpmEl && MediaPlayer.lifxBeatDetection.bpmEstimate) {
+        realtimeBpmEl.textContent = Math.round(MediaPlayer.lifxBeatDetection.bpmEstimate);
+    }
+}
+
 function pulseLifxStandard(beatStrength, targets, bpm, intensity) {
     const beatDetection = MediaPlayer.beatDetection;
     const hueStep = Math.max(5, 30 - (intensity * 20));
@@ -1526,16 +1586,19 @@ function detectAudioBeat() {
     const dataArray = MediaPlayer.visualizationData;
     MediaPlayer.analyser.getByteFrequencyData(dataArray);
     
-    const bassRange = dataArray.slice(0, 10);
+    const beatDetection = MediaPlayer.lifxBeatDetection;
+    
+    const bassRange = dataArray.slice(0, 12);
     const bassEnergy = bassRange.reduce((a, b) => a + b, 0) / bassRange.length / 255;
     
-    const midRange = dataArray.slice(10, 50);
+    const kickRange = dataArray.slice(2, 8);
+    const kickEnergy = kickRange.reduce((a, b) => a + b, 0) / kickRange.length / 255;
+    
+    const midRange = dataArray.slice(12, 60);
     const midEnergy = midRange.reduce((a, b) => a + b, 0) / midRange.length / 255;
     
-    const trebleRange = dataArray.slice(50, 128);
+    const trebleRange = dataArray.slice(60, 128);
     const trebleEnergy = trebleRange.reduce((a, b) => a + b, 0) / trebleRange.length / 255;
-    
-    const beatDetection = MediaPlayer.lifxBeatDetection;
     
     const lowPassFiltered = (beatDetection.lowPassFilter * bassEnergy) + ((1 - beatDetection.lowPassFilter) * (beatDetection.lastBassEnergy || 0));
     beatDetection.lastBassEnergy = lowPassFiltered;
@@ -1543,7 +1606,10 @@ function detectAudioBeat() {
     const highPassFiltered = (beatDetection.highPassFilter * trebleEnergy) + ((1 - beatDetection.highPassFilter) * (beatDetection.lastTrebleEnergy || 0));
     beatDetection.lastTrebleEnergy = highPassFiltered;
     
-    const avgEnergy = (lowPassFiltered * 0.6) + (midEnergy * 0.25) + (highPassFiltered * 0.15);
+    const kickFiltered = (0.8 * kickEnergy) + (0.2 * (beatDetection.lastKickEnergy || 0));
+    beatDetection.lastKickEnergy = kickFiltered;
+    
+    const avgEnergy = (lowPassFiltered * 0.5) + (kickFiltered * 0.25) + (midEnergy * 0.15) + (highPassFiltered * 0.1);
     
     beatDetection.energyHistory.push(avgEnergy);
     if (beatDetection.energyHistory.length > 30) {
@@ -1560,69 +1626,74 @@ function detectAudioBeat() {
     const energyVariance = beatDetection.energyHistory.reduce((sum, e) => sum + Math.pow(e - avgEnergyHistory, 2), 0) / beatDetection.energyHistory.length;
     const stdDev = Math.sqrt(energyVariance);
     
-    const sensitivityMultiplier = beatDetection.sensitivity === 'high' ? 0.7 : beatDetection.sensitivity === 'low' ? 1.3 : 1.0;
-    const dynamicThreshold = Math.max(0.12, Math.min(0.5, 
+    const sensitivityMultiplier = beatDetection.sensitivity === 'high' ? 0.65 : beatDetection.sensitivity === 'low' ? 1.4 : 1.0;
+    const adaptiveThreshold = Math.max(0.10, Math.min(0.55, 
         (avgEnergyHistory * (1 - beatDetection.dynamicThresholdFactor)) + 
         (recentAvgStrength * beatDetection.dynamicThresholdFactor) + 
         (stdDev * sensitivityMultiplier)));
     
-    const beatStrength = (lowPassFiltered * 0.7) + (midEnergy * 0.2) + (highPassFiltered * 0.1);
+    const beatStrength = (lowPassFiltered * 0.5) + (kickFiltered * 0.3) + (midEnergy * 0.1) + (highPassFiltered * 0.1);
     
-    if (beatStrength > dynamicThreshold) {
-        const now = Date.now();
-        const timeSinceLastBeat = now - beatDetection.lastBeat;
+    const now = Date.now();
+    const timeSinceLastBeat = now - beatDetection.lastBeat;
+    const minInterval = beatDetection.bpmEstimate > 0 ? 
+        Math.max(70, (60000 / beatDetection.bpmEstimate) * 0.30) : 120;
+    
+    const isOnBeat = beatStrength > adaptiveThreshold && timeSinceLastBeat > minInterval;
+    const isStrongKick = kickFiltered > 0.7 && kickFiltered > bassEnergy * 1.1;
+    
+    if (isOnBeat || isStrongKick) {
+        const normalizedStrength = Math.min(1.0, 0.35 + ((beatStrength - adaptiveThreshold) / 0.6));
+        const intensity = Math.max(normalizedStrength, isStrongKick ? 0.8 : 0);
         
-        const minInterval = beatDetection.bpmEstimate > 0 ? 
-            Math.max(80, (60000 / beatDetection.bpmEstimate) * 0.35) : 150;
+        beatDetection.lastBeat = now;
+        beatDetection.lastBeatTime = now;
+        beatDetection.beatCount++;
+        beatDetection.beatIntensity = intensity;
+        beatDetection.consecutiveBeats = (beatDetection.consecutiveBeats || 0) + 1;
+        beatDetection.missedBeats = 0;
         
-        if (timeSinceLastBeat > minInterval) {
-            const normalizedStrength = Math.min(1.0, 0.4 + ((beatStrength - dynamicThreshold) / 0.5));
-            
-            beatDetection.lastBeat = now;
-            beatDetection.lastBeatTime = now;
-            beatDetection.beatCount++;
-            beatDetection.beatIntensity = normalizedStrength;
-            beatDetection.consecutiveBeats = (beatDetection.consecutiveBeats || 0) + 1;
-            beatDetection.missedBeats = 0;
-            
-            beatDetection.beatHistory.push({
-                time: now,
-                strength: normalizedStrength,
-                energy: beatStrength
-            });
-            if (beatDetection.beatHistory.length > 8) {
-                beatDetection.beatHistory.shift();
-            }
-            
-            const bpm = estimateBPM(now);
-            if (bpm && bpm > 60 && bpm < 200) {
-                const smoothingFactor = 0.3;
-                beatDetection.bpmEstimate = Math.round(
-                    (beatDetection.bpmEstimate * (1 - smoothingFactor)) + (bpm * smoothingFactor)
-                );
-                beatDetection.bpmEstimate = Math.max(60, Math.min(200, beatDetection.bpmEstimate));
-            }
-            
-            const estimatedBeatInterval = 60000 / (beatDetection.bpmEstimate || 120);
-            beatDetection.beatCooldown = Math.max(100, estimatedBeatInterval * 0.4);
-            
-            beatDetection.peakEnergy = Math.max(beatDetection.peakEnergy || 0, beatStrength);
-            beatDetection.peakDecay = 0.96;
-            
-            if (beatDetection.peakEnergy) {
-                beatDetection.threshold = beatDetection.peakEnergy * beatDetection.dynamicThresholdFactor;
-                beatDetection.peakEnergy *= beatDetection.peakDecay;
-            }
-            
-            pulseLifxWithBeat(normalizedStrength);
-            updateBpmDisplay();
-            return normalizedStrength;
+        beatDetection.beatHistory.push({
+            time: now,
+            strength: intensity,
+            energy: beatStrength,
+            kick: kickFiltered
+        });
+        if (beatDetection.beatHistory.length > 10) {
+            beatDetection.beatHistory.shift();
         }
+        
+        const bpm = estimateBPM(now);
+        if (bpm && bpm > 60 && bpm < 200) {
+            const confidence = Math.min(1.0, beatDetection.beatHistory.length / 5);
+            const smoothingFactor = 0.25 * confidence;
+            beatDetection.bpmEstimate = Math.round(
+                (beatDetection.bpmEstimate * (1 - smoothingFactor)) + (bpm * smoothingFactor)
+            );
+            beatDetection.bpmEstimate = Math.max(60, Math.min(200, beatDetection.bpmEstimate));
+        }
+        
+        const estimatedBeatInterval = 60000 / (beatDetection.bpmEstimate || 120);
+        beatDetection.beatCooldown = Math.max(80, estimatedBeatInterval * 0.35);
+        
+        beatDetection.peakEnergy = Math.max(beatDetection.peakEnergy || 0, beatStrength);
+        beatDetection.peakDecay = 0.94;
+        
+        if (beatDetection.peakEnergy) {
+            beatDetection.threshold = beatDetection.peakEnergy * beatDetection.dynamicThresholdFactor;
+            beatDetection.peakEnergy *= beatDetection.peakDecay;
+        }
+        
+        updateFrequencyVisualization(dataArray, intensity);
+        pulseLifxWithBeat(intensity);
+        updateBpmDisplay();
+        showBeatFlashEffect(intensity);
+        return intensity;
     } else {
         beatDetection.missedBeats = (beatDetection.missedBeats || 0) + 1;
-        if (beatDetection.missedBeats > 8) {
+        if (beatDetection.missedBeats > 10) {
             beatDetection.consecutiveBeats = 0;
-            beatDetection.peakEnergy = (beatDetection.peakEnergy || 0) * 0.9;
+            beatDetection.peakEnergy = (beatDetection.peakEnergy || 0) * 0.85;
         }
     }
     
@@ -1630,6 +1701,7 @@ function detectAudioBeat() {
         beatDetection.peakEnergy *= beatDetection.peakDecay;
     }
     
+    updateFrequencyVisualization(dataArray, 0);
     return 0;
 }
 
@@ -2879,13 +2951,65 @@ function setBeatDetectionThreshold(threshold) {
 
 function setBeatDetectionSensitivity(level) {
     const thresholds = {
-        'low': 0.6,
-        'medium': 0.3,
-        'high': 0.15
+        'low': { threshold: 0.6, multiplier: 1.4, minInterval: 0.40 },
+        'medium': { threshold: 0.3, multiplier: 1.0, minInterval: 0.35 },
+        'high': { threshold: 0.15, multiplier: 0.65, minInterval: 0.25 }
     };
+    
+    const settings = thresholds[level] || thresholds.medium;
     MediaPlayer.beatDetection.sensitivity = level;
-    MediaPlayer.beatDetection.threshold = thresholds[level] || 0.3;
+    MediaPlayer.beatDetection.userThreshold = settings.threshold;
+    MediaPlayer.beatDetection.dynamicThresholdFactor = 0.12 + (settings.multiplier * 0.03);
+    
+    const now = Date.now();
+    if (MediaPlayer.lifxBeatDetection.lastBeat > 0) {
+        const timeSinceLastBeat = now - MediaPlayer.lifxBeatDetection.lastBeat;
+        const estimatedInterval = 60000 / (MediaPlayer.lifxBeatDetection.bpmEstimate || 120);
+        if (timeSinceLastBeat > estimatedInterval * 1.5) {
+            MediaPlayer.lifxBeatDetection.peakEnergy = 0;
+            MediaPlayer.lifxBeatDetection.energyHistory = [];
+            MediaPlayer.lifxBeatDetection.beatHistory = [];
+        }
+    }
+    
     showNotification(`Beat sensitivity: ${level}`, 'info');
+    updateBpmDisplay();
+}
+
+function applySyncPreset(preset) {
+    const presets = {
+        'movie': { mode: 'ambient', intensity: 0.4, syncMode: 'pulse', colorTemp: 2700 },
+        'party': { mode: 'rainbow', intensity: 1.0, syncMode: 'strobe', colorTemp: 4000 },
+        'relax': { mode: 'ambient', intensity: 0.3, syncMode: 'ambient', colorTemp: 3000 },
+        'gaming': { mode: 'pulse', intensity: 0.8, syncMode: 'pulse', colorTemp: 5000 },
+        'custom': { mode: 'custom', intensity: 0.6, syncMode: 'pulse', colorTemp: 4000 }
+    };
+    
+    const settings = presets[preset];
+    if (!settings) return;
+    
+    MediaPlayer.lifxSyncMode = settings.syncMode;
+    MediaPlayer.lifxSceneMode = settings.mode;
+    setBeatDetectionSensitivity(preset === 'party' ? 'high' : preset === 'relax' ? 'low' : 'medium');
+    
+    localStorage.setItem('lifx_sync_preset', preset);
+    localStorage.setItem('lifx_sync_mode', settings.syncMode);
+    
+    const modeLabels = {
+        'movie': 'Movie',
+        'party': 'Party',
+        'relax': 'Relax',
+        'gaming': 'Gaming',
+        'custom': 'Custom'
+    };
+    
+    showNotification(`${modeLabels[preset] || preset} preset applied`, 'success');
+    
+    document.querySelectorAll('.sync-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === settings.syncMode);
+    });
+    
+    updateBpmDisplay();
 }
 
 function setTouchGestureSensitivity(level) {
