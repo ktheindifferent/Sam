@@ -280,6 +280,8 @@ const LifXTouchControls = {
     
     setupMultiSelectMode: function() {
         this.isMultiSelectMode = false;
+        this.isDragSelecting = false;
+        this.dragSelectionState = false;
         const multiSelectBtn = document.getElementById('lifx-multi-select-btn');
         if (multiSelectBtn) {
             multiSelectBtn.addEventListener('click', () => {
@@ -294,6 +296,54 @@ const LifXTouchControls = {
                 );
             });
         }
+        
+        document.addEventListener('touchstart', (e) => {
+            const bulbEl = e.target.closest('.lifx-bulb-control');
+            if (bulbEl && this.isMultiSelectMode) {
+                this.touchHoldTimer = setTimeout(() => {
+                    this.isDragSelecting = true;
+                    this.dragSelectionState = !bulbEl.classList.contains('selected');
+                    this.hapticFeedback('light');
+                }, this.touchHoldDelay);
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (!this.isDragSelecting) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
+            elements.forEach(el => {
+                const bulbEl = el.closest('.lifx-bulb-control');
+                if (bulbEl && !this.multiBulbSelection.includes(bulbEl.dataset.bulbId)) {
+                    this.toggleBulbSelection(bulbEl, this.dragSelectionState);
+                }
+            });
+        }, { passive: false });
+        
+        document.addEventListener('touchend', () => {
+            if (this.touchHoldTimer) clearTimeout(this.touchHoldTimer);
+            this.isDragSelecting = false;
+        });
+    },
+    
+    toggleBulbSelection: function(bulbEl, forceSelect = null) {
+        const bulbId = bulbEl.dataset.bulbId;
+        if (!bulbId) return;
+        
+        const index = this.multiBulbSelection.indexOf(bulbId);
+        const shouldSelect = forceSelect !== null ? forceSelect : (index === -1);
+        
+        if (shouldSelect && index === -1) {
+            this.multiBulbSelection.push(bulbId);
+            bulbEl.classList.add('selected');
+            this.hapticFeedback('light');
+        } else if (!shouldSelect && index > -1) {
+            this.multiBulbSelection.splice(index, 1);
+            bulbEl.classList.remove('selected');
+        }
+        
+        this.updateSelectionToolbar();
     },
     
     updateSelectionToolbar: function() {
@@ -395,9 +445,24 @@ const LifXTouchControls = {
             contentType: 'application/json',
             data: JSON.stringify({ scene: sceneName, selector, duration: 0.5 }),
             success: () => {
+                this.currentScene = sceneName;
+                this.showSceneIndicator(sceneName);
                 this.showGestureFeedback(`Scene: ${sceneName}`, '🎨');
             }
         });
+    },
+    
+    showSceneIndicator: function(sceneName) {
+        let existing = document.querySelector('.scene-indicator');
+        if (existing) existing.remove();
+        
+        const indicator = document.createElement('div');
+        indicator.className = `scene-indicator ${sceneName}`;
+        indicator.innerHTML = `<i class="fas fa-palette"></i> ${sceneName}`;
+        indicator.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 8px 16px; border-radius: 20px; background: rgba(0, 212, 255, 0.2); color: #00d4ff; font-size: 14px; z-index: 9999; animation: scene-indicator-pop 0.3s ease;';
+        document.body.appendChild(indicator);
+        
+        setTimeout(() => indicator.remove(), 3000);
     },
     
     startRainbowCycle: function(selector = 'all') {

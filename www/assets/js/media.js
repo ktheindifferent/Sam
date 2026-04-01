@@ -61,7 +61,12 @@ const MediaPlayer = {
         bpmHistory: [],
         beatIntensity: 0,
         lowPassFilter: 0.8,
-        highPassFilter: 0.2
+        highPassFilter: 0.2,
+        consecutiveBeats: 0,
+        missedBeats: 0,
+        dynamicThresholdFactor: 0.15,
+        peakDecay: 0.95,
+        energyHistory: []
     },
     lifxSceneMode: 'ambient',
     lifxColorHistory: [],
@@ -81,7 +86,10 @@ const MediaPlayer = {
         doubleTapTimeout: 300,
         longPressDelay: 500,
         swipeThreshold: 50,
-        pinchSensitivity: 30
+        pinchSensitivity: 30,
+        velocityThreshold: 0.3,
+        edgeSwipeThreshold: 20,
+        holdProgressInterval: 50
     },
     miniPlayerVisible: false,
     queuePosition: 0,
@@ -766,18 +774,18 @@ function showSwipeHint(text, icon) {
     }, 1500);
 }
 
-function showMediaTouchHint(text, icon) {
+function showMediaTouchHint(text, icon, duration = 1500) {
     let hint = document.querySelector('.media-center-touch-hint');
     if (!hint) {
         hint = document.createElement('div');
         hint.className = 'media-center-touch-hint';
         document.body.appendChild(hint);
     }
-    hint.innerHTML = `<span style="font-size: 32px; display: block; margin-bottom: 10px;">${icon}</span>${text}`;
+    hint.innerHTML = `<span style="font-size: 32px; display: block; margin-bottom: 10px; animation: hint-bounce 0.5s ease;">${icon || ''}</span>${text}`;
     hint.classList.add('visible');
     setTimeout(() => {
         hint.classList.remove('visible');
-    }, 1500);
+    }, duration);
 }
 
 function toggleLifxMediaSync() {
@@ -1276,33 +1284,57 @@ function detectAudioBeat() {
     const trebleRange = dataArray.slice(50, 128);
     const trebleEnergy = trebleRange.reduce((a, b) => a + b, 0) / trebleRange.length / 255;
     
-    const avgEnergy = (bassEnergy + midEnergy + trebleEnergy) / 3;
+    const avgEnergy = (bassEnergy * 0.5) + (midEnergy * 0.3) + (trebleEnergy * 0.2);
     
-    const history = MediaPlayer.lifxBeatDetection.beatHistory;
+    const beatDetection = MediaPlayer.lifxBeatDetection;
+    beatDetection.energyHistory.push(avgEnergy);
+    if (beatDetection.energyHistory.length > 20) {
+        beatDetection.energyHistory.shift();
+    }
+    
+    const history = beatDetection.beatHistory;
     let recentAvgStrength = 0.3;
     if (history.length > 0) {
         recentAvgStrength = history.reduce((a, b) => a + b.strength, 0) / history.length;
     }
     
-    const dynamicThreshold = Math.max(0.2, Math.min(0.4, avgEnergy * 0.8 + recentAvgStrength * 0.2));
+    const avgEnergyHistory = beatDetection.energyHistory.reduce((a, b) => a + b, 0) / beatDetection.energyHistory.length;
+    const energyVariance = beatDetection.energyHistory.reduce((sum, e) => sum + Math.pow(e - avgEnergyHistory, 2), 0) / beatDetection.energyHistory.length;
+    const varianceFactor = Math.min(0.2, Math.sqrt(energyVariance) * 0.5);
     
-    const beatStrength = (bassEnergy * 0.6) + (midEnergy * 0.3) + (trebleEnergy * 0.1);
+    const dynamicThreshold = Math.max(0.15, Math.min(0.45, 
+        (avgEnergyHistory * (1 - beatDetection.dynamicThresholdFactor)) + 
+        (recentAvgStrength * beatDetection.dynamicThresholdFactor) + 
+        varianceFactor));
+    
+    const beatStrength = (bassEnergy * 0.6) + (midEnergy * 0.25) + (trebleEnergy * 0.15);
     
     if (beatStrength > dynamicThreshold) {
         const now = Date.now();
-        const timeSinceLastBeat = now - MediaPlayer.lifxBeatDetection.lastBeat;
+        const timeSinceLastBeat = now - beatDetection.lastBeat;
         
-        if (timeSinceLastBeat > MediaPlayer.lifxBeatDetection.beatCooldown) {
-            const normalizedStrength = Math.min(1.0, (beatStrength - dynamicThreshold) / 0.3);
+        if (timeSinceLastBeat > beatDetection.beatCooldown) {
+            const normalizedStrength = Math.min(1.0, 0.5 + ((beatStrength - dynamicThreshold) / 0.4));
             
             const bpm = estimateBPM(now);
             if (bpm) {
-                MediaPlayer.lifxBeatDetection.bpmEstimate = bpm;
+                beatDetection.bpmEstimate = bpm;
             }
             
-            MediaPlayer.lifxBeatDetection.beatIntensity = normalizedStrength;
+            beatDetection.beatIntensity = normalizedStrength;
+            beatDetection.consecutiveBeats = (beatDetection.consecutiveBeats || 0) + 1;
+            beatDetection.missedBeats = 0;
+            
+            const estimatedBeatInterval = 60000 / beatDetection.bpmEstimate;
+            beatDetection.beatCooldown = Math.max(100, estimatedBeatInterval * 0.4);
+            
             pulseLifxWithBeat(normalizedStrength);
             return normalizedStrength;
+        }
+    } else {
+        beatDetection.missedBeats = (beatDetection.missedBeats || 0) + 1;
+        if (beatDetection.missedBeats > 5) {
+            beatDetection.consecutiveBeats = 0;
         }
     }
     
@@ -2319,41 +2351,68 @@ function initMediaTouchGestures() {
     let touchStartX = 0;
     let touchStartY = 0;
     let lastTapTime = 0;
+    let touchStartTime = 0;
+    let longPressTimer = null;
     
     mediaContainer.addEventListener('touchstart', (e) => {
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+        
+        const settings = MediaPlayer.touchGestures;
+        if (settings.enabled && settings.longPressDelay > 0) {
+            longPressTimer = setTimeout(() => {
+                showMediaTouchHint('Long Press', '👆');
+            }, settings.longPressDelay);
+        }
+    }, { passive: true });
+    
+    mediaContainer.addEventListener('touchmove', (e) => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
     }, { passive: true });
     
     mediaContainer.addEventListener('touchend', (e) => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+        
         const touchEndX = e.changedTouches[0].clientX;
         const touchEndY = e.changedTouches[0].clientY;
         const deltaX = touchEndX - touchStartX;
         const deltaY = touchEndY - touchStartY;
         const currentTime = Date.now();
+        const touchDuration = currentTime - touchStartTime;
         
-        if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+        const settings = MediaPlayer.touchGestures;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const velocity = distance / touchDuration;
+        
+        if (distance < settings.swipeThreshold * 0.5) {
             const tapLength = currentTime - lastTapTime;
-            if (tapLength < 300 && tapLength > 0) {
+            if (tapLength < settings.doubleTapTimeout && tapLength > 0) {
                 togglePlayPause();
-                showMediaTouchHint('Play/Pause', '⏯️');
+                showMediaTouchHint('Play/Pause', '⏯️', 1200);
             }
             lastTapTime = currentTime;
         } else if (Math.abs(deltaX) > Math.abs(deltaY) * 2) {
-            if (deltaX > 50) {
+            if (deltaX > settings.swipeThreshold && velocity > settings.velocityThreshold) {
                 previousTrack();
-                showMediaTouchHint('Previous', '⏮️');
-            } else if (deltaX < -50) {
+                showMediaTouchHint('Previous', '⏮️', 1200);
+            } else if (deltaX < -settings.swipeThreshold && velocity > settings.velocityThreshold) {
                 nextTrack();
-                showMediaTouchHint('Next', '⏭️');
+                showMediaTouchHint('Next', '⏭️', 1200);
             }
         } else if (Math.abs(deltaY) > Math.abs(deltaX) * 2) {
-            if (deltaY > 50) {
+            if (deltaY > settings.swipeThreshold && velocity > settings.velocityThreshold) {
                 increaseVolume();
-                showMediaTouchHint('Volume Up', '🔊');
-            } else if (deltaY < -50) {
+                showMediaTouchHint('Volume Up', '🔊', 1200);
+            } else if (deltaY < -settings.swipeThreshold && velocity > settings.velocityThreshold) {
                 decreaseVolume();
-                showMediaTouchHint('Volume Down', '🔇');
+                showMediaTouchHint('Volume Down', '🔇', 1200);
             }
         }
     }, { passive: true });
