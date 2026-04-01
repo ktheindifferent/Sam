@@ -439,6 +439,255 @@ const LifXTouchControls = {
         });
     },
     
+    adjustBrightnessBatch: function(delta) {
+        if (this.multiBulbSelection.length === 0) return;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${this.multiBulbSelection.join(',')}`,
+                brightness: Math.max(0, Math.min(100, this.brightnessLevel + delta)) / 100,
+                duration: 0.3
+            }),
+            success: () => {
+                this.brightnessLevel = Math.max(0, Math.min(100, this.brightnessLevel + delta));
+                this.showGestureFeedback(
+                    `Brightness ${delta > 0 ? '+' : ''}${delta} (${this.multiBulbSelection.length} bulbs)`,
+                    delta > 0 ? '☀️' : '🌙'
+                );
+                this.hapticFeedback('light');
+            }
+        });
+    },
+    
+    adjustColorTempBatch: function(delta) {
+        if (this.multiBulbSelection.length === 0) return;
+        
+        const newTemp = Math.max(1500, Math.min(9000, this.colorTempLevel + delta));
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${this.multiBulbSelection.join(',')}`,
+                color: `kelvin:${newTemp}`,
+                duration: 0.3
+            }),
+            success: () => {
+                this.colorTempLevel = newTemp;
+                this.showGestureFeedback(
+                    `Color Temp ${newTemp}K (${this.multiBulbSelection.length} bulbs)`,
+                    delta > 0 ? '🔥' : '❄️'
+                );
+                this.hapticFeedback('light');
+            }
+        });
+    },
+    
+    applySceneBatch: function(sceneName) {
+        if (this.multiBulbSelection.length === 0) return;
+        
+        $.ajax({
+            url: '/api/services/lifx/apply_scene',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                scene: sceneName,
+                selector: `id:${this.multiBulbSelection.join(',')}`,
+                duration: 0.5
+            }),
+            success: () => {
+                this.currentScene = sceneName;
+                this.showGestureFeedback(
+                    `Scene "${sceneName}" applied to ${this.multiBulbSelection.length} bulbs`,
+                    '🎨'
+                );
+                this.hapticFeedback('success');
+                this.multiBulbSelection = [];
+                this.updateSelectionToolbar();
+            }
+        });
+    },
+    
+    saveBulbGroup: function(groupName) {
+        if (this.multiBulbSelection.length === 0) {
+            this.showGestureFeedback('No bulbs selected to save', '⚠️');
+            return;
+        }
+        
+        const groupKey = `lifx_bulb_group_${groupName}`;
+        localStorage.setItem(groupKey, JSON.stringify(this.multiBulbSelection));
+        
+        if (!this.savedGroups) {
+            this.savedGroups = [];
+        }
+        if (!this.savedGroups.includes(groupName)) {
+            this.savedGroups.push(groupName);
+            localStorage.setItem('lifx_saved_groups', JSON.stringify(this.savedGroups));
+        }
+        
+        this.showGestureFeedback(`Saved group "${groupName}" (${this.multiBulbSelection.length} bulbs)`, '💾');
+        this.hapticFeedback('success');
+    },
+    
+    loadBulbGroup: function(groupName) {
+        const groupKey = `lifx_bulb_group_${groupName}`;
+        const savedGroup = localStorage.getItem(groupKey);
+        
+        if (!savedGroup) {
+            this.showGestureFeedback(`Group "${groupName}" not found`, '⚠️');
+            return;
+        }
+        
+        const bulbIds = JSON.parse(savedGroup);
+        
+        document.querySelectorAll('.lifx-bulb-control.multi-selected').forEach(el => {
+            el.classList.remove('multi-selected');
+        });
+        
+        this.multiBulbSelection = bulbIds;
+        
+        bulbIds.forEach(id => {
+            const bulbEl = document.querySelector(`.lifx-bulb-control[data-bulb-id="${id}"]`);
+            if (bulbEl) {
+                bulbEl.classList.add('multi-selected');
+            }
+        });
+        
+        this.updateSelectionToolbar();
+        this.showGestureFeedback(`Loaded group "${groupName}" (${bulbIds.length} bulbs)`, '📋');
+        this.hapticFeedback('success');
+    },
+    
+    deleteBulbGroup: function(groupName) {
+        const groupKey = `lifx_bulb_group_${groupName}`;
+        localStorage.removeItem(groupKey);
+        
+        if (this.savedGroups) {
+            this.savedGroups = this.savedGroups.filter(g => g !== groupName);
+            localStorage.setItem('lifx_saved_groups', JSON.stringify(this.savedGroups));
+        }
+        
+        this.showGestureFeedback(`Deleted group "${groupName}"`, '🗑️');
+        this.hapticFeedback('light');
+    },
+    
+    showGroupManagementPanel: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Group Management: Save and load bulb groups for quick selection');
+            return;
+        }
+        
+        this.savedGroups = this.savedGroups || JSON.parse(localStorage.getItem('lifx_saved_groups') || '[]');
+        
+        Swal.fire({
+            title: '<i class="fas fa-users"></i> Bulb Group Management',
+            html: `
+                <div style="padding: 15px; max-width: 500px;">
+                    <div class="group-save-section" style="margin-bottom: 25px;">
+                        <h5 style="color: #00d4ff; margin-bottom: 10px;">
+                            <i class="fas fa-save"></i> Save Current Selection
+                        </h5>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="new-group-name" class="form-control" 
+                                   placeholder="Group name (e.g., Kitchen, Living Room)"
+                                   style="background: rgba(42, 42, 58, 0.8); border: 1px solid #00d4ff; color: white; flex: 1;">
+                            <button class="btn btn-primary" onclick="LifXTouchControls.saveGroupFromPanel()">
+                                <i class="fas fa-save"></i> Save
+                            </button>
+                        </div>
+                        <p style="color: #adb5bd; font-size: 12px; margin-top: 8px;">
+                            Currently selected: ${this.multiBulbSelection.length} bulbs
+                        </p>
+                    </div>
+                    
+                    <div class="saved-groups-section">
+                        <h5 style="color: #00d4ff; margin-bottom: 10px;">
+                            <i class="fas fa-folder-open"></i> Saved Groups
+                        </h5>
+                        ${this.savedGroups.length === 0 
+                            ? '<p style="color: #adb5bd; text-align: center; padding: 20px;">No saved groups yet</p>'
+                            : `<div style="max-height: 200px; overflow-y: auto;">
+                                ${this.savedGroups.map(name => {
+                                    const group = JSON.parse(localStorage.getItem(`lifx_bulb_group_${name}`) || '[]');
+                                    return `
+                                        <div class="saved-group-item" style="
+                                            display: flex;
+                                            justify-content: space-between;
+                                            align-items: center;
+                                            padding: 10px 15px;
+                                            background: rgba(42, 42, 58, 0.5);
+                                            border-radius: 8px;
+                                            margin-bottom: 8px;
+                                            border: 1px solid rgba(0, 212, 255, 0.2);
+                                        ">
+                                            <div>
+                                                <strong style="color: white;">${name}</strong>
+                                                <span style="color: #adb5bd; font-size: 12px; margin-left: 10px;">
+                                                    ${group.length} bulbs
+                                                </span>
+                                            </div>
+                                            <div style="display: flex; gap: 8px;">
+                                                <button class="btn btn-sm btn-success" onclick="LifXTouchControls.loadBulbGroup('${name}'); Swal.close();">
+                                                    <i class="fas fa-folder-open"></i> Load
+                                                </button>
+                                                <button class="btn btn-sm btn-danger" onclick="LifXTouchControls.deleteBulbGroup('${name}'); LifXTouchControls.refreshGroupPanel();">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>`
+                        }
+                    </div>
+                    
+                    ${this.multiBulbSelection.length > 0 ? `
+                        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(0, 212, 255, 0.2);">
+                            <h5 style="color: #00d4ff; margin-bottom: 10px;">
+                                <i class="fas fa-bolt"></i> Quick Actions for Selection
+                            </h5>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                ${['relax', 'focus', 'energize', 'night', 'party', 'movie'].map(scene => `
+                                    <button class="btn btn-sm btn-outline-info" onclick="LifXTouchControls.applySceneBatch('${scene}'); Swal.close();">
+                                        <i class="fas fa-palette"></i> ${scene}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '600px',
+            backdrop: 'rgba(0,0,0,0.8)'
+        });
+    },
+    
+    saveGroupFromPanel: function() {
+        const nameInput = document.getElementById('new-group-name');
+        if (!nameInput) return;
+        
+        const groupName = nameInput.value.trim();
+        if (!groupName) {
+            Swal.showValidationMessage('Please enter a group name');
+            return;
+        }
+        
+        this.saveBulbGroup(groupName);
+        nameInput.value = '';
+        this.refreshGroupPanel();
+    },
+    
+    refreshGroupPanel: function() {
+        if (typeof Swal === 'undefined') return;
+        setTimeout(() => this.showGroupManagementPanel(), 300);
+    },
+    
     setupTouchHoldProgress: function() {
         this.touchHoldProgressEl = document.getElementById('touch-hold-progress');
         this.touchHoldStartTime = 0;
@@ -1271,7 +1520,15 @@ const LifXTouchControls = {
             'swipe': [35, 35],
             'pinch': [40, 30, 40],
             'zone': [50, 40, 50],
-            'media': [30, 30, 30, 30]
+            'media': [30, 30, 30, 30],
+            'edge_swipe': [60, 40, 60, 40, 60],
+            'zone_select': [70, 30, 70, 30, 70],
+            'scene_change': [40, 30, 40, 30, 40],
+            'media_sync_beat': [15, 10, 15],
+            'media_sync_bass': [25, 15, 25],
+            'media_sync_spectrum': [20, 20, 20, 20],
+            'gesture_preview': [30, 20, 30, 20, 30, 20, 30],
+            'tutorial': [50, 30, 50, 30, 50]
         };
         
         const basePattern = basePatterns[pattern] || basePatterns['default'];
@@ -1296,6 +1553,7 @@ const LifXTouchControls = {
         this.touchHoldDelay = this.gestureSensitivity.longPressDelay;
         this.doubleTapDelay = this.gestureSensitivity.doubleTapDelay;
         this.swipeEdgeZone = level === 'very_high' ? 30 : (level === 'high' ? 25 : 20);
+        this.touchSensitivity = level;
         localStorage.setItem('lifx_gesture_sensitivity', level);
         console.log('Gesture sensitivity set to:', level, this.gestureSensitivity);
         
@@ -1961,19 +2219,22 @@ const LifXTouchControls = {
         const currentSensitivityDesc = {
             'low': 'Requires larger movements',
             'medium': 'Balanced responsiveness',
-            'high': 'Most responsive'
+            'high': 'Most responsive',
+            'very_high': 'Ultra-sensitive detection'
         };
         
         const swipeDistances = {
             'low': '80px',
             'medium': '50px', 
-            'high': '30px'
+            'high': '30px',
+            'very_high': '15px'
         };
         
         const longPressDelays = {
             'low': '700ms',
             'medium': '500ms',
-            'high': '300ms'
+            'high': '300ms',
+            'very_high': '200ms'
         };
         
         Swal.fire({
@@ -2068,6 +2329,31 @@ const LifXTouchControls = {
                         <button class="btn btn-sm btn-outline-primary" onclick="LifXTouchControls.testHapticFeedback()">
                             <i class="fas fa-play"></i> Test
                         </button>
+                        <button class="btn btn-sm btn-outline-info" onclick="LifXTouchControls.testAllHapticPatterns()">
+                            <i class="fas fa-layer-group"></i> Test All
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="touch-sensitivity-panel">
+                    <h4><i class="fas fa-hand-paper"></i> Gesture Sensitivity Preview</h4>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-sm btn-outline-primary" onclick="LifXTouchControls.previewGestureSensitivity()">
+                            <i class="fas fa-eye"></i> Preview
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="LifXTouchControls.openGestureTestPanel()">
+                            <i class="fas fa-gamepad"></i> Test Panel
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" onclick="LifXTouchControls.setGestureSensitivity('very_high')">
+                            <i class="fas fa-tachometer-alt"></i> Ultra Mode
+                        </button>
+                    </div>
+                    <div style="margin-top: 10px; padding: 10px; background: rgba(0, 212, 255, 0.1); border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #adb5bd;">
+                            <span><i class="fas fa-sliders-h"></i> Current: <strong style="color: #00d4ff;">${current}</strong></span>
+                            <span><i class="fas fa-ruler-horizontal"></i> Swipe: ${swipeDistances[current]}</span>
+                            <span><i class="fas fa-clock"></i> Hold: ${longPressDelays[current]}</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -2211,6 +2497,140 @@ const LifXTouchControls = {
     testHapticFeedback: function() {
         this.hapticFeedback('success');
         this.showEnhancedGestureFeedback('Test Vibration', '📳', 500);
+    },
+    
+    testAllHapticPatterns: function() {
+        const patterns = ['light', 'success', 'swipe', 'pinch', 'scene_change', 'edge_swipe', 'zone_select', 'beat', 'media_sync_beat'];
+        let index = 0;
+        
+        const testNext = () => {
+            if (index >= patterns.length) {
+                this.showEnhancedGestureFeedback('All patterns tested', '✅', 800);
+                return;
+            }
+            const pattern = patterns[index];
+            this.hapticFeedback(pattern);
+            this.showEnhancedGestureFeedback(`Pattern: ${pattern}`, '📳', 400);
+            index++;
+            setTimeout(testNext, 600);
+        };
+        testNext();
+    },
+    
+    previewGestureSensitivity: function() {
+        if (typeof Swal === 'undefined') return;
+        
+        Swal.fire({
+            title: '<i class="fas fa-hand-pointer"></i> Gesture Sensitivity Preview',
+            html: `
+                <div style="padding: 20px; background: rgba(0,0,0,0.3); border-radius: 10px; margin: 15px 0;">
+                    <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 20px;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; color: #00d4ff;">👆</div>
+                            <div style="font-size: 11px; color: #adb5bd; margin-top: 5px;">Tap</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; color: #ff6b6b;">👆👆</div>
+                            <div style="font-size: 11px; color: #adb5bd; margin-top: 5px;">Double Tap</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; color: #4ecdc4;">✋</div>
+                            <div style="font-size: 11px; color: #adb5bd; margin-top: 5px;">Long Press</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-around; align-items: center;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; color: #ffe66d;">🖐️</div>
+                            <div style="font-size: 11px; color: #adb5bd; margin-top: 5px;">Swipe</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; color: #a55eea;">🤏</div>
+                            <div style="font-size: 11px; color: #adb5bd; margin-top: 5px;">Pinch</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; color: #00ff88;">🎨</div>
+                            <div style="font-size: 11px; color: #adb5bd; margin-top: 5px;">Scene</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="text-align: center; color: #adb5bd; font-size: 12px;">
+                    <p>Current: <strong style="color: #00d4ff;">${this.touchSensitivity}</strong></p>
+                    <p>Swipe distance: <strong>${this.gestureSensitivity.swipeDistance}px</strong></p>
+                    <p>Long press delay: <strong>${this.gestureSensitivity.longPressDelay}ms</strong></p>
+                </div>
+            `,
+            confirmButtonText: 'Test Gestures',
+            showCancelButton: true,
+            cancelButtonText: 'Close',
+            confirmButtonColor: '#00d4ff',
+            cancelButtonColor: '#6c757d',
+            background: 'rgba(30, 30, 45, 0.98)',
+            backdrop: 'rgba(0, 0, 0, 0.8)'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                this.openGestureTestPanel();
+            }
+        });
+    },
+    
+    openGestureTestPanel: function() {
+        if (typeof Swal === 'undefined') return;
+        
+        let testResult = '';
+        const updateResult = (gesture, detected) => {
+            testResult = `<div style="margin-top: 10px; padding: 10px; background: ${detected ? 'rgba(0,255,136,0.2)' : 'rgba(255,107,107,0.2)'}; border-radius: 8px; color: ${detected ? '#00ff88' : '#ff6b6b'};">
+                ${detected ? '✓' : '✗'} Detected: ${gesture}
+            </div>`;
+            Swal.getHtmlContainer().querySelector('.gesture-test-result').innerHTML = testResult;
+        };
+        
+        Swal.fire({
+            title: '<i class="fas fa-gamepad"></i> Gesture Test Panel',
+            html: `
+                <div style="padding: 20px; background: rgba(0,0,0,0.3); border-radius: 10px;">
+                    <p style="color: #adb5bd; margin-bottom: 15px;">Perform gestures on this area to test sensitivity:</p>
+                    <div id="gesture-test-area" style="height: 200px; background: rgba(0, 212, 255, 0.1); border: 2px dashed rgba(0, 212, 255, 0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                        <span style="color: #00d4ff; font-size: 14px;">👆 Tap, swipe, or pinch here</span>
+                    </div>
+                    <div class="gesture-test-result" style="margin-top: 15px; min-height: 40px;"></div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            didOpen: () => {
+                const testArea = document.getElementById('gesture-test-area');
+                let startX, startY, startTime;
+                
+                testArea.addEventListener('touchstart', (e) => {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                    startTime = Date.now();
+                }, { passive: true });
+                
+                testArea.addEventListener('touchend', (e) => {
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+                    const deltaX = endX - startX;
+                    const deltaY = endY - startY;
+                    const deltaTime = Date.now() - startTime;
+                    
+                    if (Math.abs(deltaX) > this.gestureSensitivity.swipeDistance) {
+                        updateResult(deltaX > 0 ? 'Swipe Right' : 'Swipe Left', true);
+                        this.hapticFeedback('swipe');
+                    } else if (Math.abs(deltaY) > this.gestureSensitivity.swipeDistance) {
+                        updateResult(deltaY > 0 ? 'Swipe Down' : 'Swipe Up', true);
+                        this.hapticFeedback('swipe');
+                    } else if (deltaTime < this.gestureSensitivity.doubleTapDelay) {
+                        updateResult('Tap', true);
+                        this.hapticFeedback('light');
+                    } else {
+                        updateResult('Invalid gesture', false);
+                    }
+                });
+            },
+            background: 'rgba(30, 30, 45, 0.98)',
+            backdrop: 'rgba(0, 0, 0, 0.8)'
+        });
     },
     
     savePreferences: function() {
@@ -2613,11 +3033,17 @@ const LifXTouchControls = {
         `;
     },
     
+    frequencyDataCache: null,
+    visualizationFrameCount: 0,
+    lastVisualizationUpdate: 0,
+    visualizationThrottleMs: 33,
+    
     monitorFrequencyBands: function() {
         if (!this.audioAnalyzer) return;
         
         const bufferLength = this.audioAnalyzer.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
+        this.frequencyDataCache = new Uint8Array(bufferLength);
+        const smoothedValues = { subBass: 0, bass: 0, lowMid: 0, mid: 0, highMid: 0, treble: 0 };
         
         const analyzeBands = () => {
             if (!this.mediaPlaybackActive) {
@@ -2625,18 +3051,34 @@ const LifXTouchControls = {
                 return;
             }
             
-            this.audioAnalyzer.getByteFrequencyData(dataArray);
+            this.audioAnalyzer.getByteFrequencyData(this.frequencyDataCache);
             
             const bands = this.frequencyBands;
-            bands.subBass.value = this.getBandAverage(dataArray, bands.subBass.min, bands.subBass.max);
-            bands.bass.value = this.getBandAverage(dataArray, bands.bass.min, bands.bass.max);
-            bands.lowMid.value = this.getBandAverage(dataArray, bands.lowMid.min, bands.lowMid.max);
-            bands.mid.value = this.getBandAverage(dataArray, bands.mid.min, bands.mid.max);
-            bands.highMid.value = this.getBandAverage(dataArray, bands.highMid.min, bands.highMid.max);
-            bands.treble.value = this.getBandAverage(dataArray, bands.treble.min, bands.treble.max);
+            const rawData = {
+                subBass: this.getBandAverage(this.frequencyDataCache, bands.subBass.min, bands.subBass.max),
+                bass: this.getBandAverage(this.frequencyDataCache, bands.bass.min, bands.bass.max),
+                lowMid: this.getBandAverage(this.frequencyDataCache, bands.lowMid.min, bands.lowMid.max),
+                mid: this.getBandAverage(this.frequencyDataCache, bands.mid.min, bands.mid.max),
+                highMid: this.getBandAverage(this.frequencyDataCache, bands.highMid.min, bands.highMid.max),
+                treble: this.getBandAverage(this.frequencyDataCache, bands.treble.min, bands.treble.max)
+            };
             
-            this.updateFrequencyVisualization();
-            this.analyzeBeatPattern();
+            const smoothingFactor = 0.25;
+            for (const band in smoothedValues) {
+                smoothedValues[band] = smoothedValues[band] + (rawData[band] - smoothedValues[band]) * smoothingFactor;
+                bands[band].value = smoothedValues[band];
+            }
+            
+            const now = Date.now();
+            if (now - this.lastVisualizationUpdate > this.visualizationThrottleMs) {
+                this.updateFrequencyVisualization();
+                this.lastVisualizationUpdate = now;
+            }
+            
+            this.visualizationFrameCount++;
+            if (this.visualizationFrameCount % 30 === 0) {
+                this.analyzeBeatPattern();
+            }
             
             requestAnimationFrame(analyzeBands);
         };

@@ -877,6 +877,11 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
         pulseLifxStandard(beatStrength, targets, bpm, intensity);
     }
     
+    if (LifXTouchControls && LifXTouchControls.hapticEnabled && intensity > 0.5) {
+        const hapticPattern = intensity > 0.8 ? 'media_sync_bass' : 'media_sync_beat';
+        LifXTouchControls.hapticFeedback(hapticPattern, intensity);
+    }
+    
     updateBpmDisplay();
 }
 
@@ -3321,7 +3326,8 @@ function startBeatDetection() {
         if (!MediaPlayer.audioContext) {
             MediaPlayer.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             MediaPlayer.analyser = MediaPlayer.audioContext.createAnalyser();
-            MediaPlayer.analyser.fftSize = 256;
+            MediaPlayer.analyser.fftSize = 512;
+            MediaPlayer.analyser.smoothingTimeConstant = 0.8;
             MediaPlayer.mediaElementSource = MediaPlayer.audioContext.createMediaElementSource(mediaElement);
             MediaPlayer.mediaElementSource.connect(MediaPlayer.analyser);
             MediaPlayer.analyser.connect(MediaPlayer.audioContext.destination);
@@ -3329,6 +3335,10 @@ function startBeatDetection() {
         
         const bufferLength = MediaPlayer.analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
+        const smoothedEnergy = { value: 0 };
+        let frameCount = 0;
+        let lastVisualizationUpdate = 0;
+        const visualizationThrottleMs = 33;
         
         const detectBeat = () => {
             if (!MediaPlayer.beatDetection.enabled) return;
@@ -3339,8 +3349,11 @@ function startBeatDetection() {
             const mid = dataArray.slice(10, 30).reduce((a, b) => a + b, 0) / 20;
             const now = Date.now();
             
+            const rawEnergy = (bass * 0.7) + (mid * 0.3);
+            smoothedEnergy.value = smoothedEnergy.value + (rawEnergy - smoothedEnergy.value) * 0.25;
+            
             const adaptiveThreshold = MediaPlayer.beatDetection.threshold * 255;
-            const energy = (bass * 0.7) + (mid * 0.3);
+            const energy = smoothedEnergy.value;
             const timeSinceLastBeat = now - MediaPlayer.beatDetection.lastBeatTime;
             
             const minInterval = Math.max(100, 60000 / (MediaPlayer.beatDetection.bpmEstimate + 20));
@@ -3378,7 +3391,11 @@ function startBeatDetection() {
                     });
                 }
                 
-                pulseVisualization();
+                frameCount++;
+                if (now - lastVisualizationUpdate > visualizationThrottleMs) {
+                    pulseVisualization();
+                    lastVisualizationUpdate = now;
+                }
                 updateBpmDisplay();
             }
             
