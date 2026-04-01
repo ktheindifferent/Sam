@@ -223,3 +223,27 @@ pub fn patch_wasapi_player_for_mingw() -> std::io::Result<()> {
     fs::write(file, patched)?;
     Ok(())
 }
+
+/// Check if snapcast server is running
+pub fn status() -> Result<bool, Box<dyn std::error::Error>> {
+    use std::process::Command;
+    
+    #[cfg(windows)]
+    {
+        let output = Command::new("tasklist")
+            .arg("/FI")
+            .arg("IMAGENAME eq snapserver.exe")
+            .output()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.contains("snapserver.exe"))
+    }
+    
+    #[cfg(unix)]
+    {
+        let output = Command::new("pgrep")
+            .arg("-x")
+            .arg("snapserver")
+            .output()?;
+        Ok(output.status.success())
+    }
+}

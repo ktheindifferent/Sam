@@ -21,6 +21,8 @@ pub fn calculate_health_score(status: &ServiceStatus) -> u16 {
         &status.ssh_server,
         &status.lifx,
         &status.sms,
+        &status.media,
+        &status.snapcast,
     ];
 
     let total = services.len() as f64;
@@ -60,7 +62,7 @@ pub fn render_system_info_mode(
         .block(Block::default().borders(Borders::ALL).title("System Health"))
         .gauge_style(Style::default().fg(gauge_color).add_modifier(Modifier::BOLD))
         .percent(score)
-        .label(format!("{}% ({}/11 services healthy)", score, (score as f64 * 11.0 / 100.0).round() as u16));
+        .label(format!("{}% ({}/13 services healthy)", score, (score as f64 * 13.0 / 100.0).round() as u16));
     f.render_widget(gauge, chunks[0]);
 
     let system_lines = vec![
@@ -127,6 +129,18 @@ pub fn render_system_info_mode(
         Line::from(vec![
             Span::styled("SSH Server: ", Style::default().fg(Color::Yellow)),
             Span::styled(&status.ssh_server, get_status_color(&status.ssh_server)),
+        ]),
+        Line::from(vec![
+            Span::styled("LIFX Lights: ", Style::default().fg(Color::Yellow)),
+            Span::styled(&status.lifx, get_status_color(&status.lifx)),
+        ]),
+        Line::from(vec![
+            Span::styled("Media Center: ", Style::default().fg(Color::Yellow)),
+            Span::styled(&status.media, get_status_color(&status.media)),
+        ]),
+        Line::from(vec![
+            Span::styled("Snapcast: ", Style::default().fg(Color::Yellow)),
+            Span::styled(&status.snapcast, get_status_color(&status.snapcast)),
         ]),
     ];
 

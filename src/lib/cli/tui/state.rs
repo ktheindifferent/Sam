@@ -48,6 +48,8 @@ pub struct ServiceStatus {
     pub tts: String,
     pub stt: String,
     pub ssh_server: String,
+    pub media: String,
+    pub snapcast: String,
     pub memory_usage: String,
     pub cpu_usage: String,
     pub disk_usage: String,

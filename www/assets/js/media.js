@@ -51,7 +51,9 @@ const MediaPlayer = {
     },
     lifxSceneMode: 'ambient',
     lifxColorHistory: [],
-    lifxScreenAnalyzer: null
+    lifxScreenAnalyzer: null,
+    zonePresets: {},
+    lastZoneAdjustment: 0
 };
 
 // Initialize when DOM is ready
@@ -67,6 +69,7 @@ function initMediaCenter() {
     initMediaSession();
     initVoiceCommands();
     initAmbientLightSync();
+    initZonePresets();
     console.log('Media Center initialized');
 }
 
@@ -1159,6 +1162,47 @@ function toggleCrossfade() {
     }
     
     showNotification(`Crossfade ${MediaPlayer.crossfadeEnabled ? 'enabled' : 'disabled'}`, 'info');
+}
+
+// Zone presets for quick multi-zone configuration
+function initZonePresets() {
+    const saved = localStorage.getItem('sam_zone_presets');
+    if (saved) {
+        try {
+            MediaPlayer.zonePresets = JSON.parse(saved);
+        } catch (e) {
+            console.warn('Failed to load zone presets:', e);
+        }
+    }
+}
+
+function saveZonePreset(name, config) {
+    MediaPlayer.zonePresets[name] = config;
+    localStorage.setItem('sam_zone_presets', JSON.stringify(MediaPlayer.zonePresets));
+    showNotification(`Zone preset "${name}" saved`, 'success');
+}
+
+function loadZonePreset(name) {
+    const preset = MediaPlayer.zonePresets[name];
+    if (preset) {
+        preset.forEach(zone => {
+            setClientVolume(zone.id, zone.volume);
+            if (zone.muted) toggleClientMute(zone.id);
+        });
+        showNotification(`Loaded preset "${name}"`, 'success');
+    } else {
+        showNotification(`Preset "${name}" not found`, 'warning');
+    }
+}
+
+function createZonePresetFromCurrent(name) {
+    const config = MediaPlayer.snapcastClients.map(client => ({
+        id: client.id,
+        name: client.name,
+        volume: client.volume?.percent || 50,
+        muted: client.volume?.muted || false
+    }));
+    saveZonePreset(name, config);
 }
 
 // Add track to favorites

@@ -64,6 +64,9 @@ pub fn render_command_mode(
             Span::raw("  "),
             Span::styled("LIFX: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
             Span::styled(&status.lifx, get_status_color(&status.lifx)),
+            Span::raw("  "),
+            Span::styled("Media: ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow)),
+            Span::styled(&status.media, get_status_color(&status.media)),
         ]),
         Line::from(vec![
             Span::styled("System: ", ratatui::style::Style::default().fg(ratatui::style::Color::Cyan)),

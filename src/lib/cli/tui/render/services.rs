@@ -30,6 +30,8 @@ pub fn render_services_mode(
         ("TTS", &status.tts),
         ("STT", &status.stt),
         ("SSH Server", &status.ssh_server),
+        ("Media Center", &status.media),
+        ("Snapcast", &status.snapcast),
     ];
 
     let service_items: Vec<ListItem> = services

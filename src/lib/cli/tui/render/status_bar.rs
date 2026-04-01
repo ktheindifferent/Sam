@@ -43,9 +43,10 @@ pub fn render_status_bar(
     let running_count = [
         &status.crawler, &status.redis, &status.docker, &status.postgres,
         &status.http_server, &status.ollama, &status.ssh_server,
+        &status.media, &status.snapcast, &status.lifx,
     ].iter().filter(|s| **s == "running" || **s == "connected").count();
 
-    let total_services = 7;
+    let total_services = 10;
     let status_text = Line::from(vec![
         Span::styled(format!("{}/{}", running_count, total_services), Style::default().fg(Color::Green)),
         Span::raw(" svcs "),

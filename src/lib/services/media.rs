@@ -44,3 +44,8 @@ pub async fn initialize() -> anyhow::Result<()> {
     
     Ok(())
 }
+
+/// Check if media service is running
+pub fn status() -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}

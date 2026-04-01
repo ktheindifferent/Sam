@@ -218,6 +218,15 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
                     status.tts = tts;
                     status.stt = stt;
                     status.ssh_server = ssh_server;
+                    status.media = match crate::services::media::status() {
+                        Ok(_) => "running".to_string(),
+                        Err(_) => "stopped".to_string(),
+                    };
+                    status.snapcast = match crate::services::snapcast::status() {
+                        Ok(true) => "running".to_string(),
+                        Ok(false) => "stopped".to_string(),
+                        Err(_) => "error".to_string(),
+                    };
                     status.memory_usage = memory_usage;
                     status.cpu_usage = cpu_usage;
                     status.disk_usage = disk_usage;

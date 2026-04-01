@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -40,6 +40,8 @@ const LifXTouchControls = {
         pinchDistance: 30
     },
     hapticEnabled: true,
+    ambientLightSync: false,
+    mediaPlaybackActive: false,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -47,6 +49,7 @@ const LifXTouchControls = {
         this.enabled = true;
         this.isTouchDevice = typeof is_touch_enabled === 'function' && is_touch_enabled();
         this.loadGestureSensitivity();
+        this.loadSavedPreferences();
         console.log('LIFX Touch Controls enabled', this.isTouchDevice ? '(Touch Device)' : '(Mouse/Keyboard)');
         
         // Add visual indicators for touch-controlled elements
@@ -759,6 +762,7 @@ const LifXTouchControls = {
         }
         
         const lastGesture = this.gestureHistory.pop();
+        this.savePreferences();
         const targets = this.multiBulbSelection.length > 0 
             ? this.multiBulbSelection 
             : (this.selectedBulb ? [this.selectedBulb] : []);
@@ -935,7 +939,10 @@ const LifXTouchControls = {
             'arctic': { hue: 210, saturation: 55, brightness: 85, kelvin: 7000 },
             'tropical': { hue: 150, saturation: 100, brightness: 72, kelvin: 3800 },
             'spring': { hue: 140, saturation: 76, brightness: 93, kelvin: 4200 },
-            'autumn': { hue: 30, saturation: 66, brightness: 88, kelvin: 2800 }
+            'autumn': { hue: 30, saturation: 66, brightness: 88, kelvin: 2800 },
+            'meditation': { hue: 280, saturation: 30, brightness: 40, kelvin: 2400 },
+            'gaming': { hue: 280, saturation: 80, brightness: 90, kelvin: 5500 },
+            'cooking': { hue: 35, saturation: 60, brightness: 95, kelvin: 4000 }
         };
         
         const scene = sceneColors[sceneName];
@@ -985,6 +992,117 @@ const LifXTouchControls = {
             undoBtn.classList.add('visible');
         } else {
             undoBtn.classList.remove('visible');
+        }
+    },
+    
+    savePreferences: function() {
+        const prefs = {
+            brightnessLevel: this.brightnessLevel,
+            colorTempLevel: this.colorTempLevel,
+            currentScene: this.currentScene,
+            ambientLightSync: this.ambientLightSync,
+            hapticEnabled: this.hapticEnabled
+        };
+        localStorage.setItem('lifx_preferences', JSON.stringify(prefs));
+    },
+    
+    loadSavedPreferences: function() {
+        const saved = localStorage.getItem('lifx_preferences');
+        if (saved) {
+            try {
+                const prefs = JSON.parse(saved);
+                if (prefs.brightnessLevel) this.brightnessLevel = prefs.brightnessLevel;
+                if (prefs.colorTempLevel) this.colorTempLevel = prefs.colorTempLevel;
+                if (prefs.currentScene) this.currentScene = prefs.currentScene;
+                if (prefs.ambientLightSync !== undefined) this.ambientLightSync = prefs.ambientLightSync;
+                if (prefs.hapticEnabled !== undefined) this.hapticEnabled = prefs.hapticEnabled;
+            } catch (e) {
+                console.error('Failed to load LIFX preferences:', e);
+            }
+        }
+    },
+    
+    toggleAmbientLightSync: function() {
+        this.ambientLightSync = !this.ambientLightSync;
+        this.savePreferences();
+        
+        if (this.ambientLightSync) {
+            this.startAmbientSync();
+            this.showGestureFeedback('Ambient Sync ON', '🌈');
+        } else {
+            this.stopAmbientSync();
+            this.showGestureFeedback('Ambient Sync OFF', '⬜');
+        }
+    },
+    
+    startAmbientSync: function() {
+        if (!this.mediaPlaybackActive) return;
+        
+        const syncColors = () => {
+            if (!this.ambientLightSync) return;
+            
+            const video = document.querySelector('video');
+            if (video && !video.paused) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1;
+                canvas.height = 1;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, 1, 1);
+                const pixel = ctx.getImageData(0, 0, 1, 1).data;
+                
+                const rgb = { r: pixel[0], g: pixel[1], b: pixel[2] };
+                const hsv = this.rgbToHsv(rgb.r, rgb.g, rgb.b);
+                
+                const targets = this.multiBulbSelection.length > 0 
+                    ? this.multiBulbSelection 
+                    : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+                
+                $.ajax({
+                    url: '/api/services/lifx/set_color',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: `id:${targets.join(',')}`,
+                        color: `hue:${Math.round(hsv.h * 182)} saturation:${Math.round(hsv.s * 100)}%`,
+                        brightness: Math.round(hsv.v * 100),
+                        duration: 0.2
+                    })
+                });
+            }
+            
+            setTimeout(syncColors, 500);
+        };
+        
+        syncColors();
+    },
+    
+    stopAmbientSync: function() {
+        this.ambientLightSync = false;
+    },
+    
+    rgbToHsv: function(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, v = max;
+        const d = max - min;
+        s = max === 0 ? 0 : d / max;
+        if (max === min) {
+            h = 0;
+        } else {
+            switch (max) {
+                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                case g: h = (b - r) / d + 2; break;
+                case b: h = (r - g) / d + 4; break;
+            }
+            h /= 6;
+        }
+        return { h, s, v };
+    },
+    
+    setMediaPlaybackActive: function(active) {
+        this.mediaPlaybackActive = active;
+        if (active && this.ambientLightSync) {
+            this.startAmbientSync();
         }
     }
 };
