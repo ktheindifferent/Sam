@@ -1329,3 +1329,301 @@
         width: 90%;
     }
 }
+
+/* Beat detection button */
+#beat-detection-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+#beat-detection-btn.active {
+    background: rgba(255, 107, 107, 0.3) !important;
+    border-color: #ff6b6b !important;
+    color: #ff6b6b !important;
+    animation: beat-detect-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes beat-detect-pulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(255, 107, 107, 0.3); }
+    50% { box-shadow: 0 0 25px rgba(255, 107, 107, 0.8); }
+}
+
+/* LIFX media sync button */
+#lifx-sync-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+#lifx-sync-btn.active {
+    background: rgba(0, 255, 136, 0.3) !important;
+    border-color: #00ff88 !important;
+    color: #00ff88 !important;
+    animation: sync-pulse 2s ease-in-out infinite;
+}
+
+@keyframes sync-pulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 136, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(0, 255, 136, 0.8); }
+}
+
+/* Zone control button */
+#lifx-zone-control-btn {
+    position: relative;
+}
+
+#lifx-zone-control-btn.active {
+    background: rgba(155, 89, 182, 0.3) !important;
+    border-color: #9b59b6 !important;
+    color: #9b59b6 !important;
+}
+
+/* Zone item selection */
+.zone-item {
+    transition: all 0.2s ease;
+}
+
+.zone-item.selected {
+    background: rgba(0, 212, 255, 0.3) !important;
+    border-color: #00d4ff !important;
+    transform: scale(1.1);
+}
+
+.zone-color-btn {
+    transition: all 0.2s ease;
+}
+
+.zone-color-btn:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 15px currentColor;
+}
+
+.zone-color-btn:active {
+    transform: scale(0.9);
+}
+
+/* Media center enhanced controls */
+.media-center-enhanced-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 15px;
+    background: rgba(42, 42, 58, 0.5);
+    border-radius: 15px;
+    margin: 10px 0;
+}
+
+.media-center-enhanced-btn {
+    flex: 0 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 15px;
+    background: rgba(39, 160, 185, 0.2);
+    border: 1px solid rgba(39, 160, 185, 0.3);
+    border-radius: 12px;
+    color: #adb5bd;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 70px;
+}
+
+.media-center-enhanced-btn:active {
+    transform: scale(0.95);
+}
+
+.media-center-enhanced-btn.active {
+    background: rgba(39, 160, 185, 0.4);
+    border-color: #27a0b9;
+    color: #00d4ff;
+}
+
+.media-center-enhanced-btn i {
+    font-size: 18px;
+}
+
+.media-center-enhanced-btn span {
+    font-size: 10px;
+    font-weight: 500;
+}
+
+/* Touch gesture tutorial modal */
+.touch-gesture-tutorial {
+    background: rgba(30, 30, 45, 0.98);
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 500px;
+    margin: 20px;
+}
+
+.touch-gesture-tutorial h3 {
+    color: #00d4ff;
+    margin-bottom: 20px;
+    font-size: 20px;
+}
+
+.touch-gesture-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px;
+    margin: 8px 0;
+    background: rgba(42, 42, 58, 0.5);
+    border-radius: 10px;
+    border: 1px solid rgba(39, 160, 185, 0.2);
+}
+
+.touch-gesture-icon {
+    font-size: 28px;
+    width: 50px;
+    text-align: center;
+    color: #00d4ff;
+}
+
+.touch-gesture-description {
+    flex: 1;
+    color: #adb5bd;
+    font-size: 13px;
+}
+
+.touch-gesture-description strong {
+    color: white;
+    display: block;
+    margin-bottom: 3px;
+}
+
+/* LIFX mobile control panel */
+.lifx-mobile-control-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(20, 20, 30, 0.98);
+    backdrop-filter: blur(20px);
+    border-radius: 20px 20px 0 0;
+    padding: 20px;
+    z-index: 9999;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+    border-top: 1px solid rgba(39, 160, 185, 0.3);
+}
+
+.lifx-mobile-control-panel.visible {
+    transform: translateY(0);
+}
+
+.lifx-mobile-control-panel h4 {
+    color: #00d4ff;
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+
+.lifx-mobile-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.lifx-mobile-slider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lifx-mobile-slider label {
+    width: 80px;
+    color: #adb5bd;
+    font-size: 13px;
+}
+
+.lifx-mobile-slider input[type="range"] {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(42, 42, 58, 0.5);
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.lifx-mobile-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #27a0b9;
+    cursor: pointer;
+}
+
+.lifx-mobile-colors {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 0;
+    -webkit-overflow-scrolling: touch;
+}
+
+.lifx-mobile-color-btn {
+    flex: 0 0 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lifx-mobile-color-btn:active {
+    transform: scale(0.9);
+}
+
+.lifx-mobile-color-btn.selected {
+    border-color: white;
+    box-shadow: 0 0 10px currentColor;
+}
+
+.lifx-mobile-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.lifx-mobile-actions button {
+    flex: 1;
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+/* Party mode indicator */
+.party-mode-active {
+    animation: party-flash 0.5s ease-in-out infinite;
+}
+
+@keyframes party-flash {
+    0%, 100% { background-color: rgba(255, 0, 128, 0.3); }
+    50% { background-color: rgba(0, 255, 128, 0.3); }
+}
+
+/* BPM display */
+.bpm-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    background: rgba(255, 107, 107, 0.2);
+    border-radius: 15px;
+    font-size: 12px;
+    color: #ff6b6b;
+    margin-left: 10px;
+}
+
+.bpm-display.active {
+    animation: bpm-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes bpm-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.05); }
+}

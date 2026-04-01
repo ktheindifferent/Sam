@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice', 'aurora', 'nebula', 'thunder'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice', 'aurora', 'nebula', 'thunder', 'crystal', 'lagoon', 'cotton_candy', 'spring_blossom', 'punchbowl', 'smashing', 'glitter', 'golden_hour', 'late_night', 'midday', 'polar'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -57,6 +57,7 @@ const LifXTouchControls = {
         this.loadGestureSensitivity();
         this.loadSavedPreferences();
         this.initGestureEnhancements();
+        this.initMediaSync();
         console.log('LIFX Touch Controls enabled', this.isTouchDevice ? '(Touch Device)' : '(Mouse/Keyboard)');
         
         // Add visual indicators for touch-controlled elements
@@ -1378,7 +1379,127 @@ const LifXTouchControls = {
         this.setupMultiSelectMode();
         this.setupTouchHoldProgress();
         this.setupQuickActions();
+        this.setupZoneControl();
         console.log('Gesture enhancements initialized');
+    },
+    
+    setupZoneControl: function() {
+        const zoneControlBtn = document.getElementById('lifx-zone-control-btn');
+        if (zoneControlBtn) {
+            zoneControlBtn.addEventListener('click', () => this.openZoneControl());
+        }
+    },
+    
+    openZoneControl: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Zone control requires SweetAlert2');
+            return;
+        }
+        
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        Swal.fire({
+            title: 'Zone Control',
+            html: `
+                <div style="padding: 20px;">
+                    <div class="zone-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 20px;">
+                        ${Array.from({length: 10}, (_, i) => `
+                            <div class="zone-item" data-zone="${i}" style="padding: 15px 10px; background: rgba(39, 160, 185, 0.2); border: 2px solid transparent; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;"
+                                 onclick="LifXTouchControls.selectZone(${i}, this)">
+                                <i class="fas fa-lightbulb" style="font-size: 20px; margin-bottom: 5px;"></i>
+                                <div style="font-size: 11px;">Zone ${i + 1}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="zone-color-picker" style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+                        ${['#ff0000', '#ff8000', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#8000ff', '#ff00ff', '#ffffff', '#ffcc00'].map(color => `
+                            <button class="zone-color-btn" style="width: 40px; height: 40px; border-radius: 50%; border: 3px solid transparent; background: ${color}; cursor: pointer; transition: all 0.2s;"
+                                    onclick="LifXTouchControls.applyZoneColor('${color}', '${targets.join(',')}')"></button>
+                        `).join('')}
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '600px'
+        });
+    },
+    
+    selectZone: function(zoneIndex, element) {
+        document.querySelectorAll('.zone-item').forEach(el => {
+            el.style.borderColor = 'transparent';
+            el.style.background = 'rgba(39, 160, 185, 0.2)';
+        });
+        element.style.borderColor = '#00d4ff';
+        element.style.background = 'rgba(0, 212, 255, 0.3)';
+        this.selectedZone = zoneIndex;
+        this.hapticFeedback('selection', 0.6);
+    },
+    
+    applyZoneColor: function(hexColor, targetString) {
+        const targets = targetString.split(',');
+        const rgb = this.hexToRgb(hexColor);
+        const hsv = this.rgbToHsv(rgb.r, rgb.g, rgb.b);
+        
+        $.ajax({
+            url: '/api/services/lifx/zones',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                start_index: this.selectedZone || 0,
+                end_index: this.selectedZone || 0,
+                color: `hue:${Math.round(hsv.h * 182)} saturation:${Math.round(hsv.s * 100)}%`,
+                duration: 0.5
+            }),
+            success: () => {
+                this.showGestureFeedback(`Zone ${this.selectedZone + 1} updated`, '🎨');
+                this.hapticFeedback('success');
+                if (typeof Swal !== 'undefined') Swal.close();
+            }
+        });
+    },
+    
+    initMediaSync: function() {
+        if (typeof MediaPlayer !== 'undefined') {
+            MediaPlayer.onLifxUpdate = (data) => {
+                if (this.lifxMediaSyncEnabled) {
+                    this.applyMediaLighting(data);
+                }
+            };
+        }
+    },
+    
+    applyMediaLighting: function(mediaData) {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        if (mediaData.type === 'beat') {
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: `id:${targets.join(',')}`,
+                    brightness: 100,
+                    duration: 0.1
+                })
+            });
+        } else if (mediaData.type === 'color') {
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: `id:${targets.join(',')}`,
+                    color: `hue:${mediaData.hue} saturation:${mediaData.saturation}%`,
+                    duration: 0.3
+                })
+            });
+        }
     },
     
     loadSavedPreferences: function() {

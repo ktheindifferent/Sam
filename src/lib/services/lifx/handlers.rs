@@ -555,6 +555,7 @@ pub fn handle_enhanced_api_request(request: &Request) -> Response {
 /// Built-in scene definitions
 const SCENES: &[(&str, u16, u16, u16, u16)] = &[
     // (name, hue, saturation, brightness, kelvin)
+    // Core scenes
     ("relax", 5800, 15000, 26214, 2700),
     ("focus", 19000, 8000, 52428, 5000),
     ("energize", 41000, 20000, 65535, 6500),
@@ -582,6 +583,27 @@ const SCENES: &[(&str, u16, u16, u16, u16)] = &[
     ("rainbow", 0, 65535, 52428, 4000),
     ("fireplace", 5460, 52428, 39321, 2000),
     ("ice", 36400, 32767, 45875, 8000),
+    // Extended scenes
+    ("aurora", 32760, 45875, 49151, 6000),
+    ("nebula", 50960, 52428, 45875, 4500),
+    ("thunder", 5460, 39321, 58982, 5000),
+    ("crystal", 34580, 26214, 52428, 7500),
+    ("lagoon", 32760, 32767, 45875, 5500),
+    ("cotton_candy", 60000, 32767, 52428, 4000),
+    ("spring_blossom", 25480, 39321, 58982, 4500),
+    ("punchbowl", 5460, 45875, 55705, 3500),
+    ("smashing", 43680, 52428, 58982, 5000),
+    ("glitter", 5800, 26214, 52428, 3000),
+    ("golden_hour", 8000, 26214, 49151, 3500),
+    ("late_night", 43680, 6553, 19660, 2000),
+    ("midday", 36400, 13107, 62259, 6000),
+    ("polar", 32760, 19660, 55705, 8000),
+    ("savanna", 7098, 32767, 52428, 4000),
+    ("koi_pond", 25480, 39321, 45875, 4500),
+    ("bliss", 60000, 19660, 49151, 3800),
+    ("peak", 34580, 45875, 58982, 5500),
+    ("vapor", 50960, 26214, 45875, 4200),
+    ("chill", 32760, 13107, 42598, 5000),
 ];
 
 /// Handle scene operations

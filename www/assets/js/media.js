@@ -2185,6 +2185,196 @@ function initEqualizerVisualization() {
     }
 }
 
+function initBeatDetection() {
+    const beatDetectionBtn = document.getElementById('beat-detection-btn');
+    if (beatDetectionBtn) {
+        beatDetectionBtn.addEventListener('click', () => toggleBeatDetection());
+    }
+}
+
+function toggleBeatDetection() {
+    MediaPlayer.beatDetection.enabled = !MediaPlayer.beatDetection.enabled;
+    
+    const btn = document.getElementById('beat-detection-btn');
+    if (btn) {
+        btn.classList.toggle('active', MediaPlayer.beatDetection.enabled);
+    }
+    
+    if (MediaPlayer.beatDetection.enabled) {
+        startBeatDetection();
+        showNotification('Beat detection enabled', 'success');
+    } else {
+        stopBeatDetection();
+        showNotification('Beat detection disabled', 'info');
+    }
+}
+
+function startBeatDetection() {
+    const video = document.querySelector('video');
+    const audio = document.querySelector('audio');
+    const mediaElement = video || audio;
+    
+    if (!mediaElement) return;
+    
+    try {
+        if (!MediaPlayer.audioContext) {
+            MediaPlayer.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            MediaPlayer.analyser = MediaPlayer.audioContext.createAnalyser();
+            MediaPlayer.analyser.fftSize = 256;
+            MediaPlayer.mediaElementSource = MediaPlayer.audioContext.createMediaElementSource(mediaElement);
+            MediaPlayer.mediaElementSource.connect(MediaPlayer.analyser);
+            MediaPlayer.analyser.connect(MediaPlayer.audioContext.destination);
+        }
+        
+        const bufferLength = MediaPlayer.analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        const detectBeat = () => {
+            if (!MediaPlayer.beatDetection.enabled) return;
+            
+            MediaPlayer.analyser.getByteFrequencyData(dataArray);
+            
+            const bass = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+            const now = Date.now();
+            
+            if (bass > MediaPlayer.beatDetection.sensitivity * 255 && 
+                now - MediaPlayer.beatDetection.lastBeatTime > 150) {
+                MediaPlayer.beatDetection.lastBeatTime = now;
+                MediaPlayer.beatDetection.beatCount++;
+                
+                if (MediaPlayer.onLifxUpdate) {
+                    MediaPlayer.onLifxUpdate({ type: 'beat', intensity: bass / 255 });
+                }
+                
+                pulseVisualization();
+            }
+            
+            requestAnimationFrame(detectBeat);
+        };
+        
+        detectBeat();
+    } catch (err) {
+        console.error('Beat detection error:', err);
+    }
+}
+
+function stopBeatDetection() {
+    if (MediaPlayer.audioContext) {
+        MediaPlayer.audioContext.close();
+        MediaPlayer.audioContext = null;
+        MediaPlayer.analyser = null;
+        MediaPlayer.mediaElementSource = null;
+    }
+}
+
+function pulseVisualization() {
+    document.querySelectorAll('.media-visualization-bar').forEach((bar, i) => {
+        const height = 20 + Math.random() * 80;
+        bar.style.height = `${height}%`;
+        setTimeout(() => {
+            bar.style.height = `${10 + i * 10}%`;
+        }, 100);
+    });
+}
+
+function initLifxMediaSync() {
+    const lifxSyncBtn = document.getElementById('lifx-sync-btn');
+    if (lifxSyncBtn) {
+        lifxSyncBtn.addEventListener('click', () => toggleLifxMediaSync());
+    }
+}
+
+function toggleLifxMediaSync() {
+    if (typeof LifXTouchControls === 'undefined') {
+        showNotification('LIFX controls not available', 'error');
+        return;
+    }
+    
+    MediaPlayer.lifxMediaSyncEnabled = !MediaPlayer.lifxMediaSyncEnabled;
+    
+    const btn = document.getElementById('lifx-sync-btn');
+    if (btn) {
+        btn.classList.toggle('active', MediaPlayer.lifxMediaSyncEnabled);
+    }
+    
+    if (MediaPlayer.lifxMediaSyncEnabled) {
+        if (typeof LifXTouchControls !== 'undefined') {
+            LifXTouchControls.lifxMediaSyncEnabled = true;
+        }
+        startLightSync();
+        showNotification('LIFX media sync enabled', 'success');
+    } else {
+        if (typeof LifXTouchControls !== 'undefined') {
+            LifXTouchControls.lifxMediaSyncEnabled = false;
+        }
+        stopLightSync();
+        showNotification('LIFX media sync disabled', 'info');
+    }
+}
+
+function startLightSync() {
+    const video = document.querySelector('video');
+    if (!video) return;
+    
+    const syncLights = () => {
+        if (!MediaPlayer.lifxMediaSyncEnabled || video.paused) {
+            return;
+        }
+        
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1;
+            canvas.height = 1;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, 1, 1);
+            const pixel = ctx.getImageData(0, 0, 1, 1).data;
+            
+            const rgb = { r: pixel[0], g: pixel[1], b: pixel[2] };
+            const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+            
+            if (MediaPlayer.onLifxUpdate) {
+                MediaPlayer.onLifxUpdate({
+                    type: 'color',
+                    hue: Math.round(hsv.h * 182),
+                    saturation: Math.round(hsv.s * 100)
+                });
+            }
+        } catch (err) {
+            console.error('Light sync error:', err);
+        }
+        
+        MediaPlayer.lightSyncInterval = setTimeout(syncLights, 500);
+    };
+    
+    syncLights();
+}
+
+function stopLightSync() {
+    if (MediaPlayer.lightSyncInterval) {
+        clearTimeout(MediaPlayer.lightSyncInterval);
+        MediaPlayer.lightSyncInterval = null;
+    }
+}
+
+function rgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+    const d = max - min;
+    s = max === 0 ? 0 : d / max;
+    if (max === min) {
+        h = 0;
+    } else {
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return { h, s, v };
+}
+
 function showMediaTouchHint(text, icon) {
     const existingHint = document.querySelector('.media-center-touch-hint');
     if (existingHint) {
