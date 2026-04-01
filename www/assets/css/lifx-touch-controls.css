@@ -1217,6 +1217,139 @@
     }
 }
 
+/* Enhanced BPM display for LIFX sync */
+#bpm-display.lifx-sync {
+    border: 2px solid rgba(255, 107, 107, 0.5);
+    background: rgba(255, 107, 107, 0.1);
+    box-shadow: 0 0 15px rgba(255, 107, 107, 0.3);
+}
+
+#bpm-display.lifx-sync.beat-detected {
+    border-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.2);
+    box-shadow: 0 0 25px rgba(255, 107, 107, 0.6);
+    transform: scale(1.1);
+}
+
+#bpm-display.beat-detected {
+    border-color: #00d4ff;
+    background: rgba(0, 212, 255, 0.2);
+    box-shadow: 0 0 25px rgba(0, 212, 255, 0.6);
+    transform: scale(1.1);
+}
+
+.bpm-value {
+    transition: all 0.1s ease;
+}
+
+#bpm-display.lifx-sync .bpm-value {
+    color: #ff6b6b;
+    text-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+}
+
+#bpm-display:not(.lifx-sync) .bpm-value {
+    color: #00d4ff;
+    text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+/* Beat flash overlay for LIFX sync */
+.lifx-beat-flash {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle, rgba(255, 107, 107, 0.15) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 9998;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+}
+
+.lifx-beat-flash.active {
+    opacity: 1;
+    animation: beat-flash 0.15s ease-out;
+}
+
+@keyframes beat-flash {
+    0% { opacity: 0; }
+    50% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Frequency band visualization */
+.frequency-bands {
+    display: flex;
+    gap: 4px;
+    align-items: flex-end;
+    height: 60px;
+    padding: 10px;
+    background: rgba(42, 42, 58, 0.3);
+    border-radius: 8px;
+}
+
+.frequency-band {
+    flex: 1;
+    background: linear-gradient(to top, #00d4ff 0%, #ff6b6b 100%);
+    border-radius: 4px 4px 0 0;
+    transition: height 0.05s ease;
+    min-height: 5px;
+}
+
+.frequency-band.bass {
+    background: linear-gradient(to top, #ff6b6b 0%, #ff4757 100%);
+}
+
+.frequency-band.mid {
+    background: linear-gradient(to top, #ffa502 0%, #ff6348 100%);
+}
+
+.frequency-band.treble {
+    background: linear-gradient(to top, #00d4ff 0%, #00a8ff 100%);
+}
+
+/* LIFX sync status indicator */
+.lifx-sync-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 20px;
+    font-size: 12px;
+    color: #00d4ff;
+}
+
+.lifx-sync-status.active {
+    background: rgba(255, 107, 107, 0.1);
+    border-color: rgba(255, 107, 107, 0.5);
+    color: #ff6b6b;
+}
+
+.lifx-sync-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #00d4ff;
+    animation: sync-dot-pulse 1s ease-in-out infinite;
+}
+
+.lifx-sync-status.active .lifx-sync-status-dot {
+    background: #ff6b6b;
+    animation: sync-dot-beat 0.5s ease-in-out infinite;
+}
+
+@keyframes sync-dot-pulse {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes sync-dot-beat {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.3); }
+}
+
 /* Snapcast client controls */
 .snapcast-client {
     background: rgba(42, 42, 58, 0.6);

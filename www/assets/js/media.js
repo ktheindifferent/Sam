@@ -1470,8 +1470,12 @@ function updateBpmDisplay() {
         const bpm = Math.round(MediaPlayer.lifxBeatDetection.bpmEstimate);
         
         if (bpmEl) {
-            bpmEl.classList.add('active');
+            bpmEl.classList.add('active', 'lifx-sync');
             bpmEl.style.display = 'inline-flex';
+            if (MediaPlayer.beatDetection.lastBeatDetected) {
+                bpmEl.classList.add('beat-detected');
+                setTimeout(() => bpmEl.classList.remove('beat-detected'), 150);
+            }
         }
         
         if (bpmValueEl) {
@@ -1484,15 +1488,21 @@ function updateBpmDisplay() {
         
         if (bpmEl) {
             bpmEl.classList.add('active');
+            bpmEl.classList.remove('lifx-sync');
             bpmEl.style.display = 'inline-flex';
+            if (MediaPlayer.beatDetection.lastBeatDetected) {
+                bpmEl.classList.add('beat-detected');
+                setTimeout(() => bpmEl.classList.remove('beat-detected'), 150);
+            }
         }
         
         if (bpmValueEl) {
             bpmValueEl.textContent = bpm;
+            bpmValueEl.style.color = '#00d4ff';
         }
     } else {
         if (bpmEl) {
-            bpmEl.classList.remove('active');
+            bpmEl.classList.remove('active', 'lifx-sync', 'beat-detected');
         }
         
         if (bpmValueEl) {

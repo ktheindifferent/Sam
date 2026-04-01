@@ -122,7 +122,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    const currentBrightness = this.brightnessLevel;
                     this.adjustBrightness(10);
+                    this.recordGesture('brightness', 10, currentBrightness, [bulb]);
                     this.showGestureFeedback('Brightness +', '↑');
                     this.hapticFeedback('light');
                     this.recordGestureSuccess();
@@ -133,7 +135,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    const currentBrightness = this.brightnessLevel;
                     this.adjustBrightness(-10);
+                    this.recordGesture('brightness', -10, currentBrightness, [bulb]);
                     this.showGestureFeedback('Brightness -', '↓');
                     this.hapticFeedback('light');
                     this.recordGestureSuccess();
@@ -145,7 +149,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    const currentTemp = this.colorTempLevel;
                     this.adjustColorTemp(200);
+                    this.recordGesture('colorTemp', 200, currentTemp, [bulb]);
                     this.showGestureFeedback('Warmer', '☀️');
                     this.hapticFeedback('light');
                     this.recordGestureSuccess();
@@ -156,7 +162,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    const currentTemp = this.colorTempLevel;
                     this.adjustColorTemp(-200);
+                    this.recordGesture('colorTemp', -200, currentTemp, [bulb]);
                     this.showGestureFeedback('Cooler', '❄️');
                     this.hapticFeedback('light');
                     this.recordGestureSuccess();
@@ -1043,7 +1051,40 @@ const LifXTouchControls = {
             golden_hour: { brightness: 60, kelvin: 3000, label: 'Golden Hour' },
             late_night: { brightness: 25, kelvin: 2200, label: 'Late Night' },
             midday: { brightness: 90, kelvin: 5500, label: 'Midday' },
-            polar: { brightness: 70, kelvin: 7500, label: 'Polar' }
+            polar: { brightness: 70, kelvin: 7500, label: 'Polar' },
+            cosmic: { brightness: 65, kelvin: 6000, label: 'Cosmic' },
+            dream: { brightness: 45, kelvin: 3500, label: 'Dream' },
+            chill: { brightness: 50, kelvin: 3000, label: 'Chill' },
+            adventure: { brightness: 85, kelvin: 5000, label: 'Adventure' },
+            festival: { brightness: 90, kelvin: 4500, label: 'Festival' },
+            bioluminescent: { brightness: 60, kelvin: 5500, label: 'Bioluminescent' },
+            cyberpunk: { brightness: 75, kelvin: 5000, label: 'Cyberpunk' },
+            vaporwave: { brightness: 70, kelvin: 4800, label: 'Vaporwave' },
+            northern_lights: { brightness: 65, kelvin: 6000, label: 'Northern Lights' },
+            desert_dawn: { brightness: 55, kelvin: 3800, label: 'Desert Dawn' },
+            forest_mist: { brightness: 50, kelvin: 4500, label: 'Forest Mist' },
+            volcanic: { brightness: 80, kelvin: 2500, label: 'Volcanic' },
+            underwater: { brightness: 55, kelvin: 6500, label: 'Underwater' },
+            space_station: { brightness: 75, kelvin: 5500, label: 'Space Station' },
+            wizard_tower: { brightness: 60, kelvin: 3500, label: 'Wizard Tower' },
+            dragon_fire: { brightness: 85, kelvin: 2800, label: 'Dragon Fire' },
+            fairy_grove: { brightness: 55, kelvin: 4000, label: 'Fairy Grove' },
+            haunted: { brightness: 40, kelvin: 3000, label: 'Haunted' },
+            santas_workshop: { brightness: 90, kelvin: 4000, label: 'Santa Workshop' },
+            new_year: { brightness: 95, kelvin: 5000, label: 'New Year' },
+            valentines: { brightness: 65, kelvin: 3000, label: 'Valentines' },
+            halloween: { brightness: 70, kelvin: 2500, label: 'Halloween' },
+            thanksgiving: { brightness: 60, kelvin: 2700, label: 'Thanksgiving' },
+            christmas: { brightness: 80, kelvin: 4000, label: 'Christmas' },
+            easter: { brightness: 75, kelvin: 4500, label: 'Easter' },
+            st_patricks: { brightness: 70, kelvin: 5000, label: 'St Patricks' },
+            independence_day: { brightness: 85, kelvin: 5500, label: 'Independence Day' },
+            aurora_borealis: { brightness: 55, kelvin: 5500, label: 'Aurora Borealis', effect: 'aurora_borealis' },
+            candle_flicker: { brightness: 35, kelvin: 2200, label: 'Candle Flicker', effect: 'candle_flicker' },
+            ocean_waves: { brightness: 50, kelvin: 5000, label: 'Ocean Waves', effect: 'ocean_waves' },
+            sunset_glow: { brightness: 55, kelvin: 3200, label: 'Sunset Glow', effect: 'sunset_glow' },
+            neon_sign: { brightness: 80, kelvin: 4500, label: 'Neon Sign', effect: 'neon_sign' },
+            breathing: { brightness: 50, kelvin: 3500, label: 'Breathing', effect: 'breathing' }
         };
         
         const settings = sceneSettings[scene];
@@ -1053,34 +1094,56 @@ const LifXTouchControls = {
             
             const selector = targets.join(',');
             
-            $.ajax({
-                url: '/api/services/lifx/set_state',
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    selector: `id:${selector}`,
+            if (settings.effect) {
+                this.applyDynamicScene(scene, {
+                    hue: this.getSceneHue(scene),
                     brightness: settings.brightness,
-                    duration: 0.5
-                }),
-                success: () => {
-                    $.ajax({
-                        url: '/api/services/lifx/set_color',
-                        method: 'POST',
-                        contentType: 'application/json',
-                        data: JSON.stringify({
-                            selector: `id:${selector}`,
-                            color: `kelvin:${settings.kelvin}`
-                        }),
-                        success: () => {
-                            console.log('Scene applied:', scene);
-                            targets.forEach(bulbId => this.updateBulbVisual(bulbId));
-                            this.showGestureFeedback(`Scene: ${settings.label}`, this.getSceneEmoji(scene));
-                            this.recordGesture('scene', { scene, label: settings.label });
-                        }
-                    });
-                }
-            });
+                    saturation: 80,
+                    effect: settings.effect
+                });
+            } else {
+                $.ajax({
+                    url: '/api/services/lifx/set_state',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: `id:${selector}`,
+                        brightness: settings.brightness,
+                        duration: 0.5
+                    }),
+                    success: () => {
+                        $.ajax({
+                            url: '/api/services/lifx/set_color',
+                            method: 'POST',
+                            contentType: 'application/json',
+                            data: JSON.stringify({
+                                selector: `id:${selector}`,
+                                color: `kelvin:${settings.kelvin}`
+                            }),
+                            success: () => {
+                                console.log('Scene applied:', scene);
+                                targets.forEach(bulbId => this.updateBulbVisual(bulbId));
+                                this.showGestureFeedback(`Scene: ${settings.label}`, this.getSceneEmoji(scene));
+                                this.recordGesture('scene', { scene, label: settings.label });
+                            }
+                        });
+                    }
+                });
+            }
         }
+    },
+    
+    getSceneHue: function(scene) {
+        const hueMap = {
+            'relax': 0, 'focus': 160, 'energize': 60, 'night': 240,
+            'sunset': 30, 'ocean': 200, 'reading': 50, 'romance': 320,
+            'party': 190, 'golden': 55, 'arctic': 210, 'tropical': 160,
+            'spring': 150, 'autumn': 25, 'meditation': 270, 'gaming': 330,
+            'cooking': 40, 'creative': 280, 'aurora_borealis': 120,
+            'candle_flicker': 30, 'ocean_waves': 180, 'sunset_glow': 20,
+            'neon_sign': 0, 'breathing': 240
+        };
+        return hueMap[scene] || 0;
     },
     
     updateBulbVisual: function(bulbId) {
@@ -1327,6 +1390,61 @@ const LifXTouchControls = {
                 this.showGestureFeedback(`Sensitivity: ${recommendedLevel}`, '✓');
             }
         });
+    },
+    
+    undoLastGesture: function() {
+        if (this.gestureHistory.length === 0) {
+            showNotification('No gestures to undo', 'info');
+            return;
+        }
+        
+        const lastGesture = this.gestureHistory.pop();
+        console.log('Undoing gesture:', lastGesture);
+        
+        if (lastGesture.type === 'brightness') {
+            this.adjustBrightness(-lastGesture.delta);
+            showNotification(`Brightness reverted (${lastGesture.delta > 0 ? '-' : '+'}${Math.abs(lastGesture.delta)})`, 'info');
+        } else if (lastGesture.type === 'colorTemp') {
+            this.adjustColorTemp(-lastGesture.delta);
+            showNotification(`Color temperature reverted (${lastGesture.delta > 0 ? 'cooler' : 'warmer'})`, 'info');
+        } else if (lastGesture.type === 'scene') {
+            const previousScene = lastGesture.previousScene || 'relax';
+            this.applyScene(previousScene);
+            showNotification(`Scene reverted to ${previousScene}`, 'info');
+        } else if (lastGesture.type === 'power') {
+            const target = lastGesture.targets || (this.selectedBulb ? [this.selectedBulb] : []);
+            if (target.length > 0) {
+                $.ajax({
+                    url: '/api/services/lifx/set_state',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: `id:${target.join(',')}`,
+                        power: lastGesture.previousState === 'on' ? 'on' : 'off',
+                        duration: 0.3
+                    })
+                });
+                showNotification(`Power state reverted`, 'info');
+            }
+        }
+        
+        this.hapticFeedback('success');
+        this.showGestureFeedback('Undone', '↩️');
+    },
+    
+    recordGesture: function(type, delta, previousValue, targets) {
+        this.gestureHistory.push({
+            type: type,
+            delta: delta,
+            previousValue: previousValue,
+            previousScene: this.currentScene,
+            targets: targets,
+            timestamp: Date.now()
+        });
+        
+        if (this.gestureHistory.length > this.maxGestureHistory) {
+            this.gestureHistory.shift();
+        }
     },
     
     clearMultiSelection: function() {
@@ -3318,6 +3436,51 @@ const LifXTouchControls = {
                         brightness = 100;
                         saturation = 100;
                     }
+                    break;
+                case 'aurora_borealis':
+                    const auroraTime = Date.now() / 1500;
+                    hue = (120 + Math.sin(auroraTime) * 60 + Math.sin(auroraTime * 2.3) * 40) % 360;
+                    saturation = 60 + Math.sin(auroraTime * 0.7) * 30;
+                    brightness = 50 + Math.sin(auroraTime * 1.2) * 25;
+                    break;
+                case 'candle_flicker':
+                    const flickerRand = Math.random();
+                    brightness = 30 + flickerRand * 25 + Math.sin(Date.now() / 200) * 10;
+                    saturation = 30 + Math.random() * 20;
+                    hue = 30 + Math.random() * 15;
+                    break;
+                case 'ocean_waves':
+                    const waveTime = Date.now() / 2500;
+                    hue = (180 + Math.sin(waveTime) * 40 + Math.sin(waveTime * 1.5) * 20) % 360;
+                    saturation = 50 + Math.sin(waveTime * 0.8) * 30;
+                    brightness = 40 + (Math.sin(waveTime) + 1) * 20;
+                    break;
+                case 'sunset_glow':
+                    const sunsetTime = Date.now() / 3000;
+                    hue = (20 + Math.sin(sunsetTime * 0.5) * 15) % 360;
+                    saturation = 70 + Math.sin(sunsetTime * 0.3) * 20;
+                    brightness = 50 + Math.sin(sunsetTime * 0.4) * 20;
+                    break;
+                case 'neon_sign':
+                    const neonCycle = (Date.now() / 100) % 360;
+                    hue = neonCycle;
+                    saturation = 100;
+                    brightness = 80 + Math.sin(neonCycle * 0.1) * 15;
+                    break;
+                case 'strobe_safe':
+                    const strobeTime = Date.now();
+                    if (strobeTime % 400 < 200) {
+                        brightness = p.brightness;
+                        saturation = p.saturation;
+                    } else {
+                        brightness = p.brightness * 0.3;
+                        saturation = p.saturation * 0.5;
+                    }
+                    break;
+                case 'breathing':
+                    const breathTime = Date.now() / 4000;
+                    brightness = p.brightness * (0.4 + Math.sin(breathTime) * 0.3 + 0.3);
+                    saturation = p.saturation * (0.6 + Math.sin(breathTime * 0.5) * 0.2 + 0.2);
                     break;
             }
             
