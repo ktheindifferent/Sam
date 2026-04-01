@@ -205,6 +205,26 @@ const LifXTouchControls = {
         'swipeUp': 'scene_next',
         'swipeDown': 'scene_prev'
     },
+    touchZones: {},
+    activeZone: null,
+    zoneBoundaries: { top: 0, bottom: 0, left: 0, right: 0 },
+    lastTouchZone: null,
+    touchTrailPoints: [],
+    maxTrailPoints: 20,
+    gestureSoundEnabled: false,
+    gestureSounds: {},
+    adaptiveBrightnessActive: false,
+    ambientLightSensor: null,
+    voiceCommandActive: false,
+    voiceTimeout: null,
+    quickSettingsPanel: null,
+    colorWheelPanel: null,
+    sceneFavoritesPanel: null,
+    multiSelectMode: false,
+    selectionBox: null,
+    isSelecting: false,
+    selectionStart: null,
+    selectionEnd: null,
     isModalOpen: function() {
         return !!(document.querySelector('.swal2-show') || 
                   document.querySelector('.modal.show') ||
@@ -506,7 +526,34 @@ const LifXTouchControls = {
                 this.hapticFeedback('scene_change');
                 this.recordGestureSuccess();
             });
+            
+            // W-swipe for wave effect
+            onGesture('wSwipe', (data) => {
+                if (!this.checkGestureDebounce()) return;
+                this.activateWaveEffect();
+                this.showEnhancedGestureFeedback('Wave Effect', '🌊');
+                this.hapticFeedback('success');
+                this.recordGestureSuccess();
+            });
+            
+            // Diamond gesture for disco mode
+            onGesture('diamond', (data) => {
+                if (!this.checkGestureDebounce()) return;
+                this.toggleDiscoMode();
+                this.showEnhancedGestureFeedback('Disco Mode ' + (this.discoModeActive ? 'ON' : 'OFF'), '💃');
+                this.hapticFeedback('scene_change');
+                this.recordGestureSuccess();
+            });
         }
+        
+        // Initialize touch zones for spatial awareness
+        this.initTouchZones();
+        
+        // Setup multi-select drag gesture
+        this.initMultiSelectGesture();
+        
+        // Initialize touch trail visualization
+        this.initTouchTrail();
         
         // Add tap handlers for bulb selection with double-tap support
         document.addEventListener('click', (e) => {
@@ -8041,6 +8088,278 @@ const LifXTouchControls = {
         } else {
             this.showEnhancedGestureFeedback('Light Painting OFF', '⬛');
         }
+    },
+    
+    initTouchZones: function() {
+        const zones = {
+            topLeft: { top: 0, bottom: window.innerHeight * 0.33, left: 0, right: window.innerWidth * 0.33, action: 'zone1' },
+            topCenter: { top: 0, bottom: window.innerHeight * 0.25, left: window.innerWidth * 0.25, right: window.innerWidth * 0.75, action: 'brightness' },
+            topRight: { top: 0, bottom: window.innerHeight * 0.33, left: window.innerWidth * 0.67, right: window.innerWidth, action: 'zone2' },
+            bottomLeft: { top: window.innerHeight * 0.67, bottom: window.innerHeight, left: 0, right: window.innerWidth * 0.33, action: 'zone3' },
+            bottomCenter: { top: window.innerHeight * 0.75, bottom: window.innerHeight, left: window.innerWidth * 0.25, right: window.innerWidth * 0.75, action: 'media' },
+            bottomRight: { top: window.innerHeight * 0.67, bottom: window.innerHeight, left: window.innerWidth * 0.67, right: window.innerWidth, action: 'zone4' }
+        };
+        this.touchZones = zones;
+        console.log('Touch zones initialized:', Object.keys(zones).length, 'zones');
+    },
+    
+    initMultiSelectGesture: function() {
+        let isDragging = false;
+        let selectionBox = null;
+        let startX, startY;
+        
+        document.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.lifx-bulb-control') && e.ctrlKey) {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                
+                selectionBox = document.createElement('div');
+                selectionBox.className = 'lifx-selection-box';
+                selectionBox.style.cssText = `
+                    position: fixed;
+                    border: 2px dashed #00d4ff;
+                    background: rgba(0, 212, 255, 0.1);
+                    pointer-events: none;
+                    z-index: 9999;
+                `;
+                document.body.appendChild(selectionBox);
+            }
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging || !selectionBox) return;
+            
+            const currentX = e.clientX;
+            const currentY = e.clientY;
+            const left = Math.min(startX, currentX);
+            const top = Math.min(startY, currentY);
+            const width = Math.abs(currentX - startX);
+            const height = Math.abs(currentY - startY);
+            
+            selectionBox.style.left = left + 'px';
+            selectionBox.style.top = top + 'px';
+            selectionBox.style.width = width + 'px';
+            selectionBox.style.height = height + 'px';
+            
+            document.querySelectorAll('.lifx-bulb-control').forEach(bulb => {
+                const rect = bulb.getBoundingClientRect();
+                if (rect.left < currentX && rect.right > left &&
+                    rect.top < currentY && rect.bottom > top) {
+                    bulb.classList.add('multi-selected');
+                }
+            });
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (selectionBox) {
+                selectionBox.remove();
+                selectionBox = null;
+            }
+            isDragging = false;
+        });
+        
+        console.log('Multi-select gesture initialized');
+    },
+    
+    initTouchTrail: function() {
+        if (!this.touchTrailEnabled) return;
+        
+        document.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            this.touchTrailPoints.push({ x: touch.clientX, y: touch.clientY, time: Date.now() });
+            
+            if (this.touchTrailPoints.length > this.maxTrailPoints) {
+                this.touchTrailPoints.shift();
+            }
+            
+            this.renderTouchTrail();
+        }, { passive: true });
+        
+        document.addEventListener('touchend', () => {
+            setTimeout(() => {
+                this.touchTrailPoints = [];
+                this.renderTouchTrail();
+            }, 300);
+        });
+        
+        console.log('Touch trail initialized');
+    },
+    
+    renderTouchTrail: function() {
+        let trailContainer = document.querySelector('.lifx-touch-trail-container');
+        if (!trailContainer) {
+            trailContainer = document.createElement('div');
+            trailContainer.className = 'lifx-touch-trail-container';
+            trailContainer.style.cssText = `
+                position: fixed;
+                pointer-events: none;
+                z-index: 9998;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+            `;
+            document.body.appendChild(trailContainer);
+        }
+        
+        trailContainer.innerHTML = '';
+        
+        for (let i = 0; i < this.touchTrailPoints.length; i++) {
+            const point = this.touchTrailPoints[i];
+            const age = Date.now() - point.time;
+            const opacity = 1 - (age / 500);
+            
+            if (opacity > 0) {
+                const dot = document.createElement('div');
+                dot.style.cssText = `
+                    position: absolute;
+                    left: ${point.x - 5}px;
+                    top: ${point.y - 5}px;
+                    width: 10px;
+                    height: 10px;
+                    background: radial-gradient(circle, rgba(0, 212, 255, ${opacity}), transparent);
+                    border-radius: 50%;
+                    transform: scale(${opacity});
+                `;
+                trailContainer.appendChild(dot);
+            }
+        }
+    },
+    
+    activateWaveEffect: function() {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : []);
+        
+        if (targets.length === 0) {
+            console.log('No bulbs selected for wave effect');
+            return;
+        }
+        
+        let delay = 0;
+        const baseHue = this.lastColorHue;
+        
+        targets.forEach((bulbId, index) => {
+            setTimeout(() => {
+                const hue = (baseHue + index * 30) % 360;
+                $.ajax({
+                    url: '/api/services/lifx/set_color',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: `id:${bulbId}`,
+                        color: `hue:${hue},saturation:80%,brightness:70%`,
+                        duration: 0.5
+                    })
+                });
+            }, delay);
+            delay += 200;
+        });
+        
+        this.showEnhancedGestureFeedback('Wave Effect', '🌊');
+        console.log('Wave effect activated for', targets.length, 'bulbs');
+    },
+    
+    toggleDiscoMode: function() {
+        this.discoModeActive = !this.discoModeActive;
+        
+        if (this.discoModeActive) {
+            this.startDiscoEffect();
+            this.showEnhancedGestureFeedback('Disco Mode ON', '💃');
+        } else {
+            this.stopDiscoEffect();
+            this.showEnhancedGestureFeedback('Disco Mode OFF', '⬛');
+        }
+    },
+    
+    startDiscoEffect: function() {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        let hue = 0;
+        const discoInterval = () => {
+            if (!this.discoModeActive) return;
+            
+            hue = (hue + 60) % 360;
+            const brightness = 70 + Math.random() * 30;
+            
+            targets.forEach(selector => {
+                $.ajax({
+                    url: '/api/services/lifx/set_color',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: selector === 'all' ? 'all' : `id:${selector}`,
+                        color: `hue:${hue},saturation:100%,brightness:${brightness}%,`,
+                        duration: 0.2
+                    })
+                });
+            });
+            
+            this.discoTimer = setTimeout(discoInterval, 200);
+        };
+        
+        discoInterval();
+        console.log('Disco effect started');
+    },
+    
+    stopDiscoEffect: function() {
+        if (this.discoTimer) {
+            clearTimeout(this.discoTimer);
+            this.discoTimer = null;
+        }
+        console.log('Disco effect stopped');
+    },
+    
+    showBrightnessFeedback: function(brightness) {
+        let feedback = document.querySelector('.lifx-brightness-feedback');
+        if (!feedback) {
+            feedback = document.createElement('div');
+            feedback.className = 'lifx-brightness-feedback';
+            feedback.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.8);
+                border-radius: 20px;
+                padding: 20px 40px;
+                z-index: 10000;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+                animation: fadeIn 0.2s ease;
+            `;
+            document.body.appendChild(feedback);
+        }
+        
+        feedback.innerHTML = `
+            <i class="fas fa-sun" style="font-size: 48px; color: #ffd700;"></i>
+            <span style="color: white; font-size: 32px; font-weight: bold;">${brightness}%</span>
+            <div style="width: 200px; height: 10px; background: rgba(255,255,255,0.2); border-radius: 5px; overflow: hidden;">
+                <div style="width: ${brightness}%; height: 100%; background: linear-gradient(90deg, #ffd700, #ff8c00);"></div>
+            </div>
+        `;
+        
+        if (this.brightnessFeedbackTimeout) {
+            clearTimeout(this.brightnessFeedbackTimeout);
+        }
+        
+        this.brightnessFeedbackTimeout = setTimeout(() => {
+            if (feedback.parentNode) {
+                feedback.remove();
+            }
+        }, 1000);
+    },
+    
+    getFirstSelectedBulb: function() {
+        if (this.multiBulbSelection && this.multiBulbSelection.length > 0) {
+            return this.multiBulbSelection[0];
+        }
+        return null;
     }
 };
 

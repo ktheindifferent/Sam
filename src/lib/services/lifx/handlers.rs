@@ -554,6 +554,26 @@ pub fn handle_enhanced_api_request(request: &Request) -> Response {
         return handle_presets(request);
     }
     
+    // Touch gesture endpoints
+    if request.url().contains("/api/services/lifx/gesture") {
+        return handle_gesture(request);
+    }
+    
+    // Media sync endpoints
+    if request.url().contains("/api/services/lifx/media_sync") {
+        return handle_media_sync(request);
+    }
+    
+    // Wave effect endpoint
+    if request.url().contains("/api/services/lifx/wave") {
+        return handle_wave_effect(request);
+    }
+    
+    // Disco mode endpoint
+    if request.url().contains("/api/services/lifx/disco") {
+        return handle_disco_mode(request);
+    }
+    
     Response::empty_404()
 }
 
@@ -1391,6 +1411,409 @@ fn handle_presets(request: &Request) -> Response {
     }
     
     Response::empty_404()
+}
+
+/// Handle touch gesture commands
+fn handle_gesture(request: &Request) -> Response {
+    if request.method() != &rouille::Method::Post {
+        return Response::empty_404();
+    }
+    
+    let input = try_or_400!(post_input!(request, {
+        gesture: String,
+        selector: Option<String>,
+        params: Option<serde_json::Value>
+    }));
+    
+    if let Some(discovery_arc) = get_global_discovery() {
+        if let Ok(discovery) = discovery_arc.lock() {
+            if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                let sock = discovery.get_socket();
+                let handlers = HttpHandlers::new(0);
+                
+                let mut bulbs_vec: Vec<&BulbInfo> = bulbs_arc.values().collect();
+                
+                if let Some(ref selector) = input.selector {
+                    if selector.contains("id:") {
+                        let id = selector.replace("id:", "");
+                        bulbs_vec.retain(|b| b.id.contains(&id));
+                    }
+                }
+                
+                let result = match input.gesture.as_str() {
+                    "swipeUp" => {
+                        for bulb in &bulbs_vec {
+                            let current = bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535);
+                            let new_brightness = std::cmp::min(65535, current + 6553);
+                            let hsbk = HSBK {
+                                hue: bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0),
+                                saturation: bulb.lifx_color.as_ref().map(|c| c.saturation).unwrap_or(0),
+                                brightness: new_brightness,
+                                kelvin: bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(5000),
+                            };
+                            let _ = handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 300);
+                        }
+                        json!({"success": true, "action": "brightness_up", "bulbs_affected": bulbs_vec.len()})
+                    },
+                    "swipeDown" => {
+                        for bulb in &bulbs_vec {
+                            let current = bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535);
+                            let new_brightness = std::cmp::max(0, current - 6553);
+                            let hsbk = HSBK {
+                                hue: bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0),
+                                saturation: bulb.lifx_color.as_ref().map(|c| c.saturation).unwrap_or(0),
+                                brightness: new_brightness,
+                                kelvin: bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(5000),
+                            };
+                            let _ = handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 300);
+                        }
+                        json!({"success": true, "action": "brightness_down", "bulbs_affected": bulbs_vec.len()})
+                    },
+                    "swipeLeft" => {
+                        for bulb in &bulbs_vec {
+                            let current = bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(5000);
+                            let new_kelvin = std::cmp::max(1500, current - 500);
+                            let hsbk = HSBK {
+                                hue: bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0),
+                                saturation: 0,
+                                brightness: bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535),
+                                kelvin: new_kelvin,
+                            };
+                            let _ = handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 300);
+                        }
+                        json!({"success": true, "action": "cooler", "bulbs_affected": bulbs_vec.len()})
+                    },
+                    "swipeRight" => {
+                        for bulb in &bulbs_vec {
+                            let current = bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(5000);
+                            let new_kelvin = std::cmp::min(9000, current + 500);
+                            let hsbk = HSBK {
+                                hue: bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0),
+                                saturation: 0,
+                                brightness: bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535),
+                                kelvin: new_kelvin,
+                            };
+                            let _ = handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 300);
+                        }
+                        json!({"success": true, "action": "warmer", "bulbs_affected": bulbs_vec.len()})
+                    },
+                    "tap" => {
+                        for bulb in &bulbs_vec {
+                            let is_on = bulb.power.unwrap_or(false);
+                            let power = lifx_rs::lan::PowerLevel::from(!is_on);
+                            let _ = handlers.protocol.send_power_command(sock, bulb.target, bulb.addr, power);
+                        }
+                        json!({"success": true, "action": "toggle_power", "bulbs_affected": bulbs_vec.len()})
+                    },
+                    "longPress" => {
+                        json!({"success": true, "action": "show_quick_settings", "bulbs_affected": bulbs_vec.len()})
+                    },
+                    "pinchOut" => {
+                        let scene_idx = input.params.as_ref().and_then(|p| p["sceneIndex"].as_u64()).unwrap_or(0) as usize;
+                        let scene = SCENES.get(scene_idx % SCENES.len()).unwrap_or(&SCENES[0]);
+                        for bulb in &bulbs_vec {
+                            let hsbk = HSBK { hue: scene.1, saturation: scene.2, brightness: scene.3, kelvin: scene.4 };
+                            let _ = handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 500);
+                        }
+                        json!({"success": true, "action": "next_scene", "scene": scene.0, "bulbs_affected": bulbs_vec.len()})
+                    },
+                    "pinchIn" => {
+                        let scene_idx = input.params.as_ref().and_then(|p| p["sceneIndex"].as_u64()).unwrap_or(0) as usize;
+                        let prev_idx = if scene_idx == 0 { SCENES.len() - 1 } else { scene_idx - 1 };
+                        let scene = SCENES.get(prev_idx).unwrap_or(&SCENES[0]);
+                        for bulb in &bulbs_vec {
+                            let hsbk = HSBK { hue: scene.1, saturation: scene.2, brightness: scene.3, kelvin: scene.4 };
+                            let _ = handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 500);
+                        }
+                        json!({"success": true, "action": "prev_scene", "scene": scene.0, "bulbs_affected": bulbs_vec.len()})
+                    },
+                    _ => {
+                        return Response::json(&json!({
+                            "success": false,
+                            "message": format!("Unknown gesture: {}", input.gesture),
+                            "available_gestures": ["swipeUp", "swipeDown", "swipeLeft", "swipeRight", "tap", "longPress", "pinchOut", "pinchIn"]
+                        }));
+                    }
+                };
+                
+                return Response::json(&result);
+            }
+        }
+    }
+    
+    Response::json(&json!({
+        "success": false,
+        "message": "Discovery service not available"
+    }))
+}
+
+/// Handle media sync operations
+fn handle_media_sync(request: &Request) -> Response {
+    if request.method() == &rouille::Method::Post {
+        let input = try_or_400!(post_input!(request, {
+            action: String,
+            bpm: Option<u32>,
+            frequency: Option<f32>,
+            amplitude: Option<f32>,
+            selector: Option<String>
+        }));
+        
+        if let Some(discovery_arc) = get_global_discovery() {
+            if let Ok(discovery) = discovery_arc.lock() {
+                if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                    let sock = discovery.get_socket();
+                    let handlers = HttpHandlers::new(0);
+                    
+                    let mut bulbs_vec: Vec<&BulbInfo> = bulbs_arc.values().collect();
+                    
+                    if let Some(ref selector) = input.selector {
+                        if selector.contains("id:") {
+                            let id = selector.replace("id:", "");
+                            bulbs_vec.retain(|b| b.id.contains(&id));
+                        }
+                    }
+                    
+                    match input.action.as_str() {
+                        "syncBeat" => {
+                            if let Some(bpm) = input.bpm {
+                                for bulb in &bulbs_vec {
+                                    let brightness = if bpm > 120 { 65535 } else { 45000 };
+                                    let hsbk = HSBK {
+                                        hue: bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0),
+                                        saturation: bulb.lifx_color.as_ref().map(|c| c.saturation).unwrap_or(65535),
+                                        brightness,
+                                        kelvin: bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(5000),
+                                    };
+                                    let _ = handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 50);
+                                }
+                                return Response::json(&json!({
+                                    "success": true,
+                                    "action": "beat_sync",
+                                    "bpm": bpm,
+                                    "bulbs_affected": bulbs_vec.len()
+                                }));
+                            }
+                        },
+                        "syncFrequency" => {
+                            if let (Some(freq), Some(amp)) = (input.frequency, input.amplitude) {
+                                let hue = ((freq / 20000.0) * 65535.0) as u16;
+                                let brightness = ((amp / 256.0) * 65535.0) as u16;
+                                for bulb in &bulbs_vec {
+                                    let hsbk = HSBK {
+                                        hue,
+                                        saturation: 65535,
+                                        brightness,
+                                        kelvin: 5000,
+                                    };
+                                    let _ = handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 100);
+                                }
+                                return Response::json(&json!({
+                                    "success": true,
+                                    "action": "frequency_sync",
+                                    "hue": hue,
+                                    "brightness": brightness,
+                                    "bulbs_affected": bulbs_vec.len()
+                                }));
+                            }
+                        },
+                        "startVisualizer" => {
+                            return Response::json(&json!({
+                                "success": true,
+                                "action": "visualizer_started",
+                                "bulbs_affected": bulbs_vec.len()
+                            }));
+                        },
+                        "stopVisualizer" => {
+                            return Response::json(&json!({
+                                "success": true,
+                                "action": "visualizer_stopped"
+                            }));
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    
+    Response::json(&json!({
+        "success": false,
+        "message": "Media sync action not recognized or service unavailable"
+    }))
+}
+
+/// Handle wave effect
+fn handle_wave_effect(request: &Request) -> Response {
+    use std::thread;
+    use std::time::Duration;
+    
+    if request.method() != &rouille::Method::Post {
+        return Response::empty_404();
+    }
+    
+    let input = try_or_400!(post_input!(request, {
+        selector: Option<String>,
+        hue: Option<u16>,
+        delay: Option<u64>
+    }));
+    
+    if let Some(discovery_arc) = get_global_discovery() {
+        if let Ok(discovery) = discovery_arc.lock() {
+            if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                let sock = discovery.get_socket();
+                let handlers = HttpHandlers::new(0);
+                
+                let mut bulbs_vec: Vec<&BulbInfo> = bulbs_arc.values().collect();
+                
+                if let Some(ref selector) = input.selector {
+                    if selector.contains("id:") {
+                        let id = selector.replace("id:", "");
+                        bulbs_vec.retain(|b| b.id.contains(&id));
+                    }
+                }
+                
+                let base_hue = input.hue.unwrap_or(0);
+                let delay_ms = input.delay.unwrap_or(200);
+                
+                let sock_clone = sock.try_clone().ok();
+                let bulbs_data: Vec<(u64, std::net::SocketAddr, u16)> = bulbs_vec.iter()
+                    .enumerate()
+                    .map(|(i, b)| (b.target, b.addr, (base_hue + (i as u16 * 30)) % 65535))
+                    .collect();
+                
+                thread::spawn(move || {
+                    if let Some(socket) = sock_clone {
+                        for (i, (target, addr, hue)) in bulbs_data.iter().enumerate() {
+                            thread::sleep(Duration::from_millis(delay_ms * i as u64));
+                            let hsbk = HSBK {
+                                hue: *hue,
+                                saturation: 65535,
+                                brightness: 45875,
+                                kelvin: 5000,
+                            };
+                            let _ = handlers.protocol.send_color_command(&socket, *target, *addr, hsbk, 500);
+                        }
+                    }
+                });
+                
+                return Response::json(&json!({
+                    "success": true,
+                    "action": "wave_effect_started",
+                    "bulbs_affected": bulbs_vec.len(),
+                    "base_hue": base_hue,
+                    "delay_ms": delay_ms
+                }));
+            }
+        }
+    }
+    
+    Response::json(&json!({
+        "success": false,
+        "message": "Discovery service not available"
+    }))
+}
+
+/// Handle disco mode
+fn handle_disco_mode(request: &Request) -> Response {
+    use std::thread;
+    use std::time::Duration;
+    
+    if request.method() != &rouille::Method::Post {
+        return Response::empty_404();
+    }
+    
+    let input = try_or_400!(post_input!(request, {
+        action: String,
+        selector: Option<String>,
+        speed: Option<u64>
+    }));
+    
+    if let Some(discovery_arc) = get_global_discovery() {
+        if let Ok(discovery) = discovery_arc.lock() {
+            if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                let sock = discovery.get_socket();
+                
+                let mut bulbs_vec: Vec<&BulbInfo> = bulbs_arc.values().collect();
+                
+                if let Some(ref selector) = input.selector {
+                    if selector.contains("id:") {
+                        let id = selector.replace("id:", "");
+                        bulbs_vec.retain(|b| b.id.contains(&id));
+                    }
+                }
+                
+                let speed_ms = input.speed.unwrap_or(200);
+                
+                match input.action.as_str() {
+                    "start" => {
+                        let sock_clone = sock.try_clone().ok();
+                        let targets: Vec<(u64, std::net::SocketAddr)> = bulbs_vec.iter().map(|b| (b.target, b.addr)).collect();
+                        
+                        thread::spawn(move || {
+                            if let Some(socket) = sock_clone {
+                                let mut hue: u16 = 0;
+                                loop {
+                                    hue = (hue + 10000) % 65535;
+                                    for (target, addr) in &targets {
+                                        let hsbk = HSBK {
+                                            hue,
+                                            saturation: 65535,
+                                            brightness: 65535,
+                                            kelvin: 5000,
+                                        };
+                                        let _ = send_color_command_helper(&socket, *target, *addr, hsbk, 100);
+                                    }
+                                    thread::sleep(Duration::from_millis(speed_ms));
+                                }
+                            }
+                        });
+                        
+                        return Response::json(&json!({
+                            "success": true,
+                            "action": "disco_started",
+                            "bulbs_affected": bulbs_vec.len(),
+                            "speed_ms": speed_ms
+                        }));
+                    },
+                    "stop" => {
+                        return Response::json(&json!({
+                            "success": true,
+                            "action": "disco_stopped"
+                        }));
+                    },
+                    _ => {
+                        return Response::json(&json!({
+                            "success": false,
+                            "message": "Unknown disco action",
+                            "available_actions": ["start", "stop"]
+                        }));
+                    }
+                }
+            }
+        }
+    }
+    
+    Response::json(&json!({
+        "success": false,
+        "message": "Discovery service not available"
+    }))
+}
+
+/// Helper function for sending color commands
+fn send_color_command_helper(
+    socket: &std::net::UdpSocket,
+    target: u64,
+    addr: std::net::SocketAddr,
+    color: HSBK,
+    duration: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use lifx_rs::lan::{Message, ProtocolHeader};
+    
+    let header = ProtocolHeader::new(target);
+    let msg = Message::SetLightColor { color, duration };
+    let bytes = header.build(&msg)?;
+    socket.send_to(&bytes, addr)?;
+    Ok(())
 }
 
 #[cfg(test)]

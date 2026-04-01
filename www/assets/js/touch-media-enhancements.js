@@ -2585,6 +2585,419 @@ const TouchMediaEnhancements = (function() {
         }
     }
     
+    function startAmbientMode() {
+        console.log('[TouchMediaEnhancements] Starting ambient mode');
+        const ambientInterval = setInterval(() => {
+            if (!mediaPlaybackState.isPlaying) {
+                clearInterval(ambientInterval);
+                return;
+            }
+            const colors = ['#27a0b9', '#1f8999', '#00d4ff', '#00b4d8', '#90e0ef'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            const event = new CustomEvent('apply-lifx-color', { detail: { color: randomColor, brightness: 0.6 } });
+            document.dispatchEvent(event);
+        }, 5000);
+        return ambientInterval;
+    }
+    
+    function startMediaVisualizer() {
+        console.log('[TouchMediaEnhancements] Starting media visualizer');
+        const visualizer = document.createElement('div');
+        visualizer.className = 'media-visualizer-overlay';
+        visualizer.innerHTML = '<div class="visualizer-bars"></div>';
+        document.body.appendChild(visualizer);
+        
+        const barsContainer = visualizer.querySelector('.visualizer-bars');
+        for (let i = 0; i < 32; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'visualizer-bar';
+            bar.style.animationDelay = `${i * 0.05}s`;
+            barsContainer.appendChild(bar);
+        }
+        
+        return visualizer;
+    }
+    
+    function createMediaFloatingWidget() {
+        const widget = document.createElement('div');
+        widget.className = 'media-floating-widget';
+        widget.innerHTML = `
+            <div class="media-widget-artwork"></div>
+            <div class="media-widget-info">
+                <div class="media-widget-title">Now Playing</div>
+                <div class="media-widget-artist">Unknown Artist</div>
+            </div>
+            <div class="media-widget-controls">
+                <button class="media-widget-btn" data-action="previous"><i class="fas fa-step-backward"></i></button>
+                <button class="media-widget-btn" data-action="playpause"><i class="fas fa-play"></i></button>
+                <button class="media-widget-btn" data-action="next"><i class="fas fa-step-forward"></i></button>
+            </div>
+            <button class="media-widget-close"><i class="fas fa-times"></i></button>
+        `;
+        widget.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(30, 30, 45, 0.95);
+            border: 1px solid rgba(39, 160, 185, 0.3);
+            border-radius: 16px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 9999;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        `;
+        document.body.appendChild(widget);
+        
+        widget.querySelector('.media-widget-close').addEventListener('click', () => {
+            widget.style.transform = 'scale(0.8)';
+            widget.style.opacity = '0';
+            setTimeout(() => widget.remove(), 300);
+        });
+        
+        return widget;
+    }
+    
+    function syncLightsToMedia(audioData) {
+        if (!audioData || !mediaPlaybackState.isPlaying) return;
+        
+        const { frequency, amplitude } = audioData;
+        const hue = (frequency / 256) * 360;
+        const brightness = Math.min(100, (amplitude / 256) * 100);
+        
+        const event = new CustomEvent('apply-lifx-color', { 
+            detail: { 
+                color: `hue:${hue},saturation:80%,brightness:${brightness}%`,
+                duration: 0.1
+            } 
+        });
+        document.dispatchEvent(event);
+    }
+    
+    function startFrequencyAnalysis() {
+        console.log('[TouchMediaEnhancements] Starting frequency analysis');
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+        }
+        return analyser;
+    }
+    
+    function createSpectrumAnalyzer() {
+        const analyzer = document.createElement('div');
+        analyzer.className = 'spectrum-analyzer';
+        analyzer.innerHTML = `
+            <div class="spectrum-bars"></div>
+            <div class="spectrum-labels">
+                <span>20Hz</span>
+                <span>1kHz</span>
+                <span>20kHz</span>
+            </div>
+        `;
+        analyzer.style.cssText = `
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 120px;
+            background: linear-gradient(to top, rgba(39, 160, 185, 0.2), transparent);
+            z-index: 9998;
+            pointer-events: none;
+        `;
+        document.body.appendChild(analyzer);
+        
+        const barsContainer = analyzer.querySelector('.spectrum-bars');
+        for (let i = 0; i < 64; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'spectrum-bar';
+            bar.style.cssText = `
+                width: ${100/64}%;
+                height: 10px;
+                background: linear-gradient(to top, #27a0b9, #00d4ff);
+                border-radius: 2px 2px 0 0;
+                display: inline-block;
+                transition: height 0.1s ease;
+            `;
+            barsContainer.appendChild(bar);
+        }
+        
+        return analyzer;
+    }
+    
+    function applyDynamicColorShift(options = {}) {
+        const { duration = 30000, colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'] } = options;
+        let currentIndex = 0;
+        let startTime = Date.now();
+        
+        const shiftColor = () => {
+            const elapsed = Date.now() - startTime;
+            if (elapsed >= duration) return;
+            
+            currentIndex = (currentIndex + 1) % colors.length;
+            const event = new CustomEvent('apply-lifx-color', { 
+                detail: { color: colors[currentIndex], duration: duration / colors.length } 
+            });
+            document.dispatchEvent(event);
+            
+            setTimeout(shiftColor, duration / colors.length);
+        };
+        
+        shiftColor();
+    }
+    
+    function startRhythmSync(bpm) {
+        console.log('[TouchMediaEnhancements] Starting rhythm sync at', bpm, 'BPM');
+        const interval = 60000 / bpm;
+        let beatCount = 0;
+        
+        const rhythmInterval = setInterval(() => {
+            if (!mediaPlaybackState.isPlaying) {
+                clearInterval(rhythmInterval);
+                return;
+            }
+            
+            beatCount++;
+            const brightness = beatCount % 4 === 0 ? 100 : 70;
+            const event = new CustomEvent('apply-lifx-brightness', { detail: { brightness: brightness / 100, duration: 0.05 } });
+            document.dispatchEvent(event);
+        }, interval);
+        
+        return rhythmInterval;
+    }
+    
+    function createMediaPlaylistUI(playlist) {
+        const playlistUI = document.createElement('div');
+        playlistUI.className = 'media-playlist-ui';
+        playlistUI.innerHTML = `
+            <div class="playlist-header">
+                <h4><i class="fas fa-list"></i> Playlist</h4>
+                <button class="playlist-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="playlist-tracks"></div>
+        `;
+        
+        const tracksContainer = playlistUI.querySelector('.playlist-tracks');
+        playlist.forEach((track, index) => {
+            const trackEl = document.createElement('div');
+            trackEl.className = 'playlist-track';
+            trackEl.innerHTML = `
+                <span class="track-number">${index + 1}</span>
+                <div class="track-info">
+                    <div class="track-title">${track.title}</div>
+                    <div class="track-artist">${track.artist}</div>
+                </div>
+                <span class="track-duration">${track.duration}</span>
+            `;
+            tracksContainer.appendChild(trackEl);
+        });
+        
+        playlistUI.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(30, 30, 45, 0.95);
+            border: 1px solid rgba(39, 160, 185, 0.3);
+            border-radius: 16px;
+            padding: 20px;
+            max-width: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            z-index: 10000;
+        `;
+        
+        playlistUI.querySelector('.playlist-close').addEventListener('click', () => {
+            playlistUI.remove();
+        });
+        
+        document.body.appendChild(playlistUI);
+        return playlistUI;
+    }
+    
+    function showMediaLyrics(lyrics) {
+        const lyricsEl = document.createElement('div');
+        lyricsEl.className = 'media-lyrics-display';
+        lyricsEl.innerHTML = `
+            <div class="lyrics-content">${lyrics}</div>
+            <button class="lyrics-close"><i class="fas fa-times"></i></button>
+        `;
+        
+        lyricsEl.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(30, 30, 45, 0.95);
+            border: 1px solid rgba(39, 160, 185, 0.3);
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 600px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 10000;
+            text-align: center;
+            white-space: pre-wrap;
+            line-height: 1.8;
+        `;
+        
+        lyricsEl.querySelector('.lyrics-close').addEventListener('click', () => {
+            lyricsEl.remove();
+        });
+        
+        document.body.appendChild(lyricsEl);
+        return lyricsEl;
+    }
+    
+    function toggleImmersiveMode() {
+        const isImmersive = document.body.classList.toggle('immersive-mode');
+        
+        if (isImmersive) {
+            document.body.style.cssText = `
+                overflow: hidden;
+            `;
+            document.querySelectorAll('.sidebar, .navbar').forEach(el => {
+                el.style.opacity = '0';
+                el.style.transition = 'opacity 0.5s ease';
+            });
+        } else {
+            document.body.style.cssText = '';
+            document.querySelectorAll('.sidebar, .navbar').forEach(el => {
+                el.style.opacity = '1';
+            });
+        }
+        
+        return isImmersive;
+    }
+    
+    function createMediaQueuePanel(queue) {
+        const queuePanel = document.createElement('div');
+        queuePanel.className = 'media-queue-panel';
+        queuePanel.innerHTML = `
+            <div class="queue-header">
+                <h4><i class="fas fa-layer-group"></i> Up Next</h4>
+                <button class="queue-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="queue-items"></div>
+        `;
+        
+        const itemsContainer = queuePanel.querySelector('.queue-items');
+        queue.forEach((item, index) => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'queue-item';
+            itemEl.innerHTML = `
+                <span class="queue-position">${index + 1}</span>
+                <div class="queue-info">
+                    <div class="queue-title">${item.title}</div>
+                    <div class="queue-source">${item.source}</div>
+                </div>
+            `;
+            itemsContainer.appendChild(itemEl);
+        });
+        
+        queuePanel.style.cssText = `
+            position: fixed;
+            right: 20px;
+            top: 100px;
+            background: rgba(30, 30, 45, 0.95);
+            border: 1px solid rgba(39, 160, 185, 0.3);
+            border-radius: 16px;
+            padding: 15px;
+            width: 300px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 9999;
+        `;
+        
+        queuePanel.querySelector('.queue-close').addEventListener('click', () => {
+            queuePanel.remove();
+        });
+        
+        document.body.appendChild(queuePanel);
+        return queuePanel;
+    }
+    
+    function startBpmTracking() {
+        console.log('[TouchMediaEnhancements] Starting BPM tracking');
+        const bpmDisplay = document.createElement('div');
+        bpmDisplay.className = 'bpm-tracking-display';
+        bpmDisplay.innerHTML = `
+            <i class="fas fa-heartbeat"></i>
+            <span class="bpm-value">--</span>
+            <span class="bpm-label">BPM</span>
+        `;
+        
+        bpmDisplay.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(30, 30, 45, 0.9);
+            border: 2px solid #00d4ff;
+            border-radius: 12px;
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 9999;
+            font-size: 18px;
+            font-weight: bold;
+        `;
+        
+        document.body.appendChild(bpmDisplay);
+        
+        const updateBpmDisplay = (bpm) => {
+            const valueEl = bpmDisplay.querySelector('.bpm-value');
+            if (valueEl) {
+                valueEl.textContent = bpm || '--';
+            }
+        };
+        
+        return { display: bpmDisplay, updateBpm: updateBpmDisplay };
+    }
+    
+    function createNowPlayingWidget() {
+        const widget = document.createElement('div');
+        widget.className = 'now-playing-widget';
+        widget.innerHTML = `
+            <div class="np-artwork"></div>
+            <div class="np-info">
+                <div class="np-title">Now Playing</div>
+                <div class="np-artist">Unknown Artist</div>
+                <div class="np-progress">
+                    <div class="np-progress-bar"></div>
+                </div>
+            </div>
+            <div class="np-controls">
+                <button class="np-btn" data-action="previous"><i class="fas fa-step-backward"></i></button>
+                <button class="np-btn np-play" data-action="playpause"><i class="fas fa-play"></i></button>
+                <button class="np-btn" data-action="next"><i class="fas fa-step-forward"></i></button>
+            </div>
+        `;
+        
+        widget.style.cssText = `
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(30, 30, 45, 0.95);
+            border: 1px solid rgba(39, 160, 185, 0.3);
+            border-radius: 16px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 9999;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            min-width: 300px;
+        `;
+        
+        document.body.appendChild(widget);
+        return widget;
+    }
+    
     // Public API
     return {
         init,
@@ -2620,7 +3033,21 @@ const TouchMediaEnhancements = (function() {
         toggleMiniPlayer,
         makeDraggable,
         CONFIG,
-        extendedScenePresets
+        extendedScenePresets,
+        startAmbientMode,
+        startMediaVisualizer,
+        createMediaFloatingWidget,
+        syncLightsToMedia,
+        startFrequencyAnalysis,
+        createSpectrumAnalyzer,
+        applyDynamicColorShift,
+        startRhythmSync,
+        createMediaPlaylistUI,
+        showMediaLyrics,
+        toggleImmersiveMode,
+        createMediaQueuePanel,
+        startBpmTracking,
+        createNowPlayingWidget
     };
 })();
 
