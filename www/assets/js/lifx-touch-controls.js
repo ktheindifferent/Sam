@@ -115,6 +115,15 @@ const LifXTouchControls = {
     lastGestureVelocity: 0,
     touchPressure: 0,
     pressureSensitiveEnabled: false,
+    isModalOpen: function() {
+        return !!(document.querySelector('.swal2-show') || 
+                  document.querySelector('.modal.show') ||
+                  document.querySelector('.media-sync-panel.visible') ||
+                  document.querySelector('.quick-scenes-panel.visible') ||
+                  document.querySelector('.media-controls-panel.visible') ||
+                  document.querySelector('.favorite-scenes-panel.visible') ||
+                  document.querySelector('.touch-gesture-tutorial'));
+    },
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -267,6 +276,8 @@ const LifXTouchControls = {
         
         // Touch and hold for brightness adjustment with visual progress
         document.addEventListener('touchstart', (e) => {
+            if (this.isModalOpen()) return;
+            
             const bulbEl = e.target.closest('.lifx-bulb-control, .lifx-bulb-card');
             if (bulbEl) {
                 const bulbId = bulbEl.getAttribute('data-bulb-id');
@@ -282,6 +293,8 @@ const LifXTouchControls = {
         }, { passive: true });
         
         document.addEventListener('touchmove', (e) => {
+            if (this.isModalOpen()) return;
+            
             if (this.touchHoldTimer && this.selectedBulb) {
                 e.preventDefault();
                 const touch = e.touches[0];
@@ -293,6 +306,8 @@ const LifXTouchControls = {
         }, { passive: false });
         
         document.addEventListener('touchend', (e) => {
+            if (this.isModalOpen()) return;
+            
             if (this.touchHoldTimer) {
                 clearTimeout(this.touchHoldTimer);
                 this.touchHoldTimer = null;
@@ -1562,9 +1577,9 @@ const LifXTouchControls = {
             this.showBrightnessFeedback(this.brightnessLevel);
             this.updateBulbBrightnessPreview(this.selectedBulb, this.brightnessLevel);
             
-            // Provide haptic feedback on significant changes
-            if (stepSize >= 5) {
-                this.hapticFeedback('brightness', Math.min(0.5, stepSize / 20));
+            // Provide haptic feedback on any change
+            if (stepSize >= 1) {
+                this.hapticFeedback('brightness', Math.min(0.3, stepSize / 50));
             }
             
             // Record gesture for undo
@@ -2356,18 +2371,53 @@ const LifXTouchControls = {
         }
     },
     
-    showTouchHoldProgress: function() {
+    showTouchHoldProgress: function(touchElement) {
         if (!this.touchHoldProgressEl) {
             this.touchHoldProgressEl = document.getElementById('touch-hold-progress');
         }
         if (this.touchHoldProgressEl) {
             this.touchHoldProgressEl.classList.add('visible');
+            this.touchHoldProgressEl.style.opacity = '1';
+            this.touchHoldProgressEl.style.transform = 'scale(1)';
+            
+            // Add percentage display if element supports it
+            const progressWithPercent = this.touchHoldProgressEl.querySelector('.touch-hold-progress-value');
+            if (progressWithPercent) {
+                progressWithPercent.textContent = '0%';
+            }
+            
+            // Animate progress ring
+            this.touchHoldProgressStartTime = Date.now();
+            this.animateTouchHoldProgress();
+        }
+    },
+    
+    animateTouchHoldProgress: function() {
+        if (!this.touchHoldProgressEl || !this.touchHoldTimer) return;
+        
+        const elapsed = Date.now() - this.touchHoldProgressStartTime;
+        const progress = Math.min(100, Math.round((elapsed / this.touchHoldDelay) * 100));
+        
+        // Update percentage display
+        const progressValue = this.touchHoldProgressEl.querySelector('.touch-hold-progress-value');
+        if (progressValue) {
+            progressValue.textContent = progress + '%';
+        }
+        
+        // Update ring rotation based on progress
+        this.touchHoldProgressEl.style.transform = `scale(${0.8 + (progress / 200)}) rotate(${progress * 3.6}deg)`;
+        
+        if (progress < 100) {
+            requestAnimationFrame(() => this.animateTouchHoldProgress());
         }
     },
     
     hideTouchHoldProgress: function() {
         if (this.touchHoldProgressEl) {
             this.touchHoldProgressEl.classList.remove('visible');
+            this.touchHoldProgressEl.style.opacity = '0';
+            this.touchHoldProgressEl.style.transform = 'scale(0.8) rotate(0deg)';
+            this.touchHoldProgressStartTime = null;
         }
     },
     
@@ -2884,6 +2934,9 @@ const LifXTouchControls = {
         this.touchSwipeVelocityThreshold = 0.3;
         this.lastTouchPositions = new Map();
         this.touchVelocity = new Map();
+        this.gestureRecognitionActive = false;
+        this.gestureDebounceCount = 0;
+        this.maxGestureDebounceCount = 3;
         this.setupMultiSelectMode();
         this.setupTouchHoldProgress();
         this.setupQuickActions();
@@ -2891,7 +2944,28 @@ const LifXTouchControls = {
         this.loadRipplePreferences();
         this.initEdgeSwipeDetection();
         this.initAdaptiveSensitivity();
+        this.initGestureReliabilityImprovements();
         console.log('Gesture enhancements initialized with edge swipe detection');
+    },
+    
+    initGestureReliabilityImprovements: function() {
+        // Add gesture accuracy tracking
+        this.gestureAccuracyWindow = [];
+        this.maxGestureAccuracyWindow = 20;
+        this.minGestureConfidence = 0.6;
+        
+        // Track gesture patterns for improved recognition
+        this.gesturePatterns = {
+            swipeUp: [],
+            swipeDown: [],
+            swipeLeft: [],
+            swipeRight: []
+        };
+        
+        // Add gesture validation
+        this.validateGestureBeforeExecute = true;
+        
+        console.log('Gesture reliability improvements initialized');
     },
     
     initEnhancedTouchTracking: function(e) {
@@ -5303,6 +5377,7 @@ const LifXTouchControls = {
         if (panel) {
             panel.classList.add('visible');
             this.updateMediaSyncPanelUI();
+            this.syncPanelVisible = true;
         }
     },
     
@@ -5310,7 +5385,38 @@ const LifXTouchControls = {
         const panel = document.getElementById('media-sync-panel');
         if (panel) {
             panel.classList.remove('visible');
+            this.syncPanelVisible = false;
         }
+        
+        // Mobile-specific cleanup
+        if (window.innerWidth <= 768) {
+            this.closeMediaSyncPanelMobile();
+        }
+    },
+    
+    closeMediaSyncPanelMobile: function() {
+        const panel = document.getElementById('media-sync-panel');
+        if (panel) {
+            panel.classList.remove('visible');
+            this.syncPanelVisible = false;
+        }
+        
+        // Reset any active media sync states
+        this.mediaSyncActive = false;
+        
+        // Hide mobile controls if visible
+        const mobileControls = document.getElementById('media-center-mobile-controls');
+        if (mobileControls) {
+            mobileControls.classList.remove('show');
+        }
+        
+        // Clear any active BPM indicators
+        const bpmIndicator = document.getElementById('bpm-realtime-indicator');
+        if (bpmIndicator) {
+            bpmIndicator.classList.remove('visible');
+        }
+        
+        console.log('Media sync panel closed (mobile)');
     },
     
     updateMediaSyncPanelUI: function() {
