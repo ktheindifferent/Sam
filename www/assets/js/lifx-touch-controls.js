@@ -26,6 +26,9 @@ const LifXTouchControls = {
     lastTapTime: 0,
     currentScene: 'relax',
     scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice', 'aurora', 'nebula', 'thunder', 'crystal', 'lagoon', 'cotton_candy', 'spring_blossom', 'punchbowl', 'smashing', 'glitter', 'golden_hour', 'late_night', 'midday', 'polar', 'cosmic', 'dream', 'chill', 'adventure', 'festival', 'bioluminescent', 'cyberpunk', 'vaporwave', 'northern_lights', 'desert_dawn', 'forest_mist', 'volcanic', 'underwater', 'space_station', 'wizard_tower', 'dragon_fire', 'fairy_grove', 'haunted', 'santas_workshop', 'new_year', 'valentines', 'halloween', 'thanksgiving', 'christmas', 'easter', 'st_patricks', 'independence_day'],
+    favoriteScenes: [],
+    recentScenes: [],
+    maxRecentScenes: 5,
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -79,6 +82,18 @@ const LifXTouchControls = {
     swipeEdgeZone: 20,
     isEdgeSwipe: false,
     edgeSwipeDirection: null,
+    touchpadModeEnabled: false,
+    touchpadX: 0,
+    touchpadY: 0,
+    microGestureEnabled: true,
+    microGestureThreshold: 10,
+    gestureMacros: {},
+    lastMultiTouchDistance: 0,
+    multiTouchActive: false,
+    radialMenuActive: false,
+    radialMenuAngle: 0,
+    quickBrightnessStep: 5,
+    quickColorTempStep: 100,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -3751,9 +3766,494 @@ const LifXTouchControls = {
                 this.circadianRhythmEnabled = true;
                 this.initCircadianRhythm();
             }
+            
+            const touchpadStored = localStorage.getItem('lifx_touchpad_mode');
+            if (touchpadStored === 'true') {
+                this.touchpadModeEnabled = true;
+            }
+            
+            const microGestureStored = localStorage.getItem('lifx_micro_gesture');
+            if (microGestureStored !== null) {
+                this.microGestureEnabled = microGestureStored === 'true';
+            }
+            
+            const favoritesStored = localStorage.getItem('lifx_favorite_scenes');
+            if (favoritesStored) {
+                this.favoriteScenes = JSON.parse(favoritesStored);
+            }
+            
+            const macrosStored = localStorage.getItem('lifx_gesture_macros');
+            if (macrosStored) {
+                this.gestureMacros = JSON.parse(macrosStored);
+            }
         } catch (e) {
             console.warn('Failed to load LIFX preferences:', e);
         }
+    },
+    
+    initTouchpadMode: function() {
+        if (!this.touchpadModeEnabled) return;
+        
+        document.querySelectorAll('.lifx-bulb-control').forEach(bulbEl => {
+            bulbEl.addEventListener('touchmove', (e) => {
+                if (!this.touchpadModeEnabled) return;
+                e.preventDefault();
+                
+                const touch = e.touches[0];
+                const rect = bulbEl.getBoundingClientRect();
+                const x = ((touch.clientX - rect.left) / rect.width) * 100;
+                const y = ((touch.clientY - rect.top) / rect.height) * 100;
+                
+                this.touchpadX = Math.max(0, Math.min(100, x));
+                this.touchpadY = Math.max(0, Math.min(100, y));
+                
+                const hue = (this.touchpadX / 100) * 360;
+                const saturation = 100 - (this.touchpadY / 100) * 50;
+                
+                this.showTouchpadFeedback(hue, saturation);
+            }, { passive: false });
+            
+            bulbEl.addEventListener('touchend', (e) => {
+                if (!this.touchpadModeEnabled) return;
+                
+                const targets = this.multiBulbSelection.length > 0 
+                    ? this.multiBulbSelection 
+                    : (this.selectedBulb ? [this.selectedBulb] : []);
+                
+                if (targets.length === 0) return;
+                
+                const hue = (this.touchpadX / 100) * 360;
+                const saturation = 100 - (this.touchpadY / 100) * 50;
+                
+                $.ajax({
+                    url: '/api/services/lifx/set_color',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: `id:${targets.join(',')}`,
+                        color: `hue:${Math.round(hue * 182)} saturation:${Math.round(saturation)}%`,
+                        duration: 0.3
+                    }),
+                    success: () => {
+                        this.showGestureFeedback('Color set via touchpad', '🎨');
+                        this.hapticFeedback('success');
+                    }
+                });
+            });
+        });
+        
+        console.log('Touchpad mode initialized');
+    },
+    
+    showTouchpadFeedback: function(hue, saturation) {
+        let feedback = document.querySelector('.touchpad-feedback');
+        if (!feedback) {
+            feedback = document.createElement('div');
+            feedback.className = 'touchpad-feedback';
+            document.body.appendChild(feedback);
+        }
+        
+        feedback.style.cssText = `
+            position: fixed;
+            pointer-events: none;
+            background: hsl(${hue}, ${saturation}%, 50%);
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            z-index: 10000;
+            transition: opacity 0.3s;
+        `;
+        
+        const touch = event.touches?.[0];
+        if (touch) {
+            feedback.style.left = (touch.clientX - 30) + 'px';
+            feedback.style.top = (touch.clientY - 30) + 'px';
+            feedback.style.opacity = '1';
+        }
+        
+        setTimeout(() => {
+            feedback.style.opacity = '0';
+        }, 500);
+    },
+    
+    initGestureMacros: function() {
+        const macroArea = document.getElementById('lifx-macro-area');
+        if (!macroArea) return;
+        
+        macroArea.addEventListener('gesture', (e) => {
+            const gestureName = e.detail.gesture;
+            if (this.gestureMacros[gestureName]) {
+                this.executeMacro(this.gestureMacros[gestureName]);
+            }
+        });
+    },
+    
+    saveGestureMacro: function(name, actions) {
+        this.gestureMacros[name] = actions;
+        localStorage.setItem('lifx_gesture_macros', JSON.stringify(this.gestureMacros));
+        this.showGestureFeedback(`Macro "${name}" saved`, '💾');
+    },
+    
+    executeMacro: function(actions) {
+        if (!Array.isArray(actions)) return;
+        
+        let delay = 0;
+        actions.forEach(action => {
+            setTimeout(() => {
+                if (action.type === 'scene') {
+                    this.applyScene(action.value);
+                } else if (action.type === 'brightness') {
+                    this.adjustBrightness(action.value - this.brightnessLevel);
+                } else if (action.type === 'colortemp') {
+                    this.adjustColorTemp(action.value);
+                } else if (action.type === 'color') {
+                    this.applyColorFromHex(action.value, this.selectedBulb || 'all');
+                }
+            }, delay);
+            delay += action.delay || 500;
+        });
+        
+        this.showGestureFeedback('Executing macro', '✨');
+        this.hapticFeedback('success');
+    },
+    
+    addToFavoriteScenes: function(sceneName) {
+        if (!this.favoriteScenes.includes(sceneName)) {
+            this.favoriteScenes.push(sceneName);
+            localStorage.setItem('lifx_favorite_scenes', JSON.stringify(this.favoriteScenes));
+            this.showGestureFeedback('Added to favorites', '⭐');
+        }
+    },
+    
+    removeFromFavoriteScenes: function(sceneName) {
+        const index = this.favoriteScenes.indexOf(sceneName);
+        if (index > -1) {
+            this.favoriteScenes.splice(index, 1);
+            localStorage.setItem('lifx_favorite_scenes', JSON.stringify(this.favoriteScenes));
+            this.showGestureFeedback('Removed from favorites', '⭐');
+        }
+    },
+    
+    addToRecentScenes: function(sceneName) {
+        if (!this.recentScenes.includes(sceneName)) {
+            this.recentScenes.unshift(sceneName);
+            if (this.recentScenes.length > this.maxRecentScenes) {
+                this.recentScenes.pop();
+            }
+        }
+    },
+    
+    showFavoriteScenesPanel: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Favorite scenes: ' + this.favoriteScenes.join(', '));
+            return;
+        }
+        
+        Swal.fire({
+            title: '<i class="fas fa-star"></i> Favorite Scenes',
+            html: `
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 15px;">
+                    ${this.favoriteScenes.map(scene => `
+                        <button class="btn btn-outline-primary" onclick="LifXTouchControls.applyScene('${scene}'); Swal.close();">
+                            <i class="fas fa-palette"></i> ${scene.replace('_', ' ')}
+                        </button>
+                    `).join('')}
+                </div>
+                ${this.favoriteScenes.length === 0 ? '<p style="color: #adb5bd;">No favorite scenes yet. Long-press a scene to add it!</p>' : ''}
+            `,
+            showConfirmButton: false,
+            showCloseButton: true
+        });
+    },
+    
+    initRadialMenu: function() {
+        const radialMenu = document.createElement('div');
+        radialMenu.className = 'lifx-radial-menu';
+        radialMenu.innerHTML = `
+            <div class="radial-menu-item" data-action="brightness" style="transform: rotate(0deg) translate(60px) rotate(0deg);">
+                <i class="fas fa-sun"></i>
+            </div>
+            <div class="radial-menu-item" data-action="colortemp" style="transform: rotate(90deg) translate(60px) rotate(-90deg);">
+                <i class="fas fa-thermometer-half"></i>
+            </div>
+            <div class="radial-menu-item" data-action="scene" style="transform: rotate(180deg) translate(60px) rotate(-180deg);">
+                <i class="fas fa-palette"></i>
+            </div>
+            <div class="radial-menu-item" data-action="power" style="transform: rotate(270deg) translate(60px) rotate(-270deg);">
+                <i class="fas fa-power-off"></i>
+            </div>
+        `;
+        radialMenu.style.cssText = `
+            position: fixed;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: rgba(30, 30, 45, 0.95);
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            z-index: 9999;
+            display: none;
+            pointer-events: none;
+        `;
+        document.body.appendChild(radialMenu);
+    },
+    
+    showRadialMenu: function(x, y) {
+        const radialMenu = document.querySelector('.lifx-radial-menu');
+        if (!radialMenu) return;
+        
+        radialMenu.style.display = 'block';
+        radialMenu.style.left = (x - 75) + 'px';
+        radialMenu.style.top = (y - 75) + 'px';
+        radialMenu.style.pointerEvents = 'auto';
+        
+        this.radialMenuActive = true;
+        this.showGestureFeedback('Radial menu active - swipe to select', '🎯');
+    },
+    
+    hideRadialMenu: function() {
+        const radialMenu = document.querySelector('.lifx-radial-menu');
+        if (radialMenu) {
+            radialMenu.style.display = 'none';
+            radialMenu.style.pointerEvents = 'none';
+        }
+        this.radialMenuActive = false;
+    },
+    
+    initMicroGestures: function() {
+        if (!this.microGestureEnabled) return;
+        
+        let startX = 0;
+        let startY = 0;
+        
+        document.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        }, { passive: true });
+        
+        document.addEventListener('touchend', (e) => {
+            if (!this.microGestureEnabled) return;
+            
+            const endX = e.changedTouches[0].clientX;
+            const endY = e.changedTouches[0].clientY;
+            
+            const deltaX = endX - startX;
+            const deltaY = endY - startY;
+            
+            if (Math.abs(deltaX) < this.microGestureThreshold && Math.abs(deltaY) < this.microGestureThreshold) {
+                return;
+            }
+            
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                if (deltaX > 0 && deltaX > this.microGestureThreshold) {
+                    this.adjustColorTemp(this.quickColorTempStep);
+                    this.showGestureFeedback('Warmer (micro)', '☀️');
+                } else if (deltaX < 0 && Math.abs(deltaX) > this.microGestureThreshold) {
+                    this.adjustColorTemp(-this.quickColorTempStep);
+                    this.showGestureFeedback('Cooler (micro)', '❄️');
+                }
+            } else {
+                if (deltaY > 0 && deltaY > this.microGestureThreshold) {
+                    this.adjustBrightness(this.quickBrightnessStep);
+                    this.showGestureFeedback('Brighter (micro)', '↑');
+                } else if (deltaY < 0 && Math.abs(deltaY) > this.microGestureThreshold) {
+                    this.adjustBrightness(-this.quickBrightnessStep);
+                    this.showGestureFeedback('Dimmer (micro)', '↓');
+                }
+            }
+        });
+        
+        console.log('Micro-gestures initialized');
+    },
+    
+    initThreeFingerGestures: function() {
+        let touchCount = 0;
+        let threeFingerStartY = 0;
+        
+        document.addEventListener('touchstart', (e) => {
+            touchCount = e.touches.length;
+            if (touchCount === 3) {
+                threeFingerStartY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchend', (e) => {
+            if (touchCount === 3) {
+                const endY = e.changedTouches[0].clientY;
+                const deltaY = endY - threeFingerStartY;
+                
+                if (deltaY > 50) {
+                    this.showFavoriteScenesPanel();
+                    this.showGestureFeedback('Favorites panel', '⭐');
+                } else if (deltaY < -50) {
+                    this.showTouchSensitivityPanel();
+                    this.showGestureFeedback('Touch settings', '⚙️');
+                }
+            }
+            touchCount = 0;
+        });
+        
+        console.log('Three-finger gestures initialized');
+    },
+    
+    initQuickSceneSwipes: function() {
+        let quickSceneStartX = 0;
+        let quickSceneActive = false;
+        
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches[0].clientY > window.innerHeight - 100) {
+                quickSceneActive = true;
+                quickSceneStartX = e.touches[0].clientX;
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchend', (e) => {
+            if (!quickSceneActive) return;
+            
+            const deltaX = e.changedTouches[0].clientX - quickSceneStartX;
+            
+            if (Math.abs(deltaX) > 100) {
+                if (deltaX > 0) {
+                    this.previousScene();
+                } else {
+                    this.nextScene();
+                }
+                this.showGestureFeedback('Scene changed', '🎨');
+            }
+            
+            quickSceneActive = false;
+        });
+        
+        console.log('Quick scene swipes initialized');
+    },
+    
+    showMediaSyncPanel: function() {
+        const panel = document.getElementById('media-sync-panel');
+        if (panel) {
+            panel.classList.add('visible');
+            this.updateMediaSyncPanelUI();
+        }
+    },
+    
+    hideMediaSyncPanel: function() {
+        const panel = document.getElementById('media-sync-panel');
+        if (panel) {
+            panel.classList.remove('visible');
+        }
+    },
+    
+    updateMediaSyncPanelUI: function() {
+        document.querySelectorAll('.sync-mode-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.mode === this.mediaSyncMode);
+        });
+        
+        const sensitivitySlider = document.getElementById('beat-sensitivity-slider');
+        const sensitivityValue = document.getElementById('beat-sensitivity-value');
+        if (sensitivitySlider && sensitivityValue) {
+            sensitivitySlider.value = Math.round(this.beatDetectionSensitivity * 100);
+            sensitivityValue.textContent = Math.round(this.beatDetectionSensitivity * 100) + '%';
+        }
+        
+        this.updateBpmDisplay();
+    },
+    
+    setMediaSyncMode: function(mode) {
+        this.mediaSyncMode = mode;
+        localStorage.setItem('lifx_media_sync_mode', mode);
+        
+        document.querySelectorAll('.sync-mode-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+        });
+        
+        const modeInfo = this.mediaSyncModes[mode] || { name: mode, icon: '🎵' };
+        this.showGestureFeedback(`Sync Mode: ${modeInfo.name}`, modeInfo.icon);
+        this.applyMediaSyncModeEffects(mode);
+    },
+    
+    setBeatSensitivity: function(value) {
+        this.beatDetectionSensitivity = Math.max(0.3, Math.min(1.0, value / 100));
+        localStorage.setItem('lifx_beat_sensitivity', this.beatDetectionSensitivity);
+        
+        const sensitivityValue = document.getElementById('beat-sensitivity-value');
+        if (sensitivityValue) {
+            sensitivityValue.textContent = value + '%';
+        }
+        
+        this.showGestureFeedback(`Sensitivity: ${value}%`, '📊');
+    },
+    
+    applySyncPreset: function(presetName) {
+        const presets = {
+            movie: { mode: 'ambient', sensitivity: 50 },
+            party: { mode: 'beat', sensitivity: 80 },
+            relax: { mode: 'ambient', sensitivity: 40 },
+            gaming: { mode: 'beat', sensitivity: 75 },
+            custom: { mode: this.mediaSyncMode, sensitivity: Math.round(this.beatDetectionSensitivity * 100) }
+        };
+        
+        const preset = presets[presetName];
+        if (preset) {
+            this.setMediaSyncMode(preset.mode);
+            this.setBeatSensitivity(preset.sensitivity);
+            this.showGestureFeedback(`Preset: ${presetName}`, '✨');
+        }
+    },
+    
+    toggleMediaSync: function() {
+        this.lifxMediaSyncEnabled = !this.lifxMediaSyncEnabled;
+        localStorage.setItem('lifx_media_sync_enabled', this.lifxMediaSyncEnabled);
+        
+        const icon = document.getElementById('media-sync-icon');
+        if (icon) {
+            icon.classList.toggle('fa-lightbulb');
+            icon.classList.toggle('fa-lightbulb-slash');
+        }
+        
+        this.showGestureFeedback(
+            this.lifxMediaSyncEnabled ? 'Media Sync ON' : 'Media Sync OFF',
+            this.lifxMediaSyncEnabled ? '💡' : '🌑'
+        );
+    },
+    
+    updateBpmDisplay: function() {
+        const bpmDisplays = document.querySelectorAll('#realtime-bpm, #bpm-value-display, .bpm-value');
+        bpmDisplays.forEach(el => {
+            el.textContent = this.bpmValue || '--';
+        });
+    },
+    
+    updateFrequencyVisualization: function() {
+        if (!this.audioAnalyzer) return;
+        
+        const bufferLength = this.audioAnalyzer.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        this.audioAnalyzer.getByteFrequencyData(dataArray);
+        
+        const bands = this.frequencyBands;
+        bands.subBass.value = this.getBandAverage(dataArray, bands.subBass.min, bands.subBass.max);
+        bands.bass.value = this.getBandAverage(dataArray, bands.bass.min, bands.bass.max);
+        bands.lowMid.value = this.getBandAverage(dataArray, bands.lowMid.min, bands.lowMid.max);
+        bands.mid.value = this.getBandAverage(dataArray, bands.mid.min, bands.mid.max);
+        bands.highMid.value = this.getBandAverage(dataArray, bands.highMid.min, bands.highMid.max);
+        bands.treble.value = this.getBandAverage(dataArray, bands.treble.min, bands.treble.max);
+        
+        const bandElements = ['subBass', 'bass', 'lowMid', 'mid', 'highMid', 'treble'];
+        const colors = ['#ff0080', '#ff6b6b', '#f39c12', '#00d4ff', '#00ff88', '#9b59b6'];
+        
+        bandElements.forEach((band, index) => {
+            const el = document.getElementById(`band-${band}`);
+            if (el) {
+                const height = Math.min(100, (bands[band].value / 255) * 100);
+                el.style.height = `${height}%`;
+                el.style.background = `linear-gradient(to top, ${colors[index]} 0%, ${colors[index]}88 100%)`;
+                
+                if (height > 85) {
+                    el.classList.add('peak');
+                } else {
+                    el.classList.remove('peak');
+                }
+            }
+        });
     }
 };
 
@@ -3771,12 +4271,30 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize additional features
     LifXTouchControls.initFromStorage();
     
+    // Initialize enhanced gesture features
+    LifXTouchControls.initTouchpadMode();
+    LifXTouchControls.initMicroGestures();
+    LifXTouchControls.initThreeFingerGestures();
+    LifXTouchControls.initQuickSceneSwipes();
+    LifXTouchControls.initRadialMenu();
+    LifXTouchControls.initGestureMacros();
+    
     // Expose global functions for voice and accessibility
     window.startLifxVoiceCommand = () => LifXTouchControls.initVoiceControl();
     window.setLifxAccessibilityMode = (enabled) => LifXTouchControls.setAccessibilityMode(enabled);
     window.saveLifxZonePreset = (name) => LifXTouchControls.saveZonePreset(name);
     window.loadLifxZonePreset = (name) => LifXTouchControls.loadZonePreset(name);
     window.queueLifxEffect = (effect, duration) => LifXTouchControls.queueEffect(effect, duration);
+    window.showLifxFavoriteScenes = () => LifXTouchControls.showFavoriteScenesPanel();
+    window.saveLifxGestureMacro = (name, actions) => LifXTouchControls.saveGestureMacro(name, actions);
+    
+    // Expose media sync functions
+    window.showMediaSyncPanel = () => LifXTouchControls.showMediaSyncPanel();
+    window.hideMediaSyncPanel = () => LifXTouchControls.hideMediaSyncPanel();
+    window.setMediaSyncMode = (mode) => LifXTouchControls.setMediaSyncMode(mode);
+    window.setBeatSensitivity = (value) => LifXTouchControls.setBeatSensitivity(value);
+    window.applySyncPreset = (preset) => LifXTouchControls.applySyncPreset(preset);
+    window.toggleMediaSync = () => LifXTouchControls.toggleMediaSync();
     
     console.log('LIFX Touch Controls initialized with enhanced features');
 });

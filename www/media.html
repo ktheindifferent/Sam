@@ -533,33 +533,98 @@ Licensed under GPLv3....see LICENSE file. -->
     <button class="media-center-mobile-btn" onclick="nextTrack()" title="Next">
       <i class="fas fa-step-forward"></i>
     </button>
-    <button class="media-center-mobile-btn" id="ambient-light-btn" onclick="toggleAmbientLight()" title="Ambient Light">
-      <i class="fas fa-lightbulb"></i>
+    <button class="media-center-mobile-btn" onclick="toggleMediaSync()" title="Toggle Media Sync">
+      <i class="fas fa-lightbulb" id="media-sync-icon"></i>
     </button>
-    <button class="media-center-mobile-btn" id="beat-detection-btn" onclick="toggleBeatDetection()" title="Beat Detection">
-      <i class="fas fa-wave-square"></i>
+    <button class="media-center-mobile-btn" onclick="showMediaSyncPanel()" title="Media Sync Settings">
+      <i class="fas fa-sliders-h"></i>
     </button>
-    <button class="media-center-mobile-btn" id="lifx-sync-btn" onclick="toggleLifxMediaSync()" title="LIFX Media Sync">
-      <i class="fas fa-sync"></i>
-    </button>
-    <button class="media-center-mobile-btn" id="voice-command-btn" onclick="startVoiceCommand()" title="Voice Command">
-      <i class="fas fa-microphone"></i>
-    </button>
-    <button class="media-center-mobile-btn" id="crossfade-btn" onclick="toggleCrossfade()" title="Crossfade">
-      <i class="fas fa-random"></i>
-    </button>
-    <button class="media-center-mobile-btn" id="media-sync-settings-btn" onclick="showMediaSyncSettings()" title="Media Sync Settings">
-      <i class="fas fa-cog"></i>
-    </button>
-    <button class="media-center-mobile-btn" id="touch-sensitivity-btn" onclick="showTouchSensitivitySettings()" title="Touch Sensitivity">
-      <i class="fas fa-hand-pointer"></i>
-    </button>
-    <div class="media-center-mobile-btn bpm-display" id="bpm-display" title="Estimated BPM">
-      <i class="fas fa-heartbeat"></i>
-      <span id="bpm-value">--</span>
+  </div>
+  
+  <!-- Media Sync Control Panel -->
+  <div class="media-sync-panel" id="media-sync-panel">
+    <div class="media-sync-panel-header">
+      <h4><i class="fas fa-lightbulb"></i> LIFX Media Sync</h4>
+      <button class="media-sync-panel-close" onclick="hideMediaSyncPanel()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="media-sync-panel-content">
+      <div class="sync-mode-buttons">
+        <button class="sync-mode-btn active" data-mode="beat" onclick="setMediaSyncMode('beat')">
+          <i class="fas fa-heartbeat"></i>
+          <span>Beat Sync</span>
+        </button>
+        <button class="sync-mode-btn" data-mode="color" onclick="setMediaSyncMode('color')">
+          <i class="fas fa-palette"></i>
+          <span>Color Sync</span>
+        </button>
+        <button class="sync-mode-btn" data-mode="ambient" onclick="setMediaSyncMode('ambient')">
+          <i class="fas fa-film"></i>
+          <span>Ambient</span>
+        </button>
+        <button class="sync-mode-btn" data-mode="bass" onclick="setMediaSyncMode('bass')">
+          <i class="fas fa-volume-up"></i>
+          <span>Bass Boost</span>
+        </button>
+        <button class="sync-mode-btn" data-mode="spectrum" onclick="setMediaSyncMode('spectrum')">
+          <i class="fas fa-wave-square"></i>
+          <span>Full Spectrum</span>
+        </button>
+      </div>
+      
+      <div class="sensitivity-control">
+        <label><i class="fas fa-sliders-h"></i> Beat Detection Sensitivity</label>
+        <input type="range" min="30" max="100" value="70" id="beat-sensitivity-slider" oninput="setBeatSensitivity(this.value)">
+        <span id="beat-sensitivity-value">70%</span>
+      </div>
+      
+      <div class="bpm-realtime-display">
+        <div class="bpm-icon-wrapper">
+          <i class="fas fa-heartbeat bpm-pulse-icon"></i>
+        </div>
+        <div class="bpm-info">
+          <span class="bpm-label">Detected BPM</span>
+          <span class="bpm-value" id="realtime-bpm">--</span>
+        </div>
+      </div>
+      
+      <div class="frequency-viz" id="beat-energy-viz">
+        <div class="beat-energy-bar" id="band-subBass" title="Sub-Bass"></div>
+        <div class="beat-energy-bar" id="band-bass" title="Bass"></div>
+        <div class="beat-energy-bar" id="band-lowMid" title="Low-Mid"></div>
+        <div class="beat-energy-bar" id="band-mid" title="Mid"></div>
+        <div class="beat-energy-bar" id="band-highMid" title="High-Mid"></div>
+        <div class="beat-energy-bar" id="band-treble" title="Treble"></div>
+      </div>
+      
+      <div class="sync-presets">
+        <button class="preset-btn" onclick="applySyncPreset('movie')">
+          <i class="fas fa-film"></i> Movie
+        </button>
+        <button class="preset-btn" onclick="applySyncPreset('party')">
+          <i class="fas fa-party-horn"></i> Party
+        </button>
+        <button class="preset-btn" onclick="applySyncPreset('relax')">
+          <i class="fas fa-spa"></i> Relax
+        </button>
+        <button class="preset-btn" onclick="applySyncPreset('gaming')">
+          <i class="fas fa-gamepad"></i> Gaming
+        </button>
+        <button class="preset-btn" onclick="applySyncPreset('custom')">
+          <i class="fas fa-cog"></i> Custom
+        </button>
+      </div>
     </div>
   </div>
   
+  <!-- BPM Realtime Indicator -->
+  <div class="bpm-realtime-indicator" id="bpm-realtime-indicator">
+    <i class="fas fa-heartbeat bpm-icon"></i>
+    <span class="bpm-value" id="bpm-value-display">--</span>
+    <span class="bpm-label">BPM</span>
+  </div>
+
   <!-- LIFX undo button for gesture history -->
   <div class="lifx-undo-btn" id="lifx-undo-btn" onclick="LifXTouchControls.undoLastGesture()" title="Undo Last Gesture">
     <i class="fas fa-undo"></i>
