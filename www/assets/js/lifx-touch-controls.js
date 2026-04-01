@@ -37,7 +37,9 @@ const LifXTouchControls = {
     gestureSensitivity: {
         swipeDistance: 50,
         swipeTime: 300,
-        pinchDistance: 30
+        pinchDistance: 30,
+        longPressDelay: 500,
+        doubleTapDelay: 300
     },
     hapticEnabled: true,
     ambientLightSync: false,
@@ -54,6 +56,7 @@ const LifXTouchControls = {
         this.isTouchDevice = typeof is_touch_enabled === 'function' && is_touch_enabled();
         this.loadGestureSensitivity();
         this.loadSavedPreferences();
+        this.initGestureEnhancements();
         console.log('LIFX Touch Controls enabled', this.isTouchDevice ? '(Touch Device)' : '(Mouse/Keyboard)');
         
         // Add visual indicators for touch-controlled elements
@@ -418,6 +421,7 @@ const LifXTouchControls = {
             }),
             success: () => {
                 targetArray.forEach(bulbId => this.updateBulbVisual(bulbId));
+                this.hapticFeedback('power', 0.8);
                 showNotification(`Power toggled for ${targetArray.length} bulb(s)`, 'info');
             }
         });
@@ -434,6 +438,7 @@ const LifXTouchControls = {
         if (bulbEl) {
             bulbEl.classList.add('selected');
             this.selectedBulb = bulbId;
+            this.hapticFeedback('selection', 0.6);
             console.log('Selected bulb:', bulbId);
         }
     },
@@ -461,6 +466,8 @@ const LifXTouchControls = {
                 this.brightnessLevel = newBrightness;
                 this.recordGesture('brightness', newBrightness);
                 targets.forEach(bulbId => this.updateBulbVisual(bulbId));
+                const intensity = Math.min(1.0, 0.5 + (Math.abs(delta) / 40));
+                this.hapticFeedback('brightness', intensity);
             },
             error: (err) => {
                 console.error('Failed to adjust brightness:', err);
@@ -491,6 +498,8 @@ const LifXTouchControls = {
                 this.colorTempLevel = newColorTemp;
                 this.recordGesture('colorTemp', newColorTemp);
                 targets.forEach(bulbId => this.updateBulbVisual(bulbId));
+                const intensity = Math.min(1.0, 0.5 + (Math.abs(delta) / 1000));
+                this.hapticFeedback('colortemp', intensity);
             },
             error: (err) => {
                 console.error('Failed to adjust color temp:', err);
@@ -516,6 +525,8 @@ const LifXTouchControls = {
             : (this.selectedBulb ? [this.selectedBulb] : []);
         
         if (targets.length === 0) return;
+        
+        this.hapticFeedback('scene', 1.0);
         
         const sceneSettings = {
             relax: { brightness: 40, kelvin: 2700, label: 'Relax' },
@@ -628,9 +639,12 @@ const LifXTouchControls = {
         const newBrightness = Math.max(0, Math.min(100, this.startBrightness + brightnessDelta));
         
         if (newBrightness !== this.brightnessLevel) {
+            const stepSize = Math.abs(newBrightness - this.brightnessLevel);
             this.brightnessLevel = newBrightness;
             this.showGestureFeedback(`${this.brightnessLevel}%`, '🔆');
-            this.hapticFeedback('light');
+            if (stepSize >= 5) {
+                this.hapticFeedback('brightness', Math.min(0.5, stepSize / 20));
+            }
         }
     },
     
@@ -670,28 +684,37 @@ const LifXTouchControls = {
         console.log('LIFX Touch Controls disabled');
     },
     
-    hapticFeedback: function(pattern = 'default') {
+    hapticFeedback: function(pattern = 'default', intensity = 1.0) {
         if (!this.hapticEnabled || !navigator.vibrate) return;
         
-        const patterns = {
+        const basePatterns = {
             'default': [50],
             'light': [30],
             'success': [50, 50, 50],
             'error': [100, 50, 100],
-            'selection': [40, 30, 40]
+            'selection': [40, 30, 40],
+            'brightness': [25, 25, 25],
+            'colortemp': [35, 35],
+            'scene': [60, 40, 60],
+            'power': [100, 50, 100, 50, 100],
+            'gesture': [45, 45]
         };
         
-        navigator.vibrate(patterns[pattern] || patterns['default']);
+        const basePattern = basePatterns[pattern] || basePatterns['default'];
+        const scaledPattern = basePattern.map(duration => Math.round(duration * intensity));
+        navigator.vibrate(scaledPattern);
     },
     
     setGestureSensitivity: function(level) {
         const settings = {
-            'low': { swipeDistance: 80, swipeTime: 400, pinchDistance: 50 },
-            'medium': { swipeDistance: 50, swipeTime: 300, pinchDistance: 30 },
-            'high': { swipeDistance: 30, swipeTime: 200, pinchDistance: 20 }
+            'low': { swipeDistance: 80, swipeTime: 400, pinchDistance: 50, longPressDelay: 700, doubleTapDelay: 400 },
+            'medium': { swipeDistance: 50, swipeTime: 300, pinchDistance: 30, longPressDelay: 500, doubleTapDelay: 300 },
+            'high': { swipeDistance: 30, swipeTime: 200, pinchDistance: 20, longPressDelay: 300, doubleTapDelay: 200 }
         };
         
         this.gestureSensitivity = settings[level] || settings['medium'];
+        this.touchHoldDelay = this.gestureSensitivity.longPressDelay;
+        this.doubleTapDelay = this.gestureSensitivity.doubleTapDelay;
         localStorage.setItem('lifx_gesture_sensitivity', level);
         console.log('Gesture sensitivity set to:', level);
     },
@@ -974,9 +997,33 @@ const LifXTouchControls = {
         if (sceneName === 'rainbow') {
             this.startRainbowCycle();
             return;
-        } else {
-            this.stopRainbowCycle();
         }
+        
+        const dynamicScenes = {
+            'crystal': { hue: 200, saturation: 50, brightness: 80, kelvin: 7000, effect: 'pulse' },
+            'lagoon': { hue: 160, saturation: 70, brightness: 70, kelvin: 5000, effect: 'fade' },
+            'cotton_candy': { hue: 320, saturation: 60, brightness: 75, kelvin: 4500, effect: 'gentle_pulse' },
+            'spring_blossom': { hue: 140, saturation: 65, brightness: 80, kelvin: 4200, effect: 'slow_cycle' },
+            'punchbowl': { hue: 300, saturation: 80, brightness: 85, kelvin: 4000, effect: 'vibrant' },
+            'smashing': { hue: 280, saturation: 90, brightness: 90, kelvin: 5000, effect: 'energy' },
+            'glitter': { hue: 50, saturation: 85, brightness: 90, kelvin: 4000, effect: 'sparkle' },
+            'golden_hour': { hue: 35, saturation: 70, brightness: 75, kelvin: 3200, effect: 'pulse' },
+            'late_night': { hue: 240, saturation: 30, brightness: 40, kelvin: 2700, effect: 'fade' },
+            'midday': { hue: 50, saturation: 40, brightness: 95, kelvin: 5500, effect: 'gentle_pulse' },
+            'polar': { hue: 200, saturation: 40, brightness: 85, kelvin: 8000, effect: 'slow_cycle' },
+            'fireplace': { hue: 30, saturation: 80, brightness: 60, kelvin: 2000, effect: 'pulse' },
+            'aurora': { hue: 140, saturation: 100, brightness: 75, kelvin: 6000, effect: 'fade' },
+            'nebula': { hue: 280, saturation: 80, brightness: 65, kelvin: 5000, effect: 'gentle_pulse' },
+            'thunder': { hue: 50, saturation: 90, brightness: 100, kelvin: 7000, effect: 'energy' }
+        };
+        
+        if (dynamicScenes[sceneName]) {
+            this.applyDynamicScene(sceneName, dynamicScenes[sceneName]);
+            return;
+        }
+        
+        this.stopRainbowCycle();
+        this.stopDynamicScene();
         
         const sceneColors = {
             'relax': { hue: 0, saturation: 50, brightness: 60, kelvin: 2700 },
@@ -1116,6 +1163,14 @@ const LifXTouchControls = {
             hapticEnabled: this.hapticEnabled
         };
         localStorage.setItem('lifx_preferences', JSON.stringify(prefs));
+    },
+    
+    initGestureEnhancements: function() {
+        this.touchSwipeThreshold = this.gestureSensitivity.swipeDistance;
+        this.touchSwipeVelocityThreshold = 0.3;
+        this.lastTouchPositions = new Map();
+        this.touchVelocity = new Map();
+        console.log('Gesture enhancements initialized');
     },
     
     loadSavedPreferences: function() {
@@ -1396,6 +1451,89 @@ const LifXTouchControls = {
             clearInterval(this.rainbowCycleInterval);
             this.rainbowCycleInterval = null;
             this.showGestureFeedback('Rainbow cycle stopped', '🌈');
+        }
+    },
+    
+    dynamicSceneInterval: null,
+    dynamicSceneParams: null,
+    
+    applyDynamicScene: function(sceneName, params) {
+        this.stopDynamicScene();
+        this.dynamicSceneParams = { ...params, sceneName };
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        const applyEffect = () => {
+            if (!this.dynamicSceneParams) return;
+            
+            const p = this.dynamicSceneParams;
+            let hue = p.hue;
+            let brightness = p.brightness;
+            let saturation = p.saturation;
+            
+            switch(p.effect) {
+                case 'pulse':
+                    brightness = 40 + Math.sin(Date.now() / 500) * (p.brightness * 0.4);
+                    break;
+                case 'fade':
+                    hue = (p.hue + Math.sin(Date.now() / 2000) * 20) % 360;
+                    break;
+                case 'slow_cycle':
+                    hue = (p.hue + (Date.now() / 50) % 60) % 360;
+                    break;
+                case 'gentle_pulse':
+                    brightness = p.brightness * (0.7 + Math.sin(Date.now() / 800) * 0.15);
+                    saturation = p.saturation * (0.8 + Math.sin(Date.now() / 600) * 0.1);
+                    break;
+                case 'vibrant':
+                    saturation = Math.min(100, p.saturation + Math.sin(Date.now() / 300) * 15);
+                    break;
+                case 'energy':
+                    if (Date.now() % 1000 < 500) {
+                        brightness = p.brightness;
+                        saturation = p.saturation;
+                    } else {
+                        brightness = p.brightness * 0.7;
+                        saturation = p.saturation * 0.8;
+                    }
+                    break;
+                case 'sparkle':
+                    if (Math.random() < 0.1) {
+                        brightness = 100;
+                        saturation = 100;
+                    } else {
+                        brightness = p.brightness;
+                        saturation = p.saturation;
+                    }
+                    break;
+            }
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets.join(',')}`,
+                    color: `hue:${Math.round(hue * 182)} saturation:${Math.round(saturation)}%`,
+                    brightness: Math.round(brightness),
+                    kelvin: p.kelvin,
+                    duration: p.effect === 'sparkle' || p.effect === 'energy' ? 0.1 : 0.5
+                })
+            });
+        };
+        
+        applyEffect();
+        this.dynamicSceneInterval = setInterval(applyEffect, 200);
+        this.showGestureFeedback(`Scene: ${sceneName}`, '✨');
+        this.hapticFeedback('scene', 0.8);
+    },
+    
+    stopDynamicScene: function() {
+        if (this.dynamicSceneInterval) {
+            clearInterval(this.dynamicSceneInterval);
+            this.dynamicSceneInterval = null;
+            this.dynamicSceneParams = null;
         }
     }
 };

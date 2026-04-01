@@ -47,7 +47,11 @@ const MediaPlayer = {
     lifxBeatDetection: {
         threshold: 0.3,
         lastBeat: 0,
-        beatCooldown: 150
+        beatCooldown: 150,
+        adaptiveThreshold: 0.25,
+        beatHistory: [],
+        bpmEstimate: 120,
+        lastBpmUpdate: 0
     },
     lifxSceneMode: 'ambient',
     lifxColorHistory: [],
@@ -765,6 +769,10 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
     }
     
     MediaPlayer.lifxBeatDetection.lastBeat = now;
+    MediaPlayer.lifxBeatDetection.beatHistory.push({ time: now, strength: beatStrength });
+    if (MediaPlayer.lifxBeatDetection.beatHistory.length > 10) {
+        MediaPlayer.lifxBeatDetection.beatHistory.shift();
+    }
     
     const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
         ? LifXTouchControls.multiBulbSelection.join(',')
@@ -778,6 +786,9 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
     const colorTemp = MediaPlayer.lifxSceneMode === 'warm' ? 2700 : 
                       MediaPlayer.lifxSceneMode === 'cool' ? 6500 : 4000;
     
+    const pulseBrightness = 0.4 + (beatStrength * 0.6);
+    const saturation = 60 + (beatStrength * 40);
+    
     $.ajax({
         url: '/api/services/lifx/set_state',
         method: 'POST',
@@ -785,7 +796,7 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
         data: JSON.stringify({
             selector: targets === 'all' ? 'all' : `id:${targets}`,
             power: 'on',
-            brightness: baseBrightness,
+            brightness: pulseBrightness,
             duration: 0.05
         })
     });
@@ -796,19 +807,14 @@ function pulseLifxWithBeat(beatStrength = 1.0) {
         contentType: 'application/json',
         data: JSON.stringify({
             selector: targets === 'all' ? 'all' : `id:${targets}`,
-            color: `hue:${Math.round(newHue * 182)} saturation:${Math.round(60 + beatStrength * 40)}%`,
+            color: `hue:${Math.round(newHue * 182)} saturation:${Math.round(saturation)}%`,
             kelvin: colorTemp,
             duration: 0.1
         }),
         error: () => {}
     });
     
-    if (MediaPlayer.lifxBeatHistory) {
-        MediaPlayer.lifxBeatHistory.push({ time: now, strength: beatStrength });
-        if (MediaPlayer.lifxBeatHistory.length > 20) {
-            MediaPlayer.lifxBeatHistory.shift();
-        }
-    }
+    updateBpmEstimate();
 }
 
 function setLifxSceneForMedia(sceneName) {
@@ -1189,6 +1195,30 @@ function initAudioContext() {
     }
 }
 
+function updateBpmEstimate() {
+    const history = MediaPlayer.lifxBeatDetection.beatHistory;
+    if (history.length < 3) return;
+    
+    const now = Date.now();
+    const recentBeats = history.slice(-5);
+    const intervals = [];
+    
+    for (let i = 1; i < recentBeats.length; i++) {
+        intervals.push(recentBeats[i].time - recentBeats[i-1].time);
+    }
+    
+    if (intervals.length > 0) {
+        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        const estimatedBpm = Math.round(60000 / avgInterval);
+        
+        if (estimatedBpm > 60 && estimatedBpm < 200) {
+            MediaPlayer.lifxBeatDetection.bpmEstimate = estimatedBpm;
+            MediaPlayer.lifxBeatDetection.lastBpmUpdate = now;
+            MediaPlayer.lifxBeatDetection.beatCooldown = Math.max(100, 60000 / estimatedBpm - 50);
+        }
+    }
+}
+
 function detectAudioBeat() {
     if (!MediaPlayer.audioContext || !MediaPlayer.analyser || !MediaPlayer.isPlaying) {
         return 0;
@@ -1207,7 +1237,14 @@ function detectAudioBeat() {
     const trebleEnergy = trebleRange.reduce((a, b) => a + b, 0) / trebleRange.length / 255;
     
     const avgEnergy = (bassEnergy + midEnergy + trebleEnergy) / 3;
-    const dynamicThreshold = Math.max(0.2, Math.min(0.4, avgEnergy * 0.8));
+    
+    const history = MediaPlayer.lifxBeatDetection.beatHistory;
+    let recentAvgStrength = 0.3;
+    if (history.length > 0) {
+        recentAvgStrength = history.reduce((a, b) => a + b.strength, 0) / history.length;
+    }
+    
+    const dynamicThreshold = Math.max(0.2, Math.min(0.4, avgEnergy * 0.8 + recentAvgStrength * 0.2));
     
     const beatStrength = (bassEnergy * 0.6) + (midEnergy * 0.3) + (trebleEnergy * 0.1);
     
@@ -1229,7 +1266,12 @@ function startBeatDetection() {
     if (!MediaPlayer.beatDetectionInterval && MediaPlayer.lifxSyncEnabled) {
         MediaPlayer.beatDetectionInterval = setInterval(() => {
             if (MediaPlayer.isPlaying && MediaPlayer.lifxSyncEnabled) {
-                detectAudioBeat();
+                const beatStrength = detectAudioBeat();
+                if (beatStrength > 0) {
+                    MediaPlayer.lifxBeatDetection.consecutiveBeats = (MediaPlayer.lifxBeatDetection.consecutiveBeats || 0) + 1;
+                } else {
+                    MediaPlayer.lifxBeatDetection.consecutiveBeats = 0;
+                }
             }
         }, 100);
         console.log('Beat detection started');
