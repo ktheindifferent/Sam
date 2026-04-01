@@ -429,19 +429,36 @@ const TouchMediaEnhancements = (function() {
         console.log('[TouchMediaEnhancements] Initialized');
     }
 
-    // Enhanced touch feedback with ripple effect
+    // Enhanced touch feedback with velocity-sensitive ripple effect
     function setupTouchFeedback() {
+        let lastTouchX = 0, lastTouchY = 0, lastTouchTime = 0;
+        
         document.addEventListener('click', function(e) {
             if (!CONFIG.enableRipple) return;
             
             const target = e.target.closest('.touch-feedback, button, .btn, [role="button"]');
             if (!target) return;
             
-            const ripple = document.createElement('span');
-            ripple.classList.add('ripple');
-            
             const rect = target.getBoundingClientRect();
             const size = Math.max(rect.width, rect.height);
+            
+            // Calculate touch velocity for ripple intensity
+            const currentTime = Date.now();
+            const timeDelta = currentTime - lastTouchTime;
+            const velocity = timeDelta > 0 ? Math.sqrt(
+                Math.pow(e.clientX - lastTouchX, 2) + 
+                Math.pow(e.clientY - lastTouchY, 2)
+            ) / timeDelta : 0;
+            
+            const ripple = document.createElement('span');
+            ripple.classList.add('ripple');
+            ripple.classList.add('ripple-enhanced');
+            
+            // Set ripple color based on velocity
+            const hue = Math.min(360, 180 + velocity * 100);
+            ripple.style.setProperty('--ripple-hue', hue);
+            ripple.style.setProperty('--ripple-opacity', Math.min(0.8, 0.3 + velocity * 0.5));
+            
             ripple.style.width = ripple.style.height = size + 'px';
             ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
             ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
@@ -449,35 +466,113 @@ const TouchMediaEnhancements = (function() {
             target.appendChild(ripple);
             
             setTimeout(() => ripple.remove(), 600);
+            
+            lastTouchX = e.clientX;
+            lastTouchY = e.clientY;
+            lastTouchTime = currentTime;
         });
     }
 
-    // Gesture trail effect
+    // Enhanced gesture trail effect with particle system
     function setupGestureTrails() {
         if (!CONFIG.enableGestureTrails) return;
         
         let trailTimeout;
+        let lastX = 0, lastY = 0;
+        let moveSpeed = 0;
+        
         document.addEventListener('mousemove', function(e) {
             clearTimeout(trailTimeout);
             
+            // Calculate movement speed for dynamic trail effects
+            const deltaX = e.clientX - lastX;
+            const deltaY = e.clientY - lastY;
+            moveSpeed = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            // Create primary trail
             const trail = document.createElement('div');
             trail.classList.add('gesture-trail');
-            trail.style.left = (e.clientX - 10) + 'px';
-            trail.style.top = (e.clientY - 10) + 'px';
+            trail.classList.add('gesture-trail-enhanced');
+            
+            // Dynamic sizing and opacity based on speed
+            const trailSize = Math.min(30, 10 + moveSpeed * 0.5);
+            const opacity = Math.min(0.8, 0.3 + moveSpeed * 0.02);
+            const hue = (Date.now() / 50) % 360;
+            
+            trail.style.cssText = `
+                left: ${e.clientX - trailSize/2}px;
+                top: ${e.clientY - trailSize/2}px;
+                width: ${trailSize}px;
+                height: ${trailSize}px;
+                opacity: ${opacity};
+                background: radial-gradient(circle, hsla(${hue}, 80%, 60%, 0.8), transparent);
+                box-shadow: 0 0 ${trailSize/2}px hsla(${hue}, 80%, 60%, 0.6);
+            `;
             
             document.body.appendChild(trail);
             gestureTrails.push(trail);
             
+            // Create particle burst on fast movements
+            if (moveSpeed > 20 && CONFIG.animationsEnabled) {
+                createGestureParticles(e.clientX, e.clientY, moveSpeed);
+            }
+            
             setTimeout(() => {
-                trail.remove();
-                gestureTrails = gestureTrails.filter(t => t !== trail);
+                trail.style.transition = 'all 0.3s ease-out';
+                trail.style.opacity = '0';
+                trail.style.transform = 'scale(0.5)';
+                setTimeout(() => {
+                    trail.remove();
+                    gestureTrails = gestureTrails.filter(t => t !== trail);
+                }, 300);
             }, 400);
             
             trailTimeout = setTimeout(() => {
-                gestureTrails.forEach(t => t.remove());
+                gestureTrails.forEach(t => {
+                    t.style.transition = 'all 0.3s ease-out';
+                    t.style.opacity = '0';
+                    setTimeout(() => t.remove(), 300);
+                });
                 gestureTrails = [];
             }, 500);
+            
+            lastX = e.clientX;
+            lastY = e.clientY;
         });
+    }
+    
+    // Create particle burst effect for fast gestures
+    function createGestureParticles(x, y, speed) {
+        const particleCount = Math.min(8, Math.floor(speed / 5));
+        const hue = (Date.now() / 50) % 360;
+        
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.classList.add('gesture-particle');
+            
+            const angle = (Math.PI * 2 / particleCount) * i;
+            const velocity = speed * 0.3;
+            const dx = Math.cos(angle) * velocity;
+            const dy = Math.sin(angle) * velocity;
+            
+            particle.style.cssText = `
+                position: fixed;
+                left: ${x}px;
+                top: ${y}px;
+                width: ${Math.min(8, 3 + speed * 0.1)}px;
+                height: ${Math.min(8, 3 + speed * 0.1)}px;
+                background: hsla(${hue}, 80%, 60%, 0.8);
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 9998;
+                animation: gesture-particle-anim 0.6s ease-out forwards;
+                --particle-dx: ${dx}px;
+                --particle-dy: ${dy}px;
+            `;
+            
+            document.body.appendChild(particle);
+            setTimeout(() => particle.remove(), 600);
+        }
     }
 
     // BPM Real-time Indicator with enhanced visual feedback
@@ -1466,14 +1561,15 @@ const TouchMediaEnhancements = (function() {
     }
 
     function handleSwipe(direction, deltaTime = 0) {
-        console.log(`[TouchMediaEnhancements] Swipe detected: ${direction} (${deltaTime}ms)`);
+        const velocity = deltaTime > 0 ? 1000 / deltaTime : 0;
+        console.log(`[TouchMediaEnhancements] Swipe detected: ${direction} (${deltaTime}ms, velocity: ${velocity.toFixed(1)})`);
         
-        const event = new CustomEvent('swipe-gesture', { detail: { direction, deltaTime } });
+        const event = new CustomEvent('swipe-gesture', { detail: { direction, deltaTime, velocity } });
         document.dispatchEvent(event);
         
-        // Show enhanced swipe indicator with animation
+        // Show enhanced swipe indicator with velocity-based styling
         const indicator = document.createElement('div');
-        indicator.className = 'swipe-indicator visible';
+        indicator.className = 'swipe-indicator visible swipe-enhanced';
         
         const arrows = {
             'up': 'fa-chevron-up',
@@ -1482,25 +1578,77 @@ const TouchMediaEnhancements = (function() {
             'right': 'fa-chevron-right'
         };
         
-        indicator.innerHTML = `<i class="fas ${arrows[direction] || 'fa-chevron-up'} swipe-arrow"></i>`;
+        // Velocity-based color (blue -> purple -> pink -> red)
+        const hue = Math.min(360, 180 + velocity * 20);
+        const scale = Math.min(1.5, 1 + velocity * 0.005);
+        
+        indicator.innerHTML = `
+            <i class="fas ${arrows[direction] || 'fa-chevron-up'} swipe-arrow"></i>
+            <div class="swipe-trail" style="--trail-hue: ${hue}; --trail-scale: ${scale}"></div>
+        `;
         indicator.style.cssText = `
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 48px;
-            color: rgba(39, 160, 185, 0.8);
+            font-size: ${48 * scale}px;
+            color: hsla(${hue}, 80%, 60%, 0.9);
             pointer-events: none;
             z-index: 9999;
+            filter: drop-shadow(0 0 ${20 * velocity/10}px hsla(${hue}, 80%, 60%, 0.6));
             animation: swipe-indicator-anim 0.5s ease-out forwards;
         `;
         document.body.appendChild(indicator);
         
+        // Create swipe trail particles for fast swipes
+        if (velocity > 2 && CONFIG.animationsEnabled) {
+            createSwipeTrail(direction, velocity, hue);
+        }
+        
         setTimeout(() => indicator.remove(), 600);
         
-        // Haptic feedback for swipe
+        // Velocity-based haptic feedback
         if (CONFIG.hapticFeedback) {
-            navigator.vibrate?.(8);
+            const hapticStrength = Math.min(30, 8 + Math.floor(velocity));
+            navigator.vibrate?.([hapticStrength, 30, hapticStrength / 2]);
+        }
+    }
+    
+    // Create swipe trail particle effect
+    function createSwipeTrail(direction, velocity, hue) {
+        const particleCount = Math.min(12, Math.floor(velocity * 2));
+        const isHorizontal = direction === 'left' || direction === 'right';
+        const isPositive = direction === 'right' || direction === 'down';
+        
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'swipe-trail-particle';
+            
+            const offset = isHorizontal 
+                ? { x: (Math.random() - 0.5) * 100, y: (Math.random() - 0.5) * 200 }
+                : { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 100 };
+            
+            const travelDistance = isHorizontal 
+                ? (isPositive ? 100 + i * 20 : -100 - i * 20)
+                : (isPositive ? 100 + i * 20 : -100 - i * 20);
+            
+            particle.style.cssText = `
+                position: fixed;
+                left: ${50 + (offset.x / window.innerWidth) * 50}%;
+                top: ${50 + (offset.y / window.innerHeight) * 50}%;
+                width: ${Math.max(4, 12 - i)}px;
+                height: ${Math.max(4, 12 - i)}px;
+                background: hsla(${hue}, 80%, 60%, ${0.8 - i * 0.05});
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 9998;
+                animation: swipe-trail-anim 0.4s ease-out forwards;
+                --travel-x: ${isHorizontal ? travelDistance : offset.x}px;
+                --travel-y: ${!isHorizontal ? travelDistance : offset.y}px;
+            `;
+            
+            document.body.appendChild(particle);
+            setTimeout(() => particle.remove(), 500);
         }
     }
     
@@ -2009,18 +2157,29 @@ const TouchMediaEnhancements = (function() {
         if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
-            analyser.fftSize = 512;
-            analyser.smoothingTimeConstant = 0.8;
+            analyser.fftSize = 1024;
+            analyser.smoothingTimeConstant = 0.85;
             beatHistory = [];
             bpmHistory = [];
+            beatEnergyHistory = [];
+            beatConfidence = 0;
+            consecutiveBeatCount = 0;
         }
     }
     
     function detectBeat(dataArray) {
         const bassRange = dataArray.slice(0, 8);
+        const subBassRange = dataArray.slice(0, 4);
+        const lowMidRange = dataArray.slice(8, 16);
+        
         const bassAvg = bassRange.reduce((a, b) => a + b, 0) / bassRange.length;
+        const subBassAvg = subBassRange.reduce((a, b) => a + b, 0) / subBassRange.length;
+        const lowMidAvg = lowMidRange.reduce((a, b) => a + b, 0) / lowMidRange.length;
         const bassPeak = Math.max(...bassRange);
+        
         const currentBeatEnergy = bassAvg / 255;
+        const subBassEnergy = subBassAvg / 255;
+        const energyRatio = subBassEnergy / (bassEnergy + 0.01);
         
         beatEnergyHistory.push(currentBeatEnergy);
         if (beatEnergyHistory.length > maxBeatEnergyHistory) {
@@ -2029,21 +2188,34 @@ const TouchMediaEnhancements = (function() {
         
         const avgEnergy = beatEnergyHistory.reduce((a, b) => a + b, 0) / beatEnergyHistory.length;
         const energyChange = currentBeatEnergy - lastBeatEnergy;
+        const energyAcceleration = energyChange - (beatEnergyHistory[beatEnergyHistory.length - 2] - beatEnergyHistory[beatEnergyHistory.length - 3] || 0);
         
         const now = Date.now();
         const timeSinceLastBeat = now - lastBeatTime;
+        const expectedInterval = bpmHistory.length > 0 ? 60000 / bpmHistory[bpmHistory.length - 1] : 500;
+        const intervalDeviation = Math.abs(timeSinceLastBeat - expectedInterval) / expectedInterval;
         
-        const dynamicThreshold = Math.max(0.5, Math.min(0.95, 
-            beatThreshold - (avgEnergy * 0.15) - (Math.max(0, energyChange) * 0.1)
+        const dynamicThreshold = Math.max(0.4, Math.min(0.9, 
+            beatThreshold 
+            - (avgEnergy * 0.15) 
+            - (Math.max(0, energyChange) * 0.1)
+            - (Math.max(0, energyAcceleration) * 0.05)
+            + (intervalDeviation * 0.2)
         ));
         
-        if (bassPeak > dynamicThreshold * 255 && timeSinceLastBeat > 150) {
+        const isBeat = bassPeak > dynamicThreshold * 255 
+            && timeSinceLastBeat > 150 
+            && timeSinceLastBeat < 1500
+            && subBassEnergy > 0.5
+            && energyRatio > 0.8;
+        
+        if (isBeat) {
             lastBeatTime = now;
             beatHistory.push(now);
             consecutiveBeatCount++;
             lastBeatEnergy = currentBeatEnergy;
             
-            beatConfidence = Math.min(1.0, beatConfidence + 0.1);
+            beatConfidence = Math.min(1.0, beatConfidence + 0.08 + (energyRatio * 0.02));
             
             if (beatHistory.length > 2) {
                 const intervals = [];
@@ -2052,7 +2224,8 @@ const TouchMediaEnhancements = (function() {
                 }
                 
                 const sortedIntervals = [...intervals].sort((a, b) => a - b);
-                const trimmedIntervals = sortedIntervals.slice(1, -1);
+                const trimmedIntervals = sortedIntervals.slice(Math.floor(sortedIntervals.length * 0.2), 
+                                                               Math.ceil(sortedIntervals.length * 0.8));
                 const avgInterval = trimmedIntervals.length > 0 
                     ? trimmedIntervals.reduce((a, b) => a + b, 0) / trimmedIntervals.length
                     : intervals.reduce((a, b) => a + b, 0) / intervals.length;
@@ -2061,31 +2234,35 @@ const TouchMediaEnhancements = (function() {
                 
                 if (detectedBpm > 60 && detectedBpm < 200) {
                     bpmHistory.push(detectedBpm);
-                    if (bpmHistory.length > 12) bpmHistory.shift();
+                    if (bpmHistory.length > 16) bpmHistory.shift();
                     
-                    const weights = bpmHistory.map((_, i) => i + 1);
+                    const weights = bpmHistory.map((_, i) => Math.pow(i + 1, 1.5));
                     const weightedSum = bpmHistory.reduce((sum, bpm, i) => sum + bpm * weights[i], 0);
                     const weightTotal = weights.reduce((a, b) => a + b, 0);
                     const smoothedBpm = Math.round(weightedSum / weightTotal);
+                    
                     updateBpm(smoothedBpm);
                     updateBeatDetectionStats({
                         bpm: smoothedBpm,
                         confidence: beatConfidence,
                         lastBeat: now / 1000,
                         energy: currentBeatEnergy,
+                        subBassEnergy: subBassEnergy,
+                        energyRatio: energyRatio,
                         consecutiveBeats: consecutiveBeatCount
                     });
                     
                     if (mediaSyncActive && mediaSyncMode === 'beat') {
                         triggerLifxBeat();
-                        triggerBeatVisualization(currentBeatEnergy);
+                        triggerBeatVisualization(currentBeatEnergy, subBassEnergy);
                     }
                     
                     return true;
                 }
             }
         } else {
-            beatConfidence = Math.max(0, beatConfidence - 0.02);
+            const timeDecay = Math.min(0.05, 0.01 * (timeSinceLastBeat / 1000));
+            beatConfidence = Math.max(0, beatConfidence - timeDecay);
             if (timeSinceLastBeat > 3000) {
                 consecutiveBeatCount = 0;
             }
@@ -2106,41 +2283,89 @@ const TouchMediaEnhancements = (function() {
         document.dispatchEvent(event);
     }
     
-    function triggerBeatVisualization(energy) {
+    function triggerBeatVisualization(energy, subBassEnergy = 0) {
         const visualizerContainer = document.getElementById('beat-visualization');
         if (!visualizerContainer) return;
         
+        const combinedEnergy = Math.min(1, energy * 0.7 + subBassEnergy * 0.3);
+        const hue = 180 + (subBassEnergy * 60);
+        
         const beatPulse = document.createElement('div');
-        beatPulse.className = 'beat-pulse-visual';
+        beatPulse.className = 'beat-pulse-visual beat-pulse-enhanced';
         beatPulse.style.cssText = `
             position: absolute;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%);
-            width: ${100 + (energy * 150)}px;
-            height: ${100 + (energy * 150)}px;
+            transform: translate(-50%, -50%) scale(0.5);
+            width: ${100 + (combinedEnergy * 200)}px;
+            height: ${100 + (combinedEnergy * 200)}px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(0, 212, 255, ${0.3 + energy * 0.4}) 0%, transparent 70%);
+            background: radial-gradient(circle, 
+                hsla(${hue}, 80%, 60%, ${0.4 + combinedEnergy * 0.4}) 0%,
+                hsla(${hue + 30}, 70%, 50%, ${0.2 + combinedEnergy * 0.3}) 40%,
+                transparent 70%);
+            box-shadow: 0 0 ${30 + combinedEnergy * 50}px hsla(${hue}, 80%, 60%, ${0.6 + combinedEnergy * 0.3});
             pointer-events: none;
             z-index: 100;
-            animation: beat-pulse-expand 0.6s ease-out forwards;
+            animation: beat-pulse-expand-enhanced 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
         `;
         
         visualizerContainer.appendChild(beatPulse);
-        setTimeout(() => beatPulse.remove(), 600);
+        setTimeout(() => beatPulse.remove(), 700);
         
         const bars = visualizerContainer.querySelectorAll('.beat-bar');
         bars.forEach((bar, i) => {
-            const delay = i * 0.02;
+            const delay = i * 0.015;
+            const barEnergy = energy + (Math.sin(i * 0.5) * 0.2 + 0.5) * subBassEnergy * 0.3;
+            const barHue = (i / bars.length) * 360 + (subBassEnergy * 30);
             setTimeout(() => {
-                bar.style.background = `hsla(${(i / bars.length) * 360}, 100%, ${50 + energy * 30}%, ${0.7 + energy * 0.3})`;
-                bar.style.boxShadow = `0 0 ${Math.floor(energy * 20)}px hsla(${(i / bars.length) * 360}, 100%, 50%, ${0.5 + energy * 0.3})`;
+                bar.style.background = `hsla(${barHue}, 80%, ${45 + barEnergy * 35}%, ${0.6 + barEnergy * 0.4})`;
+                bar.style.boxShadow = `0 0 ${Math.floor(barEnergy * 25)}px hsla(${barHue}, 80%, 50%, ${0.4 + barEnergy * 0.4})`;
+                bar.style.transform = `scaleY(${1 + barEnergy * 0.3})`;
+                bar.classList.add('beat-flash');
                 setTimeout(() => {
                     bar.style.background = '';
                     bar.style.boxShadow = '';
-                }, 200);
+                    bar.style.transform = '';
+                    bar.classList.remove('beat-flash');
+                }, 250);
             }, delay);
         });
+        
+        if (combinedEnergy > 0.8) {
+            createBeatParticles(visualizerContainer, combinedEnergy, hue);
+        }
+    }
+    
+    function createBeatParticles(container, energy, hue) {
+        const particleCount = Math.floor(energy * 12);
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'beat-particle';
+            
+            const angle = (Math.PI * 2 / particleCount) * i;
+            const radius = 50 + Math.random() * 100;
+            const dx = Math.cos(angle) * radius;
+            const dy = Math.sin(angle) * radius;
+            
+            particle.style.cssText = `
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: ${4 + energy * 6}px;
+                height: ${4 + energy * 6}px;
+                background: hsla(${hue}, 80%, 60%, ${0.6 + energy * 0.4});
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 101;
+                animation: beat-particle-spread 0.5s ease-out forwards;
+                --particle-dx: ${dx}px;
+                --particle-dy: ${dy}px;
+            `;
+            
+            container.appendChild(particle);
+            setTimeout(() => particle.remove(), 500);
+        }
     }
     
     function updateBeatVisualization() {
@@ -2998,6 +3223,244 @@ const TouchMediaEnhancements = (function() {
         return widget;
     }
     
+    // Enhanced LIFX Zone-Based Effects
+    function applyZoneEffect(zoneConfig) {
+        const { zones, effect, duration = 5 } = zoneConfig;
+        
+        zones.forEach((zone, index) => {
+            setTimeout(() => {
+                const event = new CustomEvent('lifx-zone-effect', {
+                    detail: {
+                        zone: zone.id,
+                        effect: effect,
+                        color: zone.color,
+                        brightness: zone.brightness || 50,
+                        temperature: zone.temperature || 4000
+                    }
+                });
+                document.dispatchEvent(event);
+            }, index * (duration / zones.length) * 1000);
+        });
+    }
+    
+    function createWaveEffect(direction = 'left-to-right') {
+        const zonePresets = {
+            'left-to-right': [
+                { id: 'zone1', color: '#00d4ff', brightness: 80 },
+                { id: 'zone2', color: '#00ff88', brightness: 80 },
+                { id: 'zone3', color: '#ffff00', brightness: 80 },
+                { id: 'zone4', color: '#ff8800', brightness: 80 },
+                { id: 'zone5', color: '#ff0080', brightness: 80 }
+            ],
+            'right-to-left': [
+                { id: 'zone5', color: '#00d4ff', brightness: 80 },
+                { id: 'zone4', color: '#00ff88', brightness: 80 },
+                { id: 'zone3', color: '#ffff00', brightness: 80 },
+                { id: 'zone2', color: '#ff8800', brightness: 80 },
+                { id: 'zone1', color: '#ff0080', brightness: 80 }
+            ],
+            'center-out': [
+                { id: 'zone3', color: '#00d4ff', brightness: 100 },
+                { id: 'zone2', color: '#00ff88', brightness: 80 },
+                { id: 'zone4', color: '#00ff88', brightness: 80 },
+                { id: 'zone1', color: '#ffff00', brightness: 60 },
+                { id: 'zone5', color: '#ffff00', brightness: 60 }
+            ],
+            'rainbow': [
+                { id: 'zone1', color: '#ff0000', brightness: 80 },
+                { id: 'zone2', color: '#ff8800', brightness: 80 },
+                { id: 'zone3', color: '#ffff00', brightness: 80 },
+                { id: 'zone4', color: '#00ff00', brightness: 80 },
+                { id: 'zone5', color: '#0088ff', brightness: 80 }
+            ]
+        };
+        
+        applyZoneEffect({
+            zones: zonePresets[direction] || zonePresets['left-to-right'],
+            effect: 'wave',
+            duration: 2
+        });
+    }
+    
+    function createPulseZoneEffect(centerZone, radius = 2) {
+        const colors = ['#00d4ff', '#00ff88', '#ffff00'];
+        const zones = [];
+        
+        for (let i = 0; i <= radius; i++) {
+            const zoneId = `zone${Math.max(1, Math.min(5, centerZone + i))}`;
+            zones.push({
+                id: zoneId,
+                color: colors[i % colors.length],
+                brightness: 100 - (i * 20)
+            });
+        }
+        
+        applyZoneEffect({
+            zones,
+            effect: 'pulse-expand',
+            duration: 1.5
+        });
+    }
+    
+    // Improved Scene Transitions with crossfade and smooth interpolation
+    function transitionScene(fromScene, toScene, options = {}) {
+        const {
+            duration = 2000,
+            easing = 'ease-in-out',
+            crossfade = true,
+            intermediateScenes = []
+        } = options;
+        
+        const fromPreset = extendedScenePresets[fromScene];
+        const toPreset = extendedScenePresets[toScene];
+        
+        if (!fromPreset || !toPreset) {
+            applyEnhancedScene(toScene);
+            return;
+        }
+        
+        const startTime = Date.now();
+        
+        function interpolate(start, end, progress) {
+            return start + (end - start) * progress;
+        }
+        
+        function easeInOut(t) {
+            return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        }
+        
+        function animate() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(1, elapsed / duration);
+            const easedProgress = easeInOut(progress);
+            
+            const currentColor = interpolateHexColors(
+                fromPreset.color || '#00d4ff',
+                toPreset.color || '#00d4ff',
+                easedProgress
+            );
+            
+            const currentBrightness = interpolate(
+                fromPreset.brightness || 50,
+                toPreset.brightness || 50,
+                easedProgress
+            );
+            
+            const currentTemp = interpolate(
+                fromPreset.temperature || 4000,
+                toPreset.temperature || 4000,
+                easedProgress
+            );
+            
+            const event = new CustomEvent('lifx-scene-transition', {
+                detail: {
+                    color: currentColor,
+                    brightness: currentBrightness,
+                    temperature: currentTemp,
+                    progress: easedProgress,
+                    fromScene,
+                    toScene
+                }
+            });
+            document.dispatchEvent(event);
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                applyEnhancedScene(toScene);
+            }
+        }
+        
+        requestAnimationFrame(animate);
+    }
+    
+    function interpolateHexColors(hex1, hex2, progress) {
+        const r1 = parseInt(hex1.slice(1, 3), 16);
+        const g1 = parseInt(hex1.slice(3, 5), 16);
+        const b1 = parseInt(hex1.slice(5, 7), 16);
+        
+        const r2 = parseInt(hex2.slice(1, 3), 16);
+        const g2 = parseInt(hex2.slice(3, 5), 16);
+        const b2 = parseInt(hex2.slice(5, 7), 16);
+        
+        const r = Math.round(interpolate(r1, r2, progress));
+        const g = Math.round(interpolate(g1, g2, progress));
+        const b = Math.round(interpolate(b1, b2, progress));
+        
+        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+    }
+    
+    function createSceneSequence(scenes, options = {}) {
+        const { loop = false, transitionDuration = 2000, pauseBetween = 1000 } = options;
+        let currentIndex = 0;
+        let isRunning = true;
+        
+        function playNext() {
+            if (!isRunning) return;
+            
+            const currentScene = scenes[currentIndex];
+            const nextScene = scenes[(currentIndex + 1) % scenes.length];
+            
+            transitionScene(currentScene, nextScene, {
+                duration: transitionDuration
+            });
+            
+            currentIndex = (currentIndex + 1) % scenes.length;
+            
+            if (currentIndex === 0 && !loop) {
+                isRunning = false;
+                return;
+            }
+            
+            setTimeout(playNext, transitionDuration + pauseBetween);
+        }
+        
+        playNext();
+        
+        return () => { isRunning = false; };
+    }
+    
+    // Sync lights to music rhythm with advanced patterns
+    function setupRhythmSync(bpm, pattern = 'four-on-floor') {
+        const patterns = {
+            'four-on-floor': [1, 0, 0, 0],
+            'rock': [1, 0, 0.5, 0],
+            'waltz': [1, 0.3, 0.3, 0, 0, 0],
+            'syncopated': [1, 0, 0.7, 0, 0.5, 0, 0.3, 0],
+            'double-time': [1, 0.5, 1, 0.5],
+            'triplet': [1, 0, 0.7, 1, 0, 0.7]
+        };
+        
+        const patternData = patterns[pattern] || patterns['four-on-floor'];
+        const intervalMs = (60 / bpm) * 1000;
+        let beatIndex = 0;
+        
+        const rhythmInterval = setInterval(() => {
+            if (!mediaPlaybackState.isPlaying) {
+                clearInterval(rhythmInterval);
+                return;
+            }
+            
+            const intensity = patternData[beatIndex % patternData.length];
+            const brightness = 30 + (intensity * 70);
+            
+            const event = new CustomEvent('lifx-rhythm-sync', {
+                detail: {
+                    beatIndex,
+                    intensity,
+                    brightness,
+                    bpm,
+                    pattern
+                }
+            });
+            document.dispatchEvent(event);
+            
+            beatIndex++;
+        }, intervalMs);
+        
+        return rhythmInterval;
+    }
+    
     // Public API
     return {
         init,
@@ -3047,7 +3510,13 @@ const TouchMediaEnhancements = (function() {
         toggleImmersiveMode,
         createMediaQueuePanel,
         startBpmTracking,
-        createNowPlayingWidget
+        createNowPlayingWidget,
+        applyZoneEffect,
+        createWaveEffect,
+        createPulseZoneEffect,
+        transitionScene,
+        createSceneSequence,
+        setupRhythmSync
     };
 })();
 
