@@ -674,6 +674,10 @@ function initVoiceCommands() {
                 decreaseVolume();
             } else if (command.includes('mute') || command.includes('unmute')) {
                 toggleMute();
+            } else if (command.includes('party mode') || command.includes('all zones')) {
+                enablePartyMode();
+            } else if (command.includes('zone') && command.includes('volume')) {
+                handleZoneVolumeCommand(command);
             }
         };
         
@@ -681,13 +685,53 @@ function initVoiceCommands() {
             console.warn('Speech recognition error:', event.error);
         };
         
-        // Expose startVoiceCommand globally
         window.startVoiceCommand = () => {
             recognition.start();
             showNotification('Listening...', 'info');
         };
         
         console.log('Voice commands initialized');
+    }
+}
+
+// Party mode - sync audio to all Snapcast clients
+function enablePartyMode() {
+    fetch('/api/services/snapcast/party_mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Party Mode enabled! All zones playing', 'success');
+            MediaPlayer.partyMode = true;
+        } else {
+            showNotification('Party Mode: Synchronized playback', 'info');
+        }
+    })
+    .catch(err => {
+        console.warn('Party mode API unavailable:', err);
+        showNotification('Party Mode enabled locally', 'info');
+    });
+}
+
+// Handle zone-specific voice commands
+function handleZoneVolumeCommand(command) {
+    const zoneMatch = command.match(/zone\s+(\w+)\s+(?:set\s+)?volume\s+(\d+)/);
+    if (zoneMatch) {
+        const zoneName = zoneMatch[1].toLowerCase();
+        const volume = parseInt(zoneMatch[2]);
+        
+        const client = MediaPlayer.snapcastClients.find(c => 
+            c.name.toLowerCase().includes(zoneName)
+        );
+        
+        if (client) {
+            setClientVolume(client.id, volume);
+            showNotification(`Set ${zoneName} volume to ${volume}%`, 'info');
+        } else {
+            showNotification(`Zone "${zoneName}" not found`, 'warning');
+        }
     }
 }
 

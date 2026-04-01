@@ -20,6 +20,14 @@ const LifXTouchControls = {
     lastGestureTime: 0,
     gestureDebounce: 150,
     multiBulbSelection: [],
+    touchHoldTimer: null,
+    touchHoldDelay: 500,
+    doubleTapDelay: 300,
+    lastTapTime: 0,
+    currentScene: 'relax',
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean'],
+    startY: null,
+    startBrightness: null,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -112,17 +120,53 @@ const LifXTouchControls = {
             });
         }
         
-        // Add tap handlers for bulb selection
+        // Add tap handlers for bulb selection with double-tap support
         document.addEventListener('click', (e) => {
             const bulbEl = e.target.closest('.lifx-bulb-control, .lifx-bulb-card');
             if (bulbEl) {
                 const bulbId = bulbEl.getAttribute('data-bulb-id');
-                if (e.ctrlKey || e.metaKey) {
-                    // Multi-select with Ctrl/Cmd
+                const currentTime = Date.now();
+                
+                if (currentTime - this.lastTapTime < this.doubleTapDelay) {
+                    this.lastTapTime = 0;
+                    this.togglePower(bulbId);
+                    this.showGestureFeedback('Power Toggle', '💡');
+                } else if (e.ctrlKey || e.metaKey) {
                     this.toggleBulbSelection(bulbId);
+                    this.lastTapTime = currentTime;
                 } else {
                     this.selectBulb(bulbId);
+                    this.lastTapTime = currentTime;
                 }
+            }
+        });
+        
+        // Touch and hold for brightness adjustment
+        document.addEventListener('touchstart', (e) => {
+            const bulbEl = e.target.closest('.lifx-bulb-control, .lifx-bulb-card');
+            if (bulbEl) {
+                const bulbId = bulbEl.getAttribute('data-bulb-id');
+                this.touchHoldTimer = setTimeout(() => {
+                    this.startBrightnessAdjustment(bulbId, e.touches[0].clientY);
+                }, this.touchHoldDelay);
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (this.touchHoldTimer && this.selectedBulb) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                this.adjustBrightnessByTouch(touch.clientY);
+            }
+        }, { passive: false });
+        
+        document.addEventListener('touchend', () => {
+            if (this.touchHoldTimer) {
+                clearTimeout(this.touchHoldTimer);
+                this.touchHoldTimer = null;
+            }
+            if (this.selectedBulb) {
+                this.endBrightnessAdjustment();
             }
         });
         
@@ -305,8 +349,8 @@ const LifXTouchControls = {
         });
     },
     
-    togglePower: function() {
-        const bulbId = this.selectedBulb || this.getFirstSelectedBulb();
+    togglePower: function(bulbId) {
+        bulbId = bulbId || this.selectedBulb || this.getFirstSelectedBulb();
         if (!bulbId) return;
         
         const bulbEl = document.querySelector(`.lifx-bulb-control[data-bulb-id="${bulbId}"]`);
@@ -410,10 +454,12 @@ const LifXTouchControls = {
         if (!this.selectedBulb) return;
         
         const sceneSettings = {
-            relax: { brightness: 40, kelvin: 2700 },
-            focus: { brightness: 80, kelvin: 5000 },
-            energize: { brightness: 100, kelvin: 6500 },
-            night: { brightness: 20, kelvin: 2000 }
+            relax: { brightness: 40, kelvin: 2700, label: 'Relax' },
+            focus: { brightness: 80, kelvin: 5000, label: 'Focus' },
+            energize: { brightness: 100, kelvin: 6500, label: 'Energize' },
+            night: { brightness: 20, kelvin: 2000, label: 'Night' },
+            sunset: { brightness: 30, kelvin: 2200, label: 'Sunset' },
+            ocean: { brightness: 60, kelvin: 4500, label: 'Ocean' }
         };
         
         const settings = sceneSettings[scene];
@@ -458,10 +504,62 @@ const LifXTouchControls = {
                 brightnessIndicator.textContent = `${this.brightnessLevel}%`;
             }
             
+            // Update scene indicator
+            let sceneIndicator = bulbEl.querySelector('.scene-indicator');
+            if (!sceneIndicator && this.currentScene) {
+                sceneIndicator = document.createElement('div');
+                sceneIndicator.className = 'scene-indicator';
+                bulbEl.appendChild(sceneIndicator);
+            }
+            if (sceneIndicator && this.currentScene) {
+                const sceneLabel = this.scenes.find(s => s === this.currentScene);
+                sceneIndicator.textContent = sceneLabel || '';
+            }
+            
             // Visual feedback
             bulbEl.classList.add('touch-updated');
             setTimeout(() => bulbEl.classList.remove('touch-updated'), 300);
         }
+    },
+    
+    startBrightnessAdjustment: function(bulbId, startY) {
+        this.selectBulb(bulbId);
+        this.startY = startY;
+        this.startBrightness = this.brightnessLevel;
+        console.log('Starting brightness adjustment for', bulbId);
+    },
+    
+    adjustBrightnessByTouch: function(currentY) {
+        if (!this.selectedBulb || this.startY === undefined) return;
+        
+        const delta = this.startY - currentY;
+        const brightnessDelta = Math.round((delta / 200) * 100);
+        this.brightnessLevel = Math.max(0, Math.min(100, this.startBrightness + brightnessDelta));
+        
+        // Show live brightness feedback
+        this.showGestureFeedback(`${this.brightnessLevel}%`, '🔆');
+    },
+    
+    endBrightnessAdjustment: function() {
+        if (!this.selectedBulb) return;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${this.selectedBulb}`,
+                brightness: this.brightnessLevel / 100,
+                duration: 0.3
+            }),
+            success: () => {
+                console.log('Brightness set to:', this.brightnessLevel);
+                this.updateBulbVisual(this.selectedBulb);
+            }
+        });
+        
+        this.startY = undefined;
+        this.startBrightness = undefined;
     },
     
     disable: function() {
