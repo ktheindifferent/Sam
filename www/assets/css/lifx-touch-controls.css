@@ -37,6 +37,69 @@
     }
 }
 
+/* Velocity-based ripple effect */
+.velocity-ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.9) 0%, rgba(0, 212, 255, 0.5) 40%, rgba(0, 212, 255, 0) 70%);
+    transform: translate(-50%, -50%) scale(0);
+    animation: velocity-ripple-animation var(--ripple-duration, 400ms) cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    pointer-events: none;
+    will-change: transform, opacity;
+}
+
+@keyframes velocity-ripple-animation {
+    to {
+        transform: translate(-50%, -50%) scale(var(--ripple-scale, 2));
+        opacity: 0;
+    }
+}
+
+/* Swipe trail effects */
+.swipe-trail-particle {
+    position: fixed;
+    border-radius: 50%;
+    background: radial-gradient(circle, hsla(180, 80%, 60%, 0.6) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 9998;
+    animation: swipe-trail-slide 0.4s ease-out forwards;
+    will-change: transform, opacity;
+}
+
+@keyframes swipe-trail-slide {
+    0% {
+        opacity: 0.8;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--travel-x, 0), var(--travel-y, 0)) scale(0.5);
+    }
+}
+
+.swipe-trail {
+    position: fixed;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.3) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 9997;
+    animation: swipe-trail-expand 0.5s ease-out forwards;
+    will-change: transform, opacity;
+}
+
+@keyframes swipe-trail-expand {
+    0% {
+        opacity: 0.6;
+        transform: scale(0.5);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(var(--trail-scale, 1.5));
+    }
+}
+
 .lifx-bulb-control.selected {
     border: 2px solid #00d4ff;
     box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);

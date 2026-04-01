@@ -18,7 +18,18 @@
             swipeThreshold: 50,
             doubleTapDelay: 300,
             rippleDuration: 400,
-            gestureTrailSize: 20
+            gestureTrailSize: 20,
+            enableVelocityRipples: true,
+            enableSwipeTrails: true,
+            enableMultiSelectDrag: true,
+            hapticPatterns: {
+                tap: [10],
+                doubleTap: [15, 50, 15],
+                longPress: [50, 50, 50],
+                swipe: [20],
+                beat: [25],
+                success: [10, 50, 10, 50, 10]
+            }
         },
 
         state: {
@@ -139,12 +150,14 @@
             target.dataset.touchStartX = touch.clientX;
             target.dataset.touchStartY = touch.clientY;
             target.dataset.touchStartTime = Date.now();
+            target.dataset.lastTouchX = touch.clientX;
+            target.dataset.lastTouchY = touch.clientY;
             
             target.classList.add('touch-active');
             
             if (this.config.enableHapticFeedback && navigator.vibrate) {
                 try {
-                    navigator.vibrate(10);
+                    navigator.vibrate(this.config.hapticPatterns.tap);
                 } catch (e) {
                     console.warn('[LIFXMediaTouchV2] Haptic feedback failed:', e);
                 }
@@ -152,6 +165,10 @@
             
             this.showTouchRipple(e, target);
             this.startTouchHoldTimer(target);
+            
+            if (this.config.enableVelocityRipples) {
+                this.touchVelocity = [];
+            }
         },
 
         handleTouchMove(e) {
@@ -163,9 +180,16 @@
             
             const startX = parseFloat(target.dataset.touchStartX || 0);
             const startY = parseFloat(target.dataset.touchStartY || 0);
+            const lastX = parseFloat(target.dataset.lastTouchX || touch.clientX);
+            const lastY = parseFloat(target.dataset.lastTouchY || touch.clientY);
             
             const deltaX = touch.clientX - startX;
             const deltaY = touch.clientY - startY;
+            const instantDeltaX = touch.clientX - lastX;
+            const instantDeltaY = touch.clientY - lastY;
+            
+            target.dataset.lastTouchX = touch.clientX;
+            target.dataset.lastTouchY = touch.clientY;
             
             if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
                 target.classList.remove('touch-active');
@@ -174,6 +198,17 @@
             
             if (this.config.enableGestureTrails) {
                 this.showGestureTrail(touch.clientX, touch.clientY);
+            }
+            
+            if (this.config.enableVelocityRipples && this.touchVelocity) {
+                this.touchVelocity.push({ x: instantDeltaX, y: instantDeltaY, time: Date.now() });
+                if (this.touchVelocity.length > 5) {
+                    this.touchVelocity.shift();
+                }
+            }
+            
+            if (this.config.enableSwipeTrails && (Math.abs(instantDeltaX) > 3 || Math.abs(instantDeltaY) > 3)) {
+                this.showSwipeTrail(touch.clientX, touch.clientY, instantDeltaX, instantDeltaY);
             }
             
             this.updateTouchHoldProgress(target, deltaX, deltaY);
@@ -202,12 +237,26 @@
                 this.handleLongPress(target, e);
                 this.state.isTouchHoldActive = false;
             } else if (Math.abs(deltaX) > this.config.swipeThreshold || Math.abs(deltaY) > this.config.swipeThreshold) {
-                this.handleSwipe(target, deltaX > 0 ? 'right' : 'left', deltaY > 0 ? 'down' : 'up');
+                const horizontal = deltaX > 0 ? 'right' : 'left';
+                const vertical = deltaY > 0 ? 'down' : 'up';
+                this.handleSwipe(target, horizontal, vertical);
+                
+                if (this.config.enableSwipeTrails) {
+                    this.showSwipeTrailEnd(touch.clientX, touch.clientY, horizontal === 'right' || horizontal === 'left' ? deltaX : deltaY);
+                }
             } else if (duration < this.config.doubleTapDelay && currentTime - this.state.lastTapTime < this.config.doubleTapDelay) {
                 this.handleDoubleTap(target, e);
                 this.state.lastTapTime = 0;
             } else {
                 this.state.lastTapTime = currentTime;
+                
+                if (this.config.enableVelocityRipples && this.touchVelocity && this.touchVelocity.length > 2) {
+                    const avgVelocity = this.touchVelocity.reduce((sum, v) => sum + Math.sqrt(v.x * v.x + v.y * v.y), 0) / this.touchVelocity.length;
+                    if (avgVelocity > 2) {
+                        this.showVelocityRipple(target, avgVelocity);
+                    }
+                }
+                this.touchVelocity = null;
             }
         },
 
@@ -229,7 +278,7 @@
             }
             
             if (this.config.enableHapticFeedback && navigator.vibrate) {
-                navigator.vibrate([50, 50, 50]);
+                navigator.vibrate(this.config.hapticPatterns.longPress);
             }
         },
 
@@ -238,12 +287,20 @@
             
             if (bulbId && horizontal === 'right') {
                 this.toggleBulbPower(bulbId, 'toggle');
+                this.showSwipeHint(horizontal);
             } else if (bulbId && horizontal === 'left') {
                 this.showBrightnessSlider(bulbId);
+                this.showSwipeHint(horizontal);
+            } else if (bulbId && vertical === 'up') {
+                this.showColorPicker(bulbId);
+                this.showSwipeHint(vertical);
+            } else if (bulbId && vertical === 'down') {
+                this.showSceneSelector(bulbId);
+                this.showSwipeHint(vertical);
             }
             
             if (this.config.enableHapticFeedback && navigator.vibrate) {
-                navigator.vibrate(20);
+                navigator.vibrate(this.config.hapticPatterns.swipe);
             }
         },
 
@@ -314,7 +371,7 @@
             }
             
             if (this.config.enableHapticFeedback && navigator.vibrate) {
-                navigator.vibrate([15, 50, 15]);
+                navigator.vibrate(this.config.hapticPatterns.doubleTap);
             }
         },
 
@@ -354,9 +411,70 @@
             ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
             ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
             
+            const bulbId = target.dataset.bulbId;
+            if (bulbId && this.state.selectedBulbs.has(bulbId)) {
+                ripple.style.background = 'radial-gradient(circle, rgba(255, 107, 107, 0.8) 0%, rgba(255, 107, 107, 0.4) 40%, transparent 70%)';
+            }
+            
             target.appendChild(ripple);
             
             setTimeout(() => ripple.remove(), 600);
+        },
+
+        showVelocityRipple(target, velocity) {
+            const ripple = document.createElement('span');
+            ripple.classList.add('velocity-ripple');
+            
+            const scale = Math.min(2.5, 1 + velocity / 10);
+            const duration = Math.max(300, 600 - velocity * 30);
+            
+            ripple.style.setProperty('--ripple-scale', scale);
+            ripple.style.setProperty('--ripple-duration', duration + 'ms');
+            
+            const rect = target.getBoundingClientRect();
+            const size = Math.max(rect.width, rect.height) * 0.8;
+            ripple.style.width = ripple.style.height = size + 'px';
+            ripple.style.left = '50%';
+            ripple.style.top = '50%';
+            ripple.style.transform = 'translate(-50%, -50%)';
+            
+            target.appendChild(ripple);
+            
+            setTimeout(() => ripple.remove(), duration);
+        },
+
+        showSwipeTrail(x, y, dx, dy) {
+            const trail = document.createElement('div');
+            trail.classList.add('swipe-trail-particle');
+            
+            const size = 8 + Math.random() * 6;
+            trail.style.width = trail.style.height = size + 'px';
+            trail.style.left = (x - size / 2) + 'px';
+            trail.style.top = (y - size / 2) + 'px';
+            trail.style.background = `radial-gradient(circle, hsla(${180 + Math.random() * 40}, 80%, 60%, 0.6) 0%, transparent 70%)`;
+            
+            const travelX = dx > 0 ? 20 : -20;
+            const travelY = dy > 0 ? 20 : -20;
+            trail.style.setProperty('--travel-x', travelX + 'px');
+            trail.style.setProperty('--travel-y', travelY + 'px');
+            
+            document.body.appendChild(trail);
+            
+            setTimeout(() => trail.remove(), 400);
+        },
+
+        showSwipeTrailEnd(x, y, distance) {
+            const trail = document.createElement('div');
+            trail.classList.add('swipe-trail');
+            
+            const scale = Math.min(1.5, 0.5 + Math.abs(distance) / 200);
+            trail.style.setProperty('--trail-scale', scale);
+            trail.style.left = (x - 50) + 'px';
+            trail.style.top = (y - 50) + 'px';
+            
+            document.body.appendChild(trail);
+            
+            setTimeout(() => trail.remove(), 500);
         },
 
         showGestureTrail(x, y) {
@@ -370,6 +488,37 @@
             setTimeout(() => {
                 trail.remove();
             }, 400);
+        },
+
+        showSwipeHint(direction) {
+            const hint = document.createElement('div');
+            hint.className = 'gesture-hint-overlay visible';
+            
+            const icons = {
+                'right': '➡️',
+                'left': '⬅️',
+                'up': '⬆️',
+                'down': '⬇️'
+            };
+            
+            const texts = {
+                'right': 'Power Toggle',
+                'left': 'Brightness',
+                'up': 'Color Picker',
+                'down': 'Scenes'
+            };
+            
+            hint.innerHTML = `
+                <i class="gesture-icon">${icons[direction] || '👆'}</i>
+                <span class="hint-text">${texts[direction] || ''}</span>
+            `;
+            
+            document.body.appendChild(hint);
+            
+            setTimeout(() => {
+                hint.classList.remove('visible');
+                setTimeout(() => hint.remove(), 300);
+            }, 1000);
         },
 
         setupSceneSelector() {
@@ -1319,6 +1468,17 @@
                 }, duration);
                 
                 this.showBeatFlashOverlay(intensity);
+                
+                if (this.config.enableHapticFeedback && navigator.vibrate && intensity > 0.7) {
+                    const hapticPattern = intensity > 0.9 
+                        ? [30, 20, 30] 
+                        : [25];
+                    try {
+                        navigator.vibrate(hapticPattern);
+                    } catch (e) {
+                        console.warn('[LIFXMediaTouchV2] Beat haptic failed:', e);
+                    }
+                }
             } catch (error) {
                 console.error('[LIFXMediaTouchV2] Trigger beat effect error:', error);
             }
