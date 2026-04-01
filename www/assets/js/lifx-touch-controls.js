@@ -105,6 +105,16 @@ const LifXTouchControls = {
     quickBrightnessStep: 5,
     quickColorTempStep: 100,
     savedGroups: [],
+    touchVelocityHistory: [],
+    maxVelocityHistory: 5,
+    gestureAccuracyScore: 100,
+    touchTrailEnabled: true,
+    adaptiveSensitivityEnabled: false,
+    gestureSuccessCount: 0,
+    gestureFailCount: 0,
+    lastGestureVelocity: 0,
+    touchPressure: 0,
+    pressureSensitiveEnabled: false,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -266,6 +276,9 @@ const LifXTouchControls = {
                     this.hideTouchHoldProgress();
                 }, this.touchHoldDelay);
             }
+            
+            // Enhanced touch tracking for velocity and pressure
+            this.initEnhancedTouchTracking(e);
         }, { passive: true });
         
         document.addEventListener('touchmove', (e) => {
@@ -274,9 +287,12 @@ const LifXTouchControls = {
                 const touch = e.touches[0];
                 this.adjustBrightnessByTouch(touch.clientY);
             }
+            
+            // Update velocity tracking
+            this.updateTouchVelocity(e);
         }, { passive: false });
         
-        document.addEventListener('touchend', () => {
+        document.addEventListener('touchend', (e) => {
             if (this.touchHoldTimer) {
                 clearTimeout(this.touchHoldTimer);
                 this.touchHoldTimer = null;
@@ -285,6 +301,9 @@ const LifXTouchControls = {
                 this.endBrightnessAdjustment();
             }
             this.hideTouchHoldProgress();
+            
+            // Process gesture velocity on touch end
+            this.processGestureVelocity(e);
         });
         
         // Keyboard accessibility
@@ -2871,7 +2890,165 @@ const LifXTouchControls = {
         this.setupZoneControl();
         this.loadRipplePreferences();
         this.initEdgeSwipeDetection();
+        this.initAdaptiveSensitivity();
         console.log('Gesture enhancements initialized with edge swipe detection');
+    },
+    
+    initEnhancedTouchTracking: function(e) {
+        const touch = e.touches[0];
+        const timestamp = Date.now();
+        
+        this.touchStartTime = timestamp;
+        this.touchStartX = touch.clientX;
+        this.touchStartY = touch.clientY;
+        this.touchVelocityHistory = [];
+        
+        if (this.pressureSensitiveEnabled && touch.force !== undefined) {
+            this.touchPressure = touch.force;
+        }
+        
+        if (this.touchTrailEnabled) {
+            this.createTouchTrailDot(touch.clientX, touch.clientY);
+        }
+    },
+    
+    updateTouchVelocity: function(e) {
+        const touch = e.touches[0];
+        const timestamp = Date.now();
+        const currentX = touch.clientX;
+        const currentY = touch.clientY;
+        
+        if (!this.lastTouchTime) {
+            this.lastTouchTime = timestamp;
+            this.lastTouchX = currentX;
+            this.lastTouchY = currentY;
+            return;
+        }
+        
+        const deltaTime = (timestamp - this.lastTouchTime) / 1000;
+        if (deltaTime === 0) return;
+        
+        const deltaX = currentX - this.lastTouchX;
+        const deltaY = currentY - this.lastTouchY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const velocity = distance / deltaTime;
+        
+        this.touchVelocityHistory.push({
+            velocity: velocity,
+            deltaX: deltaX,
+            deltaY: deltaY,
+            timestamp: timestamp
+        });
+        
+        if (this.touchVelocityHistory.length > this.maxVelocityHistory) {
+            this.touchVelocityHistory.shift();
+        }
+        
+        const avgVelocity = this.touchVelocityHistory.reduce((sum, v) => sum + v.velocity, 0) / this.touchVelocityHistory.length;
+        this.touchVelocity = avgVelocity;
+        
+        const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+        this.touchDirection = angle;
+        
+        if (this.touchTrailEnabled) {
+            this.createTouchTrailDot(currentX, currentY, velocity);
+        }
+        
+        this.lastTouchTime = timestamp;
+        this.lastTouchX = currentX;
+        this.lastTouchY = currentY;
+    },
+    
+    createTouchTrailDot: function(x, y, velocity = 0) {
+        if (!this.touchTrailEnabled) return;
+        
+        const trailDot = document.createElement('div');
+        trailDot.className = 'lifx-gesture-trail';
+        trailDot.style.left = (x - 10) + 'px';
+        trailDot.style.top = (y - 10) + 'px';
+        
+        const intensity = Math.min(1, velocity / 500);
+        trailDot.style.opacity = 0.3 + (intensity * 0.5);
+        trailDot.style.transform = `scale(${0.8 + intensity * 0.4})`;
+        
+        document.body.appendChild(trailDot);
+        
+        setTimeout(() => {
+            if (trailDot.parentNode) {
+                trailDot.parentNode.removeChild(trailDot);
+            }
+        }, 500);
+    },
+    
+    processGestureVelocity: function(e) {
+        if (this.touchVelocityHistory.length === 0) return;
+        
+        const avgVelocity = this.touchVelocityHistory.reduce((sum, v) => sum + v.velocity, 0) / this.touchVelocityHistory.length;
+        const maxVelocity = Math.max(...this.touchVelocityHistory.map(v => v.velocity));
+        
+        this.lastGestureVelocity = maxVelocity;
+        
+        if (this.adaptiveSensitivityEnabled) {
+            this.updateAdaptiveSensitivity(avgVelocity);
+        }
+        
+        this.touchVelocityHistory = [];
+        this.lastTouchTime = null;
+    },
+    
+    initAdaptiveSensitivity: function() {
+        const saved = localStorage.getItem('lifx_adaptive_sensitivity');
+        if (saved !== null) {
+            this.adaptiveSensitivityEnabled = saved === 'true';
+        }
+        
+        if (!this.adaptiveSensitivityEnabled) return;
+        
+        this.gestureSuccessCount = 0;
+        this.gestureFailCount = 0;
+        
+        setInterval(() => {
+            if (this.gestureSuccessCount + this.gestureFailCount > 10) {
+                const successRate = this.gestureSuccessCount / (this.gestureSuccessCount + this.gestureFailCount);
+                if (successRate < 0.7) {
+                    this.increaseSensitivity();
+                } else if (successRate > 0.95) {
+                    this.decreaseSensitivity();
+                }
+            }
+            this.gestureSuccessCount = 0;
+            this.gestureFailCount = 0;
+        }, 60000);
+    },
+    
+    updateAdaptiveSensitivity: function(avgVelocity) {
+        if (avgVelocity > 300 && this.touchSensitivity !== 'high') {
+            this.setGestureSensitivityLevel('high');
+        } else if (avgVelocity < 100 && this.touchSensitivity !== 'low') {
+            this.setGestureSensitivityLevel('low');
+        }
+    },
+    
+    increaseSensitivity: function() {
+        const levels = ['low', 'medium', 'high'];
+        const currentIndex = levels.indexOf(this.touchSensitivity);
+        if (currentIndex < levels.length - 1) {
+            this.setGestureSensitivityLevel(levels[currentIndex + 1]);
+        }
+    },
+    
+    decreaseSensitivity: function() {
+        const levels = ['low', 'medium', 'high'];
+        const currentIndex = levels.indexOf(this.touchSensitivity);
+        if (currentIndex > 0) {
+            this.setGestureSensitivityLevel(levels[currentIndex - 1]);
+        }
+    },
+    
+    saveAdaptiveSensitivityStats: function() {
+        localStorage.setItem('lifx_adaptive_sensitivity', this.adaptiveSensitivityEnabled);
+        localStorage.setItem('lifx_gesture_success_count', this.gestureSuccessCount);
+        localStorage.setItem('lifx_gesture_fail_count', this.gestureFailCount);
     },
     
     showEnhancedGestureFeedback: function(text, icon, duration = null) {
