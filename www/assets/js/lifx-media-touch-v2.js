@@ -108,6 +108,7 @@
             this.setupEffectSelector();
             this.setupZoneControl();
             this.setupGestureHints();
+            this.setupCleanupHandlers();
             this.syncStatus();
             this.startPeriodicSync();
             console.log('[LIFXMediaTouchV2] Initialized');
@@ -130,7 +131,10 @@
 
         handleTouchStart(e) {
             const target = e.currentTarget;
+            if (!target) return;
+            
             const touch = e.touches[0];
+            if (!touch) return;
             
             target.dataset.touchStartX = touch.clientX;
             target.dataset.touchStartY = touch.clientY;
@@ -139,7 +143,11 @@
             target.classList.add('touch-active');
             
             if (this.config.enableHapticFeedback && navigator.vibrate) {
-                navigator.vibrate(10);
+                try {
+                    navigator.vibrate(10);
+                } catch (e) {
+                    console.warn('[LIFXMediaTouchV2] Haptic feedback failed:', e);
+                }
             }
             
             this.showTouchRipple(e, target);
@@ -148,7 +156,11 @@
 
         handleTouchMove(e) {
             const target = e.currentTarget;
+            if (!target) return;
+            
             const touch = e.touches[0];
+            if (!touch) return;
+            
             const startX = parseFloat(target.dataset.touchStartX || 0);
             const startY = parseFloat(target.dataset.touchStartY || 0);
             
@@ -169,7 +181,11 @@
 
         handleTouchEnd(e) {
             const target = e.currentTarget;
+            if (!target) return;
+            
             const touch = e.changedTouches[0];
+            if (!touch) return;
+            
             const startX = parseFloat(target.dataset.touchStartX || 0);
             const startY = parseFloat(target.dataset.touchStartY || 0);
             const startTime = parseFloat(target.dataset.touchStartTime || 0);
@@ -480,7 +496,10 @@
 
         async applyScene(sceneName) {
             const preset = this.scenePresets.find(p => p.id === sceneName);
-            if (!preset) return;
+            if (!preset) {
+                this.showToast('Unknown scene', 'error');
+                return;
+            }
             
             try {
                 const response = await fetch('/api/services/lifx/scenes', {
@@ -492,15 +511,22 @@
                         duration: 1.0
                     })
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
                 const data = await response.json();
                 if (data.success) {
                     this.state.activeScene = sceneName;
                     this.showToast(`${preset.icon} Scene '${preset.name}' applied!`, 'success');
                     this.showSceneIndicator(sceneName);
+                } else {
+                    throw new Error(data.error || 'Unknown error');
                 }
             } catch (error) {
-                console.error('Error applying scene:', error);
-                this.showToast('Failed to apply scene', 'error');
+                console.error('[LIFXMediaTouchV2] Error applying scene:', error);
+                this.showToast(`Failed to apply scene: ${error.message}`, 'error');
             }
         },
 
@@ -514,14 +540,21 @@
                         enable: true
                     })
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
                 const data = await response.json();
                 if (data.success) {
                     this.state.circadianActive = true;
                     this.showToast(`🕐 Circadian rhythm applied (${data.time_of_day})`, 'success');
+                } else {
+                    throw new Error(data.error || 'Unknown error');
                 }
             } catch (error) {
-                console.error('Error applying circadian:', error);
-                this.showToast('Failed to apply circadian', 'error');
+                console.error('[LIFXMediaTouchV2] Error applying circadian:', error);
+                this.showToast(`Failed to apply circadian: ${error.message}`, 'error');
             }
         },
 
@@ -539,15 +572,22 @@
                         duration: duration
                     })
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
                 const data = await response.json();
                 if (data.success) {
                     this.state.activeEffect = effectName;
                     this.showToast(`✨ ${preset ? preset.name : effectName} effect started!`, 'success');
                     this.showEffectIndicator(effectName);
+                } else {
+                    throw new Error(data.error || 'Unknown error');
                 }
             } catch (error) {
-                console.error('Error applying effect:', error);
-                this.showToast('Failed to apply effect', 'error');
+                console.error('[LIFXMediaTouchV2] Error applying effect:', error);
+                this.showToast(`Failed to apply effect: ${error.message}`, 'error');
             }
         },
 
@@ -561,13 +601,20 @@
                         power: power
                     })
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
                 const data = await response.json();
                 if (data.success) {
                     this.showToast(`${power === 'on' ? '💡' : '🌑'} Lights ${power}!`, 'success');
+                } else {
+                    throw new Error(data.error || 'Unknown error');
                 }
             } catch (error) {
-                console.error('Error setting state:', error);
-                this.showToast('Failed to set state', 'error');
+                console.error('[LIFXMediaTouchV2] Error setting state:', error);
+                this.showToast(`Failed to set state: ${error.message}`, 'error');
             }
         },
 
@@ -638,11 +685,19 @@
 
         syncStatus() {
             fetch('/api/services/lifx/status')
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}`);
+                    }
+                    return res.json();
+                })
                 .then(data => {
                     this.updateLifxStatus(data);
                 })
-                .catch(err => console.error('LIFX status sync error:', err));
+                .catch(err => {
+                    console.error('[LIFXMediaTouchV2] LIFX status sync error:', err);
+                    this.updateLifxStatus({ connected: false, bulbs_found: 0 });
+                });
         },
 
         updateLifxStatus(data) {
@@ -716,6 +771,25 @@
             const hintsContainer = document.getElementById('lifx-gesture-hints');
             if (!hintsContainer) return;
             
+            const isTouchDevice = typeof is_touch_enabled === 'function' && is_touch_enabled();
+            if (!isTouchDevice) {
+                hintsContainer.innerHTML = `
+                    <div class="gesture-hint-item">
+                        <span class="gesture-icon">🖱️</span>
+                        <span class="gesture-text">Click to select</span>
+                    </div>
+                    <div class="gesture-hint-item">
+                        <span class="gesture-icon">🖱️🖱️</span>
+                        <span class="gesture-text">Double-click to toggle power</span>
+                    </div>
+                    <div class="gesture-hint-item">
+                        <span class="gesture-icon">⌨️</span>
+                        <span class="gesture-text">Use scene selector for presets</span>
+                    </div>
+                `;
+                return;
+            }
+            
             hintsContainer.innerHTML = `
                 <div class="gesture-hint-item">
                     <span class="gesture-icon">👆</span>
@@ -738,6 +812,22 @@
                     <span class="gesture-text">Pinch to adjust global brightness</span>
                 </div>
             `;
+        },
+        
+        setupCleanupHandlers() {
+            window.addEventListener('beforeunload', () => {
+                this.cancelTouchHoldTimer();
+                if (this.audioContext) {
+                    this.audioContext.close();
+                }
+                this.state.mediaSyncActive = false;
+            });
+            
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    this.cancelTouchHoldTimer();
+                }
+            });
         },
 
         applyColorToSelected(hexColor) {
@@ -1082,124 +1172,156 @@
         disableMediaSync() {
             this.state.mediaSyncActive = false;
             if (this.audioContext) {
-                this.audioContext.suspend();
+                try {
+                    this.audioContext.suspend();
+                } catch (error) {
+                    console.warn('[LIFXMediaTouchV2] Audio context suspend failed:', error);
+                }
             }
+            if (this.analyser) {
+                this.analyser.disconnect();
+                this.analyser = null;
+            }
+            this.showToast('Media sync disabled', 'info');
         },
 
         startBeatDetection() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                console.warn('Media devices not available');
+                console.warn('[LIFXMediaTouchV2] Media devices not available');
+                this.showToast('Beat detection not available on this device', 'warning');
                 return;
             }
             
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(stream => {
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    this.analyser = this.audioContext.createAnalyser();
-                    const source = this.audioContext.createMediaStreamSource(stream);
-                    source.connect(this.analyser);
-                    this.analyser.fftSize = 256;
-                    this.detectBeats();
+                    try {
+                        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        this.analyser = this.audioContext.createAnalyser();
+                        const source = this.audioContext.createMediaStreamSource(stream);
+                        source.connect(this.analyser);
+                        this.analyser.fftSize = 256;
+                        this.detectBeats();
+                        this.showToast('Beat detection active', 'success');
+                    } catch (error) {
+                        console.error('[LIFXMediaTouchV2] Audio context error:', error);
+                        this.showToast('Audio initialization failed', 'error');
+                    }
                 })
-                .catch(err => console.error('Beat detection error:', err));
+                .catch(err => {
+                    console.error('[LIFXMediaTouchV2] Beat detection error:', err);
+                    this.showToast(`Beat detection unavailable: ${err.message}`, 'warning');
+                });
         },
 
         detectBeats() {
             if (!this.analyser || !this.state.mediaSyncActive) return;
             
-            const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-            this.analyser.getByteFrequencyData(dataArray);
-            
-            this.state.frequencyData = new Uint8Array(6);
-            
-            const bands = {
-                subBass: dataArray.slice(0, 4),
-                bass: dataArray.slice(4, 10),
-                lowMid: dataArray.slice(10, 20),
-                mid: dataArray.slice(20, 40),
-                highMid: dataArray.slice(40, 80),
-                treble: dataArray.slice(80, 128)
-            };
-            
-            const bandAverages = {
-                subBass: bands.subBass.reduce((a, b) => a + b, 0) / bands.subBass.length,
-                bass: bands.bass.reduce((a, b) => a + b, 0) / bands.bass.length,
-                lowMid: bands.lowMid.reduce((a, b) => a + b, 0) / bands.lowMid.length,
-                mid: bands.mid.reduce((a, b) => a + b, 0) / bands.mid.length,
-                highMid: bands.highMid.reduce((a, b) => a + b, 0) / bands.highMid.length,
-                treble: bands.treble.reduce((a, b) => a + b, 0) / bands.treble.length
-            };
-            
-            this.state.frequencyData[0] = bandAverages.subBass;
-            this.state.frequencyData[1] = bandAverages.bass;
-            this.state.frequencyData[2] = bandAverages.lowMid;
-            this.state.frequencyData[3] = bandAverages.mid;
-            this.state.frequencyData[4] = bandAverages.highMid;
-            this.state.frequencyData[5] = bandAverages.treble;
-            
-            const bassEnergy = (bandAverages.subBass + bandAverages.bass) / 2;
-            const totalEnergy = Object.values(bandAverages).reduce((a, b) => a + b, 0) / 6;
-            
-            this.state.beatHistory.push(bassEnergy);
-            if (this.state.beatHistory.length > 20) {
-                this.state.beatHistory.shift();
+            try {
+                const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+                this.analyser.getByteFrequencyData(dataArray);
+                
+                this.state.frequencyData = new Uint8Array(6);
+                
+                const bands = {
+                    subBass: dataArray.slice(0, 4),
+                    bass: dataArray.slice(4, 10),
+                    lowMid: dataArray.slice(10, 20),
+                    mid: dataArray.slice(20, 40),
+                    highMid: dataArray.slice(40, 80),
+                    treble: dataArray.slice(80, 128)
+                };
+                
+                const bandAverages = {
+                    subBass: bands.subBass.reduce((a, b) => a + b, 0) / bands.subBass.length,
+                    bass: bands.bass.reduce((a, b) => a + b, 0) / bands.bass.length,
+                    lowMid: bands.lowMid.reduce((a, b) => a + b, 0) / bands.lowMid.length,
+                    mid: bands.mid.reduce((a, b) => a + b, 0) / bands.mid.length,
+                    highMid: bands.highMid.reduce((a, b) => a + b, 0) / bands.highMid.length,
+                    treble: bands.treble.reduce((a, b) => a + b, 0) / bands.treble.length
+                };
+                
+                this.state.frequencyData[0] = bandAverages.subBass;
+                this.state.frequencyData[1] = bandAverages.bass;
+                this.state.frequencyData[2] = bandAverages.lowMid;
+                this.state.frequencyData[3] = bandAverages.mid;
+                this.state.frequencyData[4] = bandAverages.highMid;
+                this.state.frequencyData[5] = bandAverages.treble;
+                
+                const bassEnergy = (bandAverages.subBass + bandAverages.bass) / 2;
+                const totalEnergy = Object.values(bandAverages).reduce((a, b) => a + b, 0) / 6;
+                
+                this.state.beatHistory.push(bassEnergy);
+                if (this.state.beatHistory.length > 20) {
+                    this.state.beatHistory.shift();
+                }
+                
+                const avgEnergy = this.state.beatHistory.reduce((a, b) => a + b, 0) / this.state.beatHistory.length;
+                const variance = this.state.beatHistory.reduce((sum, val) => sum + Math.pow(val - avgEnergy, 2), 0) / this.state.beatHistory.length;
+                const stdDev = Math.sqrt(variance);
+                
+                this.state.adaptiveThreshold = Math.max(0.5, Math.min(0.9, 
+                    (avgEnergy / 255) + (stdDev / 50)
+                ));
+                
+                const beatThreshold = Math.max(
+                    this.state.adaptiveThreshold,
+                    this.config.beatDetectionThreshold
+                );
+                
+                const isBeat = (bassEnergy / 255) > beatThreshold && bassEnergy > 180;
+                
+                if (isBeat && Date.now() - this.state.lastBeatTime > 200) {
+                    this.state.lastBeatTime = Date.now();
+                    const timeSinceLastBeat = Date.now() - (this.state.lastBeatTime || Date.now() - 500);
+                    this.state.bpmDetected = timeSinceLastBeat > 0 ? Math.round(60000 / timeSinceLastBeat) : 0;
+                    this.triggerBeatEffect(bandAverages);
+                    this.updateFrequencyVisualization(bandAverages);
+                }
+                
+                this.updateRealtimeBPM();
+                requestAnimationFrame(this.detectBeats.bind(this));
+            } catch (error) {
+                console.error('[LIFXMediaTouchV2] Beat detection error:', error);
             }
-            
-            const avgEnergy = this.state.beatHistory.reduce((a, b) => a + b, 0) / this.state.beatHistory.length;
-            const variance = this.state.beatHistory.reduce((sum, val) => sum + Math.pow(val - avgEnergy, 2), 0) / this.state.beatHistory.length;
-            const stdDev = Math.sqrt(variance);
-            
-            this.state.adaptiveThreshold = Math.max(0.5, Math.min(0.9, 
-                (avgEnergy / 255) + (stdDev / 50)
-            ));
-            
-            const beatThreshold = Math.max(
-                this.state.adaptiveThreshold,
-                this.config.beatDetectionThreshold
-            );
-            
-            const isBeat = (bassEnergy / 255) > beatThreshold && bassEnergy > 180;
-            
-            if (isBeat && Date.now() - this.state.lastBeatTime > 200) {
-                this.state.lastBeatTime = Date.now();
-                this.state.bpmDetected = Math.round(60000 / (Date.now() - (this.state.lastBeatTime || Date.now() - 500)));
-                this.triggerBeatEffect(bandAverages);
-                this.updateFrequencyVisualization(bandAverages);
-            }
-            
-            this.updateRealtimeBPM();
-            requestAnimationFrame(this.detectBeats.bind(this));
         },
 
         triggerBeatEffect(bandAverages = {}) {
             if (!this.state.mediaSyncActive) return;
             
-            const intensity = Math.min(1, (bandAverages.bass || 200) / 255);
-            const duration = 80 + (1 - intensity) * 120;
-            
-            fetch('/api/services/lifx/set_state', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    selector: 'all',
-                    brightness: Math.min(1, 0.7 + intensity * 0.3),
-                    duration: duration / 1000
-                })
-            });
-            
-            setTimeout(() => {
+            try {
+                const intensity = Math.min(1, (bandAverages.bass || 200) / 255);
+                const duration = 80 + (1 - intensity) * 120;
+                
                 fetch('/api/services/lifx/set_state', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         selector: 'all',
-                        brightness: this.state.brightnessLevel / 100,
-                        duration: 0.2
+                        brightness: Math.min(1, 0.7 + intensity * 0.3),
+                        duration: duration / 1000
                     })
+                }).catch(err => {
+                    console.warn('[LIFXMediaTouchV2] Beat effect failed:', err);
                 });
-            }, duration);
-            
-            this.showBeatFlashOverlay(intensity);
+                
+                setTimeout(() => {
+                    fetch('/api/services/lifx/set_state', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            selector: 'all',
+                            brightness: this.state.brightnessLevel / 100,
+                            duration: 0.2
+                        })
+                    }).catch(err => {
+                        console.warn('[LIFXMediaTouchV2] Beat recovery failed:', err);
+                    });
+                }, duration);
+                
+                this.showBeatFlashOverlay(intensity);
+            } catch (error) {
+                console.error('[LIFXMediaTouchV2] Trigger beat effect error:', error);
+            }
         },
 
         showBeatFlashOverlay(intensity) {

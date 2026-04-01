@@ -732,6 +732,12 @@ impl Manager {
 }
 
 /// Helper function to set bulb color based on color string command
+/// 
+/// Supports multiple color formats:
+/// - Named colors: "white", "red", "blue", etc.
+/// - HSBK components: "hue:12345", "saturation:0.5", "brightness:0.8", "kelvin:3000"
+/// - RGB: "rgb:255,128,64" (values 0-255 or 0.0-1.0)
+/// - Hex: "#FF8040" or "#F84"
 fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: u32) -> Result<(), String> {
     let kelvin = bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(6500);
     let brightness = bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535);
@@ -803,7 +809,12 @@ fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: 
                 if let Ok(r) = parts[0].parse::<f32>() {
                     if let Ok(g) = parts[1].parse::<f32>() {
                         if let Ok(b) = parts[2].parse::<f32>() {
-                            let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(r, g, b);
+                            // Normalize RGB values to 0.0-1.0 range
+                            let r_norm = if r > 1.0 { r / 255.0 } else { r };
+                            let g_norm = if g > 1.0 { g / 255.0 } else { g };
+                            let b_norm = if b > 1.0 { b / 255.0 } else { b };
+                            
+                            let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(r_norm, g_norm, b_norm);
                             let hsv = Hsv::from_color(rgb);
                             HSBK {
                                 hue: (hsv.hue.into_positive_degrees() * 182.0) as u16,
@@ -828,7 +839,15 @@ fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: 
         }
     } else if color_str.contains('#') {
         let hex = extract_color_value(color_str, "#").unwrap_or("");
-        if let Ok(rgb) = TransformRgb::from_hex_str(&format!("#{}", hex)) {
+        // Support both 3-digit and 6-digit hex colors
+        let hex_expanded = if hex.len() == 3 {
+            let chars: Vec<char> = hex.chars().collect();
+            format!("{}{}{}{}{}{}", chars[0], chars[0], chars[1], chars[1], chars[2], chars[2])
+        } else {
+            hex.to_string()
+        };
+        
+        if let Ok(rgb) = TransformRgb::from_hex_str(&format!("#{}", hex_expanded)) {
             let r = rgb.get_red();
             let g = rgb.get_green();
             let b = rgb.get_blue();
@@ -855,7 +874,7 @@ fn extract_color_value<'a>(input: &'a str, prefix: &str) -> Option<&'a str> {
     input.find(prefix).map(|pos| {
         let start = pos + prefix.len();
         let rest = &input[start..];
-        rest.split_whitespace().next().unwrap_or(rest)
+        rest.split_whitespace().next().unwrap_or(rest).trim_end_matches(|c: char| !c.is_alphanumeric() && c != ':' && c != ',' && c != '#')
     })
 }
 
