@@ -44,6 +44,13 @@ const LifXTouchControls = {
         longPressDelay: 400,
         doubleTapDelay: 250
     },
+    gestureHints: {
+        enabled: true,
+        position: 'center',
+        duration: 1200,
+        showIcon: true,
+        showValue: true
+    },
     touchSensitivityLevels: {
         low: { swipeDistance: 80, swipeTime: 400, pinchDistance: 50 },
         medium: { swipeDistance: 50, swipeTime: 300, pinchDistance: 30 },
@@ -124,6 +131,18 @@ const LifXTouchControls = {
     lastGestureVelocity: 0,
     touchPressure: 0,
     pressureSensitiveEnabled: false,
+    colorWheelActive: false,
+    colorWheelAngle: 0,
+    colorWheelRadius: 0,
+    gestureTrails: [],
+    maxGestureTrails: 8,
+    touchTrailColor: 'rgba(0, 212, 255, 0.7)',
+    audioFrequencyData: null,
+    beatHistory: [],
+    maxBeatHistory: 8,
+    lastBeatEnergy: 0,
+    colorFlowPoints: [],
+    maxColorFlowPoints: 12,
     threeFingerSwipeActive: false,
     fourFingerSwipeActive: false,
     circularGestureActive: false,
@@ -2476,6 +2495,406 @@ const LifXTouchControls = {
             el.removeAttribute('data-lifx-touch');
         });
         console.log('LIFX Touch Controls disabled');
+    },
+    
+    initColorWheel: function() {
+        const colorWheelContainer = document.getElementById('lifx-color-wheel-container');
+        if (!colorWheelContainer) return;
+        
+        colorWheelContainer.innerHTML = `
+            <div id="lifx-color-wheel" class="lifx-color-wheel" style="display: none;">
+                <canvas id="color-wheel-canvas" width="300" height="300"></canvas>
+                <div class="color-wheel-center">
+                    <div class="color-wheel-preview" id="color-wheel-preview"></div>
+                </div>
+                <div class="color-wheel-controls">
+                    <button class="btn-close" onclick="LifXTouchControls.hideColorWheel()">×</button>
+                </div>
+            </div>
+        `;
+        
+        this.setupColorWheelEvents();
+    },
+    
+    setupColorWheelEvents: function() {
+        const canvas = document.getElementById('color-wheel-canvas');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        this.colorWheelCtx = ctx;
+        this.drawColorWheel();
+        
+        let isDragging = false;
+        
+        const getColorFromPosition = (x, y) => {
+            const rect = canvas.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const dx = x - centerX;
+            const dy = y - centerY;
+            
+            const angle = Math.atan2(dy, dx) + Math.PI;
+            const hue = (angle / (2 * Math.PI)) * 360;
+            
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const maxDistance = rect.width / 2;
+            const saturation = Math.min(100, (distance / maxDistance) * 100);
+            
+            return { hue, saturation };
+        };
+        
+        const handleColorSelect = (clientX, clientY) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            const color = getColorFromPosition(x, y);
+            
+            this.lastColorHue = color.hue;
+            this.lastColorSaturation = color.saturation;
+            
+            const previewEl = document.getElementById('color-wheel-preview');
+            if (previewEl) {
+                previewEl.style.background = `hsl(${color.hue}, ${color.saturation}%, 50%)`;
+            }
+            
+            this.applyHSLColor();
+        };
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            const touch = e.touches[0];
+            handleColorSelect(touch.clientX, touch.clientY);
+            this.hapticFeedback('light');
+        }, { passive: false });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!isDragging) return;
+            const touch = e.touches[0];
+            handleColorSelect(touch.clientX, touch.clientY);
+            this.createColorWheelTrail(touch.clientX, touch.clientY);
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+            this.showGestureFeedback('Color updated', '🎨');
+            this.hapticFeedback('success');
+        });
+        
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            handleColorSelect(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            handleColorSelect(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+    },
+    
+    drawColorWheel: function() {
+        const ctx = this.colorWheelCtx;
+        if (!ctx) return;
+        
+        const canvas = document.getElementById('color-wheel-canvas');
+        const width = canvas.width;
+        const height = canvas.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = width / 2 - 10;
+        
+        for (let angle = 0; angle < 360; angle++) {
+            const startAngle = (angle - 1) * Math.PI / 180;
+            const endAngle = (angle + 1) * Math.PI / 180;
+            
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+            ctx.closePath();
+            
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+            gradient.addColorStop(0, `hsl(${angle}, 0%, 50%)`);
+            gradient.addColorStop(1, `hsl(${angle}, 100%, 50%)`);
+            
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+    },
+    
+    createColorWheelTrail: function(x, y) {
+        if (this.reducedMotionMode) return;
+        
+        const trail = document.createElement('div');
+        trail.className = 'color-wheel-trail';
+        trail.style.left = x + 'px';
+        trail.style.top = y + 'px';
+        trail.style.background = `hsl(${this.lastColorHue}, ${this.lastColorSaturation}%, 50%)`;
+        document.body.appendChild(trail);
+        
+        setTimeout(() => {
+            trail.classList.add('fade-out');
+            setTimeout(() => {
+                if (trail.parentNode) trail.parentNode.removeChild(trail);
+            }, 300);
+        }, 50);
+    },
+    
+    showColorWheel: function() {
+        const wheel = document.getElementById('lifx-color-wheel');
+        if (wheel) {
+            wheel.style.display = 'block';
+            setTimeout(() => wheel.classList.add('visible'), 10);
+            this.colorWheelActive = true;
+            this.hapticFeedback('light');
+        }
+    },
+    
+    hideColorWheel: function() {
+        const wheel = document.getElementById('lifx-color-wheel');
+        if (wheel) {
+            wheel.classList.remove('visible');
+            setTimeout(() => wheel.style.display = 'none', 300);
+            this.colorWheelActive = false;
+        }
+    },
+    
+    showBrightnessFeedback: function(brightness) {
+        if (!this.gestureHints.enabled) return;
+        
+        const existingFeedback = document.querySelector('.brightness-feedback-overlay');
+        if (existingFeedback) existingFeedback.remove();
+        
+        const feedback = document.createElement('div');
+        feedback.className = 'brightness-feedback-overlay';
+        feedback.innerHTML = `
+            <div class="brightness-icon">${brightness > 50 ? '☀️' : brightness > 20 ? '💡' : '🌙'}</div>
+            <div class="brightness-bar">
+                <div class="brightness-fill" style="width: ${brightness}%"></div>
+            </div>
+            <span class="brightness-value">${brightness}%</span>
+        `;
+        document.body.appendChild(feedback);
+        
+        setTimeout(() => {
+            feedback.classList.add('visible');
+        }, 10);
+        
+        setTimeout(() => {
+            feedback.classList.remove('visible');
+            setTimeout(() => {
+                if (feedback.parentNode) feedback.parentNode.removeChild(feedback);
+            }, 300);
+        }, this.gestureHints.duration);
+    },
+    
+    recordGesture: function(type, data, previousValue = null, targets = []) {
+        const gesture = {
+            type,
+            data,
+            previousValue,
+            targets: [...targets],
+            timestamp: Date.now()
+        };
+        
+        this.gestureHistory.push(gesture);
+        if (this.gestureHistory.length > this.maxGestureHistory) {
+            this.gestureHistory.shift();
+        }
+    },
+    
+    undoLastGesture: function() {
+        if (this.gestureHistory.length === 0) {
+            this.showGestureFeedback('Nothing to undo', '⊘');
+            return;
+        }
+        
+        const lastGesture = this.gestureHistory.pop();
+        this.applyUndoGesture(lastGesture);
+        this.showGestureFeedback('Undone', '↩️');
+        this.hapticFeedback('light');
+    },
+    
+    applyUndoGesture: function(gesture) {
+        switch (gesture.type) {
+            case 'brightness':
+                this.brightnessLevel = gesture.previousValue;
+                $.ajax({
+                    url: '/api/services/lifx/set_state',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: `id:${gesture.targets.join(',')}`,
+                        brightness: this.brightnessLevel / 100,
+                        duration: 0.3
+                    })
+                });
+                break;
+            case 'colorTemp':
+                this.colorTempLevel = gesture.previousValue;
+                $.ajax({
+                    url: '/api/services/lifx/set_color',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: `id:${gesture.targets.join(',')}`,
+                        color: `kelvin:${this.colorTempLevel}`
+                    })
+                });
+                break;
+        }
+    },
+    
+    recordGestureSuccess: function() {
+        this.gestureSuccessCount++;
+        this.adjustSensitivity(true);
+    },
+    
+    adjustSensitivity: function(success, gestureType = null) {
+        if (!this.adaptiveSensitivity.enabled) return;
+        
+        this.currentAdjustments++;
+        
+        if (success) {
+            this.gestureSuccessCount++;
+        } else {
+            this.gestureFailCount++;
+        }
+        
+        const successRate = this.gestureSuccessCount / (this.gestureSuccessCount + this.gestureFailCount);
+        
+        if (this.currentAdjustments >= this.adaptiveSensitivity.minAdjustments) {
+            if (successRate < this.adaptiveSensitivity.failThreshold) {
+                this.increaseSensitivity();
+            } else if (successRate > this.adaptiveSensitivity.successThreshold) {
+                this.decreaseSensitivity();
+            }
+        }
+    },
+    
+    increaseSensitivity: function() {
+        const levels = ['low', 'medium', 'high', 'very_high'];
+        const currentIndex = levels.indexOf(this.touchSensitivity);
+        if (currentIndex < levels.length - 1) {
+            this.touchSensitivity = levels[currentIndex + 1];
+            this.saveGestureSensitivity();
+            this.showGestureFeedback('Sensitivity increased', '📈');
+        }
+    },
+    
+    decreaseSensitivity: function() {
+        const levels = ['low', 'medium', 'high', 'very_high'];
+        const currentIndex = levels.indexOf(this.touchSensitivity);
+        if (currentIndex > 0) {
+            this.touchSensitivity = levels[currentIndex - 1];
+            this.saveGestureSensitivity();
+            this.showGestureFeedback('Sensitivity decreased', '📉');
+        }
+    },
+    
+    saveGestureSensitivity: function() {
+        localStorage.setItem('lifx-touch-sensitivity', this.touchSensitivity);
+    },
+    
+    loadGestureSensitivity: function() {
+        const saved = localStorage.getItem('lifx-touch-sensitivity');
+        if (saved && this.touchSensitivityLevels[saved]) {
+            this.touchSensitivity = saved;
+        }
+    },
+    
+    loadSavedPreferences: function() {
+        const saved = localStorage.getItem('lifx-preferences');
+        if (saved) {
+            try {
+                const prefs = JSON.parse(saved);
+                if (prefs.currentScene) this.currentScene = prefs.currentScene;
+                if (prefs.brightnessLevel) this.brightnessLevel = prefs.brightnessLevel;
+                if (prefs.colorTempLevel) this.colorTempLevel = prefs.colorTempLevel;
+            } catch (e) {
+                console.error('Failed to load LIFX preferences:', e);
+            }
+        }
+    },
+    
+    savePreferences: function() {
+        const prefs = {
+            currentScene: this.currentScene,
+            brightnessLevel: this.brightnessLevel,
+            colorTempLevel: this.colorTempLevel,
+            touchSensitivity: this.touchSensitivity
+        };
+        localStorage.setItem('lifx-preferences', JSON.stringify(prefs));
+    },
+    
+    getFirstSelectedBulb: function() {
+        if (this.multiBulbSelection.length > 0) {
+            return this.multiBulbSelection[0];
+        }
+        const selectedEl = document.querySelector('.lifx-bulb-control.selected');
+        return selectedEl ? selectedEl.dataset.bulbId : null;
+    },
+    
+    initEnhancedTouchTracking: function(e) {
+        if (!e.touches || e.touches.length === 0) return;
+        
+        const touch = e.touches[0];
+        this.lastTouchCoordinates = { x: touch.clientX, y: touch.clientY };
+        this.touchVelocityHistory = [];
+        
+        if (touch.force !== undefined) {
+            this.touchPressure = touch.force;
+        }
+    },
+    
+    updateTouchVelocity: function(e) {
+        if (!e.touches || e.touches.length === 0) return;
+        
+        const touch = e.touches[0];
+        const dx = touch.clientX - this.lastTouchCoordinates.x;
+        const dy = touch.clientY - this.lastTouchCoordinates.y;
+        const velocity = Math.sqrt(dx * dx + dy * dy);
+        
+        this.touchVelocityHistory.push(velocity);
+        if (this.touchVelocityHistory.length > this.maxVelocityHistory) {
+            this.touchVelocityHistory.shift();
+        }
+        
+        this.touchVelocity = velocity;
+        
+        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        this.touchDirection = angle;
+        
+        this.lastTouchCoordinates = { x: touch.clientX, y: touch.clientY };
+    },
+    
+    processGestureVelocity: function(e) {
+        if (this.touchVelocityHistory.length === 0) return;
+        
+        const avgVelocity = this.touchVelocityHistory.reduce((a, b) => a + b, 0) / this.touchVelocityHistory.length;
+        this.lastGestureVelocity = avgVelocity;
+        
+        if (avgVelocity > 2.0 && this.enhancedRippleMode) {
+            this.createVelocityRipple(e.changedTouches[0].clientX, e.changedTouches[0].clientY, avgVelocity);
+        }
+    },
+    
+    createVelocityRipple: function(x, y, velocity) {
+        const ripple = document.createElement('div');
+        ripple.className = 'velocity-ripple';
+        ripple.style.left = x + 'px';
+        ripple.style.top = y + 'px';
+        ripple.style.setProperty('--ripple-scale', Math.min(3, 1 + velocity / 10));
+        ripple.style.setProperty('--ripple-duration', Math.max(0.3, 1 - velocity / 50) + 's');
+        document.body.appendChild(ripple);
+        
+        setTimeout(() => {
+            if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+        }, 1000);
     },
     
     hapticFeedback: function(pattern = 'default', intensity = 1.0) {
