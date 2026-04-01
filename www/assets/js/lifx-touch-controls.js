@@ -51,6 +51,17 @@ const LifXTouchControls = {
     touchRippleEnabled: true,
     showGestureHints: true,
     gestureHintDuration: 1000,
+    voiceControlEnabled: false,
+    zonePresets: {},
+    effectQueue: [],
+    effectActive: false,
+    circadianRhythmEnabled: false,
+    lastCircadianAdjustment: 0,
+    touchGestureTrail: [],
+    maxTrailLength: 5,
+    accessibilityMode: false,
+    highContrastHints: false,
+    reducedMotionMode: false,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
@@ -2279,6 +2290,250 @@ const LifXTouchControls = {
             this.dynamicSceneInterval = null;
             this.dynamicSceneParams = null;
         }
+    },
+    
+    initCircadianRhythm: function() {
+        if (!this.circadianRhythmEnabled) return;
+        
+        const adjustCircadian = () => {
+            const hour = new Date().getHours();
+            const now = Date.now();
+            
+            if (now - this.lastCircadianAdjustment < 3600000) return;
+            
+            let kelvin, brightness;
+            
+            if (hour >= 6 && hour < 9) {
+                kelvin = 4000;
+                brightness = 0.7;
+            } else if (hour >= 9 && hour < 12) {
+                kelvin = 5500;
+                brightness = 0.9;
+            } else if (hour >= 12 && hour < 17) {
+                kelvin = 6500;
+                brightness = 1.0;
+            } else if (hour >= 17 && hour < 21) {
+                kelvin = 4000;
+                brightness = 0.6;
+            } else if (hour >= 21 && hour < 23) {
+                kelvin = 2700;
+                brightness = 0.4;
+            } else {
+                kelvin = 2200;
+                brightness = 0.2;
+            }
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: 'all',
+                    kelvin: kelvin,
+                    brightness: brightness,
+                    duration: 300
+                })
+            });
+            
+            this.lastCircadianAdjustment = now;
+            console.log('Circadian adjustment:', { kelvin, brightness });
+        };
+        
+        adjustCircadian();
+        setInterval(adjustCircadian, 300000);
+    },
+    
+    initVoiceControl: function() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            console.warn('Voice control not supported');
+            return;
+        }
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        
+        recognition.onresult = (event) => {
+            const command = event.results[0][0].transcript.toLowerCase();
+            console.log('LIFX voice command:', command);
+            
+            if (command.includes('bright') || command.includes('light')) {
+                this.adjustBrightness(20);
+                this.showGestureFeedback('Brighter', '☀️');
+            } else if (command.includes('dim') || command.includes('darker')) {
+                this.adjustBrightness(-20);
+                this.showGestureFeedback('Dimmer', '🌙');
+            } else if (command.includes('warmer')) {
+                this.adjustColorTemp(300);
+                this.showGestureFeedback('Warmer', '🔶');
+            } else if (command.includes('cooler') || command.includes('colder')) {
+                this.adjustColorTemp(-300);
+                this.showGestureFeedback('Cooler', '❄️');
+            } else if (command.includes('relax') || command.includes('relaxing')) {
+                this.applyScene('relax');
+            } else if (command.includes('focus') || command.includes('concentrate')) {
+                this.applyScene('focus');
+            } else if (command.includes('movie') || command.includes('film')) {
+                this.applyScene('movie');
+            } else if (command.includes('party')) {
+                this.applyScene('party');
+            } else if (command.includes('off') || command.includes('dark')) {
+                this.togglePower(false);
+            } else if (command.includes('on') || command.includes('light up')) {
+                this.togglePower(true);
+            } else if (command.includes('rainbow')) {
+                this.applyScene('rainbow');
+            } else if (command.includes('sunrise')) {
+                this.applyScene('sunrise');
+            } else if (command.includes('sunset')) {
+                this.applyScene('sunset');
+            }
+        };
+        
+        recognition.onerror = (event) => {
+            console.warn('LIFX voice recognition error:', event.error);
+        };
+        
+        window.startLifxVoiceCommand = () => {
+            recognition.start();
+            showNotification('Listening for light command...', 'info');
+        };
+        
+        this.voiceControlEnabled = true;
+        console.log('LIFX voice control initialized');
+    },
+    
+    saveZonePreset: function(name) {
+        const config = {
+            bulbs: [...this.multiBulbSelection],
+            brightness: this.brightnessLevel,
+            colorTemp: this.colorTempLevel,
+            scene: this.currentScene
+        };
+        
+        this.zonePresets[name] = config;
+        localStorage.setItem('lifx_zone_presets', JSON.stringify(this.zonePresets));
+        showNotification(`Zone preset "${name}" saved`, 'success');
+    },
+    
+    loadZonePreset: function(name) {
+        const preset = this.zonePresets[name];
+        if (!preset) {
+            showNotification(`Preset "${name}" not found`, 'warning');
+            return;
+        }
+        
+        this.multiBulbSelection = preset.bulbs || [];
+        this.brightnessLevel = preset.brightness || 50;
+        this.colorTempLevel = preset.colorTemp || 3500;
+        
+        if (preset.scene) {
+            this.applyScene(preset.scene);
+        }
+        
+        this.updateSelectionToolbar();
+        showNotification(`Loaded preset "${name}"`, 'success');
+    },
+    
+    loadZonePresets: function() {
+        try {
+            const stored = localStorage.getItem('lifx_zone_presets');
+            if (stored) {
+                this.zonePresets = JSON.parse(stored);
+            }
+        } catch (e) {
+            console.warn('Failed to load zone presets:', e);
+        }
+    },
+    
+    queueEffect: function(effectName, duration = 5000) {
+        this.effectQueue.push({ effect: effectName, duration, addedAt: Date.now() });
+        console.log('Effect queued:', effectName);
+        
+        if (!this.effectActive) {
+            this.processEffectQueue();
+        }
+    },
+    
+    processEffectQueue: function() {
+        if (this.effectQueue.length === 0 || this.effectActive) return;
+        
+        const nextEffect = this.effectQueue.shift();
+        this.effectActive = true;
+        
+        const originalScene = this.currentScene;
+        this.applyScene(nextEffect.effect);
+        
+        setTimeout(() => {
+            this.effectActive = false;
+            this.applyScene(originalScene);
+            this.processEffectQueue();
+        }, nextEffect.duration);
+    },
+    
+    clearEffectQueue: function() {
+        this.effectQueue = [];
+        this.stopDynamicScene();
+        this.effectActive = false;
+        showNotification('Light effects cleared', 'info');
+    },
+    
+    initAccessibilityFeatures: function() {
+        if (!this.accessibilityMode) return;
+        
+        document.querySelectorAll('.lifx-bulb-control, .lifx-bulb-card').forEach(el => {
+            el.setAttribute('role', 'button');
+            el.setAttribute('aria-label', el.getAttribute('data-bulb-name') || 'Light control');
+            
+            if (this.highContrastHints) {
+                el.classList.add('high-contrast');
+            }
+            
+            if (this.reducedMotionMode) {
+                el.style.transition = 'none';
+            }
+        });
+        
+        console.log('LIFX accessibility features enabled');
+    },
+    
+    setAccessibilityMode: function(enabled) {
+        this.accessibilityMode = enabled;
+        localStorage.setItem('lifx_accessibility_mode', enabled);
+        
+        if (enabled) {
+            this.initAccessibilityFeatures();
+            showNotification('Accessibility mode enabled', 'info');
+        } else {
+            document.querySelectorAll('.lifx-bulb-control').forEach(el => {
+                el.classList.remove('high-contrast');
+                el.style.transition = '';
+            });
+            showNotification('Accessibility mode disabled', 'info');
+        }
+    },
+    
+    initFromStorage: function() {
+        this.loadZonePresets();
+        
+        try {
+            const accessibilityStored = localStorage.getItem('lifx_accessibility_mode');
+            if (accessibilityStored === 'true') {
+                this.accessibilityMode = true;
+                this.initAccessibilityFeatures();
+            }
+            
+            const circadianStored = localStorage.getItem('lifx_circadian_enabled');
+            if (circadianStored === 'true') {
+                this.circadianRhythmEnabled = true;
+                this.initCircadianRhythm();
+            }
+        } catch (e) {
+            console.warn('Failed to load LIFX preferences:', e);
+        }
     }
 };
 
@@ -2292,6 +2547,18 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize mobile navigation
     LifXTouchControls.initMobileNav();
+    
+    // Initialize additional features
+    LifXTouchControls.initFromStorage();
+    
+    // Expose global functions for voice and accessibility
+    window.startLifxVoiceCommand = () => LifXTouchControls.initVoiceControl();
+    window.setLifxAccessibilityMode = (enabled) => LifXTouchControls.setAccessibilityMode(enabled);
+    window.saveLifxZonePreset = (name) => LifXTouchControls.saveZonePreset(name);
+    window.loadLifxZonePreset = (name) => LifXTouchControls.loadZonePreset(name);
+    window.queueLifxEffect = (effect, duration) => LifXTouchControls.queueEffect(effect, duration);
+    
+    console.log('LIFX Touch Controls initialized with enhanced features');
 });
 
 // Export for external use

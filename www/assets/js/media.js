@@ -3203,6 +3203,263 @@ function addToNowPlayingHistory(track) {
     localStorage.setItem('sam_now_playing_history', JSON.stringify(MediaPlayer.nowPlayingHistory));
 }
 
+// Enhanced Media Center Features
+const MediaEnhancements = {
+    watchPartyEnabled: false,
+    watchPartyHost: null,
+    watchPartyParticipants: [],
+    synchronizedPlayback: false,
+    playbackOffset: 0,
+    
+    initWatchParty: function() {
+        if (!window.WebSocket) {
+            showNotification('Watch Party requires WebSocket support', 'error');
+            return;
+        }
+        
+        this.watchPartyEnabled = true;
+        console.log('Watch Party initialized');
+    },
+    
+    createWatchParty: function(roomName) {
+        if (typeof ws === 'undefined' || !ws || ws.readyState !== WebSocket.OPEN) {
+            showNotification('Connecting to server...', 'info');
+            setTimeout(() => this.createWatchParty(roomName), 1000);
+            return;
+        }
+        
+        ws.send(JSON.stringify({
+            type: 'command',
+            command: 'create_watch_party',
+            args: { room: roomName }
+        }));
+        
+        this.watchPartyHost = true;
+        showNotification(`Watch Party "${roomName}" created`, 'success');
+    },
+    
+    joinWatchParty: function(roomName) {
+        if (typeof ws === 'undefined' || !ws || ws.readyState !== WebSocket.OPEN) {
+            showNotification('Connecting to server...', 'info');
+            setTimeout(() => this.joinWatchParty(roomName), 1000);
+            return;
+        }
+        
+        ws.send(JSON.stringify({
+            type: 'command',
+            command: 'join_watch_party',
+            args: { room: roomName }
+        }));
+        
+        showNotification(`Joined Watch Party "${roomName}"`, 'success');
+    },
+    
+    syncPlaybackState: function(state) {
+        if (!this.watchPartyEnabled || !ws || ws.readyState !== WebSocket.OPEN) return;
+        
+        ws.send(JSON.stringify({
+            type: 'command',
+            command: 'sync_playback',
+            args: {
+                playing: state.playing,
+                currentTime: state.currentTime,
+                speed: state.speed
+            }
+        }));
+    },
+    
+    initScreenCasting: function() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            showNotification('Screen casting not supported in this browser', 'warning');
+            return;
+        }
+        
+        window.castScreen = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: 'always' },
+                    audio: true
+                });
+                
+                const videoEl = document.createElement('video');
+                videoEl.srcObject = stream;
+                videoEl.play();
+                
+                document.getElementById('media-player').appendChild(videoEl);
+                showNotification('Screen casting started', 'success');
+                
+                stream.getVideoTracks()[0].onended = () => {
+                    videoEl.remove();
+                    showNotification('Screen casting stopped', 'info');
+                };
+            } catch (err) {
+                console.error('Screen cast error:', err);
+                showNotification('Screen casting failed', 'error');
+            }
+        };
+        
+        console.log('Screen casting initialized');
+    },
+    
+    initAudioVisualization: function() {
+        const visualizerContainer = document.getElementById('audio-visualizer');
+        if (!visualizerContainer) return;
+        
+        if (!MediaPlayer.audioContext) {
+            initAudioContext();
+        }
+        
+        const canvas = document.createElement('canvas');
+        canvas.id = 'visualizer-canvas';
+        canvas.width = visualizerContainer.clientWidth;
+        canvas.height = visualizerContainer.clientHeight;
+        visualizerContainer.appendChild(canvas);
+        
+        const ctx = canvas.getContext('2d');
+        const analyser = MediaPlayer.analyser;
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        
+        const draw = () => {
+            if (!MediaPlayer.isPlaying) {
+                requestAnimationFrame(draw);
+                return;
+            }
+            
+            requestAnimationFrame(draw);
+            analyser.getByteFrequencyData(dataArray);
+            
+            ctx.fillStyle = 'rgba(42, 42, 58, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const barWidth = canvas.width / dataArray.length;
+            let x = 0;
+            
+            for (let i = 0; i < dataArray.length; i++) {
+                const barHeight = (dataArray[i] / 255) * canvas.height;
+                
+                const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+                gradient.addColorStop(0, '#00d4ff');
+                gradient.addColorStop(0.5, '#ff00ff');
+                gradient.addColorStop(1, '#ff6b6b');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+                x += barWidth;
+            }
+        };
+        
+        draw();
+        console.log('Audio visualization initialized');
+    },
+    
+    initMediaKeyboardShortcuts: function() {
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            const handlers = {
+                'KeyF': () => this.toggleFullscreen(),
+                'KeyM': () => toggleMute(),
+                'Space': () => { e.preventDefault(); togglePlayPause(); },
+                'ArrowLeft': () => this.seek(-10),
+                'ArrowRight': () => this.seek(10),
+                'ArrowUp': () => increaseVolume(),
+                'ArrowDown': () => decreaseVolume(),
+                'Digit0': () => setPlaybackSpeed(0.5),
+                'Digit1': () => setPlaybackSpeed(1.0),
+                'Digit2': () => setPlaybackSpeed(1.5),
+                'Digit3': () => setPlaybackSpeed(2.0)
+            };
+            
+            if (handlers[e.code]) {
+                handlers[e.code]();
+            }
+        });
+        
+        console.log('Media keyboard shortcuts initialized');
+    },
+    
+    toggleFullscreen: function() {
+        const player = document.getElementById('media-player');
+        if (!player) return;
+        
+        if (document.fullscreenElement) {
+            document.exitFullscreen();
+        } else {
+            player.requestFullscreen();
+        }
+    },
+    
+    seek: function(seconds) {
+        const video = document.querySelector('video');
+        if (!video) return;
+        
+        video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+        showNotification(`Seeked ${seconds > 0 ? '+' : ''}${seconds}s`, 'info');
+    },
+    
+    initPictureInPicture: function() {
+        const video = document.querySelector('video');
+        if (!video || !document.pictureInPictureEnabled) return;
+        
+        window.togglePiP = async () => {
+            try {
+                if (document.pictureInPictureElement) {
+                    await document.exitPictureInPicture();
+                } else {
+                    await video.requestPictureInPicture();
+                }
+            } catch (err) {
+                console.error('PiP error:', err);
+                showNotification('Picture in Picture failed', 'error');
+            }
+        };
+        
+        console.log('Picture in Picture initialized');
+    },
+    
+    initMediaSessionControls: function() {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+                this.seek(-10);
+            });
+            
+            navigator.mediaSession.setActionHandler('seekforward', (details) => {
+                this.seek(10);
+            });
+            
+            navigator.mediaSession.setActionHandler('seekto', (details) => {
+                const video = document.querySelector('video');
+                if (video) {
+                    video.currentTime = details.seekTime;
+                }
+            });
+            
+            console.log('Enhanced Media Session controls initialized');
+        }
+    },
+    
+    getWatchPartyState: function() {
+        return {
+            enabled: this.watchPartyEnabled,
+            isHost: this.watchPartyHost,
+            participants: this.watchPartyParticipants,
+            synchronized: this.synchronizedPlayback
+        };
+    }
+};
+
+// Initialize enhanced media features
+document.addEventListener('DOMContentLoaded', () => {
+    MediaEnhancements.initScreenCasting();
+    MediaEnhancements.initMediaKeyboardShortcuts();
+    MediaEnhancements.initPictureInPicture();
+    MediaEnhancements.initMediaSessionControls();
+    
+    if (typeof is_touch_enabled === 'function' && is_touch_enabled()) {
+        console.log('Touch device detected - enhanced media controls enabled');
+    }
+});
+
 function getNowPlayingHistory() {
     try {
         const stored = localStorage.getItem('sam_now_playing_history');
