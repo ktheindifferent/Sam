@@ -25,7 +25,11 @@ const MediaPlayer = {
     volume: 50,
     isMuted: false,
     queue: [],
-    snapcastClients: []
+    snapcastClients: [],
+    activeSource: null,
+    repeatMode: 'off', // off, all, one
+    isShuffling: false,
+    mediaSessionActive: false
 };
 
 // Initialize when DOM is ready
@@ -38,6 +42,8 @@ function initMediaCenter() {
     initTouchControls();
     initKeyboardShortcuts();
     initSnapcastStatus();
+    initMediaSession();
+    initVoiceCommands();
     console.log('Media Center initialized');
 }
 
@@ -81,7 +87,7 @@ function hapticFeedback() {
 // Touch controls for media center
 function initTouchControls() {
     // Add touch feedback to all media controls
-    document.querySelectorAll('.media-control-btn').forEach(btn => {
+    document.querySelectorAll('.media-control-btn, .snapcast-control-btn').forEach(btn => {
         btn.classList.add('touch-feedback');
 
         // Double-tap for play/pause
@@ -116,28 +122,69 @@ function initTouchControls() {
     }
 
     // Swipe gestures on media player
-    const mediaPlayer = document.querySelector('#media-player');
+    const mediaPlayer = document.querySelector('#media-player, #snapcast-player');
     if (mediaPlayer) {
         onGesture('swipeLeft', function() {
             nextTrack();
-            showSwipeHint('Next Track');
+            showSwipeHint('Next Track ➡️');
         });
 
         onGesture('swipeRight', function() {
             previousTrack();
-            showSwipeHint('Previous Track');
+            showSwipeHint('Previous Track ⬅️');
         });
 
         onGesture('swipeUp', function() {
             increaseVolume();
-            showSwipeHint('Volume Up');
+            showSwipeHint('Volume Up 🔊↑');
         });
 
         onGesture('swipeDown', function() {
             decreaseVolume();
-            showSwipeHint('Volume Down');
+            showSwipeHint('Volume Down 🔊↓');
+        });
+        
+        // Double tap to toggle play/pause
+        onGesture('tap', function(data) {
+            if (mediaPlayer.contains(document.elementFromPoint(data.x, data.y))) {
+                togglePlayPause();
+            }
         });
     }
+    
+    // Initialize media browser touch controls
+    initMediaBrowserTouch();
+}
+
+// Media browser touch interactions
+function initMediaBrowserTouch() {
+    const mediaGrids = document.querySelectorAll('.media-grid, .nextcloud-media-grid, .dropbox-media-grid, .seaweedfs-media-grid');
+    
+    mediaGrids.forEach(grid => {
+        // Horizontal scroll with swipe
+        let isDown = false;
+        let startX;
+        let scrollLeft;
+        
+        grid.addEventListener('touchstart', (e) => {
+            isDown = true;
+            startX = e.touches[0].pageX - grid.offsetLeft;
+            scrollLeft = grid.scrollLeft;
+            grid.style.transition = 'none';
+        }, { passive: true });
+        
+        grid.addEventListener('touchmove', (e) => {
+            if (!isDown) return;
+            const x = e.touches[0].pageX - grid.offsetLeft;
+            const walk = (x - startX) * 2;
+            grid.scrollLeft = scrollLeft - walk;
+        }, { passive: true });
+        
+        grid.addEventListener('touchend', () => {
+            isDown = false;
+            grid.style.transition = '';
+        });
+    });
 }
 
 // Keyboard shortcuts
@@ -148,10 +195,13 @@ function initKeyboardShortcuts() {
             return;
         }
 
+        // Media control shortcuts (work globally)
         switch(e.code) {
             case 'Space':
-                e.preventDefault();
-                togglePlayPause();
+                if (e.target.tagName !== 'BUTTON') {
+                    e.preventDefault();
+                    togglePlayPause();
+                }
                 break;
             case 'ArrowRight':
                 e.preventDefault();
@@ -173,8 +223,65 @@ function initKeyboardShortcuts() {
                 e.preventDefault();
                 toggleMute();
                 break;
+            case 'KeyR':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    toggleRepeatMode();
+                }
+                break;
+            case 'KeyS':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    toggleShuffle();
+                }
+                break;
+            case 'KeyN':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    nextTrack();
+                }
+                break;
+            case 'KeyP':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    previousTrack();
+                }
+                break;
         }
     });
+}
+
+// Toggle repeat mode
+function toggleRepeatMode() {
+    const modes = ['off', 'all', 'one'];
+    const currentIndex = modes.indexOf(MediaPlayer.repeatMode);
+    MediaPlayer.repeatMode = modes[(currentIndex + 1) % modes.length];
+    
+    const repeatBtn = document.querySelector('#repeat-btn');
+    if (repeatBtn) {
+        repeatBtn.innerHTML = MediaPlayer.repeatMode === 'off' 
+            ? '<i class="fas fa-redo"></i>' 
+            : MediaPlayer.repeatMode === 'all'
+            ? '<i class="fas fa-redo"></i><span style="font-size:8px;position:absolute;">ALL</span>'
+            : '<i class="fas fa-redo"></i><span style="font-size:8px;position:absolute;">1</span>';
+    }
+    
+    showNotification(`Repeat: ${MediaPlayer.repeatMode}`, 'info');
+}
+
+// Toggle shuffle
+function toggleShuffle() {
+    MediaPlayer.isShuffling = !MediaPlayer.isShuffling;
+    
+    const shuffleBtn = document.querySelector('#shuffle-btn');
+    if (shuffleBtn) {
+        shuffleBtn.classList.toggle('active', MediaPlayer.isShuffling);
+        shuffleBtn.innerHTML = MediaPlayer.isShuffling
+            ? '<i class="fas fa-random"></i><span style="font-size:8px;position:absolute;">ON</span>'
+            : '<i class="fas fa-random"></i>';
+    }
+    
+    showNotification(`Shuffle: ${MediaPlayer.isShuffling ? 'ON' : 'OFF'}`, 'info');
 }
 
 // Media control functions - Integrated with Snapcast API
@@ -342,6 +449,10 @@ function initSnapcastStatus() {
         .then(response => response.json())
         .then(data => {
             updateSnapcastStatus(data);
+            if (data && data.running) {
+                // Initialize WebSocket for real-time updates if available
+                initSnapcastWebSocket();
+            }
         })
         .catch(err => {
             console.warn('Snapcast status unavailable:', err);
@@ -356,6 +467,40 @@ function initSnapcastStatus() {
             })
             .catch(() => {});
     }, 5000);
+}
+
+// WebSocket for real-time Snapcast updates
+function initSnapcastWebSocket() {
+    if (typeof WebSocket !== 'undefined') {
+        try {
+            const ws = new WebSocket(`ws://${window.location.host}/ws`);
+            
+            ws.onopen = () => {
+                console.log('Snapcast WebSocket connected');
+                ws.send(JSON.stringify({
+                    type: 'subscribe',
+                    channels: ['snapcast', 'media']
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'service_status' && data.service === 'snapcast') {
+                        updateSnapcastStatus(data.status);
+                    }
+                } catch (e) {
+                    console.warn('WebSocket message parse error:', e);
+                }
+            };
+            
+            ws.onerror = (err) => {
+                console.warn('Snapcast WebSocket error:', err);
+            };
+        } catch (e) {
+            console.warn('Snapcast WebSocket init failed:', e);
+        }
+    }
 }
 
 function updateSnapcastStatus(data) {
@@ -381,12 +526,168 @@ function updateClientList(clients) {
     const clientList = document.querySelector('#snapcast-clients');
     if (clientList && clients) {
         clientList.innerHTML = clients.map(client => `
-            <div class="snapcast-client">
-                <i class="fas fa-${client.connected ? 'wifi' : 'wifi-off'}"></i>
-                <span>${client.name || 'Unknown'}</span>
-                <span class="volume">${client.volume?.muted ? '🔇' : '🔊'} ${client.volume?.percent ?? 0}%</span>
+            <div class="snapcast-client" data-client-id="${client.id || ''}">
+                <div class="client-header">
+                    <i class="fas fa-${client.connected ? 'wifi' : 'wifi-off'} ${client.connected ? 'text-success' : 'text-danger'}"></i>
+                    <span class="client-name">${client.name || 'Unknown'}</span>
+                </div>
+                <div class="client-controls">
+                    <input type="range" class="client-volume" 
+                           value="${client.volume?.percent ?? 100}" 
+                           min="0" max="100"
+                           onchange="setClientVolume('${client.id || ''}', this.value)">
+                    <button class="btn btn-sm ${client.volume?.muted ? 'btn-warning' : 'btn-secondary'}"
+                            onclick="toggleClientMute('${client.id || ''}')">
+                        <i class="fas fa-${client.volume?.muted ? 'volume-mute' : 'volume-up'}"></i>
+                    </button>
+                </div>
+                <div class="client-info">
+                    <small>${client.ip || ''}</small>
+                </div>
             </div>
         `).join('');
+    }
+}
+
+// Individual client volume control
+function setClientVolume(clientId, level) {
+    if (!clientId) {
+        setVolume(level);
+        return;
+    }
+    
+    fetch('/api/services/snapcast/volume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level: parseInt(level), client_id: clientId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Client volume updated:', data.message);
+        }
+    })
+    .catch(err => {
+        console.warn('Failed to set client volume:', err);
+    });
+}
+
+function toggleClientMute(clientId) {
+    if (!clientId) {
+        toggleMute();
+        return;
+    }
+    
+    fetch('/api/services/snapcast/mute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Client muted:', data.muted);
+            // Refresh client list
+            setTimeout(() => {
+                fetch('/api/services/snapcast/clients')
+                    .then(response => response.json())
+                    .then(clients => updateClientList(clients));
+            }, 500);
+        }
+    })
+    .catch(err => {
+        console.warn('Failed to toggle client mute:', err);
+    });
+}
+
+// Media Session API for browser integration
+function initMediaSession() {
+    if ('mediaSession' in navigator) {
+        MediaPlayer.mediaSessionActive = true;
+        
+        navigator.mediaSession.setActionHandler('play', () => {
+            if (!MediaPlayer.isPlaying) togglePlayPause();
+        });
+        
+        navigator.mediaSession.setActionHandler('pause', () => {
+            if (MediaPlayer.isPlaying) togglePlayPause();
+        });
+        
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+            previousTrack();
+        });
+        
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+            nextTrack();
+        });
+        
+        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+            // Optional: implement seek backward
+        });
+        
+        navigator.mediaSession.setActionHandler('seekforward', (details) => {
+            // Optional: implement seek forward
+        });
+        
+        console.log('Media Session API initialized');
+    }
+}
+
+function updateMediaSessionMetadata(track) {
+    if (!MediaPlayer.mediaSessionActive || !('mediaSession' in navigator)) return;
+    
+    navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title || 'Unknown',
+        artist: track.artist || 'Unknown',
+        album: track.album || 'Unknown',
+        artwork: [
+            { src: track.artwork || '/assets/img/music-placeholder.png', sizes: '512x512', type: 'image/png' }
+        ]
+    });
+}
+
+// Voice commands for media control
+function initVoiceCommands() {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        
+        recognition.onresult = (event) => {
+            const command = event.results[0][0].transcript.toLowerCase();
+            console.log('Voice command:', command);
+            
+            if (command.includes('play') || command.includes('resume')) {
+                if (!MediaPlayer.isPlaying) togglePlayPause();
+            } else if (command.includes('pause') || command.includes('stop')) {
+                if (MediaPlayer.isPlaying) togglePlayPause();
+            } else if (command.includes('next') || command.includes('skip')) {
+                nextTrack();
+            } else if (command.includes('previous') || command.includes('back')) {
+                previousTrack();
+            } else if (command.includes('louder') || command.includes('volume up')) {
+                increaseVolume();
+            } else if (command.includes('quieter') || command.includes('volume down')) {
+                decreaseVolume();
+            } else if (command.includes('mute') || command.includes('unmute')) {
+                toggleMute();
+            }
+        };
+        
+        recognition.onerror = (event) => {
+            console.warn('Speech recognition error:', event.error);
+        };
+        
+        // Expose startVoiceCommand globally
+        window.startVoiceCommand = () => {
+            recognition.start();
+            showNotification('Listening...', 'info');
+        };
+        
+        console.log('Voice commands initialized');
     }
 }
 

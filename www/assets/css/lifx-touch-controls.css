@@ -38,6 +38,30 @@
     font-weight: bold;
 }
 
+/* Multi-bulb selection */
+.lifx-bulb-control.multi-selected {
+    border: 3px solid #ff6b6b;
+    box-shadow: 0 0 20px rgba(255, 107, 107, 0.6);
+}
+
+.lifx-bulb-control.multi-selected::before {
+    content: '⊕';
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    background: #ff6b6b;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    z-index: 10;
+}
+
 .lifx-bulb-control.touch-updated {
     animation: pulse-glow 0.3s ease;
 }
@@ -252,4 +276,124 @@
     .lifx-gesture-tutorial-text {
         color: #ccc;
     }
+}
+
+/* Snapcast client controls */
+.snapcast-client {
+    background: rgba(42, 42, 58, 0.6);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 10px;
+    border: 1px solid rgba(39, 160, 185, 0.2);
+    transition: all 0.2s ease;
+}
+
+.snapcast-client:hover {
+    border-color: rgba(39, 160, 185, 0.5);
+    background: rgba(42, 42, 58, 0.8);
+}
+
+.client-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.client-name {
+    font-weight: bold;
+    color: #adb5bd;
+    flex: 1;
+}
+
+.client-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.client-volume {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.client-volume::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #27a0b9;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.client-volume::-webkit-slider-thumb:hover {
+    background: #3bc9e6;
+}
+
+.client-info {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #6c757d;
+}
+
+/* Media control enhancements */
+.media-control-btn.active {
+    background: #27a0b9 !important;
+    box-shadow: 0 0 15px rgba(39, 160, 185, 0.5);
+}
+
+#repeat-btn, #shuffle-btn {
+    position: relative;
+}
+
+/* Media browser horizontal scroll */
+.media-grid, .nextcloud-media-grid, .dropbox-media-grid, .seaweedfs-media-grid {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #27a0b9 rgba(42, 42, 58, 0.3);
+}
+
+.media-grid::-webkit-scrollbar,
+.nextcloud-media-grid::-webkit-scrollbar,
+.dropbox-media-grid::-webkit-scrollbar,
+.seaweedfs-media-grid::-webkit-scrollbar {
+    height: 8px;
+}
+
+.media-grid::-webkit-scrollbar-track,
+.nextcloud-media-grid::-webkit-scrollbar-track,
+.dropbox-media-grid::-webkit-scrollbar-track,
+.seaweedfs-media-grid::-webkit-scrollbar-track {
+    background: rgba(42, 42, 58, 0.3);
+    border-radius: 4px;
+}
+
+.media-grid::-webkit-scrollbar-thumb,
+.nextcloud-media-grid::-webkit-scrollbar-thumb,
+.dropbox-media-grid::-webkit-scrollbar-thumb,
+.seaweedfs-media-grid::-webkit-scrollbar-thumb {
+    background: #27a0b9;
+    border-radius: 4px;
+}
+
+/* Voice command button */
+.voice-command-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.voice-command-btn.listening {
+    animation: pulse-listening 1.5s infinite;
+}
+
+@keyframes pulse-listening {
+    0% { box-shadow: 0 0 0 0 rgba(39, 160, 185, 0.7); }
+    70% { box-shadow: 0 0 0 15px rgba(39, 160, 185, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(39, 160, 185, 0); }
 }

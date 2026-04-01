@@ -87,7 +87,13 @@ pub fn handle(session: Option<String>, request: &rouille::Request) -> rouille::R
             return Response::text("Unauthorized").with_status_code(401);
         }
 
-        // Delegate to API server handler
+        // Try enhanced API handlers first (scenes, effects, zones, presets)
+        let enhanced_response = handlers::handle_enhanced_api_request(request);
+        if enhanced_response.status_code() != 404 {
+            return enhanced_response;
+        }
+
+        // Delegate to standard API server handler
         return handlers::handle_api_request(request);
     }
 
