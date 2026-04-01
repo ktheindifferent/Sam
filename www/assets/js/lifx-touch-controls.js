@@ -5506,6 +5506,8 @@ const LifXTouchControls = {
         let lastBeatTime = 0;
         const bpmHistory = [];
         const maxBpmHistory = 8;
+        const energyHistory = [];
+        const maxEnergyHistory = 20;
         
         const detectBeat = () => {
             if (!this.mediaPlaybackActive) {
@@ -5517,10 +5519,24 @@ const LifXTouchControls = {
             
             const bass = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
             const mids = dataArray.slice(10, 50).reduce((a, b) => a + b, 0) / 40;
-            const threshold = this.beatDetectionSensitivity * 255;
+            const treble = dataArray.slice(50, 128).reduce((a, b) => a + b, 0) / 78;
+            const totalEnergy = (bass + mids + treble) / 3;
+            
+            energyHistory.push(totalEnergy);
+            if (energyHistory.length > maxEnergyHistory) {
+                energyHistory.shift();
+            }
+            
+            const avgEnergy = energyHistory.reduce((a, b) => a + b, 0) / energyHistory.length;
+            const variance = energyHistory.reduce((sum, val) => sum + Math.pow(val - avgEnergy, 2), 0) / energyHistory.length;
+            const stdDev = Math.sqrt(variance);
+            
+            const adaptiveThreshold = this.beatDetectionSensitivity * 255 + (stdDev * 0.5);
+            const bassEnergy = bass / 255;
+            const beatIntensity = bassEnergy * (totalEnergy / 255);
             
             const now = Date.now();
-            if (bass > threshold && now - lastBeatTime > this.beatDebounce) {
+            if (bass > adaptiveThreshold && now - lastBeatTime > this.beatDebounce) {
                 const rawBpm = Math.round(60000 / (now - this.lastBeatTime));
                 
                 if (rawBpm >= 60 && rawBpm <= 200) {
@@ -5537,22 +5553,134 @@ const LifXTouchControls = {
                     
                     this.bpmValue = smoothedBpm;
                     this.bpmSmoothed = smoothedBpm;
+                    this.lastDetectedBpm = smoothedBpm;
                 }
                 
                 lastBeatTime = now;
                 this.lastBeatTime = now;
+                this.lastBeatEnergy = beatIntensity;
+                this.consecutiveBeats = (this.consecutiveBeats || 0) + 1;
                 
                 if (this.mediaSyncMode === 'beat') {
-                    this.triggerBeatEffect();
+                    this.triggerBeatEffectWithIntensity(beatIntensity);
                 }
                 
                 this.updateBpmDisplay();
+                this.updateFrequencyVisualization();
+            } else if (now - lastBeatTime > 2000) {
+                this.consecutiveBeats = 0;
             }
             
             requestAnimationFrame(detectBeat);
         };
         
         detectBeat();
+    },
+    
+    triggerBeatEffectWithIntensity: function(intensity) {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        if (targets.length === 0) return;
+        
+        const baseBrightness = 70;
+        const brightness = baseBrightness + (intensity * 30);
+        const duration = 0.05 + (1 - intensity) * 0.05;
+        
+        switch(this.mediaSyncMode) {
+            case 'beat':
+                this.applyBeatSyncEffectWithIntensity(targets, brightness, duration, intensity);
+                break;
+            case 'color':
+                this.applyColorSyncEffectWithIntensity(targets, intensity);
+                break;
+            case 'ambient':
+                this.applyAmbientSyncEffect(targets);
+                break;
+            case 'bass':
+                this.applyBassBoostEffect(targets, intensity);
+                break;
+            case 'spectrum':
+                this.applySpectrumSyncEffectWithIntensity(targets, intensity);
+                break;
+        }
+        
+        this.showBeatVisualization(intensity);
+        this.showBeatFlashEffect(intensity);
+        
+        if (this.beatFlashEnabled) {
+            this.showBeatFlashOverlay(intensity);
+        }
+        
+        if (navigator.vibrate && intensity > 0.8) {
+            navigator.vibrate(Math.round(intensity * 50));
+        }
+    },
+    
+    applyBeatSyncEffectWithIntensity: function(targets, brightness, duration, intensity) {
+        const hueShift = intensity * 30;
+        const currentHue = (this.lastColorHue || 0) + hueShift;
+        this.lastColorHue = currentHue;
+        
+        if (typeof sendLifxCommand !== 'undefined') {
+            sendLifxCommand('set_state', {
+                selector: `id:${targets.join(',')}`,
+                brightness: brightness / 100,
+                hue: currentHue,
+                duration: duration
+            });
+        }
+    },
+    
+    applyColorSyncEffectWithIntensity: function(targets, intensity) {
+        const bassBand = this.frequencyBands.bass.value;
+        const trebleBand = this.frequencyBands.treble.value;
+        
+        const hue = (bassBand / 255) * 360;
+        const saturation = 50 + (trebleBand / 255) * 50;
+        const brightness = 50 + intensity * 50;
+        
+        if (typeof sendLifxCommand !== 'undefined') {
+            sendLifxCommand('set_color', {
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${Math.round(hue)},saturation:${Math.round(saturation)}%`,
+                brightness: brightness,
+                duration: 0.1
+            });
+        }
+    },
+    
+    applySpectrumSyncEffectWithIntensity: function(targets, intensity) {
+        const bandColors = [
+            { hue: 0, sat: 100 },
+            { hue: 60, sat: 100 },
+            { hue: 120, sat: 100 },
+            { hue: 180, sat: 100 },
+            { hue: 240, sat: 100 },
+            { hue: 300, sat: 100 }
+        ];
+        
+        const dominantBand = Math.max(
+            this.frequencyBands.subBass.value,
+            this.frequencyBands.bass.value,
+            this.frequencyBands.lowMid.value,
+            this.frequencyBands.mid.value,
+            this.frequencyBands.highMid.value,
+            this.frequencyBands.treble.value
+        );
+        
+        const colorIndex = Math.floor((dominantBand / 255) * bandColors.length);
+        const color = bandColors[colorIndex] || bandColors[0];
+        
+        if (typeof sendLifxCommand !== 'undefined') {
+            sendLifxCommand('set_color', {
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${color.hue * 182},saturation:${color.sat}%`,
+                brightness: 50 + intensity * 50,
+                duration: 0.1
+            });
+        }
     },
     
     triggerBeatEffect: function() {
@@ -7636,18 +7764,153 @@ const LifXTouchControls = {
         this.showEnhancedGestureFeedback('Light Painting OFF', '✨');
     },
     
-    applyScene: function(sceneName) {
+    applyScene: function(sceneName, duration = 0.5, transitionEffect = 'smooth') {
         this.currentScene = sceneName;
         this.addToRecentScenes(sceneName);
+        
+        const transitionEffects = {
+            'smooth': { duration: duration, power: 'on' },
+            'fade': { duration: duration * 1.5, power: 'on' },
+            'instant': { duration: 0, power: 'on' },
+            'pulse': { duration: duration, power: 'on', effect: 'pulse' },
+            'morph': { duration: duration * 2, power: 'on', effect: 'morph' }
+        };
+        
+        const effectSettings = transitionEffects[transitionEffect] || transitionEffects.smooth;
         
         if (typeof sendLifxCommand !== 'undefined') {
             sendLifxCommand('apply_scene', {
                 scene: sceneName,
-                duration: 0.5
+                duration: effectSettings.duration,
+                power: effectSettings.power,
+                effect: effectSettings.effect || null
             });
         }
         
+        if (this.enhancedSceneTransitions) {
+            this.applySceneTransitionEffect(sceneName, transitionEffect);
+        }
+        
         this.showEnhancedGestureFeedback(`Scene: ${sceneName}`, '🎨');
+    },
+    
+    applySceneTransitionEffect: function(sceneName, effect) {
+        const sceneData = this.getSceneData(sceneName);
+        if (!sceneData) return;
+        
+        const { hue, saturation, brightness, kelvin } = sceneData;
+        
+        if (effect === 'pulse') {
+            this.scenePulseEffect(hue, saturation, brightness, kelvin);
+        } else if (effect === 'morph') {
+            this.sceneMorphEffect(hue, saturation, brightness, kelvin);
+        } else if (effect === 'fade') {
+            this.sceneFadeEffect(hue, saturation, brightness, kelvin);
+        }
+    },
+    
+    scenePulseEffect: function(hue, saturation, brightness, kelvin) {
+        let pulseCount = 0;
+        const maxPulses = 3;
+        const baseBrightness = brightness;
+        
+        const pulseInterval = setInterval(() => {
+            pulseCount++;
+            const pulseBrightness = pulseCount % 2 === 0 ? baseBrightness * 0.3 : baseBrightness;
+            
+            if (typeof sendLifxCommand !== 'undefined') {
+                sendLifxCommand('set_state', {
+                    brightness: pulseBrightness / 100,
+                    duration: 0.2
+                });
+            }
+            
+            if (pulseCount >= maxPulses * 2) {
+                clearInterval(pulseInterval);
+                if (typeof sendLifxCommand !== 'undefined') {
+                    sendLifxCommand('set_state', {
+                        brightness: baseBrightness / 100,
+                        duration: 0.3
+                    });
+                }
+            }
+        }, 200);
+    },
+    
+    sceneMorphEffect: function(targetHue, targetSaturation, targetBrightness, targetKelvin) {
+        const steps = 20;
+        const currentHue = this.lastColorHue || 0;
+        const currentBrightness = this.brightnessLevel;
+        
+        let step = 0;
+        const morphInterval = setInterval(() => {
+            step++;
+            const progress = step / steps;
+            const easeProgress = this.easeInOutCubic(progress);
+            
+            const currentH = currentHue + (targetHue - currentHue) * easeProgress;
+            const currentB = currentBrightness + (targetBrightness - currentBrightness) * easeProgress;
+            
+            if (typeof sendLifxCommand !== 'undefined') {
+                sendLifxCommand('set_state', {
+                    hue: currentH,
+                    brightness: currentB / 100,
+                    duration: 0.1
+                });
+            }
+            
+            if (step >= steps) {
+                clearInterval(morphInterval);
+            }
+        }, 50);
+    },
+    
+    sceneFadeEffect: function(hue, saturation, brightness, kelvin) {
+        const steps = 30;
+        let step = 0;
+        
+        const fadeInterval = setInterval(() => {
+            step++;
+            const progress = step / steps;
+            const easeProgress = this.easeOutQuad(progress);
+            const currentBrightness = brightness * easeProgress;
+            
+            if (typeof sendLifxCommand !== 'undefined') {
+                sendLifxCommand('set_state', {
+                    brightness: currentBrightness / 100,
+                    duration: 0.1
+                });
+            }
+            
+            if (step >= steps) {
+                clearInterval(fadeInterval);
+            }
+        }, 50);
+    },
+    
+    easeInOutCubic: function(x) {
+        return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+    },
+    
+    easeOutQuad: function(x) {
+        return 1 - (1 - x) * (1 - x);
+    },
+    
+    getSceneData: function(sceneName) {
+        const scenePresets = {
+            'relax': { hue: 5800, saturation: 15000, brightness: 26214, kelvin: 2700 },
+            'focus': { hue: 19000, saturation: 8000, brightness: 52428, kelvin: 5000 },
+            'energize': { hue: 41000, saturation: 20000, brightness: 65535, kelvin: 6500 },
+            'night': { hue: 5800, saturation: 10000, brightness: 13107, kelvin: 2000 },
+            'party': { hue: 43680, saturation: 65535, brightness: 65535, kelvin: 5500 },
+            'movie': { hue: 3640, saturation: 19660, brightness: 22937, kelvin: 2200 },
+            'gaming': { hue: 50960, saturation: 52428, brightness: 58982, kelvin: 5500 },
+            'romance': { hue: 60000, saturation: 25000, brightness: 32767, kelvin: 3000 },
+            'reading': { hue: 19000, saturation: 5000, brightness: 45875, kelvin: 4500 },
+            'meditation': { hue: 50960, saturation: 19660, brightness: 22937, kelvin: 2400 }
+        };
+        
+        return scenePresets[sceneName] || scenePresets.relax;
     },
     
     applySceneFromName: function(sceneName) {

@@ -96,10 +96,15 @@ const MediaPlayer = {
         velocityThreshold: 0.25,
         edgeSwipeThreshold: 15,
         holdProgressInterval: 40,
+        visualFeedbackEnabled: true,
+        hapticFeedbackEnabled: true,
+        gestureHintsEnabled: true,
+        calibrationMode: false,
         customThresholds: {
             low: { swipe: 80, pinch: 50, velocity: 0.2 },
             medium: { swipe: 40, pinch: 25, velocity: 0.3 },
-            high: { swipe: 25, pinch: 15, velocity: 0.5 }
+            high: { swipe: 25, pinch: 15, velocity: 0.5 },
+            custom: { swipe: 35, pinch: 25, velocity: 0.25 }
         }
     },
     miniPlayerVisible: false,
@@ -141,6 +146,8 @@ function initMediaCenter() {
     initMiniPlayer();
     initNowPlayingToast();
     initEqualizerVisualization();
+    initBeatDetection();
+    initGestureCalibration();
     loadMediaSyncPreferences();
     console.log('Media Center initialized');
 }
@@ -2698,22 +2705,115 @@ function hideNowPlaying() {
     }
 }
 
-function createMediaVisualization(containerId) {
+function createMediaVisualization(containerId, mode = 'bars') {
     const container = document.getElementById(containerId);
     if (!container) return;
     
     container.innerHTML = '';
-    container.className = 'media-visualization';
+    container.className = `media-visualization media-visualization-${mode}`;
+    MediaPlayer.visualizationMode = mode;
     
-    for (let i = 0; i < 16; i++) {
-        const bar = document.createElement('div');
-        bar.className = 'media-visualization-bar';
-        bar.style.height = '10px';
-        bar.style.transitionDelay = `${i * 0.02}s`;
-        container.appendChild(bar);
+    if (mode === 'bars') {
+        for (let i = 0; i < 16; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'media-visualization-bar';
+            bar.style.height = '10px';
+            bar.style.transitionDelay = `${i * 0.02}s`;
+            container.appendChild(bar);
+        }
+    } else if (mode === 'circular') {
+        const centerX = 150;
+        const centerY = 150;
+        const radius = 60;
+        const bars = 32;
+        
+        for (let i = 0; i < bars; i++) {
+            const angle = (i / bars) * Math.PI * 2;
+            const x = centerX + Math.cos(angle) * radius;
+            const y = centerY + Math.sin(angle) * radius;
+            
+            const bar = document.createElement('div');
+            bar.className = 'media-visualization-bar-circular';
+            bar.style.cssText = `
+                position: absolute;
+                left: ${x}px;
+                top: ${y}px;
+                width: 6px;
+                height: 6px;
+                background: linear-gradient(135deg, #27a0b9, #00d4ff);
+                border-radius: 50%;
+                transform-origin: center;
+                transform: translate(-50%, -50%) rotate(${angle * 180 / Math.PI}deg);
+            `;
+            container.appendChild(bar);
+        }
+        
+        const centerGlow = document.createElement('div');
+        centerGlow.className = 'media-visualization-center-glow';
+        centerGlow.style.cssText = `
+            position: absolute;
+            left: ${centerX - 40}px;
+            top: ${centerY - 40}px;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(39, 160, 185, 0.4) 0%, transparent 70%);
+            animation: center-glow-pulse 2s ease-in-out infinite;
+        `;
+        container.appendChild(centerGlow);
+    } else if (mode === 'wave') {
+        for (let i = 0; i < 40; i++) {
+            const point = document.createElement('div');
+            point.className = 'media-visualization-wave-point';
+            point.style.cssText = `
+                position: absolute;
+                left: ${(i / 39) * 100}%;
+                top: 50%;
+                width: 8px;
+                height: 8px;
+                background: linear-gradient(135deg, #27a0b9, #00d4ff);
+                border-radius: 50%;
+                transform: translate(-50%, -50%);
+                opacity: 0.8;
+            `;
+            container.appendChild(point);
+        }
+    } else if (mode === 'spectrum') {
+        const colors = ['#ff4545', '#ff6b6b', '#ffa500', '#ffc93c', '#7fdbca', '#00d4ff'];
+        const bands = ['Sub-Bass', 'Bass', 'Low-Mid', 'Mid', 'High-Mid', 'Treble'];
+        
+        for (let i = 0; i < 6; i++) {
+            const band = document.createElement('div');
+            band.className = 'media-visualization-spectrum-band';
+            band.innerHTML = `
+                <div class="spectrum-band-label" style="color: ${colors[i]}; font-size: 10px; margin-bottom: 5px;">${bands[i]}</div>
+                <div class="spectrum-bar-container" style="flex: 1; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                    <div class="spectrum-bar" style="width: 10%; height: 100%; background: linear-gradient(90deg, ${colors[i]}, transparent); transition: width 0.1s ease;"></div>
+                </div>
+            `;
+            band.style.cssText = `
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+                padding: 5px;
+            `;
+            container.appendChild(band);
+        }
+        container.style.display = 'flex';
+        container.style.gap = '10px';
     }
     
     return container;
+}
+
+function setVisualizationMode(mode) {
+    const container = document.querySelector('.media-visualization');
+    if (container) {
+        createMediaVisualization(container.id, mode);
+        localStorage.setItem('media_visualization_mode', mode);
+        showNotification(`Visualization mode: ${mode}`, 'info');
+    }
 }
 
 function updateMediaVisualization() {
@@ -2728,14 +2828,83 @@ function updateMediaVisualization() {
     
     analyser.getByteFrequencyData(dataArray);
     
-    const bars = document.querySelectorAll('.media-visualization-bar');
-    const step = Math.floor(dataArray.length / bars.length);
+    const mode = MediaPlayer.visualizationMode || 'bars';
     
-    bars.forEach((bar, i) => {
-        const value = dataArray[i * step];
-        const height = Math.max(5, (value / 255) * 80);
-        bar.style.height = `${height}px`;
-    });
+    if (mode === 'bars') {
+        const bars = document.querySelectorAll('.media-visualization-bar');
+        const step = Math.floor(dataArray.length / bars.length);
+        
+        bars.forEach((bar, i) => {
+            const value = dataArray[i * step];
+            const height = Math.max(5, (value / 255) * 80);
+            const hue = (i / bars.length) * 360;
+            bar.style.height = `${height}px`;
+            bar.style.background = `linear-gradient(to top, hsl(${hue}, 80%, 50%), hsl(${hue + 30}, 80%, 60%))`;
+        });
+    } else if (mode === 'circular') {
+        const bars = document.querySelectorAll('.media-visualization-bar-circular');
+        const step = Math.floor(dataArray.length / bars.length);
+        const centerX = 150;
+        const centerY = 150;
+        const radius = 60;
+        
+        bars.forEach((bar, i) => {
+            const value = dataArray[i * step];
+            const angle = (i / bars.length) * Math.PI * 2;
+            const distance = radius + (value / 255) * 50;
+            const x = centerX + Math.cos(angle) * distance;
+            const y = centerY + Math.sin(angle) * distance;
+            const scale = 1 + (value / 255) * 1.5;
+            
+            bar.style.left = `${x}px`;
+            bar.style.top = `${y}px`;
+            bar.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            bar.style.opacity = 0.5 + (value / 255) * 0.5;
+        });
+        
+        const centerGlow = document.querySelector('.media-visualization-center-glow');
+        if (centerGlow) {
+            const avgValue = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            const scale = 1 + (avgValue / 255) * 0.5;
+            centerGlow.style.transform = `scale(${scale})`;
+            centerGlow.style.opacity = 0.3 + (avgValue / 255) * 0.4;
+        }
+    } else if (mode === 'wave') {
+        const points = document.querySelectorAll('.media-visualization-wave-point');
+        const time = Date.now() / 1000;
+        
+        points.forEach((point, i) => {
+            const value = dataArray[i % dataArray.length];
+            const yOffset = Math.sin(time * 2 + i * 0.2) * (value / 255) * 40;
+            const scale = 0.8 + (value / 255) * 0.4;
+            
+            point.style.top = `calc(50% + ${yOffset}px)`;
+            point.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            point.style.opacity = 0.5 + (value / 255) * 0.5;
+        });
+    } else if (mode === 'spectrum') {
+        const bands = document.querySelectorAll('.media-visualization-spectrum-band');
+        const bandRanges = [
+            [0, 4],
+            [4, 10],
+            [10, 20],
+            [20, 40],
+            [40, 80],
+            [80, 128]
+        ];
+        
+        bands.forEach((band, i) => {
+            const [start, end] = bandRanges[i];
+            const sum = dataArray.slice(start, end).reduce((a, b) => a + b, 0);
+            const avg = sum / (end - start);
+            const percentage = (avg / 255) * 100;
+            
+            const bar = band.querySelector('.spectrum-bar');
+            if (bar) {
+                bar.style.width = `${percentage}%`;
+            }
+        });
+    }
     
     requestAnimationFrame(updateMediaVisualization);
 }
@@ -2908,10 +3077,314 @@ function clearGestureTrail() {
     touchTrail = [];
 }
 
-function initEqualizerVisualization() {
-    if (typeof MediaPlayer !== 'undefined') {
-        MediaPlayer.showVisualization = true;
+function showEnhancedGestureFeedback(x, y, gestureType, intensity = 1) {
+    if (!MediaPlayer.touchGestures.visualFeedbackEnabled) return;
+    
+    const feedback = document.createElement('div');
+    const size = 60 * intensity;
+    const colors = {
+        tap: 'rgba(0, 212, 255, 0.6)',
+        doubleTap: 'rgba(0, 255, 136, 0.6)',
+        swipe: 'rgba(39, 160, 185, 0.5)',
+        longPress: 'rgba(253, 126, 20, 0.6)',
+        pinch: 'rgba(155, 89, 182, 0.5)'
+    };
+    
+    feedback.className = 'enhanced-gesture-feedback';
+    feedback.style.cssText = `
+        position: fixed;
+        left: ${x - size/2}px;
+        top: ${y - size/2}px;
+        width: ${size}px;
+        height: ${size}px;
+        border-radius: 50%;
+        background: radial-gradient(circle, ${colors[gestureType] || colors.tap} 0%, transparent 70%);
+        pointer-events: none;
+        z-index: 9999;
+        animation: gesture-feedback-expand 0.4s ease-out forwards;
+    `;
+    
+    document.body.appendChild(feedback);
+    setTimeout(() => feedback.remove(), 400);
+}
+
+function triggerHapticFeedback(pattern = 'light') {
+    if (!MediaPlayer.touchGestures.hapticFeedbackEnabled || !navigator.vibrate) return;
+    
+    const patterns = {
+        light: [10],
+        medium: [20],
+        strong: [30],
+        double: [15, 50, 15],
+        success: [50, 50, 50],
+        error: [100, 50, 100]
+    };
+    
+    navigator.vibrate(patterns[pattern] || patterns.light);
+}
+
+function showGestureCalibrationUI() {
+    const calibrationOverlay = document.createElement('div');
+    calibrationOverlay.id = 'gesture-calibration-overlay';
+    calibrationOverlay.className = 'gesture-calibration-overlay';
+    calibrationOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(30, 30, 45, 0.95);
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        padding: 20px;
+    `;
+    
+    calibrationOverlay.innerHTML = `
+        <h3 style="color: #27a0b9; margin-bottom: 20px;">
+            <i class="fas fa-sliders-h"></i> Touch Gesture Calibration
+        </h3>
+        <div class="calibration-instructions" style="margin-bottom: 30px; text-align: center; color: #adb5bd;">
+            <p>Swipe in different directions to calibrate sensitivity</p>
+            <p>Current sensitivity: <span id="calibration-sensitivity" style="color: #00d4ff; font-weight: bold;">${MediaPlayer.touchGestures.sensitivity}</span></p>
+        </div>
+        <div class="calibration-controls" style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+            <button class="calibration-btn" data-sensitivity="low" style="padding: 12px 20px; background: rgba(39, 160, 185, 0.2); border: 2px solid #27a0b9; border-radius: 8px; color: #fff; cursor: pointer;">
+                <i class="fas fa-tortoise"></i> Low
+            </button>
+            <button class="calibration-btn" data-sensitivity="medium" style="padding: 12px 20px; background: rgba(39, 160, 185, 0.3); border: 2px solid #27a0b9; border-radius: 8px; color: #fff; cursor: pointer;">
+                <i class="fas fa-walking"></i> Medium
+            </button>
+            <button class="calibration-btn" data-sensitivity="high" style="padding: 12px 20px; background: rgba(39, 160, 185, 0.4); border: 2px solid #27a0b9; border-radius: 8px; color: #fff; cursor: pointer;">
+                <i class="fas fa-running"></i> High
+            </button>
+            <button class="calibration-btn" data-sensitivity="custom" style="padding: 12px 20px; background: rgba(155, 89, 182, 0.3); border: 2px solid #9b59b6; border-radius: 8px; color: #fff; cursor: pointer;">
+                <i class="fas fa-sliders-h"></i> Custom
+            </button>
+        </div>
+        <div class="calibration-live" style="margin-top: 30px; padding: 20px; background: rgba(0, 0, 0, 0.3); border-radius: 12px; min-width: 300px;">
+            <p style="margin-bottom: 10px; color: #adb5bd;">Live Gesture Detection:</p>
+            <div id="calibration-live-display" style="font-size: 24px; color: #00d4ff; font-weight: bold;">
+                Waiting for input...
+            </div>
+        </div>
+        <button id="close-calibration" style="margin-top: 20px; padding: 10px 30px; background: rgba(220, 53, 69, 0.3); border: 2px solid #dc3545; border-radius: 8px; color: #fff; cursor: pointer;">
+            <i class="fas fa-times"></i> Close
+        </button>
+    `;
+    
+    document.body.appendChild(calibrationOverlay);
+    
+    calibrationOverlay.querySelectorAll('.calibration-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const sensitivity = e.currentTarget.dataset.sensitivity;
+            MediaPlayer.touchGestures.sensitivity = sensitivity;
+            document.getElementById('calibration-sensitivity').textContent = sensitivity;
+            triggerHapticFeedback('success');
+        });
+    });
+    
+    document.getElementById('close-calibration').addEventListener('click', () => {
+        calibrationOverlay.remove();
+        MediaPlayer.touchGestures.calibrationMode = false;
+    });
+    
+    MediaPlayer.touchGestures.calibrationMode = true;
+}
+
+function initGestureCalibration() {
+    const calibrationBtn = document.getElementById('gesture-calibration-btn');
+    if (calibrationBtn) {
+        calibrationBtn.addEventListener('click', showGestureCalibrationUI);
+        
+        let longPressTimer;
+        calibrationBtn.addEventListener('touchstart', () => {
+            longPressTimer = setTimeout(() => {
+                showGestureCalibrationUI();
+            }, 500);
+        });
+        
+        calibrationBtn.addEventListener('touchend', () => {
+            if (longPressTimer) clearTimeout(longPressTimer);
+        });
     }
+}
+
+function updateCalibrationLiveDisplay(gestureType, intensity) {
+    const display = document.getElementById('calibration-live-display');
+    if (display) {
+        display.textContent = `${gestureType} (intensity: ${Math.round(intensity * 100)}%)`;
+        display.style.animation = 'none';
+        display.offsetHeight;
+        display.style.animation = 'pulse-glow 0.3s ease';
+    }
+}
+
+function initEnhancedTouchFeedback() {
+    const mediaContainer = document.querySelector('.media-center-container');
+    if (!mediaContainer) return;
+    
+    mediaContainer.addEventListener('touchstart', (e) => {
+        const touch = e.touches[0];
+        if (MediaPlayer.touchGestures.visualFeedbackEnabled) {
+            showEnhancedGestureFeedback(touch.clientX, touch.clientY, 'tap', 0.8);
+        }
+    }, { passive: true });
+    
+    mediaContainer.addEventListener('touchend', (e) => {
+        const touch = e.changedTouches[0];
+        const settings = MediaPlayer.touchGestures;
+        const thresholds = settings.customThresholds[settings.sensitivity] || settings.customThresholds.medium;
+        
+        const deltaX = touch.clientX - parseFloat(mediaContainer.dataset.touchStartX || 0);
+        const deltaY = touch.clientY - parseFloat(mediaContainer.dataset.touchStartY || 0);
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        
+        if (distance > thresholds.swipe) {
+            const gestureType = Math.abs(deltaX) > Math.abs(deltaY) ? 'swipe' : 'swipe';
+            const intensity = Math.min(1.5, distance / thresholds.swipe);
+            if (MediaPlayer.touchGestures.visualFeedbackEnabled) {
+                showEnhancedGestureFeedback(touch.clientX, touch.clientY, gestureType, intensity);
+            }
+        }
+        
+        if (MediaPlayer.touchGestures.hapticFeedbackEnabled && navigator.vibrate) {
+            triggerHapticFeedback('light');
+        }
+    }, { passive: true });
+}
+
+function initMediaTouchGestures() {
+    const mediaContainer = document.querySelector('.media-center-container') || document.body;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let lastTapTime = 0;
+    let touchStartTime = 0;
+    let longPressTimer = null;
+    let touchHoldProgressTimer = null;
+    let touchHoldProgress = 0;
+    let touchTrail = [];
+    let touchTrailElement = null;
+    
+    mediaContainer.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+        touchHoldProgress = 0;
+        touchTrail = [{ x: touchStartX, y: touchStartY, time: Date.now() }];
+        mediaContainer.dataset.touchStartX = touchStartX;
+        mediaContainer.dataset.touchStartY = touchStartY;
+        
+        const settings = MediaPlayer.touchGestures;
+        if (settings.enabled && settings.longPressDelay > 0) {
+            const thresholds = settings.customThresholds[settings.sensitivity] || settings.customThresholds.medium;
+            
+            touchHoldProgressTimer = setInterval(() => {
+                touchHoldProgress += 10;
+                updateTouchHoldProgress(touchHoldProgress);
+                if (touchHoldProgress >= 100) {
+                    showMediaTouchHint('Long Press Detected', '👆', 800, 'top');
+                    if (touchHoldProgressTimer) clearInterval(touchHoldProgressTimer);
+                }
+            }, settings.longPressDelay / 10);
+        }
+        
+        if (settings.visualFeedbackEnabled) {
+            showEnhancedGestureFeedback(touchStartX, touchStartY, 'tap', 0.8);
+        }
+    }, { passive: true });
+    
+    mediaContainer.addEventListener('touchmove', (e) => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+        if (touchHoldProgressTimer) {
+            clearInterval(touchHoldProgressTimer);
+            touchHoldProgressTimer = null;
+        }
+        
+        const touch = e.touches[0];
+        touchTrail.push({ x: touch.clientX, y: touch.clientY, time: Date.now() });
+        if (touchTrail.length > 10) touchTrail.shift();
+        
+        updateGestureTrail(touch.clientX, touch.clientY);
+        
+        if (MediaPlayer.touchGestures.calibrationMode) {
+            const deltaX = touch.clientX - touchStartX;
+            const deltaY = touch.clientY - touchStartY;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            updateCalibrationLiveDisplay('swipe', Math.min(1, distance / 50));
+        }
+    }, { passive: true });
+    
+    mediaContainer.addEventListener('touchend', (e) => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+        if (touchHoldProgressTimer) {
+            clearInterval(touchHoldProgressTimer);
+            touchHoldProgressTimer = null;
+        }
+        
+        clearGestureTrail();
+        
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = touchEndY - touchStartY;
+        const currentTime = Date.now();
+        const touchDuration = currentTime - touchStartTime;
+        
+        const settings = MediaPlayer.touchGestures;
+        const thresholds = settings.customThresholds[settings.sensitivity] || settings.customThresholds.medium;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const velocity = distance / touchDuration;
+        
+        if (distance < thresholds.swipe * 0.5) {
+            const tapLength = currentTime - lastTapTime;
+            if (tapLength < settings.doubleTapTimeout && tapLength > 0) {
+                togglePlayPause();
+                if (settings.hapticFeedbackEnabled && navigator.vibrate) navigator.vibrate(50);
+                showMediaTouchHint('Play/Pause', '⏯️', 1200, 'bottom');
+                if (settings.visualFeedbackEnabled) showEnhancedGestureFeedback(touchEndX, touchEndY, 'doubleTap', 1.2);
+            } else {
+                if (settings.visualFeedbackEnabled) showEnhancedGestureFeedback(touchEndX, touchEndY, 'tap', 0.8);
+            }
+            lastTapTime = currentTime;
+        } else if (Math.abs(deltaX) > Math.abs(deltaY) * 2) {
+            if (deltaX > thresholds.swipe && velocity > thresholds.velocity) {
+                previousTrack();
+                if (settings.hapticFeedbackEnabled && navigator.vibrate) navigator.vibrate(30);
+                showMediaTouchHint('Previous Track', '⏮️', 1000, 'bottom');
+                if (settings.visualFeedbackEnabled) showEnhancedGestureFeedback(touchEndX, touchEndY, 'swipe', Math.min(1.5, distance / thresholds.swipe));
+            } else if (deltaX < -thresholds.swipe && velocity > thresholds.velocity) {
+                nextTrack();
+                if (settings.hapticFeedbackEnabled && navigator.vibrate) navigator.vibrate(30);
+                showMediaTouchHint('Next Track', '⏭️', 1000, 'bottom');
+                if (settings.visualFeedbackEnabled) showEnhancedGestureFeedback(touchEndX, touchEndY, 'swipe', Math.min(1.5, distance / thresholds.swipe));
+            }
+        } else if (Math.abs(deltaY) > Math.abs(deltaX) * 2) {
+            if (deltaY > thresholds.swipe && velocity > thresholds.velocity) {
+                increaseVolume();
+                if (settings.hapticFeedbackEnabled && navigator.vibrate) navigator.vibrate(20);
+                showMediaTouchHint('Volume Up', '🔊', 1000, 'top');
+                if (settings.visualFeedbackEnabled) showEnhancedGestureFeedback(touchEndX, touchEndY, 'swipe', Math.min(1.5, distance / thresholds.swipe));
+            } else if (deltaY < -thresholds.swipe && velocity > thresholds.velocity) {
+                decreaseVolume();
+                if (settings.hapticFeedbackEnabled && navigator.vibrate) navigator.vibrate(20);
+                showMediaTouchHint('Volume Down', '🔇', 1000, 'top');
+                if (settings.visualFeedbackEnabled) showEnhancedGestureFeedback(touchEndX, touchEndY, 'swipe', Math.min(1.5, distance / thresholds.swipe));
+            }
+        }
+    }, { passive: true });
+    
+    initEnhancedTouchFeedback();
+    initGestureCalibration();
 }
 
 function initBeatDetection() {
