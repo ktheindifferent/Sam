@@ -34,12 +34,19 @@ const LifXTouchControls = {
     isTouchDevice: false,
     gestureHistory: [],
     maxGestureHistory: 10,
+    gestureSensitivity: {
+        swipeDistance: 50,
+        swipeTime: 300,
+        pinchDistance: 30
+    },
+    hapticEnabled: true,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
         
         this.enabled = true;
         this.isTouchDevice = typeof is_touch_enabled === 'function' && is_touch_enabled();
+        this.loadGestureSensitivity();
         console.log('LIFX Touch Controls enabled', this.isTouchDevice ? '(Touch Device)' : '(Mouse/Keyboard)');
         
         // Add visual indicators for touch-controlled elements
@@ -70,6 +77,7 @@ const LifXTouchControls = {
                 if (bulb) {
                     this.adjustBrightness(10);
                     this.showGestureFeedback('Brightness +', '↑');
+                    this.hapticFeedback('light');
                 }
             });
             
@@ -79,6 +87,7 @@ const LifXTouchControls = {
                 if (bulb) {
                     this.adjustBrightness(-10);
                     this.showGestureFeedback('Brightness -', '↓');
+                    this.hapticFeedback('light');
                 }
             });
             
@@ -89,6 +98,7 @@ const LifXTouchControls = {
                 if (bulb) {
                     this.adjustColorTemp(200);
                     this.showGestureFeedback('Warmer', '☀️');
+                    this.hapticFeedback('light');
                 }
             });
             
@@ -98,6 +108,7 @@ const LifXTouchControls = {
                 if (bulb) {
                     this.adjustColorTemp(-200);
                     this.showGestureFeedback('Cooler', '❄️');
+                    this.hapticFeedback('light');
                 }
             });
             
@@ -108,6 +119,7 @@ const LifXTouchControls = {
                 if (bulb) {
                     this.nextScene();
                     this.showGestureFeedback('Next Scene', '🎨');
+                    this.hapticFeedback('success');
                 }
             });
             
@@ -117,6 +129,7 @@ const LifXTouchControls = {
                 if (bulb) {
                     this.previousScene();
                     this.showGestureFeedback('Previous Scene', '🎨');
+                    this.hapticFeedback('success');
                 }
             });
             
@@ -141,11 +154,14 @@ const LifXTouchControls = {
                     this.lastTapTime = 0;
                     this.togglePower(bulbId);
                     this.showGestureFeedback('Power Toggle', '💡');
+                    this.hapticFeedback('success');
                 } else if (e.ctrlKey || e.metaKey) {
                     this.toggleBulbSelection(bulbId);
+                    this.hapticFeedback('selection');
                     this.lastTapTime = currentTime;
                 } else {
                     this.selectBulb(bulbId);
+                    this.hapticFeedback('light');
                     this.lastTapTime = currentTime;
                 }
             }
@@ -576,10 +592,13 @@ const LifXTouchControls = {
         
         const delta = this.startY - currentY;
         const brightnessDelta = Math.round((delta / 200) * 100);
-        this.brightnessLevel = Math.max(0, Math.min(100, this.startBrightness + brightnessDelta));
+        const newBrightness = Math.max(0, Math.min(100, this.startBrightness + brightnessDelta));
         
-        // Show live brightness feedback
-        this.showGestureFeedback(`${this.brightnessLevel}%`, '🔆');
+        if (newBrightness !== this.brightnessLevel) {
+            this.brightnessLevel = newBrightness;
+            this.showGestureFeedback(`${this.brightnessLevel}%`, '🔆');
+            this.hapticFeedback('light');
+        }
     },
     
     endBrightnessAdjustment: function() {
@@ -616,6 +635,37 @@ const LifXTouchControls = {
             el.removeAttribute('data-lifx-touch');
         });
         console.log('LIFX Touch Controls disabled');
+    },
+    
+    hapticFeedback: function(pattern = 'default') {
+        if (!this.hapticEnabled || !navigator.vibrate) return;
+        
+        const patterns = {
+            'default': [50],
+            'light': [30],
+            'success': [50, 50, 50],
+            'error': [100, 50, 100],
+            'selection': [40, 30, 40]
+        };
+        
+        navigator.vibrate(patterns[pattern] || patterns['default']);
+    },
+    
+    setGestureSensitivity: function(level) {
+        const settings = {
+            'low': { swipeDistance: 80, swipeTime: 400, pinchDistance: 50 },
+            'medium': { swipeDistance: 50, swipeTime: 300, pinchDistance: 30 },
+            'high': { swipeDistance: 30, swipeTime: 200, pinchDistance: 20 }
+        };
+        
+        this.gestureSensitivity = settings[level] || settings['medium'];
+        localStorage.setItem('lifx_gesture_sensitivity', level);
+        console.log('Gesture sensitivity set to:', level);
+    },
+    
+    loadGestureSensitivity: function() {
+        const saved = localStorage.getItem('lifx_gesture_sensitivity') || 'medium';
+        this.setGestureSensitivity(saved);
     },
     
     clearMultiSelection: function() {

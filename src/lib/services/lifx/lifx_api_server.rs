@@ -1101,6 +1101,83 @@ pub fn start(config: Config) -> StopHandle {
                             bulbs_vec.retain(|b| b.id.contains(&selector.replace("id:", "")));
                         }
 
+                        // (GET) GetScenes - List available preset scenes
+                        // /api/services/lifx/scenes
+                        if request.url().contains("/scenes") {
+                            use serde_json::json;
+                            let scenes = json!({
+                                "scenes": [
+                                    {"id": "relax", "name": "Relax", "brightness": 40, "kelvin": 2700},
+                                    {"id": "focus", "name": "Focus", "brightness": 80, "kelvin": 5000},
+                                    {"id": "energize", "name": "Energize", "brightness": 100, "kelvin": 6500},
+                                    {"id": "night", "name": "Night", "brightness": 20, "kelvin": 2000},
+                                    {"id": "sunset", "name": "Sunset", "brightness": 30, "kelvin": 2200},
+                                    {"id": "ocean", "name": "Ocean", "brightness": 60, "kelvin": 4500},
+                                    {"id": "reading", "name": "Reading", "brightness": 75, "kelvin": 4500},
+                                    {"id": "romance", "name": "Romance", "brightness": 50, "kelvin": 3000},
+                                    {"id": "party", "name": "Party", "brightness": 100, "kelvin": 5500},
+                                    {"id": "golden", "name": "Golden", "brightness": 70, "kelvin": 3200},
+                                    {"id": "arctic", "name": "Arctic", "brightness": 80, "kelvin": 7000},
+                                    {"id": "tropical", "name": "Tropical", "brightness": 85, "kelvin": 3800},
+                                    {"id": "spring", "name": "Spring", "brightness": 75, "kelvin": 4200},
+                                    {"id": "autumn", "name": "Autumn", "brightness": 65, "kelvin": 2800}
+                                ]
+                            });
+                            return Response::json(&scenes);
+                        }
+
+                        // (POST) ApplyScene - Apply a preset scene to bulbs
+                        // /api/services/lifx/apply_scene
+                        if request.url().contains("/apply_scene") {
+                            let input = try_or_400!(post_input!(request, {
+                                scene: String,
+                                selector: Option<String>,
+                                duration: Option<f64>
+                            }));
+
+                            let scene_settings = match input.scene.as_str() {
+                                "relax" => (40, 2700),
+                                "focus" => (80, 5000),
+                                "energize" => (100, 6500),
+                                "night" => (20, 2000),
+                                "sunset" => (30, 2200),
+                                "ocean" => (60, 4500),
+                                "reading" => (75, 4500),
+                                "romance" => (50, 3000),
+                                "party" => (100, 5500),
+                                "golden" => (70, 3200),
+                                "arctic" => (80, 7000),
+                                "tropical" => (85, 3800),
+                                "spring" => (75, 4200),
+                                "autumn" => (65, 2800),
+                                _ => return Response::json(&json!({"error": "Unknown scene"})).with_status_code(400)
+                            };
+
+                            let scene_selector = input.selector.unwrap_or_else(|| "all".to_string());
+                            let duration = input.duration.unwrap_or(0.5) as u32;
+
+                            let mut applied_count = 0;
+                            for bulb in &bulbs_vec {
+                                let brightness = HSBK {
+                                    hue: 0,
+                                    saturation: 0,
+                                    brightness: (scene_settings.0 as f64 * 655.35) as u16,
+                                    kelvin: scene_settings.1,
+                                };
+                                if bulb.set_color(&mgr.sock, brightness, duration).is_ok() {
+                                    applied_count += 1;
+                                }
+                            }
+
+                            use serde_json::json;
+                            return Response::json(&json!({
+                                "success": true,
+                                "scene": input.scene,
+                                "bulbs_affected": applied_count,
+                                "message": format!("Scene '{}' applied to {} bulbs", input.scene, applied_count)
+                            }));
+                        }
+
                         // (PUT) SetStates - Bulk state changes for multiple lights
                         // https://api.lifx.com/v1/lights/states
                         if request.url().contains("/lights/states") {

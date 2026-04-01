@@ -43,7 +43,15 @@ const MediaPlayer = {
     favorites: [],
     lifxSyncEnabled: false,
     touchHoldTimer: null,
-    lastMediaInteraction: 0
+    lastMediaInteraction: 0,
+    lifxBeatDetection: {
+        threshold: 0.3,
+        lastBeat: 0,
+        beatCooldown: 150
+    },
+    lifxSceneMode: 'ambient',
+    lifxColorHistory: [],
+    lifxScreenAnalyzer: null
 };
 
 // Initialize when DOM is ready
@@ -655,9 +663,19 @@ function toggleLifxMediaSync() {
 function pulseLifxWithBeat() {
     if (!MediaPlayer.lifxSyncEnabled || !MediaPlayer.isPlaying) return;
     
+    const now = Date.now();
+    if (now - MediaPlayer.lifxBeatDetection.lastBeat < MediaPlayer.lifxBeatDetection.beatCooldown) {
+        return;
+    }
+    
+    MediaPlayer.lifxBeatDetection.lastBeat = now;
+    
     const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
         ? LifXTouchControls.multiBulbSelection.join(',')
         : 'all';
+    
+    const brightness = 0.3 + Math.random() * 0.7;
+    const hue = Math.floor(Math.random() * 360) * 182;
     
     $.ajax({
         url: '/api/services/lifx/set_state',
@@ -666,8 +684,19 @@ function pulseLifxWithBeat() {
         data: JSON.stringify({
             selector: targets === 'all' ? 'all' : `id:${targets}`,
             power: 'on',
-            brightness: 0.3 + Math.random() * 0.7,
+            brightness: brightness,
             duration: 0.1
+        })
+    });
+    
+    $.ajax({
+        url: '/api/services/lifx/set_color',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            selector: targets === 'all' ? 'all' : `id:${targets}`,
+            color: `hue:${hue}`,
+            duration: 0.2
         }),
         error: () => {}
     });
@@ -1035,12 +1064,28 @@ function toggleAmbientLight() {
 // Sync LIFX lights to music
 function syncLightsToMusic(enable) {
     if (enable) {
-        // Pulse lights to beat detection (simulated with interval)
         if (!MediaPlayer.lightSyncInterval) {
             let hue = 0;
+            let brightness = 50;
+            let direction = 1;
+            
             MediaPlayer.lightSyncInterval = setInterval(() => {
                 if (MediaPlayer.isPlaying && MediaPlayer.ambientLightEnabled) {
-                    hue = (hue + 30) % 360;
+                    hue = (hue + 30 * direction) % 360;
+                    
+                    if (MediaPlayer.lifxSceneMode === 'spectrum') {
+                        brightness = 50 + Math.sin(Date.now() / 500) * 30;
+                    } else if (MediaPlayer.lifxSceneMode === 'warm') {
+                        hue = 30;
+                        brightness = 40;
+                    } else if (MediaPlayer.lifxSceneMode === 'cool') {
+                        hue = 200;
+                        brightness = 60;
+                    } else if (MediaPlayer.lifxSceneMode === 'beat') {
+                        pulseLifxWithBeat();
+                        return;
+                    }
+                    
                     $.ajax({
                         url: '/api/services/lifx/set_color',
                         method: 'POST',
@@ -1048,6 +1093,7 @@ function syncLightsToMusic(enable) {
                         data: JSON.stringify({
                             selector: 'all',
                             color: `hue:${hue * 182}`,
+                            brightness: brightness / 100,
                             duration: 0.5
                         })
                     });
