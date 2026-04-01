@@ -278,10 +278,12 @@ const LifXTouchControls = {
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
                     const currentBrightness = this.brightnessLevel;
-                    this.adjustBrightness(10);
-                    this.recordGesture('brightness', 10, currentBrightness, [bulb]);
-                    this.showGestureFeedback('Brightness +', '↑');
-                    this.hapticFeedback('light');
+                    const velocity = data.velocity || this.lastGestureVelocity;
+                    const step = Math.max(10, Math.floor(velocity * 15));
+                    this.adjustBrightness(step);
+                    this.recordGesture('brightness', step, currentBrightness, [bulb]);
+                    this.showGestureFeedback(`Brightness +${step}%`, '↑', 1000, velocity);
+                    this.hapticFeedback('brightness', Math.min(1.0, 0.5 + velocity * 0.2));
                     this.recordGestureSuccess();
                     this.adjustSensitivity(true, 'swipeUp');
                 }
@@ -292,10 +294,12 @@ const LifXTouchControls = {
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
                     const currentBrightness = this.brightnessLevel;
-                    this.adjustBrightness(-10);
-                    this.recordGesture('brightness', -10, currentBrightness, [bulb]);
-                    this.showGestureFeedback('Brightness -', '↓');
-                    this.hapticFeedback('light');
+                    const velocity = data.velocity || this.lastGestureVelocity;
+                    const step = Math.max(10, Math.floor(velocity * 15));
+                    this.adjustBrightness(-step);
+                    this.recordGesture('brightness', -step, currentBrightness, [bulb]);
+                    this.showGestureFeedback(`Brightness -${step}%`, '↓', 1000, velocity);
+                    this.hapticFeedback('brightness', Math.min(1.0, 0.5 + velocity * 0.2));
                     this.recordGestureSuccess();
                     this.adjustSensitivity(true, 'swipeDown');
                 }
@@ -307,10 +311,12 @@ const LifXTouchControls = {
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
                     const currentTemp = this.colorTempLevel;
-                    this.adjustColorTemp(200);
-                    this.recordGesture('colorTemp', 200, currentTemp, [bulb]);
-                    this.showGestureFeedback('Warmer', '☀️');
-                    this.hapticFeedback('light');
+                    const velocity = data.velocity || this.lastGestureVelocity;
+                    const step = Math.max(200, Math.floor(velocity * 300));
+                    this.adjustColorTemp(step);
+                    this.recordGesture('colorTemp', step, currentTemp, [bulb]);
+                    this.showGestureFeedback('Warmer', '☀️', 1000, velocity);
+                    this.hapticFeedback('colortemp', Math.min(1.0, 0.5 + velocity * 0.2));
                     this.recordGestureSuccess();
                     this.adjustSensitivity(true, 'swipeRight');
                 }
@@ -321,10 +327,12 @@ const LifXTouchControls = {
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
                     const currentTemp = this.colorTempLevel;
-                    this.adjustColorTemp(-200);
-                    this.recordGesture('colorTemp', -200, currentTemp, [bulb]);
-                    this.showGestureFeedback('Cooler', '❄️');
-                    this.hapticFeedback('light');
+                    const velocity = data.velocity || this.lastGestureVelocity;
+                    const step = Math.max(200, Math.floor(velocity * 300));
+                    this.adjustColorTemp(-step);
+                    this.recordGesture('colorTemp', -step, currentTemp, [bulb]);
+                    this.showGestureFeedback('Cooler', '❄️', 1000, velocity);
+                    this.hapticFeedback('colortemp', Math.min(1.0, 0.5 + velocity * 0.2));
                     this.recordGestureSuccess();
                     this.adjustSensitivity(true, 'swipeLeft');
                 }
@@ -1829,7 +1837,7 @@ const LifXTouchControls = {
         }, 5000);
     },
     
-    showGestureFeedback: function(text, icon, duration = 1000) {
+    showGestureFeedback: function(text, icon, duration = 1000, velocity = null) {
         if (this.reducedMotionMode) {
             duration = 300;
         }
@@ -1843,15 +1851,24 @@ const LifXTouchControls = {
         if (this.highContrastHints) {
             hint.classList.add('high-contrast');
         }
+        
+        let velocityIndicator = '';
+        if (velocity !== null && velocity > 0) {
+            const intensityClass = velocity > 2 ? 'high' : velocity > 1 ? 'medium' : 'low';
+            const intensityDots = velocity > 2 ? '●●●' : velocity > 1 ? '●●○' : '●○○';
+            velocityIndicator = `<div class="velocity-indicator ${intensityClass}" title="Gesture intensity: ${intensityClass}">${intensityDots}</div>`;
+        }
+        
         hint.innerHTML = `
             <div class="gesture-icon" style="animation: gesture-bounce 0.5s ease;">${icon}</div>
             <span class="gesture-text">${text}</span>
+            ${velocityIndicator}
         `;
         document.body.appendChild(hint);
         this.lastGestureHint = hint;
         
         if (this.showGestureHints) {
-            this.createGestureTrail(hint);
+            this.createGestureTrail(hint, velocity);
         }
         
         setTimeout(() => {
@@ -1865,27 +1882,36 @@ const LifXTouchControls = {
         }, duration);
     },
     
-    createGestureTrail: function(hintElement) {
+    createGestureTrail: function(hintElement, velocity = null) {
         if (this.reducedMotionMode) return;
         
         const rect = hintElement.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         
-        for (let i = 0; i < 3; i++) {
+        const trailCount = velocity ? Math.min(8, 3 + Math.floor(velocity)) : 3;
+        const trailSize = velocity ? Math.min(40, 20 + velocity * 5) : 20;
+        
+        for (let i = 0; i < trailCount; i++) {
             setTimeout(() => {
                 const trail = document.createElement('div');
                 trail.className = 'lifx-gesture-trail';
-                trail.style.left = (centerX + (Math.random() - 0.5) * 40) + 'px';
-                trail.style.top = (centerY + (Math.random() - 0.5) * 40) + 'px';
-                trail.style.width = (20 + Math.random() * 15) + 'px';
+                trail.style.left = (centerX + (Math.random() - 0.5) * 60) + 'px';
+                trail.style.top = (centerY + (Math.random() - 0.5) * 60) + 'px';
+                trail.style.width = (trailSize + Math.random() * 15) + 'px';
                 trail.style.height = trail.style.width;
+                
+                if (velocity && velocity > 2) {
+                    trail.style.background = 'radial-gradient(circle, rgba(0, 255, 136, 0.8) 0%, rgba(0, 212, 255, 0.4) 70%, transparent 100%)';
+                    trail.style.boxShadow = '0 0 15px rgba(0, 255, 136, 0.6)';
+                }
+                
                 document.body.appendChild(trail);
                 
                 setTimeout(() => {
                     if (trail.parentNode) trail.parentNode.removeChild(trail);
                 }, 800);
-            }, i * 100);
+            }, i * 80);
         }
     },
     
@@ -2892,10 +2918,58 @@ const LifXTouchControls = {
         const touch = e.touches[0];
         this.lastTouchCoordinates = { x: touch.clientX, y: touch.clientY };
         this.touchVelocityHistory = [];
+        this.touchStartTime = Date.now();
         
         if (touch.force !== undefined) {
             this.touchPressure = touch.force;
         }
+        
+        this.showEdgeSwipeZone(touch.clientX, touch.clientY);
+    },
+    
+    showEdgeSwipeZone: function(x, y) {
+        if (!this.swipeEdgeZone || this.swipeEdgeZone <= 0) return;
+        
+        const edgeThreshold = this.swipeEdgeZone;
+        let edgePosition = null;
+        
+        if (x < edgeThreshold) edgePosition = 'left';
+        else if (x > window.innerWidth - edgeThreshold) edgePosition = 'right';
+        else if (y < edgeThreshold) edgePosition = 'top';
+        else if (y > window.innerHeight - edgeThreshold) edgePosition = 'bottom';
+        
+        if (edgePosition) {
+            this.highlightEdgeZone(edgePosition);
+        }
+    },
+    
+    highlightEdgeZone: function(position) {
+        const existingZone = document.querySelector('.edge-swipe-zone');
+        if (existingZone) existingZone.remove();
+        
+        const zone = document.createElement('div');
+        zone.className = 'edge-swipe-zone';
+        
+        const styles = {
+            left: { left: 0, top: 0, width: this.swipeEdgeZone + 'px', height: '100%' },
+            right: { right: 0, top: 0, width: this.swipeEdgeZone + 'px', height: '100%' },
+            top: { top: 0, left: 0, width: '100%', height: this.swipeEdgeZone + 'px' },
+            bottom: { bottom: 0, left: 0, width: '100%', height: this.swipeEdgeZone + 'px' }
+        };
+        
+        Object.assign(zone.style, {
+            position: 'fixed',
+            pointerEvents: 'none',
+            zIndex: '9997',
+            background: 'linear-gradient(to ' + position + ', rgba(0, 212, 255, 0.3), transparent)',
+            transition: 'opacity 0.2s ease'
+        }, styles[position]);
+        
+        document.body.appendChild(zone);
+        setTimeout(() => {
+            zone.style.opacity = '0';
+            setTimeout(() => { if (zone.parentNode) zone.parentNode.removeChild(zone); }, 200);
+        }, 300);
     },
     
     updateTouchVelocity: function(e) {
@@ -3867,13 +3941,19 @@ const LifXTouchControls = {
         const progress = Math.min(100, Math.round((elapsed / this.touchHoldDelay) * 100));
         
         // Update percentage display
-        const progressValue = this.touchHoldProgressEl.querySelector('.touch-hold-progress-value');
+        const progressValue = this.touchHoldProgressEl.querySelector('.touch-hold-percentage');
         if (progressValue) {
             progressValue.textContent = progress + '%';
         }
         
+        // Update progress bar using conic-gradient
+        const progressBar = this.touchHoldProgressEl.querySelector('.touch-hold-progress-bar');
+        if (progressBar) {
+            progressBar.style.background = `conic-gradient(#00d4ff ${progress * 3.6}deg, transparent 0deg)`;
+        }
+        
         // Update ring rotation based on progress
-        this.touchHoldProgressEl.style.transform = `scale(${0.8 + (progress / 200)}) rotate(${progress * 3.6}deg)`;
+        this.touchHoldProgressEl.style.transform = `translate(-50%, -50%) scale(${0.8 + (progress / 200)}) rotate(${progress * 3.6}deg)`;
         
         if (progress < 100) {
             requestAnimationFrame(() => this.animateTouchHoldProgress());
