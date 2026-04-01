@@ -384,6 +384,67 @@ const LifXTouchControls = {
                 this.recordGestureSuccess();
             });
             
+            // Four-finger swipe up for maximum brightness all
+            onGesture('fourFingerSwipeUp', (data) => {
+                if (!this.checkGestureDebounce()) return;
+                this.brightnessLevel = 100;
+                $.ajax({
+                    url: '/api/services/lifx/set_state',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ selector: 'all', brightness: 1, duration: 0.3 }),
+                    success: () => {
+                        this.showEnhancedGestureFeedback('Maximum Brightness All', '☀️');
+                        this.hapticFeedback('success');
+                        this.recordGestureSuccess();
+                    }
+                });
+            });
+            
+            // Four-finger swipe down for night mode all
+            onGesture('fourFingerSwipeDown', (data) => {
+                if (!this.checkGestureDebounce()) return;
+                this.brightnessLevel = 10;
+                this.colorTempLevel = 2000;
+                $.ajax({
+                    url: '/api/services/lifx/set_state',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ selector: 'all', brightness: 0.1, duration: 0.3 }),
+                    success: () => {
+                        $.ajax({
+                            url: '/api/services/lifx/set_color',
+                            method: 'POST',
+                            contentType: 'application/json',
+                            data: JSON.stringify({ selector: 'all', color: 'kelvin:2000' }),
+                            success: () => {
+                                this.showEnhancedGestureFeedback('Night Mode All', '🌙');
+                                this.hapticFeedback('light');
+                                this.recordGestureSuccess();
+                            }
+                        });
+                    }
+                });
+            });
+            
+            // Edge swipe from left for media sync toggle
+            onGesture('edgeSwipeLeft', (data) => {
+                if (!this.checkGestureDebounce()) return;
+                this.toggleMediaSync();
+                this.showEnhancedGestureFeedback('Media Sync ' + (this.mediaSyncActive ? 'ON' : 'OFF'), '🎵');
+                this.hapticFeedback('media');
+                this.recordGestureSuccess();
+            });
+            
+            // Edge swipe from right for circadian mode toggle
+            onGesture('edgeSwipeRight', (data) => {
+                if (!this.checkGestureDebounce()) return;
+                this.toggleCircadianMode();
+                this.showEnhancedGestureFeedback('Circadian ' + (this.circadianModeActive ? 'ON' : 'OFF'), '🕐');
+                this.hapticFeedback('success');
+                this.recordGestureSuccess();
+            });
+            
             // Double swipe up for brightness boost
             onGesture('doubleSwipeUp', (data) => {
                 if (!this.checkGestureDebounce()) return;
@@ -7103,6 +7164,312 @@ const LifXTouchControls = {
             'edgeSwipeRight': () => this.showMediaControls()
         };
         console.log('Gesture shortcuts initialized');
+    },
+    
+    mediaSyncActive: false,
+    circadianModeActive: false,
+    mediaSyncInterval: null,
+    audioContext: null,
+    analyser: null,
+    dataArray: null,
+    
+    toggleMediaSync: function() {
+        this.mediaSyncActive = !this.mediaSyncActive;
+        if (this.mediaSyncActive) {
+            this.startMediaSync();
+            localStorage.setItem('lifx_media_sync_active', 'true');
+        } else {
+            this.stopMediaSync();
+            localStorage.setItem('lifx_media_sync_active', 'false');
+        }
+    },
+    
+    startMediaSync: function() {
+        if (!this.mediaSyncActive) return;
+        
+        const syncBeat = () => {
+            if (!this.mediaSyncActive) return;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: 'all',
+                    brightness: 0.3 + Math.random() * 0.7,
+                    duration: 0.1
+                })
+            });
+        };
+        
+        this.mediaSyncInterval = setInterval(syncBeat, 500);
+        this.showEnhancedGestureFeedback('Media Sync Started', '🎵');
+    },
+    
+    stopMediaSync: function() {
+        this.mediaSyncActive = false;
+        if (this.mediaSyncInterval) {
+            clearInterval(this.mediaSyncInterval);
+            this.mediaSyncInterval = null;
+        }
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+        this.showEnhancedGestureFeedback('Media Sync Stopped', '🔇');
+    },
+    
+    initMediaSync: function() {
+        const saved = localStorage.getItem('lifx_media_sync_active');
+        if (saved === 'true') {
+            this.mediaSyncActive = true;
+            this.startMediaSync();
+        }
+    },
+    
+    toggleCircadianMode: function() {
+        this.circadianModeActive = !this.circadianModeActive;
+        if (this.circadianModeActive) {
+            this.startCircadianMode();
+            localStorage.setItem('lifx_circadian_active', 'true');
+        } else {
+            this.stopCircadianMode();
+            localStorage.setItem('lifx_circadian_active', 'false');
+        }
+    },
+    
+    startCircadianMode: function() {
+        if (!this.circadianModeActive) return;
+        
+        const adjustForTime = () => {
+            if (!this.circadianModeActive) return;
+            
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            const time = hour + minute / 60;
+            
+            let brightness, kelvin;
+            
+            if (time >= 6 && time < 9) {
+                brightness = 0.8;
+                kelvin = 4000;
+            } else if (time >= 9 && time < 12) {
+                brightness = 1.0;
+                kelvin = 5500;
+            } else if (time >= 12 && time < 17) {
+                brightness = 0.9;
+                kelvin = 5000;
+            } else if (time >= 17 && time < 21) {
+                brightness = 0.6;
+                kelvin = 3500;
+            } else if (time >= 21 && time < 23) {
+                brightness = 0.4;
+                kelvin = 2700;
+            } else {
+                brightness = 0.2;
+                kelvin = 2200;
+            }
+            
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: 'all',
+                    brightness: brightness,
+                    duration: 0.5
+                }),
+                success: () => {
+                    $.ajax({
+                        url: '/api/services/lifx/set_color',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            selector: 'all',
+                            color: `kelvin:${kelvin}`
+                        })
+                    });
+                }
+            });
+        };
+        
+        adjustForTime();
+        setInterval(adjustForTime, 60000);
+        this.showEnhancedGestureFeedback('Circadian Mode Started', '🕐');
+    },
+    
+    stopCircadianMode: function() {
+        this.circadianModeActive = false;
+        this.showEnhancedGestureFeedback('Circadian Mode Stopped', '⏸');
+    },
+    
+    setupEdgeGestures: function() {
+        let edgeTouchStart = null;
+        const edgeThreshold = 30;
+        
+        document.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            if (touch.clientX < edgeThreshold) {
+                edgeTouchStart = { x: touch.clientX, y: touch.clientY, fromLeft: true };
+            } else if (touch.clientX > window.innerWidth - edgeThreshold) {
+                edgeTouchStart = { x: touch.clientX, y: touch.clientY, fromLeft: false };
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (!edgeTouchStart) return;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - edgeTouchStart.x;
+            
+            if (edgeTouchStart.fromLeft && deltaX > 100) {
+                this.toggleMediaSync();
+                edgeTouchStart = null;
+            } else if (!edgeTouchStart.fromLeft && deltaX < -100) {
+                this.toggleCircadianMode();
+                edgeTouchStart = null;
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchend', () => {
+            edgeTouchStart = null;
+        });
+    },
+    
+    setupVoiceControlIntegration: function() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            console.log('Voice control not supported');
+            return;
+        }
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.voiceRecognition = new SpeechRecognition();
+        this.voiceRecognition.continuous = false;
+        this.voiceRecognition.interimResults = false;
+        
+        this.voiceRecognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.toLowerCase();
+            this.processVoiceCommand(transcript);
+        };
+        
+        this.voiceRecognition.onerror = (event) => {
+            console.error('Voice recognition error:', event.error);
+            this.showEnhancedGestureFeedback('Voice error', '❌');
+        };
+        
+        this.voiceControlEnabled = true;
+        console.log('Voice control initialized');
+    },
+    
+    processVoiceCommand: function(command) {
+        const commands = {
+            'lights on': () => this.powerAll('on'),
+            'lights off': () => this.powerAll('off'),
+            'brighter': () => this.adjustBrightness(10),
+            'dimmer': () => this.adjustBrightness(-10),
+            'relax': () => this.applyScene('relax'),
+            'focus': () => this.applyScene('focus'),
+            'party': () => this.applyScene('party'),
+            'movie': () => this.applyScene('movie'),
+            'night': () => this.applyScene('night'),
+            'rainbow': () => this.startRainbowCycle(),
+            'warm': () => this.adjustColorTemp(-500),
+            'cool': () => this.adjustColorTemp(500)
+        };
+        
+        for (const [keyword, action] of Object.entries(commands)) {
+            if (command.includes(keyword)) {
+                action();
+                this.showEnhancedGestureFeedback(`Voice: ${keyword}`, '🎤');
+                return;
+            }
+        }
+    },
+    
+    initMediaCenterIntegration: function() {
+        this.mediaPlaybackActive = false;
+        this.beatDetectionSensitivity = 0.7;
+        this.mediaSyncTargets = [];
+        console.log('Media center integration initialized');
+    },
+    
+    showMediaControls: function() {
+        if (typeof Swal === 'undefined') return;
+        
+        Swal.fire({
+            title: '<i class="fas fa-music"></i> Media Center Controls',
+            html: `
+                <div style="padding: 20px;">
+                    <div class="media-control-section" style="margin-bottom: 20px;">
+                        <h5 style="color: #00d4ff; margin-bottom: 10px;">Media Sync</h5>
+                        <button class="btn ${this.mediaSyncActive ? 'btn-success' : 'btn-secondary'}" 
+                                onclick="LifXTouchControls.toggleMediaSync(); Swal.close();"
+                                style="width: 100%; padding: 12px;">
+                            <i class="fas ${this.mediaSyncActive ? 'fa-check' : 'fa-toggle-off'}"></i>
+                            ${this.mediaSyncActive ? 'Media Sync Active' : 'Enable Media Sync'}
+                        </button>
+                    </div>
+                    
+                    <div class="media-control-section" style="margin-bottom: 20px;">
+                        <h5 style="color: #00d4ff; margin-bottom: 10px;">Circadian Mode</h5>
+                        <button class="btn ${this.circadianModeActive ? 'btn-success' : 'btn-secondary'}" 
+                                onclick="LifXTouchControls.toggleCircadianMode(); Swal.close();"
+                                style="width: 100%; padding: 12px;">
+                            <i class="fas ${this.circadianModeActive ? 'fa-check' : 'fa-toggle-off'}"></i>
+                            ${this.circadianModeActive ? 'Circadian Active' : 'Enable Circadian'}
+                        </button>
+                    </div>
+                    
+                    <div class="media-control-section">
+                        <h5 style="color: #00d4ff; margin-bottom: 10px;">Quick Actions</h5>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            <button class="btn btn-outline-info" onclick="LifXTouchControls.applyScene('movie'); Swal.close();">
+                                <i class="fas fa-film"></i> Movie
+                            </button>
+                            <button class="btn btn-outline-info" onclick="LifXTouchControls.applyScene('gaming'); Swal.close();">
+                                <i class="fas fa-gamepad"></i> Gaming
+                            </button>
+                            <button class="btn btn-outline-info" onclick="LifXTouchControls.applyScene('party'); Swal.close();">
+                                <i class="fas fa-music"></i> Party
+                            </button>
+                            <button class="btn btn-outline-info" onclick="LifXTouchControls.startRainbowCycle(); Swal.close();">
+                                <i class="fas fa-rainbow"></i> Rainbow
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '500px'
+        });
+    },
+    
+    activatePartyMode: function() {
+        this.applyScene('party');
+        this.showEnhancedGestureFeedback('Party Mode', '🎉');
+    },
+    
+    activateCalmMode: function() {
+        this.applyScene('relax');
+        this.showEnhancedGestureFeedback('Calm Mode', '🧘');
+    },
+    
+    toggleColorCycle: function() {
+        if (this.colorCycleActive) {
+            this.stopRainbowCycle();
+        } else {
+            this.startRainbowCycle();
+        }
+    },
+    
+    toggleLightPainting: function() {
+        this.lightPaintingActive = !this.lightPaintingActive;
+        if (this.lightPaintingActive) {
+            this.showEnhancedGestureFeedback('Light Painting ON', '🎨');
+        } else {
+            this.showEnhancedGestureFeedback('Light Painting OFF', '⬛');
+        }
     }
 };
 
@@ -7131,6 +7498,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize new advanced gesture modes
     LifXTouchControls.initAdvancedGestureModes();
     LifXTouchControls.initMediaCenterIntegration();
+    LifXTouchControls.initMediaSync();
     
     // Initialize quick actions and gesture shortcuts
     LifXTouchControls.initQuickActions();

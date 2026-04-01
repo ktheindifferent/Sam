@@ -6817,5 +6817,307 @@
 
 @keyframes effect-pulse {
     0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.2); }
+    50% { transform: scale(1.1); }
+}
+
+/* Media Sync Mode Indicator */
+.media-sync-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.9), rgba(0, 212, 255, 0.9));
+    color: #000;
+    padding: 12px 20px;
+    border-radius: 25px;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 20px rgba(0, 255, 136, 0.4);
+    animation: media-sync-glow 2s ease infinite;
+}
+
+.media-sync-indicator.active {
+    display: flex;
+}
+
+@keyframes media-sync-glow {
+    0%, 100% { box-shadow: 0 4px 20px rgba(0, 255, 136, 0.4); }
+    50% { box-shadow: 0 4px 30px rgba(0, 255, 136, 0.8); }
+}
+
+/* Circadian Mode Indicator */
+.circadian-indicator {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: linear-gradient(135deg, rgba(255, 159, 67, 0.9), rgba(255, 107, 107, 0.9));
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 25px;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 20px rgba(255, 159, 67, 0.4);
+}
+
+.circadian-indicator.active {
+    display: flex;
+}
+
+/* Media Control Panel */
+.media-control-panel {
+    position: fixed;
+    bottom: 100px;
+    right: 20px;
+    background: rgba(42, 42, 58, 0.98);
+    border: 2px solid rgba(0, 255, 136, 0.5);
+    border-radius: 16px;
+    padding: 20px;
+    z-index: 9998;
+    width: 300px;
+    display: none;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.media-control-panel.visible {
+    display: block;
+    animation: slideInRight 0.3s ease;
+}
+
+.media-control-section {
+    margin-bottom: 20px;
+}
+
+.media-control-section:last-child {
+    margin-bottom: 0;
+}
+
+.media-control-section h5 {
+    color: #00d4ff;
+    margin-bottom: 10px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Touch Gesture Tutorial */
+.lifx-gesture-tutorial {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 999999;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.lifx-gesture-tutorial.active {
+    display: flex;
+    animation: fadeIn 0.3s ease;
+}
+
+.lifx-gesture-tutorial-content {
+    background: rgba(42, 42, 58, 0.98);
+    border: 2px solid rgba(0, 212, 255, 0.5);
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 212, 255, 0.3);
+}
+
+.tutorial-header {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.tutorial-header h3 {
+    color: #00d4ff;
+    font-size: 24px;
+    margin-bottom: 5px;
+}
+
+.tutorial-subtitle {
+    color: #adb5bd;
+    font-size: 14px;
+}
+
+.tutorial-section {
+    margin-bottom: 25px;
+}
+
+.tutorial-section h4 {
+    color: #00ff88;
+    font-size: 16px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lifx-gesture-tutorial-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.lifx-gesture-tutorial-item {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 12px;
+    padding: 15px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.2s ease;
+}
+
+.lifx-gesture-tutorial-item:hover {
+    background: rgba(0, 212, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.lifx-gesture-tutorial-icon {
+    font-size: 28px;
+}
+
+.lifx-gesture-tutorial-text strong {
+    display: block;
+    color: #fff;
+    font-size: 13px;
+    margin-bottom: 3px;
+}
+
+.lifx-gesture-tutorial-text span {
+    color: #adb5bd;
+    font-size: 11px;
+}
+
+.tutorial-footer {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+}
+
+.tutorial-tips {
+    background: rgba(0, 255, 136, 0.1);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.tutorial-tips p {
+    color: #00ff88;
+    font-size: 13px;
+    margin: 0;
+}
+
+.lifx-gesture-tutorial-close {
+    background: linear-gradient(135deg, #00d4ff, #00ff88);
+    color: #000;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lifx-gesture-tutorial-close:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+}
+
+/* Voice Command Indicator */
+.voice-command-indicator {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(42, 42, 58, 0.98);
+    border: 2px solid rgba(255, 107, 107, 0.5);
+    border-radius: 30px;
+    padding: 15px 25px;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.voice-command-indicator.active {
+    display: flex;
+    animation: voice-pulse 1.5s ease infinite;
+}
+
+@keyframes voice-pulse {
+    0%, 100% { box-shadow: 0 10px 40px rgba(255, 107, 107, 0.4); }
+    50% { box-shadow: 0 10px 60px rgba(255, 107, 107, 0.8); }
+}
+
+.voice-wave {
+    display: flex;
+    gap: 4px;
+    align-items: flex-end;
+    height: 30px;
+}
+
+.voice-wave-bar {
+    width: 6px;
+    background: linear-gradient(to top, #ff6b6b, #ffa502);
+    border-radius: 3px;
+    animation: voice-wave 0.5s ease infinite;
+}
+
+.voice-wave-bar:nth-child(1) { animation-delay: 0s; height: 40%; }
+.voice-wave-bar:nth-child(2) { animation-delay: 0.1s; height: 70%; }
+.voice-wave-bar:nth-child(3) { animation-delay: 0.2s; height: 100%; }
+.voice-wave-bar:nth-child(4) { animation-delay: 0.3s; height: 70%; }
+.voice-wave-bar:nth-child(5) { animation-delay: 0.4s; height: 40%; }
+
+@keyframes voice-wave {
+    0%, 100% { transform: scaleY(0.5); }
+    50% { transform: scaleY(1); }
+}
+
+/* Four Finger Gesture Indicator */
+.four-finger-indicator {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 212, 255, 0.9);
+    color: #000;
+    padding: 20px 30px;
+    border-radius: 50px;
+    font-size: 18px;
+    font-weight: 700;
+    z-index: 999999;
+    display: none;
+    box-shadow: 0 10px 40px rgba(0, 212, 255, 0.6);
+}
+
+.four-finger-indicator.active {
+    display: block;
+    animation: four-finger-pop 0.3s ease;
+}
+
+@keyframes four-finger-pop {
+    0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
