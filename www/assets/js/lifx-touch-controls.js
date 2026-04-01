@@ -365,11 +365,18 @@ const LifXTouchControls = {
             'night': () => this.applyScene('night', selector),
             'rainbow': () => this.startRainbowCycle(selector),
             'pulse': () => this.startPulseEffect(selector),
-            'breath': () => this.startBreathEffect(selector)
+            'breath': () => this.startBreathEffect(selector),
+            'fireplace': () => this.startFireplaceEffect(selector),
+            'aurora': () => this.startAuroraEffect(selector),
+            'ocean': () => this.applyScene('ocean', selector),
+            'golden_hour': () => this.applyScene('golden_hour', selector),
+            'meditation': () => this.applyScene('meditation', selector),
+            'movie': () => this.applyScene('movie', selector)
         };
         
         if (actions[action]) {
             actions[action]();
+            this.recordGesture('quick_action', { action });
         }
     },
     
@@ -472,6 +479,70 @@ const LifXTouchControls = {
         this.colorCycleActive = true;
         breath();
         this.showGestureFeedback('Breath Effect Started', '🌬');
+    },
+    
+    startFireplaceEffect: function(selector = 'all') {
+        const flicker = () => {
+            if (!this.colorCycleActive) return;
+            
+            const brightness = 40 + Math.random() * 30;
+            const kelvin = 1800 + Math.random() * 400;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector,
+                    brightness: brightness / 100,
+                    duration: 0.3
+                }),
+                success: () => {
+                    $.ajax({
+                        url: '/api/services/lifx/set_color',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            selector,
+                            color: `kelvin:${Math.round(kelvin)}`
+                        })
+                    });
+                }
+            });
+            
+            setTimeout(flicker, 200 + Math.random() * 300);
+        };
+        
+        this.colorCycleActive = true;
+        flicker();
+        this.showGestureFeedback('Fireplace Effect Started', '🔥');
+    },
+    
+    startAuroraEffect: function(selector = 'all') {
+        let hue = 180;
+        const aurora = () => {
+            if (!this.colorCycleActive) return;
+            
+            hue = (hue + 10) % 360;
+            const saturation = 50 + Math.sin(hue * Math.PI / 180) * 30;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector,
+                    color: `hue:${hue},saturation:${saturation}%,brightness:70%`,
+                    duration: 0.5
+                })
+            });
+            
+            setTimeout(aurora, 500);
+        };
+        
+        this.colorCycleActive = true;
+        aurora();
+        this.showGestureFeedback('Aurora Effect Started', '🌌');
     },
     
     addTouchModeIndicator: function() {
@@ -764,7 +835,18 @@ const LifXTouchControls = {
             ice: { brightness: 70, kelvin: 8000, label: 'Ice' },
             aurora: { brightness: 75, kelvin: 6000, label: 'Aurora' },
             nebula: { brightness: 65, kelvin: 5000, label: 'Nebula' },
-            thunder: { brightness: 100, kelvin: 7000, label: 'Thunder' }
+            thunder: { brightness: 100, kelvin: 7000, label: 'Thunder' },
+            crystal: { brightness: 75, kelvin: 6500, label: 'Crystal' },
+            lagoon: { brightness: 65, kelvin: 5500, label: 'Lagoon' },
+            cotton_candy: { brightness: 70, kelvin: 4500, label: 'Cotton Candy' },
+            spring_blossom: { brightness: 80, kelvin: 4000, label: 'Spring Blossom' },
+            punchbowl: { brightness: 90, kelvin: 5000, label: 'Punchbowl' },
+            smashing: { brightness: 95, kelvin: 6000, label: 'Smashing' },
+            glitter: { brightness: 85, kelvin: 5500, label: 'Glitter' },
+            golden_hour: { brightness: 60, kelvin: 3000, label: 'Golden Hour' },
+            late_night: { brightness: 25, kelvin: 2200, label: 'Late Night' },
+            midday: { brightness: 90, kelvin: 5500, label: 'Midday' },
+            polar: { brightness: 70, kelvin: 7500, label: 'Polar' }
         };
         
         const settings = sceneSettings[scene];
@@ -795,7 +877,8 @@ const LifXTouchControls = {
                         success: () => {
                             console.log('Scene applied:', scene);
                             targets.forEach(bulbId => this.updateBulbVisual(bulbId));
-                            this.showGestureFeedback(`Scene: ${settings.label}`, '🎨');
+                            this.showGestureFeedback(`Scene: ${settings.label}`, this.getSceneEmoji(scene));
+                            this.recordGesture('scene', { scene, label: settings.label });
                         }
                     });
                 }
@@ -1063,6 +1146,23 @@ const LifXTouchControls = {
                 }
             });
         }
+    },
+    
+    getSceneEmoji: function(sceneName) {
+        const emojis = {
+            relax: '🧘', focus: '🎯', energize: '⚡', night: '🌙',
+            sunset: '🌅', ocean: '🌊', reading: '📖', romance: '💕',
+            party: '🎉', golden: '✨', arctic: '❄️', tropical: '🌴',
+            spring: '🌸', autumn: '🍂', meditation: '🧘‍♀️', gaming: '🎮',
+            cooking: '🍳', creative: '🎨', yoga: '🧘', movie: '🎬',
+            study: '📚', dinner: '🍽️', morning: '🌅', goodnight: '😴',
+            rainbow: '🌈', fireplace: '🔥', ice: '🧊', aurora: '🌌',
+            nebula: '🌀', thunder: '⛈️', crystal: '💎', lagoon: '🏝️',
+            cotton_candy: '🍭', spring_blossom: '🌺', punchbowl: '🥤',
+            smashing: '💥', glitter: '✨', golden_hour: '🌇',
+            late_night: '🌃', midday: '☀️', polar: '🐧'
+        };
+        return emojis[sceneName] || '💡';
     },
     
     presetBrightness: function(level) {

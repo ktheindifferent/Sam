@@ -240,6 +240,134 @@
     letter-spacing: 0.5px;
 }
 
+/* Scene preview grid with emoji labels */
+.scene-preview-grid-enhanced {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.scene-preview-item-enhanced {
+    aspect-ratio: 1;
+    border-radius: 12px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(42, 42, 58, 0.5);
+}
+
+.scene-preview-item-enhanced:hover {
+    transform: scale(1.1);
+    border-color: #00d4ff;
+    box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+}
+
+.scene-preview-item-enhanced.active {
+    border-color: #00d4ff;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.6);
+}
+
+.scene-preview-emoji {
+    font-size: 24px;
+    margin-bottom: 4px;
+}
+
+.scene-preview-label-enhanced {
+    font-size: 8px;
+    color: #adb5bd;
+    text-transform: capitalize;
+    text-align: center;
+}
+
+/* Effect active indicators */
+.effect-active-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(20, 20, 30, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 12px 20px;
+    border-radius: 25px;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(39, 160, 185, 0.3);
+    font-size: 14px;
+    color: #00d4ff;
+}
+
+.effect-active-indicator.visible {
+    display: flex;
+    animation: effect-pulse 2s ease-in-out infinite;
+}
+
+.effect-active-indicator .effect-icon {
+    font-size: 18px;
+}
+
+.effect-active-indicator .effect-name {
+    font-weight: bold;
+}
+
+@keyframes effect-pulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); }
+    50% { box-shadow: 0 0 25px rgba(0, 212, 255, 0.6); }
+}
+
+/* Fireplace effect animation */
+.fireplace-effect {
+    animation: fireplace-flicker 0.5s ease-in-out infinite;
+}
+
+@keyframes fireplace-flicker {
+    0%, 100% { 
+        opacity: 1; 
+        filter: brightness(1) sepia(0.3);
+        transform: scale(1);
+    }
+    25% { 
+        opacity: 0.9; 
+        filter: brightness(1.2) sepia(0.5);
+        transform: scale(1.02);
+    }
+    50% { 
+        opacity: 0.85; 
+        filter: brightness(1.15) sepia(0.4);
+        transform: scale(0.98);
+    }
+    75% { 
+        opacity: 0.95; 
+        filter: brightness(1.1) sepia(0.35);
+        transform: scale(1.01);
+    }
+}
+
+/* Aurora effect animation */
+.aurora-effect {
+    animation: aurora-flow 3s ease-in-out infinite;
+}
+
+@keyframes aurora-flow {
+    0%, 100% { 
+        filter: hue-rotate(0deg) brightness(1);
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+    }
+    50% { 
+        filter: hue-rotate(60deg) brightness(1.2);
+        box-shadow: 0 0 35px rgba(0, 212, 255, 0.7);
+    }
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .lifx-bulb-control.touch-feedback {

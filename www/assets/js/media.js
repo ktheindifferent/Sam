@@ -67,7 +67,11 @@ const MediaPlayer = {
     touchGestures: {
         enabled: true,
         sensitivity: 'medium',
-        lastSwipeTime: 0
+        lastSwipeTime: 0,
+        doubleTapTimeout: 300,
+        longPressDelay: 500,
+        swipeThreshold: 50,
+        pinchSensitivity: 30
     },
     miniPlayerVisible: false,
     queuePosition: 0,
@@ -352,6 +356,28 @@ function initMediaBrowserTouch() {
                 grid.scrollLeft += deltaX > 0 ? -scrollAmount : scrollAmount;
             }
         });
+    });
+    
+    // Add three-finger swipe for quick actions
+    let touchCount = 0;
+    document.addEventListener('touchstart', (e) => {
+        touchCount = e.touches.length;
+    }, { passive: true });
+    
+    document.addEventListener('touchend', (e) => {
+        if (touchCount === 3) {
+            const touch = e.changedTouches[0];
+            const deltaX = touch.clientX - (e.touches[0]?.clientX || touch.clientX);
+            
+            if (deltaX < -50) {
+                showSwipeHint('Next Track ⏭️');
+                nextTrack();
+            } else if (deltaX > 50) {
+                showSwipeHint('Previous Track ⏮️');
+                previousTrack();
+            }
+        }
+        touchCount = 0;
     });
 }
 

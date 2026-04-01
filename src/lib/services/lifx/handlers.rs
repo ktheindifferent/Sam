@@ -728,6 +728,72 @@ fn handle_effects(request: &Request) -> Response {
                 let step_duration = (total_duration / cycles / 10.0 * 1000.0) as u64;
                 
                 match input.effect.as_str() {
+                    "fireplace" => {
+                        // Fireplace effect: random warm flickering
+                        let sock_clone = sock.try_clone().ok();
+                        let bulbs_clone: Vec<(u64, std::net::SocketAddr)> = bulbs_vec.iter()
+                            .map(|b| (b.target, b.addr))
+                            .collect();
+                        
+                        thread::spawn(move || {
+                            use rand::Rng;
+                            if let Some(socket) = sock_clone {
+                                for _ in 0..30 {
+                                    for &(target, addr) in &bulbs_clone {
+                                        let mut rng = rand::thread_rng();
+                                        let brightness = (40.0 + rng.gen::<f64>() * 30.0) as u16;
+                                        let kelvin = (1800 + rng.gen::<f64>() * 400.0) as u16;
+                                        let flicker_color = HSBK {
+                                            hue: 5460,
+                                            saturation: 52428,
+                                            brightness,
+                                            kelvin,
+                                        };
+                                        let _ = handlers.protocol.send_color_command(&socket, target, addr, flicker_color, 0);
+                                    }
+                                    thread::sleep(Duration::from_millis(200 + rand::thread_rng().gen::<u64>() * 100));
+                                }
+                            }
+                        });
+                        
+                        return Response::json(&json!({
+                            "success": true,
+                            "message": format!("Fireplace effect started on {} bulbs", bulbs_vec.len()),
+                            "effect": "fireplace",
+                        }));
+                    }
+                    "aurora" => {
+                        // Aurora effect: smooth color transitions through greens and blues
+                        let sock_clone = sock.try_clone().ok();
+                        let bulbs_clone: Vec<(u64, std::net::SocketAddr)> = bulbs_vec.iter()
+                            .map(|b| (b.target, b.addr))
+                            .collect();
+                        
+                        thread::spawn(move || {
+                            for step in 0..72 {
+                                if let Some(socket) = sock_clone.as_ref() {
+                                    let hue = ((180 + step * 10) % 360) as f64 / 360.0 * 65535.0;
+                                    let saturation = (50.0 + (step as f64 / 72.0 * 30.0)) as u16 * 65535 / 100;
+                                    let aurora_color = HSBK {
+                                        hue: hue as u16,
+                                        saturation,
+                                        brightness: 45875,
+                                        kelvin: 6000,
+                                    };
+                                    for &(target, addr) in &bulbs_clone {
+                                        let _ = handlers.protocol.send_color_command(socket, target, addr, aurora_color, 0);
+                                    }
+                                }
+                                thread::sleep(Duration::from_millis(500));
+                            }
+                        });
+                        
+                        return Response::json(&json!({
+                            "success": true,
+                            "message": format!("Aurora effect started on {} bulbs", bulbs_vec.len()),
+                            "effect": "aurora",
+                        }));
+                    }
                     "pulse" => {
                         // Pulse effect: fade in/out
                         let original_colors: Vec<(u64, HSBK)> = bulbs_vec.iter().map(|b| {
@@ -894,7 +960,7 @@ fn handle_effects(request: &Request) -> Response {
                         return Response::json(&json!({
                             "success": false,
                             "message": format!("Unknown effect: {}", input.effect),
-                            "available_effects": ["pulse", "rainbow", "strobe", "flash", "color_cycle"]
+                            "available_effects": ["pulse", "rainbow", "strobe", "flash", "color_cycle", "fireplace", "aurora", "breath"]
                         }));
                     }
                 }
