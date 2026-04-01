@@ -47,7 +47,8 @@ const LifXTouchControls = {
     touchSensitivityLevels: {
         low: { swipeDistance: 80, swipeTime: 400, pinchDistance: 50 },
         medium: { swipeDistance: 50, swipeTime: 300, pinchDistance: 30 },
-        high: { swipeDistance: 30, swipeTime: 200, pinchDistance: 20 }
+        high: { swipeDistance: 30, swipeTime: 200, pinchDistance: 20 },
+        very_high: { swipeDistance: 15, swipeTime: 150, pinchDistance: 10 }
     },
     hapticEnabled: true,
     ambientLightSync: false,
@@ -3305,6 +3306,17 @@ const LifXTouchControls = {
                             </div>
                         </div>
                         ${current === 'high' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                    </div>
+                    <div class="sensitivity-option ${current === 'very_high' ? 'active' : ''}" onclick="LifXTouchControls.setGestureSensitivityLevel('very_high')">
+                        <div class="sensitivity-option-label">
+                            <span class="sensitivity-option-icon">⚡</span>
+                            <div>
+                                <div>Very High</div>
+                                <div class="sensitivity-option-description">Maximum responsiveness - instant gesture detection</div>
+                                <div class="sensitivity-option-description">Swipe: ${swipeDistances['very_high']} | Hold: ${longPressDelays['very_high']}</div>
+                            </div>
+                        </div>
+                        ${current === 'very_high' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
                     </div>
                 </div>
                 

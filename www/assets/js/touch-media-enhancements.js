@@ -778,7 +778,9 @@ const TouchMediaEnhancements = (function() {
         const now = Date.now();
         const timeSinceLastBeat = now - lastBeatTime;
         
-        if (bassPeak > beatThreshold * 255 && timeSinceLastBeat > 200) {
+        const adaptiveThreshold = Math.max(0.6, Math.min(0.9, beatThreshold - (bassAvg / 255) * 0.2));
+        
+        if (bassPeak > adaptiveThreshold * 255 && timeSinceLastBeat > 200) {
             lastBeatTime = now;
             beatHistory.push(now);
             
@@ -788,14 +790,22 @@ const TouchMediaEnhancements = (function() {
                     intervals.push(beatHistory[i] - beatHistory[i - 1]);
                 }
                 
-                const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                const sortedIntervals = [...intervals].sort((a, b) => a - b);
+                const trimmedIntervals = sortedIntervals.slice(1, -1);
+                const avgInterval = trimmedIntervals.length > 0 
+                    ? trimmedIntervals.reduce((a, b) => a + b, 0) / trimmedIntervals.length
+                    : intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                
                 const detectedBpm = Math.round(60000 / avgInterval);
                 
                 if (detectedBpm > 60 && detectedBpm < 200) {
                     bpmHistory.push(detectedBpm);
                     if (bpmHistory.length > 8) bpmHistory.shift();
                     
-                    const smoothedBpm = Math.round(bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length);
+                    const weights = bpmHistory.map((_, i) => i + 1);
+                    const weightedSum = bpmHistory.reduce((sum, bpm, i) => sum + bpm * weights[i], 0);
+                    const weightTotal = weights.reduce((a, b) => a + b, 0);
+                    const smoothedBpm = Math.round(weightedSum / weightTotal);
                     updateBpm(smoothedBpm);
                     
                     if (mediaSyncActive && mediaSyncMode === 'beat') {
@@ -878,9 +888,20 @@ const TouchMediaEnhancements = (function() {
             const avg = band.count > 0 ? band.value / band.count : 0;
             const bandEl = document.getElementById(`band-${bandName}`);
             if (bandEl) {
-                bandEl.style.height = `${Math.max(10, (avg / 255) * 100)}%`;
+                const targetHeight = Math.max(10, (avg / 255) * 100);
+                const currentHeight = parseFloat(bandEl.style.height) || targetHeight;
+                const smoothedHeight = currentHeight + (targetHeight - currentHeight) * 0.3;
+                bandEl.style.height = `${smoothedHeight}%`;
                 bandEl.style.background = getBandColor(bandName, avg / 255);
                 bandEl.style.boxShadow = `0 0 ${Math.floor((avg / 255) * 15)}px ${getBandColor(bandName, avg / 255)}`;
+                
+                if (avg > 200) {
+                    bandEl.style.filter = 'brightness(1.3)';
+                    bandEl.style.transform = 'scaleX(1.1)';
+                } else {
+                    bandEl.style.filter = 'brightness(1)';
+                    bandEl.style.transform = 'scaleX(1)';
+                }
             }
         }
         
@@ -912,28 +933,46 @@ const TouchMediaEnhancements = (function() {
         return colors[bandName] || colors.mid;
     }
     
+    let lastLifxUpdate = 0;
+    let lifxColorHistory = { hue: 0, saturation: 50, brightness: 30 };
+    
     function updateLifxFromAudio(dataArray, peak, bassAvg, subBassAvg) {
+        const now = Date.now();
+        if (now - lastLifxUpdate < 50) return;
+        lastLifxUpdate = now;
+        
         const normalizedPeak = peak / 255;
         const normalizedBass = bassAvg / 255;
         const normalizedSubBass = subBassAvg / 255;
         
         const bassImpact = normalizedSubBass > 0.7 ? 1.3 : 1.0;
-        const hue = ((Date.now() / 30) + (normalizedBass * 60)) % 360;
-        const saturation = Math.min(100, 50 + normalizedPeak * 50);
-        const brightness = Math.min(100, 30 + normalizedBass * 70);
+        const beatBoost = normalizedSubBass > 0.75 ? 1.2 : 1.0;
+        
+        const targetHue = ((Date.now() / 30) + (normalizedBass * 60)) % 360;
+        const targetSaturation = Math.min(100, 50 + normalizedPeak * 50);
+        const targetBrightness = Math.min(100, 30 + normalizedBass * 70);
+        
+        lifxColorHistory.hue = lifxColorHistory.hue + (targetHue - lifxColorHistory.hue) * 0.2;
+        lifxColorHistory.saturation = lifxColorHistory.saturation + (targetSaturation - lifxColorHistory.saturation) * 0.3;
+        lifxColorHistory.brightness = lifxColorHistory.brightness + (targetBrightness - lifxColorHistory.brightness) * 0.3;
+        
+        const smoothedHue = lifxColorHistory.hue;
+        const smoothedSaturation = lifxColorHistory.saturation;
+        const smoothedBrightness = Math.min(100, lifxColorHistory.brightness * bassImpact * beatBoost);
         const temperature = 2700 + (normalizedPeak * 2300);
         
         if (typeof LifXTouchControls !== 'undefined') {
             const event = new CustomEvent('lifx-media-sync', {
                 detail: {
-                    hue: hue,
-                    saturation: saturation,
-                    brightness: brightness * bassImpact,
+                    hue: smoothedHue,
+                    saturation: smoothedSaturation,
+                    brightness: smoothedBrightness,
                     temperature: temperature,
                     intensity: normalizedPeak,
                     bassEnergy: normalizedBass,
                     subBassEnergy: normalizedSubBass,
-                    isBeat: normalizedSubBass > 0.75
+                    isBeat: normalizedSubBass > 0.75,
+                    beatBoost: beatBoost > 1.0
                 }
             });
             document.dispatchEvent(event);
