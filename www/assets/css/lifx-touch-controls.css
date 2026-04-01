@@ -4867,3 +4867,68 @@
     background: rgba(0, 212, 255, 0.2);
     border-color: #00d4ff;
 }
+
+/* Group Management Panel Styles */
+.saved-group-item {
+    transition: all 0.2s ease;
+}
+
+.saved-group-item:hover {
+    background: rgba(42, 42, 58, 0.8) !important;
+    transform: translateX(5px);
+}
+
+.group-save-section input:focus {
+    outline: none;
+    border-color: #00d4ff !important;
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+.saved-groups-section {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.saved-groups-section::-webkit-scrollbar {
+    width: 6px;
+}
+
+.saved-groups-section::-webkit-scrollbar-track {
+    background: rgba(42, 42, 58, 0.5);
+    border-radius: 3px;
+}
+
+.saved-groups-section::-webkit-scrollbar-thumb {
+    background: rgba(0, 212, 255, 0.3);
+    border-radius: 3px;
+}
+
+.saved-groups-section::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 212, 255, 0.5);
+}
+
+/* LIFX selection toolbar enhanced */
+.lifx-selection-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.lifx-selection-toolbar .btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+/* Batch operation button hover effects */
+.lifx-selection-toolbar .btn-success:hover {
+    background: rgba(40, 167, 69, 0.8) !important;
+    border-color: rgba(40, 167, 69, 0.8) !important;
+    transform: scale(1.05);
+}
+
+.lifx-selection-toolbar .btn-info:hover {
+    background: rgba(23, 162, 184, 0.8) !important;
+    border-color: rgba(23, 162, 184, 0.8) !important;
+    transform: scale(1.05);
+}

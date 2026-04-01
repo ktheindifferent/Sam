@@ -96,6 +96,7 @@ const LifXTouchControls = {
     radialMenuAngle: 0,
     quickBrightnessStep: 5,
     quickColorTempStep: 100,
+    savedGroups: [],
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
