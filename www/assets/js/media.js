@@ -5784,7 +5784,194 @@ function initEnhancedMediaFeatures() {
         
         // Initialize album art observer
         initAlbumArtObserver();
+        
+        // Initialize new touch enhancements
+        initMediaTouchGestures();
+        initMediaQuickActions();
+        initLifxMediaSync();
     });
+}
+
+// New touch gesture handlers for media player
+function initMediaTouchGestures() {
+    const mediaPlayer = document.querySelector('#media-player, #snapcast-player');
+    if (!mediaPlayer) return;
+    
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let doubleTapTimer = null;
+    
+    mediaPlayer.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+    }, { passive: true });
+    
+    mediaPlayer.addEventListener('touchend', (e) => {
+        const deltaX = e.changedTouches[0].clientX - touchStartX;
+        const deltaY = e.changedTouches[0].clientY - touchStartY;
+        const deltaTime = Date.now() - touchStartTime;
+        
+        // Double tap detection
+        if (deltaTime < 250 && doubleTapTimer) {
+            clearTimeout(doubleTapTimer);
+            doubleTapTimer = null;
+            handleMediaDoubleTap();
+            return;
+        }
+        
+        doubleTapTimer = setTimeout(() => {
+            doubleTapTimer = null;
+        }, 250);
+        
+        // Swipe detection
+        if (Math.abs(deltaX) > 50 || Math.abs(deltaY) > 50) {
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                handleMediaHorizontalSwipe(deltaX > 0 ? 'right' : 'left');
+            } else {
+                handleMediaVerticalSwipe(deltaY > 0 ? 'down' : 'up');
+            }
+        }
+    });
+    
+    console.log('Media touch gestures initialized');
+}
+
+function handleMediaDoubleTap() {
+    if (typeof MediaPlayer !== 'undefined' && MediaPlayer.togglePlayPause) {
+        MediaPlayer.togglePlayPause();
+        showMediaFeedback('Play/Pause', '▶️');
+    }
+}
+
+function handleMediaHorizontalSwipe(direction) {
+    if (direction === 'left') {
+        if (typeof MediaPlayer !== 'undefined' && MediaPlayer.nextTrack) {
+            MediaPlayer.nextTrack();
+            showMediaFeedback('Next Track', '⏭️');
+        }
+    } else {
+        if (typeof MediaPlayer !== 'undefined' && MediaPlayer.previousTrack) {
+            MediaPlayer.previousTrack();
+            showMediaFeedback('Previous Track', '⏮️');
+        }
+    }
+}
+
+function handleMediaVerticalSwipe(direction) {
+    if (direction === 'up') {
+        if (typeof MediaPlayer !== 'undefined') {
+            MediaPlayer.volume = Math.min(100, MediaPlayer.volume + 10);
+            showMediaFeedback(`Volume: ${MediaPlayer.volume}%`, '🔊');
+        }
+    } else {
+        if (typeof MediaPlayer !== 'undefined') {
+            MediaPlayer.volume = Math.max(0, MediaPlayer.volume - 10);
+            showMediaFeedback(`Volume: ${MediaPlayer.volume}%`, '🔉');
+        }
+    }
+}
+
+function showMediaFeedback(text, icon) {
+    const feedback = document.createElement('div');
+    feedback.className = 'media-touch-feedback';
+    feedback.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(42, 42, 58, 0.95);
+        border: 2px solid rgba(0, 212, 255, 0.5);
+        border-radius: 20px;
+        padding: 15px 30px;
+        z-index: 9999;
+        color: #00d4ff;
+        font-size: 18px;
+        font-weight: bold;
+        opacity: 0;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    `;
+    feedback.innerHTML = `<span>${icon}</span><span>${text}</span>`;
+    document.body.appendChild(feedback);
+    
+    setTimeout(() => feedback.style.opacity = '1', 10);
+    setTimeout(() => {
+        feedback.style.opacity = '0';
+        setTimeout(() => feedback.remove(), 300);
+    }, 800);
+}
+
+// Quick action buttons for media center
+function initMediaQuickActions() {
+    const quickActionsContainer = document.getElementById('media-quick-actions');
+    if (!quickActionsContainer) return;
+    
+    quickActionsContainer.innerHTML = `
+        <button class="media-quick-action-btn" onclick="MediaPlayer.togglePlayPause()" title="Play/Pause">
+            <i class="fas fa-play-pause"></i>
+        </button>
+        <button class="media-quick-action-btn" onclick="MediaPlayer.previousTrack()" title="Previous">
+            <i class="fas fa-step-backward"></i>
+        </button>
+        <button class="media-quick-action-btn" onclick="MediaPlayer.nextTrack()" title="Next">
+            <i class="fas fa-step-forward"></i>
+        </button>
+        <button class="media-quick-action-btn" onclick="toggleLifxMediaSync()" title="LIFX Sync">
+            <i class="fas fa-lightbulb"></i>
+        </button>
+        <button class="media-quick-action-btn" onclick="activatePartyMode()" title="Party Mode">
+            <i class="fas fa-party-horn"></i>
+        </button>
+        <button class="media-quick-action-btn" onclick="activateCalmMode()" title="Calm Mode">
+            <i class="fas fa-spa"></i>
+        </button>
+    `;
+    
+    console.log('Media quick actions initialized');
+}
+
+// LIFX media sync integration
+function initLifxMediaSync() {
+    if (typeof LifXTouchControls === 'undefined') return;
+    
+    MediaPlayer.lifxSyncEnabled = localStorage.getItem('lifx_media_sync_enabled') === 'true';
+    
+    if (MediaPlayer.lifxSyncEnabled) {
+        console.log('LIFX media sync enabled');
+    }
+}
+
+function toggleLifxMediaSync() {
+    MediaPlayer.lifxSyncEnabled = !MediaPlayer.lifxSyncEnabled;
+    localStorage.setItem('lifx_media_sync_enabled', MediaPlayer.lifxSyncEnabled);
+    
+    if (typeof LifXTouchControls !== 'undefined') {
+        LifXTouchControls.lifxMediaSyncEnabled = MediaPlayer.lifxSyncEnabled;
+    }
+    
+    showMediaFeedback(
+        MediaPlayer.lifxSyncEnabled ? 'LIFX Sync ON' : 'LIFX Sync OFF',
+        MediaPlayer.lifxSyncEnabled ? '💡' : '🌑'
+    );
+}
+
+// Party mode activation
+function activatePartyMode() {
+    if (typeof LifXTouchControls !== 'undefined') {
+        LifXTouchControls.activatePartyMode();
+    }
+    showMediaFeedback('Party Mode!', '🎉');
+}
+
+function activateCalmMode() {
+    if (typeof LifXTouchControls !== 'undefined') {
+        LifXTouchControls.activateCalmMode();
+    }
+    showMediaFeedback('Calm Mode', '🧘');
 }
 
 initEnhancedMediaFeatures();

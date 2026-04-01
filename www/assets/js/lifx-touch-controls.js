@@ -6996,6 +6996,113 @@ const LifXTouchControls = {
         if (!this.adaptiveSensitivityEnabled) return false;
         const accuracy = this.gestureAccuracyScore;
         return accuracy < 50 && this.touchVelocity < 0.3;
+    },
+    
+    initHapticFeedback: function() {
+        if (!navigator.vibrate) {
+            console.log('Haptic feedback not supported on this device');
+            return;
+        }
+        this.hapticEnabled = true;
+        console.log('Haptic feedback enabled');
+    },
+    
+    initVoiceShortcuts: function() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            return;
+        }
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.voiceRecognition = new SpeechRecognition();
+        this.voiceRecognition.continuous = false;
+        this.voiceRecognition.interimResults = false;
+        this.voiceRecognition.lang = 'en-US';
+        this.voiceRecognition.onresult = (event) => {
+            const command = event.results[0][0].transcript.toLowerCase();
+            this.processVoiceCommand(command);
+        };
+        console.log('Voice shortcuts enabled');
+    },
+    
+    processVoiceCommand: function(command) {
+        const commands = {
+            'lights on': () => this.powerAll('on'),
+            'lights off': () => this.powerAll('off'),
+            'brighter': () => this.adjustBrightness(20),
+            'dimmer': () => this.adjustBrightness(-20),
+            'warmer': () => this.adjustColorTemp(300),
+            'cooler': () => this.adjustColorTemp(-300),
+            'party mode': () => this.activatePartyMode(),
+            'calm mode': () => this.activateCalmMode(),
+            'rainbow': () => this.applyScene('rainbow'),
+            'relax': () => this.applyScene('relax'),
+            'focus': () => this.applyScene('focus'),
+            'movie': () => this.applyScene('movie')
+        };
+        
+        for (const [keyword, action] of Object.entries(commands)) {
+            if (command.includes(keyword)) {
+                action();
+                this.showEnhancedGestureFeedback(`Voice: ${keyword}`, '🎤');
+                return;
+            }
+        }
+    },
+    
+    startVoiceCommand: function() {
+        if (this.voiceRecognition) {
+            this.voiceRecognition.start();
+            this.showEnhancedGestureFeedback('Listening...', '🎤');
+        }
+    },
+    
+    initQuickActions: function() {
+        this.quickActions = [
+            { name: 'All On', icon: 'fa-power-off', action: () => this.powerAll('on'), color: '#00ff88' },
+            { name: 'All Off', icon: 'fa-power-off', action: () => this.powerAll('off'), color: '#ff6b6b' },
+            { name: 'Party', icon: 'fa-party-horn', action: () => this.activatePartyMode(), color: '#ff0080' },
+            { name: 'Calm', icon: 'fa-spa', action: () => this.activateCalmMode(), color: '#4ecdc4' },
+            { name: 'Rainbow', icon: 'fa-rainbow', action: () => this.applyScene('rainbow'), color: '#00d4ff' },
+            { name: 'Voice', icon: 'fa-microphone', action: () => this.startVoiceCommand(), color: '#ffe66d' }
+        ];
+        console.log('Quick actions initialized');
+    },
+    
+    showQuickActionsPanel: function() {
+        if (typeof Swal === 'undefined') return;
+        Swal.fire({
+            title: '<i class="fas fa-bolt"></i> Quick Actions',
+            html: `
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 20px;">
+                    ${this.quickActions.map(action => `
+                        <button class="quick-action-btn" 
+                                onclick="LifXTouchControls.hideQuickActionsPanel(); ${action.action.toString().includes('()') ? action.action.toString() : 'LifXTouchControls.' + action.name.toLowerCase().replace(' ', '') + '()'}"
+                                style="background: ${action.color}20; border: 2px solid ${action.color}; border-radius: 15px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas ${action.icon}" style="font-size: 32px; color: ${action.color};"></i>
+                            <div style="color: ${action.color}; margin-top: 10px; font-weight: bold;">${action.name}</div>
+                        </button>
+                    `).join('')}
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '500px'
+        });
+    },
+    
+    hideQuickActionsPanel: function() {
+        if (typeof Swal !== 'undefined') Swal.close();
+    },
+    
+    initGestureShortcuts: function() {
+        this.gestureShortcuts = {
+            'doubleTap': () => this.togglePower(),
+            'longPress': () => this.showQuickActionsPanel(),
+            'threeFingerUp': () => this.showFavoriteScenesPanel(),
+            'threeFingerDown': () => this.showTouchSensitivityPanel(),
+            'edgeSwipeLeft': () => this.showQuickScenesPanel(),
+            'edgeSwipeRight': () => this.showMediaControls()
+        };
+        console.log('Gesture shortcuts initialized');
     }
 };
 
@@ -7025,6 +7132,10 @@ document.addEventListener('DOMContentLoaded', function() {
     LifXTouchControls.initAdvancedGestureModes();
     LifXTouchControls.initMediaCenterIntegration();
     
+    // Initialize quick actions and gesture shortcuts
+    LifXTouchControls.initQuickActions();
+    LifXTouchControls.initGestureShortcuts();
+    
     // Expose global functions for voice and accessibility
     window.startLifxVoiceCommand = () => LifXTouchControls.initVoiceControl();
     window.setLifxAccessibilityMode = (enabled) => LifXTouchControls.setAccessibilityMode(enabled);
@@ -7048,6 +7159,8 @@ document.addEventListener('DOMContentLoaded', function() {
     window.toggleLifxColorCycle = () => LifXTouchControls.toggleColorCycle();
     window.toggleLifxLightPainting = () => LifXTouchControls.toggleLightPainting();
     window.randomLifxScene = () => LifXTouchControls.randomScene();
+    window.showLifxQuickActions = () => LifXTouchControls.showQuickActionsPanel();
+    window.startLifxVoiceShortcut = () => LifXTouchControls.startVoiceCommand();
     
     console.log('LIFX Touch Controls initialized with enhanced features');
 });
