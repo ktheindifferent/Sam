@@ -110,7 +110,12 @@ const MediaPlayer = {
     lightSyncInterval: null,
     beatDetectionInterval: null,
     auroraInterval: null,
-    pulseInterval: null
+    pulseInterval: null,
+    touchTrailEnabled: true,
+    touchTrailMaxCount: 10,
+    gestureHistory: [],
+    lastGestureTime: 0,
+    gestureCooldown: 100
 };
 
 // Initialize when DOM is ready
@@ -4170,7 +4175,17 @@ const EnhancedScenePresets = {
         'dream': { hue: 190, saturation: 60, brightness: 45, temperature: 4500, name: 'Dream', emoji: '💭', special: 'dream' },
         'chill': { hue: 230, saturation: 45, brightness: 55, temperature: 3500, name: 'Chill', emoji: '😌' },
         'adventure': { hue: 35, saturation: 85, brightness: 75, temperature: 5000, name: 'Adventure', emoji: '🗺️', special: 'adventure' },
-        'festival': { hue: 320, saturation: 95, brightness: 85, temperature: 6000, name: 'Festival', emoji: '🎉', special: 'festival' }
+        'festival': { hue: 320, saturation: 95, brightness: 85, temperature: 6000, name: 'Festival', emoji: '🎉', special: 'festival' },
+        'sunset': { hue: 20, saturation: 75, brightness: 65, temperature: 2800, name: 'Sunset', emoji: '🌇' },
+        'ocean': { hue: 200, saturation: 70, brightness: 60, temperature: 6500, name: 'Ocean', emoji: '🌊', special: 'ocean' },
+        'forest': { hue: 120, saturation: 65, brightness: 55, temperature: 4500, name: 'Forest', emoji: '🌲' },
+        'candy': { hue: 330, saturation: 85, brightness: 75, temperature: 5500, name: 'Candy', emoji: '🍬' },
+        'nightlight': { hue: 240, saturation: 30, brightness: 20, temperature: 2700, name: 'Nightlight', emoji: '🌃' },
+        'focus': { hue: 200, saturation: 35, brightness: 85, temperature: 6500, name: 'Focus', emoji: '🎯' },
+        'relax': { hue: 180, saturation: 40, brightness: 50, temperature: 4000, name: 'Relax', emoji: '😌' },
+        'energize': { hue: 40, saturation: 80, brightness: 90, temperature: 6000, name: 'Energize', emoji: '⚡' },
+        'galaxy': { hue: 290, saturation: 80, brightness: 60, temperature: 7000, name: 'Galaxy', emoji: '🌌', special: 'galaxy' },
+        'lava': { hue: 10, saturation: 90, brightness: 70, temperature: 2500, name: 'Lava', emoji: '🌋', special: 'lava' }
     },
     
     currentScene: null,
@@ -4216,12 +4231,17 @@ const EnhancedScenePresets = {
             case 'aurora':
                 startAuroraEffect();
                 break;
+            case 'ocean':
+                startOceanEffect();
+                break;
             case 'nebula':
             case 'cosmic':
             case 'dream':
             case 'adventure':
             case 'festival':
             case 'thunder':
+            case 'galaxy':
+            case 'lava':
                 this.startDynamicEffect(effect, targets);
                 break;
         }
@@ -4271,12 +4291,28 @@ const EnhancedScenePresets = {
             },
             'thunder': { 
                 hues: [50, 0, 60], 
-                duration: 2000, 
+                duration: 2000,
                 brightness: [40, 100],
                 saturation: [30, 60],
                 pattern: 'storm',
                 flash: true,
                 description: 'Dramatic lightning storms'
+            },
+            'galaxy': {
+                hues: [280, 300, 320, 260, 290, 310],
+                duration: 5000,
+                brightness: [40, 70],
+                saturation: [75, 95],
+                pattern: 'smooth',
+                description: 'Spiral galaxy rotation'
+            },
+            'lava': {
+                hues: [10, 15, 20, 5, 25],
+                duration: 3000,
+                brightness: [50, 85],
+                saturation: [80, 100],
+                pattern: 'pulse',
+                description: 'Molten lava flow'
             }
         };
         
@@ -4698,12 +4734,260 @@ function showBeatDetectionCalibration() {
     BeatDetectionCalibration.start();
 }
 
+// Enhanced touch feedback with visual trail
+function createTouchTrail(x, y) {
+    if (!MediaPlayer.touchTrailEnabled) return;
+    
+    const trail = document.createElement('div');
+    trail.className = 'touch-trail';
+    trail.style.left = (x - 10) + 'px';
+    trail.style.top = (y - 10) + 'px';
+    document.body.appendChild(trail);
+    
+    setTimeout(() => {
+        if (trail.parentNode) trail.remove();
+    }, 400);
+}
+
+// Enhanced gesture feedback with animation
+function showEnhancedGestureFeedback(gestureType, direction, x, y) {
+    const feedback = document.createElement('div');
+    feedback.className = 'touch-gesture-indicator visible';
+    feedback.style.left = x + 'px';
+    feedback.style.top = y + 'px';
+    feedback.style.transform = 'translate(-50%, -50%)';
+    
+    const icons = {
+        'swipe-left': '←',
+        'swipe-right': '→',
+        'swipe-up': '↑',
+        'swipe-down': '↓',
+        'tap': '👆',
+        'double-tap': '👆👆',
+        'long-press': '⏱',
+        'pinch-in': '🤏',
+        'pinch-out': '👐'
+    };
+    
+    const icon = icons[`${gestureType}-${direction}`] || icons[gestureType] || '✨';
+    feedback.innerHTML = `<span class="swipe-direction-arrow">${icon}</span>`;
+    document.body.appendChild(feedback);
+    
+    setTimeout(() => {
+        feedback.remove();
+    }, 800);
+}
+
+// Gesture history for undo functionality
+function recordGesture(gesture) {
+    MediaPlayer.gestureHistory.push({
+        ...gesture,
+        timestamp: Date.now()
+    });
+    
+    if (MediaPlayer.gestureHistory.length > 20) {
+        MediaPlayer.gestureHistory.shift();
+    }
+}
+
+function undoLastGesture() {
+    const lastGesture = MediaPlayer.gestureHistory.pop();
+    if (lastGesture) {
+        console.log('Undoing gesture:', lastGesture);
+        showNotification('Gesture undone', 'info');
+        return lastGesture;
+    }
+    return null;
+}
+
+// Enhanced BPM indicator with animation
+function updateBpmRealtime() {
+    const indicator = document.querySelector('.bpm-realtime-indicator');
+    const valueEl = document.getElementById('realtime-bpm-value');
+    
+    if (!indicator || !valueEl) return;
+    
+    const bpm = MediaPlayer.lifxBeatDetection?.bpmEstimate || 
+                MediaPlayer.beatDetection?.bpmEstimate || 0;
+    
+    if (bpm > 0 && (MediaPlayer.lifxSyncEnabled || MediaPlayer.ambientLightEnabled)) {
+        valueEl.textContent = Math.round(bpm);
+        indicator.classList.add('visible');
+        
+        // Pulse the indicator with the beat
+        const now = Date.now();
+        const timeSinceLastBeat = now - (MediaPlayer.lifxBeatDetection?.lastBeatTime || 0);
+        const beatInterval = 60000 / bpm;
+        
+        if (timeSinceLastBeat < beatInterval * 0.2) {
+            indicator.style.transform = 'translateY(0) scale(1.05)';
+            indicator.style.boxShadow = '0 0 30px rgba(255, 107, 107, 0.8)';
+        } else {
+            indicator.style.transform = 'translateY(0) scale(1)';
+            indicator.style.boxShadow = '';
+        }
+    } else {
+        indicator.classList.remove('visible');
+    }
+}
+
+// Smooth color transition for LIFX sync
+function smoothColorTransition(targetHue, targetSaturation, targetBrightness, duration) {
+    const startHue = MediaPlayer.lastHue || 0;
+    const startSat = MediaPlayer.lastSaturation || 100;
+    const startBright = MediaPlayer.lastBrightness || 50;
+    
+    const startTime = Date.now();
+    
+    function animate() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(1, elapsed / duration);
+        
+        // Ease out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        
+        const currentHue = startHue + (targetHue - startHue) * eased;
+        const currentSat = startSat + (targetSaturation - startSat) * eased;
+        const currentBright = startBright + (targetBrightness - startBright) * eased;
+        
+        MediaPlayer.lastHue = currentHue;
+        MediaPlayer.lastSaturation = currentSat;
+        MediaPlayer.lastBrightness = currentBright;
+        
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        }
+    }
+    
+    animate();
+}
+
+// Improved beat detection with adaptive thresholding
+function enhanceBeatDetection() {
+    const detection = MediaPlayer.lifxBeatDetection;
+    
+    if (!detection) return;
+    
+    // Adaptive sensitivity based on recent beat history
+    const recentBeats = detection.beatHistory?.slice(-8) || [];
+    const beatCount = recentBeats.length;
+    
+    if (beatCount < 3) {
+        // Not enough data, use default sensitivity
+        detection.adaptiveThreshold = 0.25;
+    } else {
+        // Calculate beat consistency
+        const intervals = [];
+        for (let i = 1; i < recentBeats.length; i++) {
+            intervals.push(recentBeats[i].time - recentBeats[i-1].time);
+        }
+        
+        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        const variance = intervals.reduce((sum, i) => sum + Math.pow(i - avgInterval, 2), 0) / intervals.length;
+        const stdDev = Math.sqrt(variance);
+        const consistency = 1 - Math.min(1, stdDev / avgInterval);
+        
+        // Adjust threshold based on consistency
+        if (consistency > 0.8) {
+            // Very consistent beats, can be more sensitive
+            detection.adaptiveThreshold = Math.max(0.15, detection.threshold * 0.8);
+        } else if (consistency < 0.4) {
+            // Inconsistent, raise threshold to avoid false positives
+            detection.adaptiveThreshold = Math.min(0.5, detection.threshold * 1.2);
+        }
+    }
+}
+
+// Media playback quality indicator
+function showPlaybackQualityIndicator(quality) {
+    const indicator = document.createElement('div');
+    indicator.className = 'playback-quality-indicator';
+    indicator.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(42, 42, 58, 0.9);
+        border: 2px solid ${quality === 'high' ? '#00ff88' : quality === 'medium' ? '#ffaa00' : '#ff6b6b'};
+        border-radius: 8px;
+        padding: 8px 12px;
+        z-index: 9999;
+        color: #fff;
+        font-size: 12px;
+        font-weight: bold;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    `;
+    indicator.innerHTML = `
+        <i class="fas fa-${quality === 'high' ? 'signal' : quality === 'medium' ? 'wifi' : 'wifi-off'}"></i>
+        ${quality.toUpperCase()}
+    `;
+    document.body.appendChild(indicator);
+    
+    setTimeout(() => indicator.classList.add('visible'), 10);
+    setTimeout(() => {
+        indicator.classList.remove('visible');
+        setTimeout(() => indicator.remove(), 300);
+    }, 3000);
+}
+
+// Queue management enhancements
+function showQueuePositionToast(position, total) {
+    const toast = document.createElement('div');
+    toast.className = 'queue-position-toast';
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: rgba(42, 42, 58, 0.95);
+        border: 1px solid rgba(0, 212, 255, 0.5);
+        border-radius: 12px;
+        padding: 12px 24px;
+        z-index: 9999;
+        color: #00d4ff;
+        font-size: 14px;
+        opacity: 0;
+        transition: all 0.3s ease;
+    `;
+    toast.innerHTML = `
+        <i class="fas fa-list-ul"></i>
+        Track ${position} of ${total} in queue
+    `;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+    }, 10);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(20px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 2000);
+}
+
 // Initialize enhanced media features
 function initEnhancedMediaFeatures() {
     console.log('Enhanced media features initialized');
     
+    // Update BPM indicator periodically
+    setInterval(updateBpmRealtime, 200);
+    
+    // Enhance beat detection periodically
+    setInterval(enhanceBeatDetection, 1000);
+    
     document.addEventListener('DOMContentLoaded', function() {
         showBpmIndicator();
+        
+        // Add touch trail to media player
+        const mediaPlayer = document.querySelector('#media-player, #snapcast-player');
+        if (mediaPlayer && MediaPlayer.touchTrailEnabled) {
+            mediaPlayer.addEventListener('touchmove', (e) => {
+                const touch = e.touches[0];
+                createTouchTrail(touch.clientX, touch.clientY);
+            }, { passive: true });
+        }
     });
 }
 
