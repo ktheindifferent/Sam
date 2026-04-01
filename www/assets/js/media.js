@@ -2554,6 +2554,7 @@ function updateMiniPlayerInfo() {
     
     const titleEl = miniPlayer.querySelector('.mini-player-title');
     const artistEl = miniPlayer.querySelector('.mini-player-artist');
+    const artEl = miniPlayer.querySelector('.mini-player-art');
     const playIcon = document.getElementById('mini-play-icon');
     
     if (titleEl && MediaPlayer.currentTrack) {
@@ -2562,6 +2563,16 @@ function updateMiniPlayerInfo() {
     
     if (artistEl && MediaPlayer.currentTrack) {
         artistEl.textContent = MediaPlayer.currentTrack.artist || 'Unknown Artist';
+    }
+    
+    if (artEl && MediaPlayer.currentTrack) {
+        if (MediaPlayer.currentTrack.artwork) {
+            artEl.style.backgroundImage = `url(${MediaPlayer.currentTrack.artwork})`;
+        } else {
+            artEl.style.background = 'linear-gradient(135deg, #27a0b9, #00d4ff)';
+        }
+        artEl.style.backgroundSize = 'cover';
+        artEl.style.backgroundPosition = 'center';
     }
     
     if (playIcon) {
@@ -2575,9 +2586,20 @@ function showNowPlaying(track) {
     
     const titleEl = toast.querySelector('.now-playing-title');
     const artistEl = toast.querySelector('.now-playing-artist');
+    const artEl = toast.querySelector('.now-playing-art');
     
     if (titleEl) titleEl.textContent = track?.title || 'Now Playing';
     if (artistEl) artistEl.textContent = track?.artist || 'Unknown Artist';
+    
+    if (artEl) {
+        if (track?.artwork) {
+            artEl.style.backgroundImage = `url(${track.artwork})`;
+            artEl.style.backgroundSize = 'cover';
+            artEl.style.backgroundPosition = 'center';
+        } else {
+            artEl.style.background = 'linear-gradient(135deg, #27a0b9, #00d4ff)';
+        }
+    }
     
     toast.classList.add('visible');
     
@@ -4977,15 +4999,614 @@ function showQueuePositionToast(position, total) {
     }, 2000);
 }
 
-// Initialize enhanced media features
+// Gesture Tutorial System
+const GestureTutorial = {
+    shown: false,
+    steps: [
+        { icon: '👆', text: 'Tap to play/pause', duration: 2000 },
+        { icon: '➡️⬅️', text: 'Swipe left/right for next/previous track', duration: 2500 },
+        { icon: '🔊↑🔊↓', text: 'Swipe up/down for volume control', duration: 2500 },
+        { icon: '👆👆', text: 'Double-tap for quick actions', duration: 2000 },
+        { icon: '⏱', text: 'Long-press for settings menu', duration: 2000 }
+    ],
+    
+    show: function() {
+        if (this.shown || typeof Swal === 'undefined') return;
+        
+        this.shown = true;
+        localStorage.setItem('sam_gesture_tutorial_shown', 'true');
+        
+        let currentStep = 0;
+        
+        const showStep = () => {
+            if (currentStep >= this.steps.length) {
+                this.complete();
+                return;
+            }
+            
+            const step = this.steps[currentStep];
+            showMediaTouchHint(step.text, step.icon);
+            
+            currentStep++;
+            setTimeout(showStep, step.duration);
+        };
+        
+        Swal.fire({
+            title: '<i class="fas fa-hand-pointer"></i> Touch Gestures Available',
+            html: `
+                <div style="text-align: left; padding: 10px;">
+                    <p style="color: #adb5bd; margin-bottom: 20px;">
+                        SAM Media Center supports intuitive touch gestures for seamless control.
+                        Would you like to see a quick tutorial?
+                    </p>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                        <div style="background: rgba(0, 212, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">👆</div>
+                            <div style="font-size: 12px; color: #adb5bd;">Tap Controls</div>
+                        </div>
+                        <div style="background: rgba(0, 212, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">👋</div>
+                            <div style="font-size: 12px; color: #adb5bd;">Swipe Gestures</div>
+                        </div>
+                        <div style="background: rgba(0, 212, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">👆👆</div>
+                            <div style="font-size: 12px; color: #adb5bd;">Double Tap</div>
+                        </div>
+                        <div style="background: rgba(0, 212, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">⏱</div>
+                            <div style="font-size: 12px; color: #adb5bd;">Long Press</div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Show Tutorial',
+            cancelButtonText: 'Skip',
+            confirmButtonColor: '#00d4ff',
+            cancelButtonColor: '#6c757d'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                setTimeout(showStep, 500);
+            }
+        });
+    },
+    
+    complete: function() {
+        showNotification('Gesture tutorial complete! Start exploring with touch.', 'success');
+    },
+    
+    reset: function() {
+        this.shown = false;
+        localStorage.removeItem('sam_gesture_tutorial_shown');
+        showNotification('Gesture tutorial reset', 'info');
+    }
+};
+
+// Enhanced touch hold with percentage display
+function showEnhancedTouchHoldProgress(progress, x, y) {
+    let progressEl = document.querySelector('.touch-hold-progress-with-value');
+    if (!progressEl) {
+        progressEl = document.createElement('div');
+        progressEl.className = 'touch-hold-progress-with-value';
+        progressEl.innerHTML = `
+            <div class="touch-hold-ring"></div>
+            <span class="touch-hold-progress-value">${progress}%</span>
+        `;
+        progressEl.style.cssText = `
+            position: fixed;
+            left: ${x}px;
+            top: ${y}px;
+            transform: translate(-50%, -50%);
+            width: 70px;
+            height: 70px;
+            z-index: 9999;
+            pointer-events: none;
+        `;
+        document.body.appendChild(progressEl);
+    } else {
+        progressEl.querySelector('.touch-hold-progress-value').textContent = progress + '%';
+        progressEl.style.left = x + 'px';
+        progressEl.style.top = y + 'px';
+    }
+    
+    if (progress >= 100) {
+        setTimeout(() => {
+            if (progressEl) progressEl.remove();
+        }, 500);
+    }
+}
+
+// Quick scene swipe detection
+function initQuickSceneSwipe() {
+    const swipeZone = document.createElement('div');
+    swipeZone.className = 'quick-scene-swipe-zone';
+    document.body.appendChild(swipeZone);
+    
+    let touchStartX = 0;
+    let touchStartTime = 0;
+    
+    swipeZone.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartTime = Date.now();
+    }, { passive: true });
+    
+    swipeZone.addEventListener('touchend', (e) => {
+        const deltaX = e.changedTouches[0].clientX - touchStartX;
+        const deltaTime = Date.now() - touchStartTime;
+        
+        if (Math.abs(deltaX) > 50 && deltaTime < 300) {
+            const sceneKeys = Object.keys(EnhancedScenePresets.presets);
+            const currentIndex = sceneKeys.indexOf(EnhancedScenePresets.currentScene) || 0;
+            
+            if (deltaX > 0) {
+                const prevIndex = currentIndex > 0 ? currentIndex - 1 : sceneKeys.length - 1;
+                EnhancedScenePresets.apply(sceneKeys[prevIndex]);
+            } else {
+                const nextIndex = (currentIndex + 1) % sceneKeys.length;
+                EnhancedScenePresets.apply(sceneKeys[nextIndex]);
+            }
+        }
+    });
+}
+
+// Multi-bulb selection with drag
+function initMultiBulbDragSelection() {
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragElement = null;
+    
+    document.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1 && e.target.closest('.lifx-bulb-control')) {
+            isDragging = true;
+            dragStartX = e.touches[0].clientX;
+            dragStartY = e.touches[0].clientY;
+        }
+    }, { passive: true });
+    
+    document.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - dragStartX;
+        const deltaY = touch.clientY - dragStartY;
+        
+        if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+            if (!dragElement) {
+                dragElement = document.createElement('div');
+                dragElement.className = 'multi-select-drag-line';
+                document.body.appendChild(dragElement);
+            }
+            
+            const width = Math.abs(deltaX);
+            const height = Math.abs(deltaY);
+            const left = deltaX > 0 ? dragStartX : touch.clientX;
+            const top = deltaY > 0 ? dragStartY : touch.clientY;
+            
+            dragElement.style.left = left + 'px';
+            dragElement.style.top = top + 'px';
+            dragElement.style.width = width + 'px';
+            dragElement.style.height = height + 'px';
+            
+            checkBulbIntersection(dragElement);
+        }
+    }, { passive: true });
+    
+    document.addEventListener('touchend', () => {
+        isDragging = false;
+        if (dragElement) {
+            dragElement.remove();
+            dragElement = null;
+        }
+    });
+}
+
+function checkBulbIntersection(dragBox) {
+    const dragRect = dragBox.getBoundingClientRect();
+    const bulbs = document.querySelectorAll('.lifx-bulb-control');
+    
+    bulbs.forEach(bulb => {
+        const bulbRect = bulb.getBoundingClientRect();
+        
+        if (!(dragRect.right < bulbRect.left || 
+              dragRect.left > bulbRect.right || 
+              dragRect.bottom < bulbRect.top || 
+              dragRect.top > bulbRect.bottom)) {
+            
+            if (LifXTouchControls && typeof LifXTouchControls.selectBulb === 'function') {
+                const bulbId = bulb.dataset.bulbId || bulb.id;
+                if (bulbId && !LifXTouchControls.multiBulbSelection.includes(bulbId)) {
+                    LifXTouchControls.multiBulbSelection.push(bulbId);
+                    bulb.classList.add('multi-selected');
+                    updateMultiBulbToolbar();
+                }
+            }
+        }
+    });
+}
+
+function updateMultiBulbToolbar() {
+    const toolbar = document.getElementById('lifx-selection-toolbar');
+    const countEl = document.getElementById('lifx-selection-count');
+    
+    if (toolbar && countEl && LifXTouchControls) {
+        const count = LifXTouchControls.multiBulbSelection.length;
+        countEl.textContent = count + ' selected';
+        
+        if (count > 0) {
+            toolbar.classList.add('visible');
+        } else {
+            toolbar.classList.remove('visible');
+        }
+    }
+}
+
+// Color temperature quick adjustment
+function initColorTempQuickAdjust() {
+    const colorTempSlider = document.querySelector('.color-temp-slider-container');
+    if (!colorTempSlider) {
+        const container = document.createElement('div');
+        container.className = 'color-temp-slider-container';
+        container.innerHTML = `
+            <div class="color-temp-gradient">
+                <div class="color-temp-indicator" style="left: 50%;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: #adb5bd; font-size: 11px; margin-top: 5px;">
+                <span><i class="fas fa-sun"></i> Warm</span>
+                <span>Neutral</span>
+                <span><i class="fas fa-snowflake"></i> Cool</span>
+            </div>
+        `;
+        
+        const lifxPanel = document.querySelector('.lifx-control-panel');
+        if (lifxPanel) {
+            lifxPanel.appendChild(container);
+        }
+        
+        const indicator = container.querySelector('.color-temp-indicator');
+        let isSliding = false;
+        
+        container.addEventListener('touchstart', (e) => {
+            isSliding = true;
+            updateColorTemp(e.touches[0].clientX, container, indicator);
+        }, { passive: true });
+        
+        container.addEventListener('touchmove', (e) => {
+            if (!isSliding) return;
+            updateColorTemp(e.touches[0].clientX, container, indicator);
+        }, { passive: true });
+        
+        container.addEventListener('touchend', () => {
+            isSliding = false;
+        });
+        
+        container.addEventListener('click', (e) => {
+            updateColorTemp(e.clientX, container, indicator);
+        });
+    }
+}
+
+function updateColorTemp(clientX, container, indicator) {
+    const rect = container.getBoundingClientRect();
+    const percentage = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    
+    indicator.style.left = (percentage * 100) + '%';
+    
+    const kelvin = Math.round(2000 + (percentage * 4500));
+    
+    if (LifXTouchControls) {
+        LifXTouchControls.colorTempLevel = kelvin;
+        if (LifXTouchControls.selectedBulb) {
+            LifXTouchControls.adjustColorTemp(0);
+        }
+    }
+    
+    showEnhancedTouchFeedback(
+        rect.left + (percentage * rect.width),
+        rect.top,
+        'color-temp',
+        `${kelvin}K`
+    );
+}
+
+// Party mode visualizer
+function initPartyModeVisualizer() {
+    const visualizer = document.createElement('div');
+    visualizer.className = 'party-mode-visualizer';
+    visualizer.id = 'party-mode-visualizer';
+    document.body.appendChild(visualizer);
+}
+
+function updatePartyModeVisualizer() {
+    const visualizer = document.getElementById('party-mode-visualizer');
+    if (!visualizer) return;
+    
+    if (MediaPlayer.partyMode && MediaPlayer.isPlaying) {
+        visualizer.classList.add('active');
+        
+        if (visualizer.children.length < 20) {
+            for (let i = 0; i < 20; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'party-dot';
+                dot.style.left = Math.random() * 100 + '%';
+                dot.style.top = Math.random() * 100 + '%';
+                dot.style.animationDelay = Math.random() * 2 + 's';
+                visualizer.appendChild(dot);
+            }
+        }
+    } else {
+        visualizer.classList.remove('active');
+    }
+}
+
+// Bedtime mode with gradual dimming
+function startBedtimeMode(durationMinutes) {
+    const duration = durationMinutes * 60 * 1000;
+    const interval = 5000;
+    const steps = duration / interval;
+    
+    let currentStep = 0;
+    const startBrightness = LifXTouchControls?.brightnessLevel || 50;
+    const brightnessDecrease = startBrightness / steps;
+    
+    const bedtimeInterval = setInterval(() => {
+        currentStep++;
+        const newBrightness = Math.max(5, Math.round(startBrightness - (brightnessDecrease * currentStep)));
+        
+        if (LifXTouchControls) {
+            LifXTouchControls.adjustBrightness(newBrightness - LifXTouchControls.brightnessLevel);
+        }
+        
+        if (currentStep >= steps) {
+            clearInterval(bedtimeInterval);
+            showNotification('Bedtime mode complete. Sweet dreams!', 'info');
+            showBedtimeModeIndicator();
+        }
+    }, interval);
+    
+    showNotification(`Bedtime mode started - lights will dim over ${durationMinutes} minutes`, 'info');
+}
+
+function showBedtimeModeIndicator() {
+    const indicator = document.createElement('div');
+    indicator.className = 'bedtime-mode-active visible';
+    indicator.innerHTML = `
+        <i class="fas fa-moon"></i>
+        <span>Goodnight - Lights at minimum</span>
+    `;
+    document.body.appendChild(indicator);
+    
+    setTimeout(() => {
+        indicator.classList.remove('visible');
+        setTimeout(() => indicator.remove(), 500);
+    }, 5000);
+}
+
+// Reading mode optimization
+function startReadingMode() {
+    if (LifXTouchControls) {
+        LifXTouchControls.applyScene('reading');
+        LifXTouchControls.adjustBrightness(20);
+    }
+    
+    document.body.classList.add('reading-mode-active');
+    showNotification('Reading mode enabled - warm, comfortable lighting', 'info');
+}
+
+function stopReadingMode() {
+    document.body.classList.remove('reading-mode-active');
+    showNotification('Reading mode disabled', 'info');
+}
+
+// Focus mode with productivity timer
+function startFocusMode(durationMinutes = 25) {
+    if (LifXTouchControls) {
+        LifXTouchControls.applyScene('focus');
+        LifXTouchControls.adjustBrightness(30);
+    }
+    
+    document.body.classList.add('focus-mode-active');
+    
+    const focusTimer = setInterval(() => {
+        durationMinutes--;
+        
+        if (durationMinutes <= 0) {
+            clearInterval(focusTimer);
+            stopFocusMode();
+            showNotification('Focus session complete! Take a break.', 'success');
+            return;
+        }
+        
+        if (durationMinutes % 5 === 0) {
+            showNotification(`${durationMinutes} minutes remaining in focus session`, 'info');
+        }
+    }, 60000);
+    
+    showNotification(`Focus mode: ${durationMinutes} minute session started`, 'info');
+}
+
+function stopFocusMode() {
+    document.body.classList.remove('focus-mode-active');
+}
+
+// Enhanced media visualization
+function initEnhancedMediaVisualization() {
+    const vizContainer = document.getElementById('media-visualization-container');
+    if (!vizContainer) return;
+    
+    vizContainer.innerHTML = '';
+    const bars = 32;
+    
+    for (let i = 0; i < bars; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'media-viz-bar';
+        bar.style.cssText = `
+            flex: 1;
+            max-width: 20px;
+            background: linear-gradient(to top, #27a0b9, #00d4ff, #00ff88);
+            border-radius: 3px 3px 0 0;
+            transition: height 0.05s ease;
+            min-height: 5px;
+        `;
+        bar.dataset.index = i;
+        vizContainer.appendChild(bar);
+    }
+    
+    MediaPlayer.visualizationActive = true;
+}
+
+function updateMediaVisualization() {
+    if (!MediaPlayer.visualizationActive || !MediaPlayer.isPlaying) return;
+    
+    const analyser = MediaPlayer.analyser;
+    if (!analyser) return;
+    
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(dataArray);
+    
+    const bars = document.querySelectorAll('.media-viz-bar');
+    if (bars.length === 0) return;
+    
+    const step = Math.floor(dataArray.length / bars.length);
+    
+    bars.forEach((bar, i) => {
+        const value = dataArray[i * step] || 0;
+        const height = Math.max(5, (value / 255) * 100);
+        bar.style.height = height + '%';
+        
+        if (value > 200) {
+            bar.classList.add('peak');
+            bar.style.background = 'linear-gradient(to top, #ff0080, #ff6b6b, #ff8e8e)';
+            bar.style.boxShadow = '0 0 15px currentColor';
+        } else {
+            bar.classList.remove('peak');
+            bar.style.background = 'linear-gradient(to top, #27a0b9, #00d4ff, #00ff88)';
+        }
+    });
+}
+
+// Playback quality indicator for network streams
+function showPlaybackQualityIndicator(quality) {
+    const indicator = document.createElement('div');
+    indicator.className = 'playback-quality-indicator';
+    indicator.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(42, 42, 58, 0.9);
+        border: 2px solid ${quality === 'high' ? '#00ff88' : quality === 'medium' ? '#ffaa00' : '#ff6b6b'};
+        border-radius: 8px;
+        padding: 8px 12px;
+        z-index: 9999;
+        color: #fff;
+        font-size: 12px;
+        font-weight: bold;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    `;
+    indicator.innerHTML = `
+        <i class="fas fa-${quality === 'high' ? 'signal' : quality === 'medium' ? 'wifi' : 'wifi-off'}"></i>
+        ${quality.toUpperCase()}
+    `;
+    document.body.appendChild(indicator);
+    
+    setTimeout(() => indicator.classList.add('visible'), 10);
+    setTimeout(() => {
+        indicator.classList.remove('visible');
+        setTimeout(() => indicator.remove(), 300);
+    }, 3000);
+}
+
+// Queue position toast
+function showQueuePositionToast(position, total) {
+    const toast = document.createElement('div');
+    toast.className = 'queue-position-toast';
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: rgba(42, 42, 58, 0.95);
+        border: 1px solid rgba(0, 212, 255, 0.5);
+        border-radius: 12px;
+        padding: 12px 24px;
+        z-index: 9999;
+        color: #00d4ff;
+        font-size: 14px;
+        opacity: 0;
+        transition: all 0.3s ease;
+    `;
+    toast.innerHTML = `
+        <i class="fas fa-list-ul"></i>
+        Track ${position} of ${total} in queue
+    `;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+    }, 10);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(20px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 2000);
+}
+
+// Media center album art display
+function updateAlbumArt(url) {
+    const artEl = document.querySelector('.media-album-art');
+    if (artEl) {
+        if (url) {
+            artEl.style.backgroundImage = `url(${url})`;
+            artEl.style.backgroundSize = 'cover';
+            artEl.style.backgroundPosition = 'center';
+            artEl.classList.add('visible');
+        } else {
+            artEl.style.background = 'linear-gradient(135deg, #27a0b9, #00d4ff)';
+        }
+    }
+}
+
+// Initialize album art observer
+function initAlbumArtObserver() {
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.attributeName === 'src') {
+                const img = mutation.target;
+                if (img.src) {
+                    updateAlbumArt(img.src);
+                }
+            }
+        });
+    });
+    
+    const audioImg = document.querySelector('audio[data-artwork], video[data-artwork]');
+    if (audioImg) {
+        observer.observe(audioImg, { attributes: true });
+    }
+}
+
 function initEnhancedMediaFeatures() {
     console.log('Enhanced media features initialized');
+    
+    // Check if gesture tutorial should be shown
+    if (!localStorage.getItem('sam_gesture_tutorial_shown')) {
+        setTimeout(() => GestureTutorial.show(), 2000);
+    }
     
     // Update BPM indicator periodically
     setInterval(updateBpmRealtime, 200);
     
     // Enhance beat detection periodically
     setInterval(enhanceBeatDetection, 1000);
+    
+    // Update party mode visualizer
+    setInterval(updatePartyModeVisualizer, 100);
+    
+    // Update media visualization if active
+    setInterval(updateMediaVisualization, 50);
     
     document.addEventListener('DOMContentLoaded', function() {
         showBpmIndicator();
@@ -4998,6 +5619,24 @@ function initEnhancedMediaFeatures() {
                 createTouchTrail(touch.clientX, touch.clientY);
             }, { passive: true });
         }
+        
+        // Initialize quick scene swipe
+        initQuickSceneSwipe();
+        
+        // Initialize multi-bulb drag selection
+        initMultiBulbDragSelection();
+        
+        // Initialize color temperature quick adjust
+        initColorTempQuickAdjust();
+        
+        // Initialize party mode visualizer
+        initPartyModeVisualizer();
+        
+        // Initialize enhanced media visualization
+        initEnhancedMediaVisualization();
+        
+        // Initialize album art observer
+        initAlbumArtObserver();
     });
 }
 

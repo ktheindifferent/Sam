@@ -3610,6 +3610,124 @@ const LifXTouchControls = {
                     brightness = p.brightness * (0.4 + Math.sin(breathTime) * 0.3 + 0.3);
                     saturation = p.saturation * (0.6 + Math.sin(breathTime * 0.5) * 0.2 + 0.2);
                     break;
+                case 'twinkle':
+                    const twinkleRand = Math.random();
+                    if (twinkleRand < 0.05) {
+                        brightness = 100;
+                        saturation = 80;
+                    } else if (twinkleRand < 0.15) {
+                        brightness = p.brightness * 0.5;
+                        saturation = p.saturation * 0.7;
+                    } else {
+                        brightness = p.brightness;
+                        saturation = p.saturation;
+                    }
+                    hue = p.hue + Math.random() * 20 - 10;
+                    break;
+                case 'mystic':
+                    const mysticTime = Date.now() / 3000;
+                    hue = (p.hue + Math.sin(mysticTime) * 50) % 360;
+                    brightness = p.brightness * (0.5 + Math.sin(mysticTime * 2) * 0.25);
+                    saturation = p.saturation * (0.7 + Math.sin(mysticTime * 1.5) * 0.3);
+                    break;
+                case 'dragon':
+                    const dragonTime = Date.now();
+                    const dragonFlicker = Math.random();
+                    if (dragonFlicker < 0.03) {
+                        brightness = 100;
+                        saturation = 100;
+                        hue = 15 + Math.random() * 10;
+                    } else {
+                        brightness = 60 + Math.random() * 30;
+                        saturation = 80 + Math.random() * 20;
+                        hue = 10 + Math.random() * 20;
+                    }
+                    break;
+                case 'twinkle':
+                    const twinkleTime = Date.now() / 200;
+                    const twinkleIndex = Math.floor(twinkleTime) % 10;
+                    if (twinkleIndex < 2) {
+                        brightness = p.brightness * 1.3;
+                    } else {
+                        brightness = p.brightness;
+                    }
+                    saturation = p.saturation * (0.8 + Math.random() * 0.2);
+                    break;
+                case 'haunted':
+                    const hauntedTime = Date.now() / 800;
+                    if (Math.random() < 0.1) {
+                        brightness = p.brightness * 0.3;
+                        hue = 300 + Math.random() * 30;
+                    } else {
+                        brightness = p.brightness * (0.6 + Math.sin(hauntedTime) * 0.2);
+                        hue = p.hue + Math.sin(hauntedTime * 0.5) * 20;
+                    }
+                    saturation = p.saturation * (0.8 + Math.random() * 0.2);
+                    break;
+                case 'festive':
+                    const festiveColors = [0, 120, 240];
+                    const festiveIndex = Math.floor(Date.now() / 500) % 3;
+                    hue = festiveColors[festiveIndex];
+                    brightness = p.brightness * (0.8 + Math.random() * 0.2);
+                    saturation = p.saturation;
+                    break;
+                case 'celebration':
+                    const celebrationTime = Date.now();
+                    if (celebrationTime % 600 < 200) {
+                        brightness = 100;
+                        saturation = 100;
+                        hue = Math.random() * 360;
+                    } else {
+                        brightness = p.brightness;
+                        saturation = p.saturation;
+                        hue = p.hue;
+                    }
+                    break;
+                case 'spooky':
+                    const spookyTime = Date.now() / 1200;
+                    brightness = p.brightness * (0.4 + Math.sin(spookyTime) * 0.3);
+                    hue = 30 + Math.sin(spookyTime * 0.7) * 15;
+                    saturation = 90 + Math.sin(spookyTime * 0.5) * 10;
+                    break;
+                case 'warm':
+                    brightness = p.brightness * (0.7 + Math.sin(Date.now() / 4000) * 0.15);
+                    hue = 25 + Math.sin(Date.now() / 3000) * 10;
+                    saturation = p.saturation * (0.9 + Math.sin(Date.now() / 5000) * 0.1);
+                    break;
+                case 'firework':
+                    const fireworkTime = Date.now();
+                    if (fireworkTime % 1000 < 100) {
+                        brightness = 100;
+                        saturation = 100;
+                        hue = Math.random() * 360;
+                    } else {
+                        brightness = p.brightness * 0.5;
+                        saturation = p.saturation * 0.7;
+                    }
+                    break;
+                case 'irish':
+                    const irishTime = Date.now() / 2000;
+                    hue = 120 + Math.sin(irishTime) * 30;
+                    brightness = p.brightness * (0.8 + Math.sin(irishTime * 2) * 0.2);
+                    saturation = p.saturation;
+                    break;
+                case 'gradient_cycle':
+                    const gradientTime = Date.now() / 1500;
+                    hue = (p.hue + Math.sin(gradientTime) * 180) % 360;
+                    brightness = p.brightness * (0.6 + Math.sin(gradientTime * 0.5) * 0.2);
+                    saturation = p.saturation * (0.8 + Math.sin(gradientTime * 0.3) * 0.2);
+                    break;
+                case 'random_flash':
+                    if (Math.random() < 0.08) {
+                        brightness = 100;
+                        saturation = 100;
+                        hue = Math.random() * 360;
+                    } else {
+                        brightness = p.brightness;
+                        saturation = p.saturation;
+                        hue = p.hue;
+                    }
+                    break;
             }
             
             $.ajax({
@@ -3621,7 +3739,7 @@ const LifXTouchControls = {
                     color: `hue:${Math.round(hue * 182)} saturation:${Math.round(saturation)}%`,
                     brightness: Math.round(brightness),
                     kelvin: p.kelvin,
-                    duration: p.effect === 'sparkle' || p.effect === 'energy' ? 0.1 : 0.5
+                    duration: p.effect === 'sparkle' || p.effect === 'energy' || p.effect === 'twinkle' || p.effect === 'random_flash' ? 0.1 : 0.5
                 })
             });
         };
