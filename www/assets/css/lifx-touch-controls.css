@@ -1036,6 +1036,11 @@
 .scene-indicator.aurora { background: linear-gradient(135deg, #00ff88, #00ced1, #0080ff); animation: aurora-flow 5s ease infinite; }
 .scene-indicator.nebula { background: linear-gradient(135deg, #9b59b6, #e91e63, #3498db); animation: nebula-pulse 4s ease infinite; }
 .scene-indicator.thunder { background: linear-gradient(135deg, #f1c40f, #fff); animation: thunder-flash 2s ease infinite; }
+.scene-indicator.cosmic { background: linear-gradient(135deg, #4a0072, #7b1fa2, #e91e63); animation: cosmic-pulse 5s ease infinite; }
+.scene-indicator.dream { background: linear-gradient(135deg, #4fc3f7, #4dd0e1, #80cbc4); animation: dream-flow 6s ease infinite; }
+.scene-indicator.chill { background: linear-gradient(135deg, #5c6bc0, #7986cb, #90a4ae); }
+.scene-indicator.adventure { background: linear-gradient(135deg, #ff6f00, #ff8f00, #ffa000); animation: adventure-glow 3s ease infinite; }
+.scene-indicator.festival { background: linear-gradient(135deg, #e91e63, #9c27b0, #ff4081, #00bcd4); background-size: 300% 300%; animation: festival-lights 2s ease infinite; }
 
 @keyframes rainbow-gradient {
     0% { background-position: 0% 50%; }
@@ -1063,6 +1068,28 @@
     0%, 90%, 100% { opacity: 1; filter: brightness(1); }
     92% { opacity: 0.5; filter: brightness(2); }
     95% { opacity: 1; filter: brightness(1); }
+}
+
+@keyframes cosmic-pulse {
+    0%, 100% { opacity: 1; filter: brightness(1) hue-rotate(0deg); }
+    50% { opacity: 0.8; filter: brightness(1.3) hue-rotate(30deg); }
+    75% { opacity: 0.9; filter: brightness(1.1) hue-rotate(-20deg); }
+}
+
+@keyframes dream-flow {
+    0%, 100% { opacity: 1; filter: brightness(1) blur(0px); }
+    50% { opacity: 0.85; filter: brightness(1.15) blur(0.5px); }
+}
+
+@keyframes adventure-glow {
+    0%, 100% { filter: brightness(1) saturate(1); }
+    50% { filter: brightness(1.2) saturate(1.3); }
+}
+
+@keyframes festival-lights {
+    0% { background-position: 0% 50%; filter: hue-rotate(0deg); }
+    50% { background-position: 100% 50%; filter: hue-rotate(20deg); }
+    100% { background-position: 0% 50%; filter: hue-rotate(0deg); }
 }
 
 /* Ambient light sync indicator */

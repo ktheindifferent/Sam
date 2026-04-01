@@ -57,7 +57,11 @@ const MediaPlayer = {
         sensitivity: 'medium',
         lastBeatTime: 0,
         beatCount: 0,
-        sensitivity: 0.5
+        sensitivity: 0.5,
+        bpmHistory: [],
+        beatIntensity: 0,
+        lowPassFilter: 0.8,
+        highPassFilter: 0.2
     },
     lifxSceneMode: 'ambient',
     lifxColorHistory: [],
@@ -1290,12 +1294,42 @@ function detectAudioBeat() {
         
         if (timeSinceLastBeat > MediaPlayer.lifxBeatDetection.beatCooldown) {
             const normalizedStrength = Math.min(1.0, (beatStrength - dynamicThreshold) / 0.3);
+            
+            const bpm = estimateBPM(now);
+            if (bpm) {
+                MediaPlayer.lifxBeatDetection.bpmEstimate = bpm;
+            }
+            
+            MediaPlayer.lifxBeatDetection.beatIntensity = normalizedStrength;
             pulseLifxWithBeat(normalizedStrength);
             return normalizedStrength;
         }
     }
     
     return 0;
+}
+
+function estimateBPM(currentTime) {
+    const bpmHistory = MediaPlayer.lifxBeatDetection.bpmHistory;
+    const now = currentTime || Date.now();
+    
+    if (MediaPlayer.lifxBeatDetection.lastBeat > 0) {
+        const interval = now - MediaPlayer.lifxBeatDetection.lastBeat;
+        if (interval > 200 && interval < 2000) {
+            const instantBPM = 60000 / interval;
+            bpmHistory.push(instantBPM);
+            if (bpmHistory.length > 10) {
+                bpmHistory.shift();
+            }
+            
+            if (bpmHistory.length >= 3) {
+                const avgBPM = bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length;
+                return Math.round(avgBPM);
+            }
+        }
+    }
+    
+    return null;
 }
 
 function startBeatDetection() {
@@ -1423,7 +1457,7 @@ function applyEqualizerPreset(preset) {
 
 // Cycle through ambient light modes
 function cycleAmbientLightMode() {
-    const modes = ['spectrum', 'warm', 'cool', 'beat', 'visualizer', 'aurora', 'pulse'];
+    const modes = ['spectrum', 'warm', 'cool', 'beat', 'visualizer', 'aurora', 'pulse', 'fire', 'ocean', 'neon'];
     const currentIndex = modes.indexOf(MediaPlayer.ambientLightMode || 'spectrum');
     MediaPlayer.ambientLightMode = modes[(currentIndex + 1) % modes.length];
     showNotification(`Ambient mode: ${MediaPlayer.ambientLightMode}`, 'info');
@@ -1434,10 +1468,19 @@ function cycleAmbientLightMode() {
         startAuroraEffect();
     } else if (MediaPlayer.ambientLightMode === 'pulse') {
         startPulseEffect();
+    } else if (MediaPlayer.ambientLightMode === 'fire') {
+        startFireEffect();
+    } else if (MediaPlayer.ambientLightMode === 'ocean') {
+        startOceanEffect();
+    } else if (MediaPlayer.ambientLightMode === 'neon') {
+        startNeonEffect();
     } else {
         stopAudioVisualization();
         stopAuroraEffect();
         stopPulseEffect();
+        stopFireEffect();
+        stopOceanEffect();
+        stopNeonEffect();
     }
 }
 
@@ -1533,6 +1576,119 @@ function stopPulseEffect() {
         clearInterval(MediaPlayer.pulseInterval);
         MediaPlayer.pulseInterval = null;
         showNotification('Pulse effect stopped', 'info');
+    }
+}
+
+// Fire effect - warm flickering colors
+function startFireEffect() {
+    if (!MediaPlayer.fireInterval) {
+        MediaPlayer.fireInterval = setInterval(() => {
+            const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
+                ? LifXTouchControls.multiBulbSelection.join(',')
+                : 'all';
+            
+            const brightness = 40 + Math.random() * 30;
+            const kelvin = 1800 + Math.random() * 600;
+            const hue = (20 + Math.random() * 20) * 182;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets}`,
+                    color: `hue:${Math.round(hue)} saturation:80%`,
+                    brightness: brightness / 100,
+                    duration: 0.3
+                })
+            });
+        }, 200 + Math.random() * 300);
+        
+        showNotification('Fire effect started', 'info');
+    }
+}
+
+function stopFireEffect() {
+    if (MediaPlayer.fireInterval) {
+        clearInterval(MediaPlayer.fireInterval);
+        MediaPlayer.fireInterval = null;
+        showNotification('Fire effect stopped', 'info');
+    }
+}
+
+// Ocean effect - cool flowing blues and greens
+function startOceanEffect() {
+    if (!MediaPlayer.oceanInterval) {
+        let baseHue = 180;
+        MediaPlayer.oceanInterval = setInterval(() => {
+            const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
+                ? LifXTouchControls.multiBulbSelection.join(',')
+                : 'all';
+            
+            baseHue = (baseHue + 2) % 60;
+            const hue = (180 + Math.sin(Date.now() / 2000) * 30 + baseHue) * 182;
+            const brightness = 50 + Math.sin(Date.now() / 1500) * 20;
+            const saturation = 60 + Math.sin(Date.now() / 1000) * 20;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets}`,
+                    color: `hue:${Math.round(hue)} saturation:${Math.round(saturation)}%`,
+                    brightness: brightness / 100,
+                    duration: 0.8
+                })
+            });
+        }, 500);
+        
+        showNotification('Ocean effect started', 'info');
+    }
+}
+
+function stopOceanEffect() {
+    if (MediaPlayer.oceanInterval) {
+        clearInterval(MediaPlayer.oceanInterval);
+        MediaPlayer.oceanInterval = null;
+        showNotification('Ocean effect stopped', 'info');
+    }
+}
+
+// Neon effect - vibrant cycling colors
+function startNeonEffect() {
+    if (!MediaPlayer.neonInterval) {
+        let hue = 0;
+        MediaPlayer.neonInterval = setInterval(() => {
+            const targets = LifXTouchControls && LifXTouchControls.multiBulbSelection && LifXTouchControls.multiBulbSelection.length > 0
+                ? LifXTouchControls.multiBulbSelection.join(',')
+                : 'all';
+            
+            hue = (hue + 5) % 360;
+            const brightness = 70 + Math.sin(Date.now() / 300) * 20;
+            
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: targets === 'all' ? 'all' : `id:${targets}`,
+                    color: `hue:${Math.round(hue * 182)} saturation:100%`,
+                    brightness: brightness / 100,
+                    duration: 0.4
+                })
+            });
+        }, 150);
+        
+        showNotification('Neon effect started', 'info');
+    }
+}
+
+function stopNeonEffect() {
+    if (MediaPlayer.neonInterval) {
+        clearInterval(MediaPlayer.neonInterval);
+        MediaPlayer.neonInterval = null;
+        showNotification('Neon effect stopped', 'info');
     }
 }
 
@@ -2436,11 +2592,11 @@ function showMediaSyncSettings(activeTab = 'overview') {
                         
                         <h4 style="margin-top: 20px;"><i class="fas fa-palette"></i> Ambient Mode</h4>
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-                            ${['spectrum', 'warm', 'cool', 'beat', 'visualizer', 'aurora', 'pulse'].map(mode => `
+                            ${['spectrum', 'warm', 'cool', 'beat', 'visualizer', 'aurora', 'pulse', 'fire', 'ocean', 'neon'].map(mode => `
                                 <button class="btn btn-sm ${ambientLightMode === mode ? 'btn-primary' : 'btn-outline-secondary'}" 
                                         onclick="MediaPlayer.ambientLightMode = '${mode}'; cycleAmbientLightMode(); showMediaSyncSettings('ambient')"
                                         style="padding: 10px;">
-                                    <i class="fas fa-${mode === 'spectrum' ? 'bars' : mode === 'warm' ? 'sun' : mode === 'cool' ? 'snowflake' : mode === 'beat' ? 'wave-square' : mode === 'visualizer' ? 'chart-bar' : mode === 'aurora' ? 'cloud' : 'circle'}"></i> ${mode.charAt(0).toUpperCase() + mode.slice(1)}
+                                    <i class="fas fa-${mode === 'spectrum' ? 'bars' : mode === 'warm' ? 'sun' : mode === 'cool' ? 'snowflake' : mode === 'beat' ? 'wave-square' : mode === 'visualizer' ? 'chart-bar' : mode === 'aurora' ? 'cloud' : mode === 'pulse' ? 'circle' : mode === 'fire' ? 'fire' : mode === 'ocean' ? 'water' : 'bolt'}"></i> ${mode.charAt(0).toUpperCase() + mode.slice(1)}
                                 </button>
                             `).join('')}
                         </div>

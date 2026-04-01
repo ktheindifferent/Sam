@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice', 'aurora', 'nebula', 'thunder', 'crystal', 'lagoon', 'cotton_candy', 'spring_blossom', 'punchbowl', 'smashing', 'glitter', 'golden_hour', 'late_night', 'midday', 'polar'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice', 'aurora', 'nebula', 'thunder', 'crystal', 'lagoon', 'cotton_candy', 'spring_blossom', 'punchbowl', 'smashing', 'glitter', 'golden_hour', 'late_night', 'midday', 'polar', 'cosmic', 'dream', 'chill', 'adventure', 'festival'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -1168,7 +1168,8 @@ const LifXTouchControls = {
             nebula: '🌀', thunder: '⛈️', crystal: '💎', lagoon: '🏝️',
             cotton_candy: '🍭', spring_blossom: '🌺', punchbowl: '🥤',
             smashing: '💥', glitter: '✨', golden_hour: '🌇',
-            late_night: '🌃', midday: '☀️', polar: '🐧'
+            late_night: '🌃', midday: '☀️', polar: '🐧',
+            cosmic: '🌌', dream: '💭', chill: '🧊', adventure: '🗺️', festival: '🎪'
         };
         return emojis[sceneName] || '💡';
     },
@@ -1328,7 +1329,12 @@ const LifXTouchControls = {
             'fireplace': { hue: 30, saturation: 80, brightness: 60, kelvin: 2000, effect: 'pulse' },
             'aurora': { hue: 140, saturation: 100, brightness: 75, kelvin: 6000, effect: 'fade' },
             'nebula': { hue: 280, saturation: 80, brightness: 65, kelvin: 5000, effect: 'gentle_pulse' },
-            'thunder': { hue: 50, saturation: 90, brightness: 100, kelvin: 7000, effect: 'energy' }
+            'thunder': { hue: 50, saturation: 90, brightness: 100, kelvin: 7000, effect: 'energy' },
+            'cosmic': { hue: 280, saturation: 90, brightness: 70, kelvin: 6500, effect: 'cosmic_pulse' },
+            'dream': { hue: 180, saturation: 60, brightness: 50, kelvin: 4000, effect: 'dream_flow' },
+            'chill': { hue: 200, saturation: 40, brightness: 45, kelvin: 3500, effect: 'gentle_pulse' },
+            'adventure': { hue: 30, saturation: 85, brightness: 80, kelvin: 4500, effect: 'energy' },
+            'festival': { hue: 320, saturation: 95, brightness: 90, kelvin: 5000, effect: 'festival_lights' }
         };
         
         if (dynamicScenes[sceneName]) {
@@ -1481,6 +1487,18 @@ const LifXTouchControls = {
             'high': 'Most responsive'
         };
         
+        const swipeDistances = {
+            'low': '80px',
+            'medium': '50px', 
+            'high': '30px'
+        };
+        
+        const longPressDelays = {
+            'low': '700ms',
+            'medium': '500ms',
+            'high': '300ms'
+        };
+        
         Swal.fire({
             title: '<i class="fas fa-fingerprint"></i> Touch Sensitivity Settings',
             html: `
@@ -1492,6 +1510,7 @@ const LifXTouchControls = {
                             <div>
                                 <div>Low</div>
                                 <div class="sensitivity-option-description">Requires larger movements - fewer accidental triggers</div>
+                                <div class="sensitivity-option-description">Swipe: ${swipeDistances['low']} | Hold: ${longPressDelays['low']}</div>
                             </div>
                         </div>
                         ${current === 'low' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
@@ -1502,6 +1521,7 @@ const LifXTouchControls = {
                             <div>
                                 <div>Medium</div>
                                 <div class="sensitivity-option-description">Balanced responsiveness - recommended for most users</div>
+                                <div class="sensitivity-option-description">Swipe: ${swipeDistances['medium']} | Hold: ${longPressDelays['medium']}</div>
                             </div>
                         </div>
                         ${current === 'medium' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
@@ -1512,6 +1532,7 @@ const LifXTouchControls = {
                             <div>
                                 <div>High</div>
                                 <div class="sensitivity-option-description">Most responsive - detects subtle movements</div>
+                                <div class="sensitivity-option-description">Swipe: ${swipeDistances['high']} | Hold: ${longPressDelays['high']}</div>
                             </div>
                         </div>
                         ${current === 'high' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
@@ -2135,6 +2156,34 @@ const LifXTouchControls = {
                     } else {
                         brightness = p.brightness;
                         saturation = p.saturation;
+                    }
+                    break;
+                case 'cosmic_pulse':
+                    const cosmicTime = Date.now() / 1000;
+                    hue = (p.hue + Math.sin(cosmicTime * 0.5) * 40 + Math.cos(cosmicTime * 0.3) * 20) % 360;
+                    brightness = p.brightness * (0.6 + Math.sin(cosmicTime * 2) * 0.2 + Math.random() * 0.1);
+                    saturation = p.saturation * (0.8 + Math.sin(cosmicTime * 1.5) * 0.2);
+                    break;
+                case 'dream_flow':
+                    const dreamTime = Date.now() / 2000;
+                    hue = (p.hue + Math.sin(dreamTime) * 30) % 360;
+                    brightness = p.brightness * (0.7 + Math.sin(dreamTime * 0.8) * 0.15);
+                    saturation = p.saturation * (0.9 + Math.sin(dreamTime * 0.6) * 0.1);
+                    break;
+                case 'festival_lights':
+                    const festivalTime = Date.now();
+                    if (festivalTime % 800 < 400) {
+                        brightness = p.brightness;
+                        saturation = p.saturation;
+                        hue = p.hue;
+                    } else {
+                        brightness = p.brightness * 0.8;
+                        saturation = p.saturation * 0.9;
+                        hue = (p.hue + 30) % 360;
+                    }
+                    if (festivalTime % 3000 < 500) {
+                        brightness = 100;
+                        saturation = 100;
                     }
                     break;
             }
