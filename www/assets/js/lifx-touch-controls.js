@@ -25,7 +25,7 @@ const LifXTouchControls = {
     doubleTapDelay: 300,
     lastTapTime: 0,
     currentScene: 'relax',
-    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice', 'aurora', 'nebula', 'thunder', 'crystal', 'lagoon', 'cotton_candy', 'spring_blossom', 'punchbowl', 'smashing', 'glitter', 'golden_hour', 'late_night', 'midday', 'polar', 'cosmic', 'dream', 'chill', 'adventure', 'festival'],
+    scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic', 'tropical', 'spring', 'autumn', 'meditation', 'gaming', 'cooking', 'creative', 'yoga', 'movie', 'study', 'dinner', 'morning', 'goodnight', 'rainbow', 'fireplace', 'ice', 'aurora', 'nebula', 'thunder', 'crystal', 'lagoon', 'cotton_candy', 'spring_blossom', 'punchbowl', 'smashing', 'glitter', 'golden_hour', 'late_night', 'midday', 'polar', 'cosmic', 'dream', 'chill', 'adventure', 'festival', 'bioluminescent', 'cyberpunk', 'vaporwave', 'northern_lights', 'desert_dawn', 'forest_mist', 'volcanic', 'underwater', 'space_station', 'wizard_tower', 'dragon_fire', 'fairy_grove', 'haunted', 'santas_workshop', 'new_year', 'valentines', 'halloween', 'thanksgiving', 'christmas', 'easter', 'st_patricks', 'independence_day'],
     startY: null,
     startBrightness: null,
     startColorTemp: null,
@@ -125,6 +125,7 @@ const LifXTouchControls = {
                     this.adjustBrightness(10);
                     this.showGestureFeedback('Brightness +', '↑');
                     this.hapticFeedback('light');
+                    this.recordGestureSuccess();
                 }
             });
             
@@ -135,6 +136,7 @@ const LifXTouchControls = {
                     this.adjustBrightness(-10);
                     this.showGestureFeedback('Brightness -', '↓');
                     this.hapticFeedback('light');
+                    this.recordGestureSuccess();
                 }
             });
             
@@ -146,6 +148,7 @@ const LifXTouchControls = {
                     this.adjustColorTemp(200);
                     this.showGestureFeedback('Warmer', '☀️');
                     this.hapticFeedback('light');
+                    this.recordGestureSuccess();
                 }
             });
             
@@ -156,6 +159,7 @@ const LifXTouchControls = {
                     this.adjustColorTemp(-200);
                     this.showGestureFeedback('Cooler', '❄️');
                     this.hapticFeedback('light');
+                    this.recordGestureSuccess();
                 }
             });
             
@@ -167,6 +171,7 @@ const LifXTouchControls = {
                     this.nextScene();
                     this.showGestureFeedback('Next Scene', '🎨');
                     this.hapticFeedback('success');
+                    this.recordGestureSuccess();
                 }
             });
             
@@ -177,6 +182,7 @@ const LifXTouchControls = {
                     this.previousScene();
                     this.showGestureFeedback('Previous Scene', '🎨');
                     this.hapticFeedback('success');
+                    this.recordGestureSuccess();
                 }
             });
             
@@ -186,6 +192,7 @@ const LifXTouchControls = {
                 if (bulbEl) {
                     this.selectBulb(bulbEl.getAttribute('data-bulb-id'));
                     setTimeout(() => this.openQuickSettings(), 100);
+                    this.recordGestureSuccess();
                 }
             });
         }
@@ -279,6 +286,7 @@ const LifXTouchControls = {
     checkGestureDebounce: function() {
         const now = Date.now();
         if (now - this.lastGestureTime < this.gestureDebounce) {
+            this.recordGestureFail('debounced');
             return false;
         }
         this.lastGestureTime = now;
@@ -1200,19 +1208,125 @@ const LifXTouchControls = {
         const settings = {
             'low': { swipeDistance: 80, swipeTime: 400, pinchDistance: 50, longPressDelay: 700, doubleTapDelay: 400 },
             'medium': { swipeDistance: 50, swipeTime: 300, pinchDistance: 30, longPressDelay: 500, doubleTapDelay: 300 },
-            'high': { swipeDistance: 30, swipeTime: 200, pinchDistance: 20, longPressDelay: 300, doubleTapDelay: 200 }
+            'high': { swipeDistance: 30, swipeTime: 200, pinchDistance: 20, longPressDelay: 300, doubleTapDelay: 200 },
+            'very_high': { swipeDistance: 15, swipeTime: 150, pinchDistance: 10, longPressDelay: 200, doubleTapDelay: 150 }
         };
         
         this.gestureSensitivity = settings[level] || settings['medium'];
         this.touchHoldDelay = this.gestureSensitivity.longPressDelay;
         this.doubleTapDelay = this.gestureSensitivity.doubleTapDelay;
+        this.swipeEdgeZone = level === 'very_high' ? 30 : (level === 'high' ? 25 : 20);
         localStorage.setItem('lifx_gesture_sensitivity', level);
-        console.log('Gesture sensitivity set to:', level);
+        console.log('Gesture sensitivity set to:', level, this.gestureSensitivity);
+        
+        if (typeof updateSensitivityUI === 'function') {
+            updateSensitivityUI(level);
+        }
     },
     
     loadGestureSensitivity: function() {
         const saved = localStorage.getItem('lifx_gesture_sensitivity') || 'medium';
         this.setGestureSensitivity(saved);
+        this.initAdaptiveSensitivity();
+    },
+    
+    adaptiveSensitivityEnabled: true,
+    gestureSuccessCount: 0,
+    gestureFailCount: 0,
+    lastMissedGestures: [],
+    
+    initAdaptiveSensitivity: function() {
+        if (!this.adaptiveSensitivityEnabled) return;
+        
+        const stats = JSON.parse(localStorage.getItem('lifx_adaptive_sensitivity') || '{"success": 0, "fail": 0, "level": "medium"}');
+        this.gestureSuccessCount = stats.success || 0;
+        this.gestureFailCount = stats.fail || 0;
+        
+        if (stats.level && stats.level !== localStorage.getItem('lifx_gesture_sensitivity')) {
+            console.log('Adaptive sensitivity recommends:', stats.level);
+        }
+        
+        setInterval(() => this.analyzeGesturePatterns(), 60000);
+    },
+    
+    recordGestureSuccess: function() {
+        if (!this.adaptiveSensitivityEnabled) return;
+        this.gestureSuccessCount++;
+        this.saveAdaptiveSensitivityStats();
+    },
+    
+    recordGestureFail: function(gestureType, distance = 0) {
+        if (!this.adaptiveSensitivityEnabled) return;
+        this.gestureFailCount++;
+        this.lastMissedGestures.push({ type: gestureType, distance, timestamp: Date.now() });
+        if (this.lastMissedGestures.length > 5) this.lastMissedGestures.shift();
+        this.saveAdaptiveSensitivityStats();
+    },
+    
+    saveAdaptiveSensitivityStats: function() {
+        const currentLevel = localStorage.getItem('lifx_gesture_sensitivity') || 'medium';
+        localStorage.setItem('lifx_adaptive_sensitivity', JSON.stringify({
+            success: this.gestureSuccessCount,
+            fail: this.gestureFailCount,
+            level: currentLevel
+        }));
+    },
+    
+    analyzeGesturePatterns: function() {
+        if (this.gestureSuccessCount + this.gestureFailCount < 20) return;
+        
+        const failRate = this.gestureFailCount / (this.gestureSuccessCount + this.gestureFailCount);
+        const currentLevel = localStorage.getItem('lifx_gesture_sensitivity') || 'medium';
+        
+        let recommendedLevel = currentLevel;
+        
+        if (failRate > 0.3) {
+            if (currentLevel === 'low') recommendedLevel = 'medium';
+            else if (currentLevel === 'medium') recommendedLevel = 'high';
+            else if (currentLevel === 'high') recommendedLevel = 'very_high';
+        } else if (failRate < 0.1 && currentLevel !== 'low') {
+            if (currentLevel === 'very_high') recommendedLevel = 'high';
+            else if (currentLevel === 'high') recommendedLevel = 'medium';
+            else if (currentLevel === 'medium') recommendedLevel = 'low';
+        }
+        
+        if (recommendedLevel !== currentLevel) {
+            console.log(`Adaptive sensitivity suggests changing from ${currentLevel} to ${recommendedLevel} (fail rate: ${(failRate * 100).toFixed(1)}%)`);
+            this.showSensitivitySuggestion(currentLevel, recommendedLevel, failRate);
+        }
+        
+        this.gestureSuccessCount = 0;
+        this.gestureFailCount = 0;
+    },
+    
+    showSensitivitySuggestion: function(currentLevel, recommendedLevel, failRate) {
+        if (typeof Swal === 'undefined') return;
+        
+        Swal.fire({
+            title: 'Sensitivity Optimization Suggestion',
+            html: `
+                <p style="color: #adb5bd; margin-bottom: 15px;">
+                    Based on your gesture patterns, we recommend adjusting sensitivity.
+                </p>
+                <div style="text-align: left; margin: 15px 0;">
+                    <p style="color: #ff6b6b;">Missed gestures: ${(failRate * 100).toFixed(1)}%</p>
+                    <p style="color: #00d4ff;">Current: ${currentLevel}</p>
+                    <p style="color: #00ff88;">Recommended: ${recommendedLevel}</p>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Apply Recommended',
+            cancelButtonText: 'Keep Current',
+            confirmButtonColor: '#00d4ff',
+            cancelButtonColor: '#6c757d',
+            background: 'rgba(30, 30, 45, 0.98)',
+            backdrop: 'rgba(0, 0, 0, 0.8)'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                this.setGestureSensitivity(recommendedLevel);
+                this.showGestureFeedback(`Sensitivity: ${recommendedLevel}`, '✓');
+            }
+        });
     },
     
     clearMultiSelection: function() {
@@ -1363,9 +1477,43 @@ const LifXTouchControls = {
             cotton_candy: '🍭', spring_blossom: '🌺', punchbowl: '🥤',
             smashing: '💥', glitter: '✨', golden_hour: '🌇',
             late_night: '🌃', midday: '☀️', polar: '🐧',
-            cosmic: '🌌', dream: '💭', chill: '🧊', adventure: '🗺️', festival: '🎪'
+            cosmic: '🌌', dream: '💭', chill: '🧊', adventure: '🗺️', festival: '🎪',
+            bioluminescent: '🪼', cyberpunk: '🤖', vaporwave: '🌆', northern_lights: '🌠',
+            desert_dawn: '🏜️', forest_mist: '🌲', volcanic: '🌋', underwater: '🐠',
+            space_station: '🛰️', wizard_tower: '🧙', dragon_fire: '🐉', fairy_grove: '🧚',
+            haunted: '👻', santas_workshop: '🎅', new_year: '🎆', valentines: '💝',
+            halloween: '🎃', thanksgiving: '🦃', christmas: '🎄', easter: '🐰',
+            st_patricks: '☘️', independence_day: '🎆'
         };
         return emojis[sceneName] || '💡';
+    },
+    
+    getSceneDefinition: function(sceneName) {
+        const scenes = {
+            bioluminescent: { hue: 200, saturation: 80, brightness: 70, temperature: 4000, effect: 'pulse' },
+            cyberpunk: { hue: 280, saturation: 90, brightness: 80, temperature: 6000, effect: 'flicker' },
+            vaporwave: { hue: 300, saturation: 70, brightness: 60, temperature: 5000, effect: 'gradient' },
+            northern_lights: { hue: 120, saturation: 60, brightness: 50, temperature: 5500, effect: 'aurora' },
+            desert_dawn: { hue: 30, saturation: 50, brightness: 60, temperature: 3000, effect: 'fade' },
+            forest_mist: { hue: 100, saturation: 40, brightness: 40, temperature: 4500, effect: 'breathe' },
+            volcanic: { hue: 10, saturation: 90, brightness: 75, temperature: 2500, effect: 'flicker' },
+            underwater: { hue: 190, saturation: 70, brightness: 55, temperature: 6500, effect: 'wave' },
+            space_station: { hue: 220, saturation: 50, brightness: 65, temperature: 7000, effect: 'pulse' },
+            wizard_tower: { hue: 270, saturation: 80, brightness: 50, temperature: 3500, effect: 'mystic' },
+            dragon_fire: { hue: 15, saturation: 95, brightness: 85, temperature: 2200, effect: 'dragon' },
+            fairy_grove: { hue: 140, saturation: 60, brightness: 70, temperature: 4000, effect: 'twinkle' },
+            haunted: { hue: 300, saturation: 70, brightness: 30, temperature: 3000, effect: 'haunted' },
+            santas_workshop: { hue: 0, saturation: 80, brightness: 90, temperature: 4500, effect: 'festive' },
+            new_year: { hue: 50, saturation: 90, brightness: 100, temperature: 5000, effect: 'celebration' },
+            valentines: { hue: 340, saturation: 80, brightness: 70, temperature: 3500, effect: 'romance' },
+            halloween: { hue: 30, saturation: 90, brightness: 60, temperature: 2700, effect: 'spooky' },
+            thanksgiving: { hue: 25, saturation: 70, brightness: 65, temperature: 3000, effect: 'warm' },
+            christmas: { hue: 0, saturation: 85, brightness: 80, temperature: 4000, effect: 'festive' },
+            easter: { hue: 100, saturation: 60, brightness: 75, temperature: 5000, effect: 'bounce' },
+            st_patricks: { hue: 120, saturation: 85, brightness: 70, temperature: 4500, effect: 'irish' },
+            independence_day: { hue: 220, saturation: 80, brightness: 85, temperature: 5500, effect: 'firework' }
+        };
+        return scenes[sceneName] || null;
     },
     
     presetBrightness: function(level) {
@@ -2070,6 +2218,36 @@ const LifXTouchControls = {
         if (zoneControlBtn) {
             zoneControlBtn.addEventListener('click', () => this.openZoneControl());
         }
+        this.initZonePresets();
+    },
+    
+    zonePresets: {},
+    selectedZone: null,
+    
+    initZonePresets: function() {
+        const saved = localStorage.getItem('lifx_zone_presets');
+        if (saved) {
+            try {
+                this.zonePresets = JSON.parse(saved);
+            } catch (e) {
+                console.error('Failed to load zone presets:', e);
+            }
+        }
+    },
+    
+    saveZonePreset: function(name) {
+        if (!this.selectedZone) return;
+        this.zonePresets[name] = { zone: this.selectedZone };
+        localStorage.setItem('lifx_zone_presets', JSON.stringify(this.zonePresets));
+        this.showGestureFeedback(`Preset "${name}" saved`, '💾');
+    },
+    
+    loadZonePreset: function(name) {
+        const preset = this.zonePresets[name];
+        if (preset) {
+            this.selectedZone = preset.zone;
+            this.showGestureFeedback(`Preset "${name}" loaded`, '📂');
+        }
     },
     
     openZoneControl: function() {
@@ -2082,30 +2260,75 @@ const LifXTouchControls = {
             ? this.multiBulbSelection 
             : (this.selectedBulb ? [this.selectedBulb] : ['all']);
         
+        const presetNames = Object.keys(this.zonePresets);
+        
         Swal.fire({
-            title: 'Zone Control',
+            title: '<i class="fas fa-sliders-h"></i> Zone Control',
             html: `
-                <div style="padding: 20px;">
-                    <div class="zone-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 20px;">
+                <div style="padding: 15px;">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <p style="color: #adb5bd; font-size: 12px;">Select a zone and apply colors or effects</p>
+                        ${this.selectedZone !== null ? `<span style="color: #00d4ff; font-weight: bold;">Selected: Zone ${this.selectedZone + 1}</span>` : ''}
+                    </div>
+                    
+                    <div class="zone-visualization" style="display: flex; gap: 4px; justify-content: center; margin-bottom: 20px; padding: 10px; background: rgba(0, 0, 0, 0.3); border-radius: 10px;">
                         ${Array.from({length: 10}, (_, i) => `
-                            <div class="zone-item" data-zone="${i}" style="padding: 15px 10px; background: rgba(39, 160, 185, 0.2); border: 2px solid transparent; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;"
+                            <div class="zone-visual-item" data-zone="${i}" 
+                                 style="width: 30px; height: ${60 + Math.sin(i * 0.5) * 20}px; background: linear-gradient(to top, rgba(39, 160, 185, ${0.3 + (i/10) * 0.7}), rgba(0, 212, 255, ${0.5 + (i/10) * 0.5})); border-radius: 4px; cursor: pointer; transition: all 0.2s; ${this.selectedZone === i ? 'border: 2px solid #00d4ff; transform: scaleY(1.2);' : 'border: 2px solid transparent;'}"
                                  onclick="LifXTouchControls.selectZone(${i}, this)">
-                                <i class="fas fa-lightbulb" style="font-size: 20px; margin-bottom: 5px;"></i>
-                                <div style="font-size: 11px;">Zone ${i + 1}</div>
                             </div>
                         `).join('')}
                     </div>
-                    <div class="zone-color-picker" style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-                        ${['#ff0000', '#ff8000', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#8000ff', '#ff00ff', '#ffffff', '#ffcc00'].map(color => `
-                            <button class="zone-color-btn" style="width: 40px; height: 40px; border-radius: 50%; border: 3px solid transparent; background: ${color}; cursor: pointer; transition: all 0.2s;"
+                    
+                    <div class="zone-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 20px;">
+                        ${Array.from({length: 10}, (_, i) => `
+                            <div class="zone-item" data-zone="${i}" style="padding: 12px 8px; background: rgba(39, 160, 185, 0.2); border: 2px solid ${this.selectedZone === i ? '#00d4ff' : 'transparent'}; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;"
+                                 onclick="LifXTouchControls.selectZone(${i}, this)">
+                                <i class="fas fa-lightbulb" style="font-size: 18px; margin-bottom: 5px; color: ${this.selectedZone === i ? '#00d4ff' : '#adb5bd'};"></i>
+                                <div style="font-size: 10px; color: #adb5bd;">Zone ${i + 1}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="zone-color-picker" style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px;">
+                        ${['#ff0000', '#ff8000', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#8000ff', '#ff00ff', '#ffffff', '#ffcc00', '#ff6b6b', '#00d4ff'].map(color => `
+                            <button class="zone-color-btn" style="width: 36px; height: 36px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: ${color}; cursor: pointer; transition: all 0.2s; transform: scale(1);"
+                                    onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'"
                                     onclick="LifXTouchControls.applyZoneColor('${color}', '${targets.join(',')}')"></button>
                         `).join('')}
+                    </div>
+                    
+                    ${presetNames.length > 0 ? `
+                    <div class="zone-presets" style="margin-top: 15px;">
+                        <label style="color: #adb5bd; font-size: 12px; display: block; margin-bottom: 8px;">Saved Presets</label>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            ${presetNames.map(name => `
+                                <button class="zone-preset-btn" style="padding: 8px 16px; background: rgba(0, 212, 255, 0.2); border: 1px solid rgba(0, 212, 255, 0.4); border-radius: 20px; color: #00d4ff; cursor: pointer; transition: all 0.2s;"
+                                        onclick="LifXTouchControls.loadZonePreset('${name}')">
+                                    <i class="fas fa-folder"></i> ${name}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="zone-effects" style="margin-top: 15px;">
+                        <label style="color: #adb5bd; font-size: 12px; display: block; margin-bottom: 8px;">Zone Effects</label>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button style="padding: 8px 16px; background: rgba(255, 107, 107, 0.2); border: 1px solid rgba(255, 107, 107, 0.4); border-radius: 8px; color: #ff6b6b; cursor: pointer;"
+                                    onclick="LifXTouchControls.applyZoneEffect('pulse')">💓 Pulse</button>
+                            <button style="padding: 8px 16px; background: rgba(0, 255, 136, 0.2); border: 1px solid rgba(0, 255, 136, 0.4); border-radius: 8px; color: #00ff88; cursor: pointer;"
+                                    onclick="LifXTouchControls.applyZoneEffect('wave')">🌊 Wave</button>
+                            <button style="padding: 8px 16px; background: rgba(255, 193, 7, 0.2); border: 1px solid rgba(255, 193, 7, 0.4); border-radius: 8px; color: #ffc107; cursor: pointer;"
+                                    onclick="LifXTouchControls.applyZoneEffect('rainbow')">🌈 Rainbow</button>
+                        </div>
                     </div>
                 </div>
             `,
             showConfirmButton: false,
             showCloseButton: true,
-            width: '600px'
+            width: '650px',
+            backdrop: 'rgba(0, 0, 0, 0.8)'
         });
     },
     
@@ -2144,6 +2367,48 @@ const LifXTouchControls = {
         });
     },
     
+    applyZoneEffect: function(effectType) {
+        if (this.selectedZone === null) {
+            this.showGestureFeedback('Select a zone first', '⚠️');
+            return;
+        }
+        
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        const effectConfigs = {
+            'pulse': { brightness: 100, duration: 0.3, cycles: 3 },
+            'wave': { brightness: 80, duration: 0.5, wave: true },
+            'rainbow': { hue: 0, saturation: 100, brightness: 90, duration: 2, rainbow: true }
+        };
+        
+        const config = effectConfigs[effectType];
+        if (!config) return;
+        
+        $.ajax({
+            url: '/api/services/lifx/zones',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                start_index: this.selectedZone,
+                end_index: this.selectedZone,
+                effect: effectType,
+                duration: config.duration,
+                ...config
+            }),
+            success: () => {
+                this.showGestureFeedback(`Zone ${this.selectedZone + 1}: ${effectType}`, '✨');
+                this.hapticFeedback('success');
+            },
+            error: (xhr) => {
+                console.error('Zone effect failed:', xhr);
+                this.showGestureFeedback('Effect failed', '❌');
+            }
+        });
+    },
+    
     initMediaSync: function() {
         if (typeof MediaPlayer !== 'undefined') {
             MediaPlayer.onLifxUpdate = (data) => {
@@ -2173,16 +2438,156 @@ const LifXTouchControls = {
             const source = this.audioContext.createMediaElementSource(audioElem);
             source.connect(this.audioAnalyzer);
             this.audioAnalyzer.connect(this.audioContext.destination);
-            this.audioAnalyzer.fftSize = 256;
-            this.audioAnalyzer.smoothingTimeConstant = 0.8;
+            this.audioAnalyzer.fftSize = 512;
+            this.audioAnalyzer.smoothingTimeConstant = 0.85;
             
             this.mediaPlaybackActive = true;
+            this.initFrequencyBandAnalysis();
             this.monitorBeat();
+            this.monitorFrequencyBands();
             console.log('Beat detection initialized successfully');
         } catch (e) {
             console.warn('Beat detection not available:', e);
             this.showBeatDetectionFallback();
         }
+    },
+    
+    frequencyBands: {
+        subBass: { min: 0, max: 4, value: 0 },
+        bass: { min: 4, max: 12, value: 0 },
+        lowMid: { min: 12, max: 30, value: 0 },
+        mid: { min: 30, max: 60, value: 0 },
+        highMid: { min: 60, max: 120, value: 0 },
+        treble: { min: 120, max: 255, value: 0 }
+    },
+    beatHistory: [],
+    maxBeatHistory: 8,
+    beatPatternDetected: null,
+    
+    initFrequencyBandAnalysis: function() {
+        const visualization = document.getElementById('beat-energy-viz');
+        if (!visualization) return;
+        
+        visualization.innerHTML = `
+            <div class="beat-energy-bar" id="band-subBass" title="Sub-Bass"></div>
+            <div class="beat-energy-bar" id="band-bass" title="Bass"></div>
+            <div class="beat-energy-bar" id="band-lowMid" title="Low-Mid"></div>
+            <div class="beat-energy-bar" id="band-mid" title="Mid"></div>
+            <div class="beat-energy-bar" id="band-highMid" title="High-Mid"></div>
+            <div class="beat-energy-bar" id="band-treble" title="Treble"></div>
+        `;
+    },
+    
+    monitorFrequencyBands: function() {
+        if (!this.audioAnalyzer) return;
+        
+        const bufferLength = this.audioAnalyzer.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        const analyzeBands = () => {
+            if (!this.mediaPlaybackActive) {
+                requestAnimationFrame(analyzeBands);
+                return;
+            }
+            
+            this.audioAnalyzer.getByteFrequencyData(dataArray);
+            
+            const bands = this.frequencyBands;
+            bands.subBass.value = this.getBandAverage(dataArray, bands.subBass.min, bands.subBass.max);
+            bands.bass.value = this.getBandAverage(dataArray, bands.bass.min, bands.bass.max);
+            bands.lowMid.value = this.getBandAverage(dataArray, bands.lowMid.min, bands.lowMid.max);
+            bands.mid.value = this.getBandAverage(dataArray, bands.mid.min, bands.mid.max);
+            bands.highMid.value = this.getBandAverage(dataArray, bands.highMid.min, bands.highMid.max);
+            bands.treble.value = this.getBandAverage(dataArray, bands.treble.min, bands.treble.max);
+            
+            this.updateFrequencyVisualization();
+            this.analyzeBeatPattern();
+            
+            requestAnimationFrame(analyzeBands);
+        };
+        
+        analyzeBands();
+    },
+    
+    getBandAverage: function(dataArray, start, end) {
+        let sum = 0;
+        for (let i = start; i < Math.min(end, dataArray.length); i++) {
+            sum += dataArray[i];
+        }
+        return sum / (Math.min(end, dataArray.length) - start);
+    },
+    
+    updateFrequencyVisualization: function() {
+        const bands = this.frequencyBands;
+        const bandElements = ['subBass', 'bass', 'lowMid', 'mid', 'highMid', 'treble'];
+        const colors = ['#ff0080', '#ff6b6b', '#f39c12', '#00d4ff', '#00ff88', '#9b59b6'];
+        
+        bandElements.forEach((band, index) => {
+            const el = document.getElementById(`band-${band}`);
+            if (el) {
+                const height = Math.min(100, (bands[band].value / 255) * 100);
+                el.style.height = `${height}%`;
+                el.style.background = `linear-gradient(to top, ${colors[index]} 0%, ${colors[index]}88 100%)`;
+                
+                if (height > 85) {
+                    el.classList.add('peak');
+                } else {
+                    el.classList.remove('peak');
+                }
+            }
+        });
+    },
+    
+    analyzeBeatPattern: function() {
+        const bassEnergy = this.frequencyBands.bass.value;
+        const threshold = this.beatDetectionSensitivity * 255;
+        
+        if (bassEnergy > threshold) {
+            const now = Date.now();
+            this.beatHistory.push(now);
+            
+            if (this.beatHistory.length > this.maxBeatHistory) {
+                this.beatHistory.shift();
+            }
+            
+            if (this.beatHistory.length >= 4) {
+                const intervals = [];
+                for (let i = 1; i < this.beatHistory.length; i++) {
+                    intervals.push(this.beatHistory[i] - this.beatHistory[i-1]);
+                }
+                
+                const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                const consistency = intervals.every(i => Math.abs(i - avgInterval) < 100);
+                
+                if (consistency && avgInterval > 200 && avgInterval < 1500) {
+                    const detectedBPM = Math.round(60000 / avgInterval);
+                    if (detectedBPM !== this.beatPatternDetected) {
+                        this.beatPatternDetected = detectedBPM;
+                        console.log(`Beat pattern detected: ${detectedBPM} BPM`);
+                        this.showBeatPatternNotification(detectedBPM);
+                    }
+                }
+            }
+        }
+    },
+    
+    showBeatPatternNotification: function(bpm) {
+        if (typeof Swal === 'undefined') return;
+        
+        Swal.fire({
+            title: 'Beat Pattern Detected',
+            html: `
+                <div style="text-align: center;">
+                    <i class="fas fa-music" style="font-size: 48px; color: #ff6b6b; margin-bottom: 15px;"></i>
+                    <p style="color: #00d4ff; font-size: 24px; font-weight: bold;">${bpm} BPM</p>
+                    <p style="color: #adb5bd; margin-top: 10px;">Lighting effects synchronized to detected beat</p>
+                </div>
+            `,
+            timer: 3000,
+            showConfirmButton: false,
+            background: 'rgba(30, 30, 45, 0.98)',
+            backdrop: 'rgba(0, 0, 0, 0.8)'
+        });
     },
     
     showBeatDetectionFallback: function() {
@@ -2308,10 +2713,38 @@ const LifXTouchControls = {
         }
     },
     
+    mediaSyncModes: {
+        'beat': { name: 'Beat Sync', icon: '🥁', description: 'Flash lights on detected beats' },
+        'color': { name: 'Color Sync', icon: '🎨', description: 'Match dominant colors' },
+        'ambient': { name: 'Ambient', icon: '🌊', description: 'Smooth color transitions' },
+        'bass': { name: 'Bass Boost', icon: '🔊', description: 'Emphasize low frequencies' },
+        'spectrum': { name: 'Full Spectrum', icon: '🌈', description: 'Use all frequency bands' },
+        'pulse': { name: 'Pulse Mode', icon: '💓', description: 'Rhythmic pulsing effect' }
+    },
+    
     setMediaSyncMode: function(mode) {
         this.mediaSyncMode = mode;
         localStorage.setItem('lifx_media_sync_mode', mode);
-        this.showEnhancedGestureFeedback(`Sync Mode: ${mode}`, '🎵');
+        const modeInfo = this.mediaSyncModes[mode] || { name: mode, icon: '🎵' };
+        this.showEnhancedGestureFeedback(`Sync Mode: ${modeInfo.name}`, modeInfo.icon);
+        this.applyMediaSyncModeEffects(mode);
+    },
+    
+    applyMediaSyncModeEffects: function(mode) {
+        switch(mode) {
+            case 'bass':
+                this.beatDetectionSensitivity = 0.5;
+                console.log('Bass Boost mode: Lowered sensitivity for bass emphasis');
+                break;
+            case 'spectrum':
+                this.beatDetectionSensitivity = 0.6;
+                console.log('Full Spectrum mode: Balanced sensitivity');
+                break;
+            case 'pulse':
+                this.beatDetectionSensitivity = 0.75;
+                console.log('Pulse mode: Higher sensitivity for rhythmic effects');
+                break;
+        }
     },
     
     setBeatDetectionSensitivity: function(level) {
