@@ -539,7 +539,32 @@ Licensed under GPLv3....see LICENSE file. -->
     <button class="media-center-mobile-btn" id="voice-command-btn" onclick="startVoiceCommand()" title="Voice Command">
       <i class="fas fa-microphone"></i>
     </button>
+    <button class="media-center-mobile-btn" id="crossfade-btn" onclick="toggleCrossfade()" title="Crossfade">
+      <i class="fas fa-random"></i>
+    </button>
   </div>
+  
+  <!-- LIFX undo button for gesture history -->
+  <div class="lifx-undo-btn" id="lifx-undo-btn" onclick="LifXTouchControls.undoLastGesture()" title="Undo Last Gesture">
+    <i class="fas fa-undo"></i>
+  </div>
+  
+  <!-- Multi-bulb selection toolbar -->
+  <div class="lifx-selection-toolbar" id="lifx-selection-toolbar">
+    <span class="lifx-selection-count" id="lifx-selection-count">0 selected</span>
+    <button class="btn btn-sm btn-primary" onclick="LifXTouchControls.powerAll('on')">
+      <i class="fas fa-power-on"></i> All On
+    </button>
+    <button class="btn btn-sm btn-danger" onclick="LifXTouchControls.powerAll('off')">
+      <i class="fas fa-power-off"></i> All Off
+    </button>
+    <button class="btn btn-sm btn-warning" onclick="LifXTouchControls.clearMultiSelection()">
+      <i class="fas fa-times"></i> Clear
+    </button>
+  </div>
+  
+  <!-- Touch hold progress indicator -->
+  <div class="touch-hold-progress" id="touch-hold-progress"></div>
 </body>
 
 </html>

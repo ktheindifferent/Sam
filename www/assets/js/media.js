@@ -31,7 +31,16 @@ const MediaPlayer = {
     isShuffling: false,
     mediaSessionActive: false,
     ambientLightEnabled: false,
-    bassBoostEnabled: false
+    bassBoostEnabled: false,
+    crossfadeEnabled: false,
+    crossfadeDuration: 5,
+    equalizerPreset: 'flat',
+    lastFmScrobbling: false,
+    lyricsEnabled: false,
+    sleepTimer: null,
+    wakeUpTimer: null,
+    playbackHistory: [],
+    favorites: []
 };
 
 // Initialize when DOM is ready
@@ -101,10 +110,23 @@ function initTouchControls() {
             if (tapLength < 300 && tapLength > 0) {
                 e.preventDefault();
                 togglePlayPause();
+                showSwipeHint('Play/Pause ⏯️');
                 lastTap = currentTime;
             } else {
                 lastTap = currentTime;
             }
+        });
+        
+        // Long press for quick actions
+        let longPressTimer;
+        btn.addEventListener('touchstart', function(e) {
+            longPressTimer = setTimeout(() => {
+                showQuickActionMenu(btn);
+            }, 500);
+        });
+        
+        btn.addEventListener('touchend', function() {
+            if (longPressTimer) clearTimeout(longPressTimer);
         });
     });
 
@@ -462,6 +484,106 @@ function decreaseVolume() {
     setVolume(Math.max(0, MediaPlayer.volume - 10));
 }
 
+// Sleep timer functionality
+function setSleepTimer(minutes) {
+    if (MediaPlayer.sleepTimer) {
+        clearTimeout(MediaPlayer.sleepTimer);
+    }
+    
+    if (minutes > 0) {
+        MediaPlayer.sleepTimer = setTimeout(() => {
+            if (MediaPlayer.isPlaying) {
+                togglePlayPause();
+                showNotification('Sleep timer expired - playback stopped', 'info');
+            }
+        }, minutes * 60 * 1000);
+        
+        showNotification(`Sleep timer set for ${minutes} minutes`, 'success');
+    }
+}
+
+// Wake up timer
+function setWakeUpTimer(hours, minutes) {
+    const now = new Date();
+    const wakeTime = new Date();
+    wakeTime.setHours(hours, minutes, 0, 0);
+    
+    if (wakeTime < now) {
+        wakeTime.setDate(wakeTime.getDate() + 1);
+    }
+    
+    const delay = wakeTime - now;
+    
+    MediaPlayer.wakeUpTimer = setTimeout(() => {
+        if (!MediaPlayer.isPlaying) {
+            togglePlayPause();
+            setVolume(30);
+            showNotification('Wake up! Music starting your day', 'success');
+        }
+    }, delay);
+    
+    showNotification(`Wake up timer set for ${hours}:${minutes.toString().padStart(2, '0')}`, 'success');
+}
+
+// Quick action menu for long press
+function showQuickActionMenu(btn) {
+    const actionId = btn.id;
+    const actions = {
+        'play-pause-btn': ['Play', 'Pause', 'Add to Queue'],
+        'next-btn': ['Next Track', 'Skip +10s', 'Add to Favorites'],
+        'prev-btn': ['Previous Track', 'Restart Track', 'Remove from Queue'],
+        'volume-slider': ['Set Volume', 'Mute', 'Max Volume'],
+        'mute-btn': ['Mute All', 'Unmute All', 'Set 50%']
+    };
+    
+    if (actions[actionId] && typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Quick Actions',
+            html: `
+                <div class="quick-action-menu">
+                    ${actions[actionId].map(action => 
+                        `<button class="btn btn-sm btn-outline-primary m-1" onclick="handleQuickAction('${actionId}', '${action}')">${action}</button>`
+                    ).join('')}
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true
+        });
+    }
+}
+
+function handleQuickAction(controlId, action) {
+    switch(action) {
+        case 'Play':
+            if (!MediaPlayer.isPlaying) togglePlayPause();
+            break;
+        case 'Pause':
+            if (MediaPlayer.isPlaying) togglePlayPause();
+            break;
+        case 'Next Track':
+            nextTrack();
+            break;
+        case 'Previous Track':
+            previousTrack();
+            break;
+        case 'Mute All':
+            MediaPlayer.isMuted = true;
+            updateMuteButton();
+            break;
+        case 'Unmute All':
+            MediaPlayer.isMuted = false;
+            updateMuteButton();
+            break;
+        case 'Max Volume':
+            setVolume(100);
+            break;
+        case 'Set 50%':
+            setVolume(50);
+            break;
+    }
+    if (typeof Swal !== 'undefined') Swal.close();
+}
+
 function toggleMute() {
     fetch('/api/services/media/snapcast/mute', {
         method: 'POST',
@@ -765,6 +887,16 @@ function initAmbientLightSync() {
                 showNotification('Ambient light sync disabled', 'info');
             }
         });
+        
+        // Add double-tap for color cycle mode
+        let lastTap = 0;
+        ambientBtn.addEventListener('touchend', function(e) {
+            const currentTime = Date.now();
+            if (currentTime - lastTap < 300) {
+                cycleAmbientLightMode();
+            }
+            lastTap = currentTime;
+        });
     }
     
     const bassBtn = document.querySelector('#bass-boost-btn');
@@ -776,12 +908,58 @@ function initAmbientLightSync() {
         });
     }
     
+    // Add crossfade toggle
+    const crossfadeBtn = document.querySelector('#crossfade-btn');
+    if (crossfadeBtn) {
+        crossfadeBtn.addEventListener('click', () => {
+            MediaPlayer.crossfadeEnabled = !MediaPlayer.crossfadeEnabled;
+            crossfadeBtn.classList.toggle('active', MediaPlayer.crossfadeEnabled);
+            showNotification(`Crossfade ${MediaPlayer.crossfadeEnabled ? 'enabled' : 'disabled'}`, 'info');
+        });
+    }
+    
     // Show mobile controls on touch devices
     if (typeof is_touch_enabled === 'function' && is_touch_enabled()) {
         const mobileControls = document.querySelector('#media-center-mobile-controls');
         if (mobileControls) {
             mobileControls.classList.add('show');
+            
+            // Add sleep timer button to mobile controls
+            const sleepTimerBtn = document.createElement('button');
+            sleepTimerBtn.className = 'media-center-mobile-btn';
+            sleepTimerBtn.id = 'sleep-timer-btn';
+            sleepTimerBtn.innerHTML = '<i class="fas fa-clock"></i>';
+            sleepTimerBtn.onclick = showSleepTimerDialog;
+            mobileControls.appendChild(sleepTimerBtn);
         }
+    }
+}
+
+// Cycle through ambient light modes
+function cycleAmbientLightMode() {
+    const modes = ['spectrum', 'warm', 'cool', 'beat'];
+    const currentIndex = modes.indexOf(MediaPlayer.ambientLightMode || 'spectrum');
+    MediaPlayer.ambientLightMode = modes[(currentIndex + 1) % modes.length];
+    showNotification(`Ambient mode: ${MediaPlayer.ambientLightMode}`, 'info');
+}
+
+// Sleep timer dialog
+function showSleepTimerDialog() {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Sleep Timer',
+            html: `
+                <div class="sleep-timer-options">
+                    <button class="btn btn-sm btn-outline-primary m-1" onclick="setSleepTimer(15)">15 min</button>
+                    <button class="btn btn-sm btn-outline-primary m-1" onclick="setSleepTimer(30)">30 min</button>
+                    <button class="btn btn-sm btn-outline-primary m-1" onclick="setSleepTimer(45)">45 min</button>
+                    <button class="btn btn-sm btn-outline-primary m-1" onclick="setSleepTimer(60)">1 hour</button>
+                    <button class="btn btn-sm btn-outline-danger m-1" onclick="setSleepTimer(0)">Cancel</button>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true
+        });
     }
 }
 
@@ -862,6 +1040,168 @@ function handleZoneVolumeCommand(command) {
             showNotification(`Zone "${zoneName}" not found`, 'warning');
         }
     }
+}
+
+// Toggle crossfade
+function toggleCrossfade() {
+    MediaPlayer.crossfadeEnabled = !MediaPlayer.crossfadeEnabled;
+    
+    const crossfadeBtn = document.querySelector('#crossfade-btn');
+    if (crossfadeBtn) {
+        crossfadeBtn.classList.toggle('active', MediaPlayer.crossfadeEnabled);
+    }
+    
+    showNotification(`Crossfade ${MediaPlayer.crossfadeEnabled ? 'enabled' : 'disabled'}`, 'info');
+}
+
+// Add track to favorites
+function addToFavorites(trackId) {
+    if (!MediaPlayer.favorites.includes(trackId)) {
+        MediaPlayer.favorites.push(trackId);
+        showNotification('Added to favorites', 'success');
+        localStorage.setItem('sam_media_favorites', JSON.stringify(MediaPlayer.favorites));
+    }
+}
+
+// Remove from favorites
+function removeFromFavorites(trackId) {
+    const index = MediaPlayer.favorites.indexOf(trackId);
+    if (index > -1) {
+        MediaPlayer.favorites.splice(index, 1);
+        showNotification('Removed from favorites', 'info');
+        localStorage.setItem('sam_media_favorites', JSON.stringify(MediaPlayer.favorites));
+    }
+}
+
+// Load favorites from localStorage
+function loadFavorites() {
+    try {
+        const stored = localStorage.getItem('sam_media_favorites');
+        if (stored) {
+            MediaPlayer.favorites = JSON.parse(stored);
+        }
+    } catch (e) {
+        console.warn('Failed to load favorites:', e);
+    }
+}
+
+// Spotify integration helpers
+const SpotifyControls = {
+    isConnected: false,
+    deviceId: null,
+    player: null,
+    
+    connect: function() {
+        if (!window.Spotify) {
+            const script = document.createElement('script');
+            script.src = 'https://sdk.scdn.co/spotify-player.js';
+            document.head.appendChild(script);
+        }
+        
+        window.onSpotifyWebPlaybackSDKReady = () => {
+            this.initializePlayer();
+        };
+    },
+    
+    initializePlayer: function() {
+        const player = new Spotify.Player({
+            name: 'SAM Media Center',
+            getOAuthToken: cb => {
+                this.getOAuthToken(cb);
+            }
+        });
+        
+        player.addListener('ready', ({ device_id }) => {
+            console.log('Spotify player ready with ID:', device_id);
+            this.deviceId = device_id;
+            this.isConnected = true;
+            showNotification('Spotify connected', 'success');
+        });
+        
+        player.addListener('not_ready', () => {
+            console.warn('Spotify player not ready');
+            this.isConnected = false;
+        });
+        
+        player.addListener('player_state_changed', state => {
+            if (!state) return;
+            
+            MediaPlayer.isPlaying = !state.paused;
+            MediaPlayer.currentTrack = {
+                title: state.track_window.current_track.name,
+                artist: state.track_window.current_track.artists[0].name,
+                album: state.track_window.current_track.album.name,
+                artwork: state.track_window.current_track.album.images[0]?.url
+            };
+            
+            updatePlayPauseButton();
+            updateMediaSessionMetadata(MediaPlayer.currentTrack);
+        });
+        
+        player.connect();
+        this.player = player;
+    },
+    
+    getOAuthToken: function(cb) {
+        fetch('/api/services/spotify/token')
+            .then(response => response.json())
+            .then(data => {
+                if (data.access_token) {
+                    cb(data.access_token);
+                } else {
+                    console.error('Failed to get Spotify token');
+                    cb(null);
+                }
+            })
+            .catch(err => {
+                console.error('Spotify token fetch error:', err);
+                cb(null);
+            });
+    },
+    
+    play: function() {
+        if (this.player) this.player.togglePlay();
+    },
+    
+    pause: function() {
+        if (this.player) this.player.togglePlay();
+    },
+    
+    nextTrack: function() {
+        if (this.player) this.player.nextTrack();
+    },
+    
+    previousTrack: function() {
+        if (this.player) this.player.previousTrack();
+    },
+    
+    setVolume: function(volume) {
+        if (this.player) this.player.setVolume(volume / 100);
+    }
+};
+
+// Initialize Spotify when media center loads
+function initSpotifyIntegration() {
+    fetch('/api/services/spotify/status')
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.running && data.connected) {
+                SpotifyControls.connect();
+            }
+        })
+        .catch(() => {
+            console.log('Spotify service not available');
+        });
+}
+
+// Update initMediaCenter to include new init functions
+const origInitMediaCenter = typeof initMediaCenter === 'function' ? initMediaCenter : null;
+if (origInitMediaCenter) {
+    window.initMediaCenter = function() {
+        origInitMediaCenter();
+        initSpotifyIntegration();
+        loadFavorites();
+    };
 }
 
 // Original gamepad navigation loop

@@ -28,12 +28,19 @@ const LifXTouchControls = {
     scenes: ['relax', 'focus', 'energize', 'night', 'sunset', 'ocean', 'reading', 'romance', 'party', 'golden', 'arctic'],
     startY: null,
     startBrightness: null,
+    startColorTemp: null,
+    gestureStartTime: 0,
+    lastSwipeDistance: 0,
+    isTouchDevice: false,
+    gestureHistory: [],
+    maxGestureHistory: 10,
     
     enable: function(showTutorial = false) {
         if (this.enabled) return;
         
         this.enabled = true;
-        console.log('LIFX Touch Controls enabled');
+        this.isTouchDevice = typeof is_touch_enabled === 'function' && is_touch_enabled();
+        console.log('LIFX Touch Controls enabled', this.isTouchDevice ? '(Touch Device)' : '(Mouse/Keyboard)');
         
         // Add visual indicators for touch-controlled elements
         document.querySelectorAll('.lifx-bulb-control, .lifx-bulb-card').forEach(el => {
@@ -50,6 +57,9 @@ const LifXTouchControls = {
         
         // Add touch mode indicator
         this.addTouchModeIndicator();
+        
+        // Initialize gesture history
+        this.gestureHistory = [];
         
         // Register gesture callbacks with debouncing
         if (typeof onGesture === 'function') {
@@ -395,14 +405,15 @@ const LifXTouchControls = {
         }
     },
     
-    adjustBrightness: function(delta) {
+    adjustBrightness: function(delta, smooth = true) {
         const targets = this.multiBulbSelection.length > 0 
             ? this.multiBulbSelection 
             : (this.selectedBulb ? [this.selectedBulb] : []);
         
         if (targets.length === 0) return;
         
-        this.brightnessLevel = Math.max(0, Math.min(100, this.brightnessLevel + delta));
+        const newBrightness = Math.max(0, Math.min(100, this.brightnessLevel + delta));
+        const duration = smooth && Math.abs(delta) < 20 ? 0.3 : 0.1;
         
         $.ajax({
             url: '/api/services/lifx/set_state',
@@ -410,11 +421,12 @@ const LifXTouchControls = {
             contentType: 'application/json',
             data: JSON.stringify({
                 selector: `id:${targets.join(',')}`,
-                brightness: this.brightnessLevel,
-                duration: 0.3
+                brightness: newBrightness,
+                duration: duration
             }),
             success: (response) => {
-                console.log('Brightness adjusted:', this.brightnessLevel);
+                this.brightnessLevel = newBrightness;
+                this.recordGesture('brightness', newBrightness);
                 targets.forEach(bulbId => this.updateBulbVisual(bulbId));
             },
             error: (err) => {
@@ -423,14 +435,15 @@ const LifXTouchControls = {
         });
     },
     
-    adjustColorTemp: function(delta) {
+    adjustColorTemp: function(delta, smooth = true) {
         const targets = this.multiBulbSelection.length > 0 
             ? this.multiBulbSelection 
             : (this.selectedBulb ? [this.selectedBulb] : []);
         
         if (targets.length === 0) return;
         
-        this.colorTempLevel = Math.max(1500, Math.min(9000, this.colorTempLevel + delta));
+        const newColorTemp = Math.max(1500, Math.min(9000, this.colorTempLevel + delta));
+        const duration = smooth && Math.abs(delta) < 500 ? 0.3 : 0.1;
         
         $.ajax({
             url: '/api/services/lifx/set_color',
@@ -438,10 +451,12 @@ const LifXTouchControls = {
             contentType: 'application/json',
             data: JSON.stringify({
                 selector: `id:${targets.join(',')}`,
-                color: `kelvin:${this.colorTempLevel}`
+                color: `kelvin:${newColorTemp}`,
+                duration: duration
             }),
             success: (response) => {
-                console.log('Color temperature adjusted:', this.colorTempLevel);
+                this.colorTempLevel = newColorTemp;
+                this.recordGesture('colorTemp', newColorTemp);
                 targets.forEach(bulbId => this.updateBulbVisual(bulbId));
             },
             error: (err) => {
@@ -669,6 +684,249 @@ const LifXTouchControls = {
                 <span>Settings</span>
             </button>
         `;
+    },
+    
+    recordGesture: function(type, value) {
+        const record = {
+            type: type,
+            value: value,
+            timestamp: Date.now()
+        };
+        
+        this.gestureHistory.push(record);
+        if (this.gestureHistory.length > this.maxGestureHistory) {
+            this.gestureHistory.shift();
+        }
+    },
+    
+    undoLastGesture: function() {
+        if (this.gestureHistory.length === 0) {
+            this.showGestureFeedback('Nothing to undo', '↩️');
+            return;
+        }
+        
+        const lastGesture = this.gestureHistory.pop();
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : []);
+        
+        if (targets.length === 0) return;
+        
+        if (lastGesture.type === 'brightness') {
+            const previousValue = Math.max(0, Math.min(100, lastGesture.value - 10));
+            this.brightnessLevel = previousValue;
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: `id:${targets.join(',')}`,
+                    brightness: previousValue,
+                    duration: 0.3
+                }),
+                success: () => {
+                    targets.forEach(bulbId => this.updateBulbVisual(bulbId));
+                    this.showGestureFeedback('Undo brightness', '↩️');
+                }
+            });
+        } else if (lastGesture.type === 'colorTemp') {
+            const previousValue = Math.max(1500, Math.min(9000, lastGesture.value - 200));
+            this.colorTempLevel = previousValue;
+            $.ajax({
+                url: '/api/services/lifx/set_color',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: `id:${targets.join(',')}`,
+                    color: `kelvin:${previousValue}`,
+                    duration: 0.3
+                }),
+                success: () => {
+                    targets.forEach(bulbId => this.updateBulbVisual(bulbId));
+                    this.showGestureFeedback('Undo color', '↩️');
+                }
+            });
+        }
+    },
+    
+    presetBrightness: function(level) {
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : []);
+        
+        if (targets.length === 0) return;
+        
+        this.brightnessLevel = level;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                brightness: level,
+                duration: 0.5
+            }),
+            success: () => {
+                targets.forEach(bulbId => this.updateBulbVisual(bulbId));
+                this.showGestureFeedback(`${level}% brightness`, '💡');
+            }
+        });
+    },
+    
+    rampBrightness: function(direction) {
+        const rampInterval = setInterval(() => {
+            if (!this.selectedBulb && this.multiBulbSelection.length === 0) {
+                clearInterval(rampInterval);
+                return;
+            }
+            
+            const delta = direction === 'up' ? 5 : -5;
+            const newBrightness = this.brightnessLevel + delta;
+            
+            if (newBrightness <= 0 || newBrightness >= 100) {
+                clearInterval(rampInterval);
+                return;
+            }
+            
+            this.adjustBrightness(delta, false);
+        }, 100);
+        
+        setTimeout(() => clearInterval(rampInterval), 2000);
+    },
+    
+    openQuickSettings: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Quick Settings: Brightness ' + this.brightnessLevel + '%, Color Temp ' + this.colorTempLevel + 'K');
+            return;
+        }
+        
+        Swal.fire({
+            title: 'Quick Settings',
+            html: `
+                <div class="quick-settings-container">
+                    <div class="setting-group">
+                        <label>Brightness</label>
+                        <input type="range" id="quick-brightness" min="0" max="100" value="${this.brightnessLevel}" 
+                               oninput="LifXTouchControls.presetBrightness(this.value)" 
+                               style="width: 100%;">
+                        <span id="brightness-value">${this.brightnessLevel}%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Color Temperature</label>
+                        <input type="range" id="quick-colortemp" min="1500" max="9000" value="${this.colorTempLevel}" 
+                               oninput="LifXTouchControls.adjustColorTemp(this.value - ${this.colorTempLevel}, false); this.nextElementSibling.textContent = this.value + 'K';" 
+                               style="width: 100%;">
+                        <span>${this.colorTempLevel}K</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Quick Scenes</label>
+                        <div class="scene-preview-grid">
+                            ${this.scenes.slice(0, 6).map(scene => `
+                                <div class="scene-preview-item" onclick="LifXTouchControls.applyScene('${scene}')" 
+                                     style="background: ${this.getSceneColor(scene)};">
+                                    <span class="scene-preview-label">${scene}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="setting-group">
+                        <label>Presets</label>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="btn btn-sm btn-outline-primary" onclick="LifXTouchControls.presetBrightness(25)">25%</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="LifXTouchControls.presetBrightness(50)">50%</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="LifXTouchControls.presetBrightness(75)">75%</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="LifXTouchControls.presetBrightness(100)">100%</button>
+                        </div>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '600px'
+        });
+    },
+    
+    getSceneColor: function(sceneName) {
+        const sceneColors = {
+            'relax': '#ff6b6b',
+            'focus': '#4ecdc4',
+            'energize': '#ffe66d',
+            'night': '#1a1a2e',
+            'sunset': '#ff9f43',
+            'ocean': '#45b7d1',
+            'reading': '#feca57',
+            'romance': '#ff9ff3',
+            'party': '#00d4ff',
+            'golden': '#f9ca24',
+            'arctic': '#70a1ff'
+        };
+        return sceneColors[sceneName] || '#ffffff';
+    },
+    
+    applyScene: function(sceneName) {
+        const sceneColors = {
+            'relax': { hue: 0, saturation: 50, brightness: 60, kelvin: 2700 },
+            'focus': { hue: 160, saturation: 60, brightness: 80, kelvin: 5000 },
+            'energize': { hue: 50, saturation: 80, brightness: 100, kelvin: 6500 },
+            'night': { hue: 240, saturation: 20, brightness: 20, kelvin: 2000 },
+            'sunset': { hue: 30, saturation: 70, brightness: 70, kelvin: 2500 },
+            'ocean': { hue: 190, saturation: 65, brightness: 75, kelvin: 4000 },
+            'reading': { hue: 45, saturation: 40, brightness: 80, kelvin: 3500 },
+            'romance': { hue: 320, saturation: 50, brightness: 60, kelvin: 2700 },
+            'party': { hue: 180, saturation: 100, brightness: 100, kelvin: 6000 },
+            'golden': { hue: 45, saturation: 85, brightness: 90, kelvin: 3000 },
+            'arctic': { hue: 210, saturation: 55, brightness: 85, kelvin: 7000 }
+        };
+        
+        const scene = sceneColors[sceneName];
+        if (!scene) return;
+        
+        const targets = this.multiBulbSelection.length > 0 
+            ? this.multiBulbSelection 
+            : (this.selectedBulb ? [this.selectedBulb] : ['all']);
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${scene.hue * 182} saturation:${scene.saturation}%`,
+                brightness: scene.brightness,
+                kelvin: scene.kelvin,
+                duration: 0.5
+            }),
+            success: () => {
+                this.showGestureFeedback(`Applied ${sceneName} scene`, '🎨');
+                if (typeof Swal !== 'undefined') Swal.close();
+            }
+        });
+    },
+    
+    updateSelectionToolbar: function() {
+        const toolbar = document.getElementById('lifx-selection-toolbar');
+        const countEl = document.getElementById('lifx-selection-count');
+        
+        if (!toolbar || !countEl) return;
+        
+        if (this.multiBulbSelection.length > 0) {
+            countEl.textContent = `${this.multiBulbSelection.length} selected`;
+            toolbar.classList.add('visible');
+        } else {
+            toolbar.classList.remove('visible');
+        }
+    },
+    
+    updateUndoButton: function() {
+        const undoBtn = document.getElementById('lifx-undo-btn');
+        if (!undoBtn) return;
+        
+        if (this.gestureHistory.length > 0) {
+            undoBtn.classList.add('visible');
+        } else {
+            undoBtn.classList.remove('visible');
+        }
     }
 };
 

@@ -595,3 +595,195 @@
         display: none;
     }
 }
+
+/* Gesture history undo button */
+.lifx-undo-btn {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(39, 160, 185, 0.3);
+    border: 2px solid rgba(39, 160, 185, 0.5);
+    color: #adb5bd;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 9996;
+    font-size: 18px;
+}
+
+.lifx-undo-btn.visible {
+    display: flex;
+}
+
+.lifx-undo-btn:active {
+    transform: scale(0.9);
+    background: rgba(39, 160, 185, 0.5);
+}
+
+/* Brightness ramp indicator */
+.brightness-ramp-indicator {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+}
+
+.brightness-ramp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.3), #00d4ff);
+    transition: width 0.1s ease;
+}
+
+/* Multi-bulb selection toolbar */
+.lifx-selection-toolbar {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: rgba(20, 20, 30, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 10px 20px;
+    border-radius: 25px;
+    z-index: 9995;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(39, 160, 185, 0.3);
+    box-shadow: 0 5px 30px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+.lifx-selection-toolbar.visible {
+    display: flex;
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.lifx-selection-toolbar .btn {
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+}
+
+.lifx-selection-count {
+    background: rgba(39, 160, 185, 0.2);
+    padding: 4px 12px;
+    border-radius: 15px;
+    font-size: 12px;
+    color: #00d4ff;
+}
+
+/* Scene preview thumbnails */
+.scene-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 10px;
+}
+
+.scene-preview-item {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.scene-preview-item:hover {
+    transform: scale(1.05);
+    border-color: #00d4ff;
+}
+
+.scene-preview-item.active {
+    border-color: #00d4ff;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+}
+
+.scene-preview-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 10px;
+    text-align: center;
+    padding: 4px;
+}
+
+/* Touch hold progress indicator */
+.touch-hold-progress {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 3px solid rgba(39, 160, 185, 0.3);
+    border-top-color: #00d4ff;
+    animation: touch-hold-spin 1s linear infinite;
+    display: none;
+    pointer-events: none;
+}
+
+.touch-hold-progress.visible {
+    display: block;
+}
+
+@keyframes touch-hold-spin {
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Enhanced mobile quick actions */
+.lifx-quick-actions-enhanced {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.lifx-quick-actions-enhanced::-webkit-scrollbar {
+    display: none;
+}
+
+.lifx-quick-action-chip {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: rgba(42, 42, 58, 0.5);
+    border: 1px solid rgba(39, 160, 185, 0.2);
+    border-radius: 20px;
+    color: #adb5bd;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.lifx-quick-action-chip:active {
+    transform: scale(0.95);
+    background: rgba(39, 160, 185, 0.3);
+}
+
+.lifx-quick-action-chip.active {
+    background: rgba(39, 160, 185, 0.4);
+    border-color: #00d4ff;
+    color: #00d4ff;
+}
