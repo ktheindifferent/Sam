@@ -544,6 +544,11 @@ pub fn handle_enhanced_api_request(request: &Request) -> Response {
         return handle_zones(request);
     }
     
+    // Circadian rhythm endpoint
+    if request.url().contains("/api/services/lifx/circadian") {
+        return handle_circadian(request);
+    }
+    
     // Preset endpoints
     if request.url().contains("/api/services/lifx/preset") {
         return handle_presets(request);
@@ -956,6 +961,50 @@ fn handle_effects(request: &Request) -> Response {
                             "duration": total_duration
                         }));
                     },
+                    "breath" => {
+                        let original_colors: Vec<(u64, HSBK)> = bulbs_vec.iter().map(|b| {
+                            let color = b.lifx_color.as_ref().map(|c| HSBK {
+                                hue: c.hue,
+                                saturation: c.saturation,
+                                brightness: c.brightness,
+                                kelvin: c.kelvin,
+                            }).unwrap_or(HSBK { hue: 0, saturation: 0, brightness: 65535, kelvin: 6500 });
+                            (b.target, color)
+                        }).collect();
+                        
+                        let sock_clone = sock.try_clone().ok();
+                        let bulbs_clone: Vec<(u64, HSBK, std::net::SocketAddr)> = bulbs_vec.iter()
+                            .map(|b| (b.target, original_colors.iter().find(|(t, _)| *t == b.target).unwrap().1, b.addr))
+                            .collect();
+                        
+                        thread::spawn(move || {
+                            if let Some(socket) = sock_clone {
+                                for _ in 0..(cycles as u64) {
+                                    for (target, color, addr) in &bulbs_clone {
+                                        for step in 0..=20 {
+                                            let progress = (step as f64 / 20.0).sin();
+                                            let brightened = HSBK {
+                                                hue: color.hue,
+                                                saturation: color.saturation,
+                                                brightness: (color.brightness as f64 * (0.3 + 0.7 * progress)) as u16,
+                                                kelvin: color.kelvin,
+                                            };
+                                            let _ = handlers.protocol.send_color_command(&socket, *target, *addr, brightened, 0);
+                                            thread::sleep(Duration::from_millis(50));
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                        
+                        return Response::json(&json!({
+                            "success": true,
+                            "message": format!("Breath effect started on {} bulbs", bulbs_vec.len()),
+                            "effect": "breath",
+                            "cycles": cycles,
+                            "duration": total_duration
+                        }));
+                    },
                     _ => {
                         return Response::json(&json!({
                             "success": false,
@@ -1058,6 +1107,112 @@ fn handle_zones(request: &Request) -> Response {
                     "end_index": end_index,
                     "apply": apply,
                     "zones_set": total_zones_set
+                }));
+            }
+        }
+    }
+    
+    Response::json(&json!({
+        "success": false,
+        "message": "Discovery service not available"
+    }))
+}
+
+/// Get circadian rhythm color based on time of day
+fn get_circadian_color(hour: u32) -> (u16, u16, u16, u16) {
+    match hour {
+        0..=5 => (43680, 6553, 6553, 2000),      // Deep night - very dim, warm
+        6 => (9100, 20000, 26214, 3000),         // Dawn - gradual wake up
+        7..=9 => (9100, 32767, 55705, 5500),     // Morning - energizing
+        10..=11 => (36400, 13107, 62259, 6000),  // Midday - bright, cool
+        12..=14 => (36400, 19660, 65535, 6500),  // Afternoon - peak brightness
+        15..=17 => (25480, 26214, 58982, 5000),  // Late afternoon - neutral
+        18..=19 => (8000, 30000, 45875, 3500),   // Evening - warm, relaxing
+        20..=21 => (5800, 15000, 32767, 2700),   // Night - dim, warm
+        22..=23 => (43680, 6553, 19660, 2000),   // Late night - very dim
+        _ => (43680, 6553, 6553, 2000),
+    }
+}
+
+/// Handle circadian rhythm scheduling
+fn handle_circadian(request: &Request) -> Response {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    if request.method() != &rouille::Method::Post {
+        return Response::empty_404();
+    }
+    
+    let input = try_or_400!(post_input!(request, {
+        selector: String,
+        enable: Option<bool>,
+        hour: Option<u32>
+    }));
+    
+    let target_hour = input.hour.unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .rem_div(86400)
+            .rem_div(3600)
+            .add(5)
+            .rem(24) as u32
+    });
+    
+    let (hue, sat, bright, kelvin) = get_circadian_color(target_hour);
+    
+    if let Some(discovery_arc) = get_global_discovery() {
+        if let Ok(discovery) = discovery_arc.lock() {
+            if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                let sock = discovery.get_socket();
+                let handlers = HttpHandlers::new(0);
+                
+                let mut bulbs_vec: Vec<&BulbInfo> = bulbs_arc.values().collect();
+                
+                if input.selector.contains("id:") {
+                    let id = input.selector.replace("id:", "");
+                    bulbs_vec.retain(|b| b.id.contains(&id));
+                }
+                
+                let mut success_count = 0;
+                for bulb in &bulbs_vec {
+                    let hsbk = HSBK {
+                        hue,
+                        saturation: sat,
+                        brightness: bright,
+                        kelvin,
+                    };
+                    
+                    if handlers.protocol.send_color_command(sock, bulb.target, bulb.addr, hsbk, 1000).is_ok() {
+                        success_count += 1;
+                    }
+                }
+                
+                let time_of_day = match target_hour {
+                    0..=5 => "deep_night",
+                    6 => "dawn",
+                    7..=9 => "morning",
+                    10..=11 => "midday",
+                    12..=14 => "afternoon",
+                    15..=17 => "late_afternoon",
+                    18..=19 => "evening",
+                    20..=21 => "night",
+                    22..=23 => "late_night",
+                    _ => "unknown",
+                };
+                
+                return Response::json(&json!({
+                    "success": success_count > 0,
+                    "message": format!("Circadian rhythm applied to {} bulbs", success_count),
+                    "time_of_day": time_of_day,
+                    "hour": target_hour,
+                    "bulbs_affected": success_count,
+                    "hsbk": {
+                        "hue": hue,
+                        "saturation": sat,
+                        "brightness": bright,
+                        "kelvin": kelvin
+                    }
                 }));
             }
         }
