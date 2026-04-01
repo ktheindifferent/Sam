@@ -89,7 +89,12 @@ const MediaPlayer = {
         pinchSensitivity: 30,
         velocityThreshold: 0.3,
         edgeSwipeThreshold: 20,
-        holdProgressInterval: 50
+        holdProgressInterval: 50,
+        customThresholds: {
+            low: { swipe: 80, pinch: 50, velocity: 0.2 },
+            medium: { swipe: 50, pinch: 30, velocity: 0.3 },
+            high: { swipe: 25, pinch: 15, velocity: 0.5 }
+        }
     },
     miniPlayerVisible: false,
     queuePosition: 0,
@@ -774,14 +779,28 @@ function showSwipeHint(text, icon) {
     }, 1500);
 }
 
-function showMediaTouchHint(text, icon, duration = 1500) {
+function showMediaTouchHint(text, icon, duration = 1500, position = 'center') {
     let hint = document.querySelector('.media-center-touch-hint');
     if (!hint) {
         hint = document.createElement('div');
         hint.className = 'media-center-touch-hint';
         document.body.appendChild(hint);
     }
-    hint.innerHTML = `<span style="font-size: 32px; display: block; margin-bottom: 10px; animation: hint-bounce 0.5s ease;">${icon || ''}</span>${text}`;
+    
+    const iconSpan = icon ? `<span style="font-size: 32px; display: block; margin-bottom: 10px; animation: hint-bounce 0.5s ease;">${icon}</span>` : '';
+    hint.innerHTML = `${iconSpan}${text}`;
+    
+    if (position === 'top') {
+        hint.style.top = '20%';
+        hint.style.transform = 'translateX(-50%)';
+    } else if (position === 'bottom') {
+        hint.style.top = '80%';
+        hint.style.transform = 'translateX(-50%)';
+    } else {
+        hint.style.top = '50%';
+        hint.style.transform = 'translate(-50%, -50%)';
+    }
+    
     hint.classList.add('visible');
     setTimeout(() => {
         hint.classList.remove('visible');
@@ -1274,13 +1293,42 @@ function updateBpmEstimate() {
 
 function updateBpmDisplay() {
     const bpmEl = document.querySelector('#bpm-display');
-    if (bpmEl && MediaPlayer.beatDetection.bpmEstimate) {
-        bpmEl.textContent = `${MediaPlayer.beatDetection.bpmEstimate} BPM`;
-    }
-    
     const bpmValueEl = document.querySelector('#bpm-value');
-    if (bpmValueEl) {
-        bpmValueEl.textContent = MediaPlayer.beatDetection.bpmEstimate || '--';
+    
+    if (MediaPlayer.lifxBeatDetection.bpmEstimate && MediaPlayer.lifxSyncEnabled) {
+        const bpm = Math.round(MediaPlayer.lifxBeatDetection.bpmEstimate);
+        
+        if (bpmEl) {
+            bpmEl.classList.add('active');
+            bpmEl.style.display = 'inline-flex';
+        }
+        
+        if (bpmValueEl) {
+            bpmValueEl.textContent = bpm;
+            bpmValueEl.style.color = '#ff6b6b';
+            bpmValueEl.style.animation = 'bpm-pulse 0.5s ease-in-out infinite';
+        }
+    } else if (MediaPlayer.beatDetection.bpmEstimate && MediaPlayer.beatDetection.enabled) {
+        const bpm = Math.round(MediaPlayer.beatDetection.bpmEstimate);
+        
+        if (bpmEl) {
+            bpmEl.classList.add('active');
+            bpmEl.style.display = 'inline-flex';
+        }
+        
+        if (bpmValueEl) {
+            bpmValueEl.textContent = bpm;
+        }
+    } else {
+        if (bpmEl) {
+            bpmEl.classList.remove('active');
+        }
+        
+        if (bpmValueEl) {
+            bpmValueEl.textContent = '--';
+            bpmValueEl.style.color = '';
+            bpmValueEl.style.animation = '';
+        }
     }
 }
 
@@ -1301,11 +1349,18 @@ function detectAudioBeat() {
     const trebleRange = dataArray.slice(50, 128);
     const trebleEnergy = trebleRange.reduce((a, b) => a + b, 0) / trebleRange.length / 255;
     
-    const avgEnergy = (bassEnergy * 0.5) + (midEnergy * 0.3) + (trebleEnergy * 0.2);
-    
     const beatDetection = MediaPlayer.lifxBeatDetection;
+    
+    const lowPassFiltered = (beatDetection.lowPassFilter * bassEnergy) + ((1 - beatDetection.lowPassFilter) * (beatDetection.lastBassEnergy || 0));
+    beatDetection.lastBassEnergy = lowPassFiltered;
+    
+    const highPassFiltered = (beatDetection.highPassFilter * trebleEnergy) + ((1 - beatDetection.highPassFilter) * (beatDetection.lastTrebleEnergy || 0));
+    beatDetection.lastTrebleEnergy = highPassFiltered;
+    
+    const avgEnergy = (lowPassFiltered * 0.6) + (midEnergy * 0.25) + (highPassFiltered * 0.15);
+    
     beatDetection.energyHistory.push(avgEnergy);
-    if (beatDetection.energyHistory.length > 20) {
+    if (beatDetection.energyHistory.length > 30) {
         beatDetection.energyHistory.shift();
     }
     
@@ -1317,42 +1372,76 @@ function detectAudioBeat() {
     
     const avgEnergyHistory = beatDetection.energyHistory.reduce((a, b) => a + b, 0) / beatDetection.energyHistory.length;
     const energyVariance = beatDetection.energyHistory.reduce((sum, e) => sum + Math.pow(e - avgEnergyHistory, 2), 0) / beatDetection.energyHistory.length;
-    const varianceFactor = Math.min(0.2, Math.sqrt(energyVariance) * 0.5);
+    const stdDev = Math.sqrt(energyVariance);
     
-    const dynamicThreshold = Math.max(0.15, Math.min(0.45, 
+    const sensitivityMultiplier = beatDetection.sensitivity === 'high' ? 0.7 : beatDetection.sensitivity === 'low' ? 1.3 : 1.0;
+    const dynamicThreshold = Math.max(0.12, Math.min(0.5, 
         (avgEnergyHistory * (1 - beatDetection.dynamicThresholdFactor)) + 
         (recentAvgStrength * beatDetection.dynamicThresholdFactor) + 
-        varianceFactor));
+        (stdDev * sensitivityMultiplier)));
     
-    const beatStrength = (bassEnergy * 0.6) + (midEnergy * 0.25) + (trebleEnergy * 0.15);
+    const beatStrength = (lowPassFiltered * 0.7) + (midEnergy * 0.2) + (highPassFiltered * 0.1);
     
     if (beatStrength > dynamicThreshold) {
         const now = Date.now();
         const timeSinceLastBeat = now - beatDetection.lastBeat;
         
-        if (timeSinceLastBeat > beatDetection.beatCooldown) {
-            const normalizedStrength = Math.min(1.0, 0.5 + ((beatStrength - dynamicThreshold) / 0.4));
+        const minInterval = beatDetection.bpmEstimate > 0 ? 
+            Math.max(80, (60000 / beatDetection.bpmEstimate) * 0.35) : 150;
+        
+        if (timeSinceLastBeat > minInterval) {
+            const normalizedStrength = Math.min(1.0, 0.4 + ((beatStrength - dynamicThreshold) / 0.5));
             
-            const bpm = estimateBPM(now);
-            if (bpm) {
-                beatDetection.bpmEstimate = bpm;
-            }
-            
+            beatDetection.lastBeat = now;
+            beatDetection.lastBeatTime = now;
+            beatDetection.beatCount++;
             beatDetection.beatIntensity = normalizedStrength;
             beatDetection.consecutiveBeats = (beatDetection.consecutiveBeats || 0) + 1;
             beatDetection.missedBeats = 0;
             
-            const estimatedBeatInterval = 60000 / beatDetection.bpmEstimate;
+            beatDetection.beatHistory.push({
+                time: now,
+                strength: normalizedStrength,
+                energy: beatStrength
+            });
+            if (beatDetection.beatHistory.length > 8) {
+                beatDetection.beatHistory.shift();
+            }
+            
+            const bpm = estimateBPM(now);
+            if (bpm && bpm > 60 && bpm < 200) {
+                const smoothingFactor = 0.3;
+                beatDetection.bpmEstimate = Math.round(
+                    (beatDetection.bpmEstimate * (1 - smoothingFactor)) + (bpm * smoothingFactor)
+                );
+                beatDetection.bpmEstimate = Math.max(60, Math.min(200, beatDetection.bpmEstimate));
+            }
+            
+            const estimatedBeatInterval = 60000 / (beatDetection.bpmEstimate || 120);
             beatDetection.beatCooldown = Math.max(100, estimatedBeatInterval * 0.4);
             
+            beatDetection.peakEnergy = Math.max(beatDetection.peakEnergy || 0, beatStrength);
+            beatDetection.peakDecay = 0.96;
+            
+            if (beatDetection.peakEnergy) {
+                beatDetection.threshold = beatDetection.peakEnergy * beatDetection.dynamicThresholdFactor;
+                beatDetection.peakEnergy *= beatDetection.peakDecay;
+            }
+            
             pulseLifxWithBeat(normalizedStrength);
+            updateBpmDisplay();
             return normalizedStrength;
         }
     } else {
         beatDetection.missedBeats = (beatDetection.missedBeats || 0) + 1;
-        if (beatDetection.missedBeats > 5) {
+        if (beatDetection.missedBeats > 8) {
             beatDetection.consecutiveBeats = 0;
+            beatDetection.peakEnergy = (beatDetection.peakEnergy || 0) * 0.9;
         }
+    }
+    
+    if (beatDetection.peakEnergy) {
+        beatDetection.peakEnergy *= beatDetection.peakDecay;
     }
     
     return 0;
@@ -2372,17 +2461,26 @@ function initMediaTouchGestures() {
     let lastTapTime = 0;
     let touchStartTime = 0;
     let longPressTimer = null;
+    let touchHoldProgressTimer = null;
+    let touchHoldProgress = 0;
     
     mediaContainer.addEventListener('touchstart', (e) => {
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         touchStartTime = Date.now();
+        touchHoldProgress = 0;
         
         const settings = MediaPlayer.touchGestures;
         if (settings.enabled && settings.longPressDelay > 0) {
-            longPressTimer = setTimeout(() => {
-                showMediaTouchHint('Long Press', '👆');
-            }, settings.longPressDelay);
+            const thresholds = settings.customThresholds[settings.sensitivity] || settings.customThresholds.medium;
+            
+            touchHoldProgressTimer = setInterval(() => {
+                touchHoldProgress += 10;
+                if (touchHoldProgress >= 100) {
+                    showMediaTouchHint('Long Press Detected', '👆', 800, 'top');
+                    if (touchHoldProgressTimer) clearInterval(touchHoldProgressTimer);
+                }
+            }, settings.longPressDelay / 10);
         }
     }, { passive: true });
     
@@ -2391,12 +2489,20 @@ function initMediaTouchGestures() {
             clearTimeout(longPressTimer);
             longPressTimer = null;
         }
+        if (touchHoldProgressTimer) {
+            clearInterval(touchHoldProgressTimer);
+            touchHoldProgressTimer = null;
+        }
     }, { passive: true });
     
     mediaContainer.addEventListener('touchend', (e) => {
         if (longPressTimer) {
             clearTimeout(longPressTimer);
             longPressTimer = null;
+        }
+        if (touchHoldProgressTimer) {
+            clearInterval(touchHoldProgressTimer);
+            touchHoldProgressTimer = null;
         }
         
         const touchEndX = e.changedTouches[0].clientX;
@@ -2407,31 +2513,37 @@ function initMediaTouchGestures() {
         const touchDuration = currentTime - touchStartTime;
         
         const settings = MediaPlayer.touchGestures;
+        const thresholds = settings.customThresholds[settings.sensitivity] || settings.customThresholds.medium;
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         const velocity = distance / touchDuration;
         
-        if (distance < settings.swipeThreshold * 0.5) {
+        if (distance < thresholds.swipe * 0.5) {
             const tapLength = currentTime - lastTapTime;
             if (tapLength < settings.doubleTapTimeout && tapLength > 0) {
                 togglePlayPause();
-                showMediaTouchHint('Play/Pause', '⏯️', 1200);
+                if (navigator.vibrate) navigator.vibrate(50);
+                showMediaTouchHint('Play/Pause', '⏯️', 1200, 'bottom');
             }
             lastTapTime = currentTime;
         } else if (Math.abs(deltaX) > Math.abs(deltaY) * 2) {
-            if (deltaX > settings.swipeThreshold && velocity > settings.velocityThreshold) {
+            if (deltaX > thresholds.swipe && velocity > thresholds.velocity) {
                 previousTrack();
-                showMediaTouchHint('Previous', '⏮️', 1200);
-            } else if (deltaX < -settings.swipeThreshold && velocity > settings.velocityThreshold) {
+                if (navigator.vibrate) navigator.vibrate(30);
+                showMediaTouchHint('Previous Track', '⏮️', 1000, 'bottom');
+            } else if (deltaX < -thresholds.swipe && velocity > thresholds.velocity) {
                 nextTrack();
-                showMediaTouchHint('Next', '⏭️', 1200);
+                if (navigator.vibrate) navigator.vibrate(30);
+                showMediaTouchHint('Next Track', '⏭️', 1000, 'bottom');
             }
         } else if (Math.abs(deltaY) > Math.abs(deltaX) * 2) {
-            if (deltaY > settings.swipeThreshold && velocity > settings.velocityThreshold) {
+            if (deltaY > thresholds.swipe && velocity > thresholds.velocity) {
                 increaseVolume();
-                showMediaTouchHint('Volume Up', '🔊', 1200);
-            } else if (deltaY < -settings.swipeThreshold && velocity > settings.velocityThreshold) {
+                if (navigator.vibrate) navigator.vibrate(20);
+                showMediaTouchHint('Volume Up', '🔊', 1000, 'top');
+            } else if (deltaY < -thresholds.swipe && velocity > thresholds.velocity) {
                 decreaseVolume();
-                showMediaTouchHint('Volume Down', '🔇', 1200);
+                if (navigator.vibrate) navigator.vibrate(20);
+                showMediaTouchHint('Volume Down', '🔇', 1000, 'top');
             }
         }
     }, { passive: true });
@@ -2503,8 +2615,151 @@ function setBeatDetectionSensitivity(level) {
     showNotification(`Beat sensitivity: ${level}`, 'info');
 }
 
+function setTouchGestureSensitivity(level) {
+    const thresholds = {
+        'low': { swipe: 80, pinch: 50, velocity: 0.2 },
+        'medium': { swipe: 50, pinch: 30, velocity: 0.3 },
+        'high': { swipe: 25, pinch: 15, velocity: 0.5 }
+    };
+    
+    MediaPlayer.touchGestures.sensitivity = level;
+    const settings = thresholds[level] || thresholds.medium;
+    MediaPlayer.touchGestures.swipeThreshold = settings.swipe;
+    MediaPlayer.touchGestures.pinchSensitivity = settings.pinch;
+    MediaPlayer.touchGestures.velocityThreshold = settings.velocity;
+    
+    showNotification(`Touch sensitivity: ${level}`, 'info');
+    
+    if (typeof Swal !== 'undefined') {
+        Swal.close();
+        showTouchSensitivitySettings();
+    }
+}
+
+function showTouchSensitivitySettings() {
+    if (typeof Swal === 'undefined') {
+        alert('Touch Sensitivity Settings: low, medium, high');
+        return;
+    }
+    
+    const currentSensitivity = MediaPlayer.touchGestures.sensitivity || 'medium';
+    
+    Swal.fire({
+        title: '<i class="fas fa-hand-pointer"></i> Touch Sensitivity',
+        html: `
+            <div class="touch-sensitivity-panel">
+                <div class="sensitivity-option ${currentSensitivity === 'low' ? 'active' : ''}" onclick="setTouchGestureSensitivity('low')">
+                    <div class="sensitivity-option-label">
+                        <span class="sensitivity-option-icon">🎯</span>
+                        <div>
+                            <strong>Low Sensitivity</strong>
+                            <div class="sensitivity-option-description">Requires larger gestures - fewer accidental triggers</div>
+                        </div>
+                    </div>
+                    ${currentSensitivity === 'low' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                </div>
+                
+                <div class="sensitivity-option ${currentSensitivity === 'medium' ? 'active' : ''}" onclick="setTouchGestureSensitivity('medium')">
+                    <div class="sensitivity-option-label">
+                        <span class="sensitivity-option-icon">⚡</span>
+                        <div>
+                            <strong>Medium Sensitivity</strong>
+                            <div class="sensitivity-option-description">Balanced gesture detection - recommended for most users</div>
+                        </div>
+                    </div>
+                    ${currentSensitivity === 'medium' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                </div>
+                
+                <div class="sensitivity-option ${currentSensitivity === 'high' ? 'active' : ''}" onclick="setTouchGestureSensitivity('high')">
+                    <div class="sensitivity-option-label">
+                        <span class="sensitivity-option-icon">🚀</span>
+                        <div>
+                            <strong>High Sensitivity</strong>
+                            <div class="sensitivity-option-description">Responds to subtle gestures - maximum responsiveness</div>
+                        </div>
+                    </div>
+                    ${currentSensitivity === 'high' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
+                    <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> Current Settings</h5>
+                    <div style="color: #adb5bd; font-size: 12px;">
+                        <div>Swipe Threshold: ${MediaPlayer.touchGestures.swipeThreshold}px</div>
+                        <div>Pinch Sensitivity: ${MediaPlayer.touchGestures.pinchSensitivity}px</div>
+                        <div>Velocity Threshold: ${MediaPlayer.touchGestures.velocityThreshold}</div>
+                    </div>
+                </div>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: '500px'
+    });
+}
+
 function showBeatDetectionSettings() {
     showMediaSyncSettings('beat');
+}
+
+function showTouchSensitivitySettings() {
+    if (typeof Swal === 'undefined') {
+        alert('Touch Sensitivity Settings: low, medium, high');
+        return;
+    }
+    
+    const currentSensitivity = MediaPlayer.touchGestures.sensitivity || 'medium';
+    
+    Swal.fire({
+        title: '<i class="fas fa-hand-pointer"></i> Touch Sensitivity',
+        html: `
+            <div class="touch-sensitivity-panel">
+                <div class="sensitivity-option ${currentSensitivity === 'low' ? 'active' : ''}" onclick="setTouchGestureSensitivity('low')">
+                    <div class="sensitivity-option-label">
+                        <span class="sensitivity-option-icon">🎯</span>
+                        <div>
+                            <strong>Low Sensitivity</strong>
+                            <div class="sensitivity-option-description">Requires larger gestures - fewer accidental triggers</div>
+                        </div>
+                    </div>
+                    ${currentSensitivity === 'low' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                </div>
+                
+                <div class="sensitivity-option ${currentSensitivity === 'medium' ? 'active' : ''}" onclick="setTouchGestureSensitivity('medium')">
+                    <div class="sensitivity-option-label">
+                        <span class="sensitivity-option-icon">⚡</span>
+                        <div>
+                            <strong>Medium Sensitivity</strong>
+                            <div class="sensitivity-option-description">Balanced gesture detection - recommended for most users</div>
+                        </div>
+                    </div>
+                    ${currentSensitivity === 'medium' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                </div>
+                
+                <div class="sensitivity-option ${currentSensitivity === 'high' ? 'active' : ''}" onclick="setTouchGestureSensitivity('high')">
+                    <div class="sensitivity-option-label">
+                        <span class="sensitivity-option-icon">🚀</span>
+                        <div>
+                            <strong>High Sensitivity</strong>
+                            <div class="sensitivity-option-description">Responds to subtle gestures - maximum responsiveness</div>
+                        </div>
+                    </div>
+                    ${currentSensitivity === 'high' ? '<i class="fas fa-check-circle" style="color: #00d4ff;"></i>' : ''}
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
+                    <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;"><i class="fas fa-info-circle"></i> Current Settings</h5>
+                    <div style="color: #adb5bd; font-size: 12px;">
+                        <div>Swipe Threshold: ${MediaPlayer.touchGestures.swipeThreshold}px</div>
+                        <div>Pinch Sensitivity: ${MediaPlayer.touchGestures.pinchSensitivity}px</div>
+                        <div>Velocity Threshold: ${MediaPlayer.touchGestures.velocityThreshold}</div>
+                    </div>
+                </div>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: '500px'
+    });
 }
 
 function showMediaSyncSettings(activeTab = 'overview') {
