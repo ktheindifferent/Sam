@@ -696,6 +696,359 @@ Licensed under GPLv3....see LICENSE file. -->
     .nextcloud-files::-webkit-scrollbar-thumb:hover {
       background: var(--accent-secondary);
     }
+    
+    /* Enhanced Touch Feedback */
+    .touch-feedback {
+        position: relative;
+        overflow: hidden;
+    }
+    .touch-feedback::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0);
+        width: 200%;
+        height: 200%;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(0, 212, 255, 0.4) 0%, transparent 70%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+    .touch-feedback:active::after {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+    .ripple {
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(0, 212, 255, 0.6);
+        transform: scale(0);
+        animation: ripple-animation 0.6s ease-out;
+        pointer-events: none;
+    }
+    @keyframes ripple-animation {
+        to { transform: scale(4); opacity: 0; }
+    }
+    
+    /* BPM Indicator */
+    .bpm-realtime-indicator {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, rgba(42, 42, 58, 0.95), rgba(0, 0, 0, 0.9));
+        border: 2px solid rgba(255, 107, 107, 0.6);
+        border-radius: 16px;
+        padding: 12px 20px;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        opacity: 0;
+        transform: translateY(-20px);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 8px 32px rgba(255, 107, 107, 0.3);
+    }
+    .bpm-realtime-indicator.visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    .bpm-realtime-indicator .bpm-icon {
+        font-size: 24px;
+        color: #ff6b6b;
+        animation: bpm-pulse 0.5s ease-in-out infinite;
+    }
+    @keyframes bpm-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.2); }
+    }
+    .bpm-realtime-indicator .bpm-value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #fff;
+        min-width: 50px;
+        text-align: right;
+    }
+    
+    /* Scene Indicator */
+    .scene-indicator {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        background: linear-gradient(135deg, rgba(0, 212, 255, 0.9), rgba(0, 255, 136, 0.9));
+        border-radius: 12px;
+        padding: 12px 20px;
+        z-index: 9999;
+        color: #fff;
+        font-weight: bold;
+        font-size: 14px;
+        display: none;
+        box-shadow: 0 8px 24px rgba(0, 212, 255, 0.4);
+    }
+    
+    /* Party Mode Visualizer */
+    .party-mode-visualizer {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        pointer-events: none;
+        z-index: 9998;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    .party-mode-visualizer.active { opacity: 1; }
+    
+    /* Bedtime Mode */
+    .bedtime-mode-active {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: linear-gradient(135deg, rgba(30, 30, 60, 0.95), rgba(0, 0, 0, 0.9));
+        border: 2px solid rgba(138, 138, 255, 0.5);
+        border-radius: 16px;
+        padding: 15px 30px;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        opacity: 0;
+        transition: all 0.3s ease;
+        color: #fff;
+    }
+    .bedtime-mode-active.visible {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+    .bedtime-mode-active .fa-moon {
+        color: #8a8aff;
+        font-size: 24px;
+        animation: moon-glow 2s ease-in-out infinite;
+    }
+    @keyframes moon-glow {
+        0%, 100% { text-shadow: 0 0 10px rgba(138, 138, 255, 0.5); }
+        50% { text-shadow: 0 0 20px rgba(138, 138, 255, 0.8); }
+    }
+    
+    /* Multi-bulb Selection */
+    .lifx-bulb-control.multi-selected {
+        border-color: #00d4ff;
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.6);
+    }
+    #lifx-selection-toolbar {
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: rgba(42, 42, 58, 0.95);
+        border: 2px solid rgba(0, 212, 255, 0.5);
+        border-radius: 16px;
+        padding: 12px 24px;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.3s ease;
+    }
+    #lifx-selection-toolbar.visible {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+        pointer-events: auto;
+    }
+    
+    /* Color Temperature */
+    .color-temp-gradient {
+        height: 30px;
+        background: linear-gradient(to right, #ff8800, #ffdd88, #ffffff, #88ddff, #0088ff);
+        border-radius: 8px;
+        position: relative;
+        cursor: pointer;
+    }
+    .color-temp-indicator {
+        position: absolute;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 4px;
+        height: 40px;
+        background: #fff;
+        border-radius: 2px;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+    }
+    
+    /* Sync Status */
+    .sync-status-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .sync-status-card {
+        background: rgba(42, 42, 58, 0.6);
+        border: 2px solid rgba(0, 212, 255, 0.2);
+        border-radius: 12px;
+        padding: 15px;
+        text-align: center;
+        transition: all 0.2s ease;
+    }
+    .sync-status-card.active {
+        border-color: rgba(0, 255, 136, 0.6);
+        background: rgba(0, 255, 136, 0.1);
+    }
+    .sync-status-card .status-icon { font-size: 32px; margin-bottom: 8px; }
+    .sync-status-card .status-label { font-size: 11px; color: #adb5bd; text-transform: uppercase; margin-bottom: 4px; }
+    .sync-status-card .status-value { font-size: 16px; font-weight: bold; color: #fff; margin-bottom: 10px; }
+    
+    /* Quick Actions */
+    .quick-actions-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+    .btn-quick-action {
+        flex: 1;
+        min-width: 120px;
+        background: rgba(0, 212, 255, 0.1);
+        border: 1px solid rgba(0, 212, 255, 0.3);
+        border-radius: 8px;
+        padding: 10px 15px;
+        color: #00d4ff;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+    }
+    .btn-quick-action:hover {
+        background: rgba(0, 212, 255, 0.2);
+        border-color: #00d4ff;
+        transform: translateY(-2px);
+    }
+    
+    /* Real-time Metrics */
+    .real-time-metrics {
+        background: rgba(42, 42, 58, 0.5);
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    .metric-item {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        padding: 10px;
+        text-align: center;
+    }
+    .metric-label { font-size: 10px; color: #adb5bd; text-transform: uppercase; display: block; margin-bottom: 4px; }
+    .metric-value { font-size: 18px; font-weight: bold; color: #00d4ff; }
+    .metric-value.bpm-value { color: #ff6b6b; animation: bpm-flash 0.5s ease-in-out infinite; }
+    @keyframes bpm-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    
+    /* Beat Detection */
+    .beat-detection-calibration {
+        background: rgba(42, 42, 58, 0.5);
+        border-radius: 12px;
+        padding: 15px;
+    }
+    .calibration-stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .stat-item {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        padding: 10px;
+        text-align: center;
+    }
+    .stat-label { font-size: 10px; color: #adb5bd; text-transform: uppercase; display: block; margin-bottom: 4px; }
+    .stat-value { font-size: 16px; font-weight: bold; color: #00ff88; }
+    
+    /* Scene Preview */
+    .scene-preview-item-enhanced {
+        background: rgba(42, 42, 58, 0.8);
+        border-radius: 12px;
+        padding: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 2px solid transparent;
+        position: relative;
+        overflow: hidden;
+    }
+    .scene-preview-item-enhanced:hover {
+        transform: translateY(-4px);
+        border-color: rgba(0, 212, 255, 0.5);
+        box-shadow: 0 8px 24px rgba(0, 212, 255, 0.3);
+    }
+    .scene-preview-item-enhanced.active {
+        border-color: #00d4ff;
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    }
+    .scene-gradient-preview {
+        width: 100%;
+        height: 60px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+    }
+    .special-badge {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: rgba(255, 215, 0, 0.9);
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: #000;
+    }
+    
+    /* Media Visualization */
+    #media-visualization-container {
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        height: 150px;
+        padding: 20px;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+        border-radius: 12px;
+        margin: 15px 0;
+        gap: 4px;
+    }
+    .media-viz-bar {
+        flex: 1;
+        max-width: 20px;
+        border-radius: 3px 3px 0 0;
+        transition: height 0.05s ease, background 0.1s ease;
+        min-height: 5px;
+    }
+    .media-viz-bar.peak { box-shadow: 0 0 20px currentColor; }
+    
+    /* Gesture Trail */
+    .gesture-trail {
+        position: fixed;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(0, 212, 255, 0.8) 0%, transparent 70%);
+        pointer-events: none;
+        z-index: 9999;
+        animation: trail-fade 0.4s ease-out forwards;
+    }
+    @keyframes trail-fade {
+        to { transform: scale(0.5); opacity: 0; }
+    }
   </style>
 </head>
 
@@ -1156,8 +1509,16 @@ Licensed under GPLv3....see LICENSE file. -->
   <link rel="stylesheet" href="/assets/css/lifx-touch-controls.css">
   <script src="/assets/js/lifx-touch-controls.js"></script>
   
+  <!-- Touch & Media Enhancements -->
+  <script src="/assets/js/touch-media-enhancements.js"></script>
+  
   <!-- Mobile bottom navigation for LIFX -->
   <div class="lifx-mobile-nav"></div>
+  
+  <!-- BPM Realtime Display -->
+  <div id="bpm-realtime-indicator" class="bpm-realtime-indicator" style="display: none;"></div>
+  <div id="bedtime-mode-indicator" class="bedtime-mode-active" style="display: none;"></div>
+  <div id="lifx-selection-toolbar" style="display: none;"></div>
 
   <!-- Dashboard-specific functionality -->
   <script nonce="{{CSP_NONCE}}">
