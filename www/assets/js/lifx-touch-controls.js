@@ -5673,23 +5673,6 @@ const LifXTouchControls = {
         this.updateBpmDisplay();
     },
     
-    setMediaSyncMode: function(mode) {
-        this.mediaSyncMode = mode;
-        localStorage.setItem('lifx_media_sync_mode', mode);
-        
-        document.querySelectorAll('.sync-mode-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.mode === mode);
-        });
-        
-        const modeInfo = this.mediaSyncModes[mode] || { name: mode, icon: '🎵' };
-        this.showGestureFeedback(`Sync Mode: ${modeInfo.name}`, modeInfo.icon);
-        this.applyMediaSyncModeEffects(mode);
-        
-        if (typeof window.updateMediaSyncUI === 'function') {
-            window.updateMediaSyncUI(mode);
-        }
-    },
-    
     setBeatSensitivity: function(value) {
         this.beatDetectionSensitivity = Math.max(0.3, Math.min(1.0, value / 100));
         localStorage.setItem('lifx_beat_sensitivity', this.beatDetectionSensitivity);
