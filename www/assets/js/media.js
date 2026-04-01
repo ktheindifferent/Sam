@@ -46,28 +46,33 @@ const MediaPlayer = {
     touchHoldTimer: null,
     lastMediaInteraction: 0,
     lifxBeatDetection: {
-        threshold: 0.3,
+        threshold: 0.22,
         lastBeat: 0,
-        beatCooldown: 150,
-        adaptiveThreshold: 0.25,
+        beatCooldown: 120,
+        adaptiveThreshold: 0.20,
         beatHistory: [],
         bpmEstimate: 120,
         lastBpmUpdate: 0,
-        userThreshold: 0.3,
+        userThreshold: 0.22,
         enabled: false,
-        sensitivity: 'medium',
+        sensitivity: 'high',
         lastBeatTime: 0,
         beatCount: 0,
-        sensitivity: 0.5,
+        sensitivity: 0.7,
         bpmHistory: [],
         beatIntensity: 0,
-        lowPassFilter: 0.8,
-        highPassFilter: 0.2,
+        lowPassFilter: 0.85,
+        highPassFilter: 0.15,
         consecutiveBeats: 0,
         missedBeats: 0,
-        dynamicThresholdFactor: 0.15,
-        peakDecay: 0.95,
-        energyHistory: []
+        dynamicThresholdFactor: 0.12,
+        peakDecay: 0.92,
+        energyHistory: [],
+        lastHue: 0,
+        rainbowHue: 0,
+        zoneIndex: 0,
+        spectrumMode: 'full',
+        bassBoostMultiplier: 1.5
     },
     lifxSceneMode: 'ambient',
     lifxColorHistory: [],
@@ -82,18 +87,18 @@ const MediaPlayer = {
     visualizationData: null,
     touchGestures: {
         enabled: true,
-        sensitivity: 'medium',
+        sensitivity: 'high',
         lastSwipeTime: 0,
-        doubleTapTimeout: 300,
-        longPressDelay: 500,
-        swipeThreshold: 50,
-        pinchSensitivity: 30,
-        velocityThreshold: 0.3,
-        edgeSwipeThreshold: 20,
-        holdProgressInterval: 50,
+        doubleTapTimeout: 250,
+        longPressDelay: 400,
+        swipeThreshold: 35,
+        pinchSensitivity: 25,
+        velocityThreshold: 0.25,
+        edgeSwipeThreshold: 15,
+        holdProgressInterval: 40,
         customThresholds: {
             low: { swipe: 80, pinch: 50, velocity: 0.2 },
-            medium: { swipe: 50, pinch: 30, velocity: 0.3 },
+            medium: { swipe: 40, pinch: 25, velocity: 0.3 },
             high: { swipe: 25, pinch: 15, velocity: 0.5 }
         }
     },
@@ -1468,13 +1473,14 @@ function initAudioContext() {
         
         MediaPlayer.audioContext = new AudioContext();
         MediaPlayer.analyser = MediaPlayer.audioContext.createAnalyser();
-        MediaPlayer.analyser.fftSize = 512;
-        MediaPlayer.analyser.smoothingTimeConstant = 0.8;
+        MediaPlayer.analyser.fftSize = 1024;
+        MediaPlayer.analyser.smoothingTimeConstant = 0.85;
         MediaPlayer.visualizationData = new Uint8Array(MediaPlayer.analyser.frequencyBinCount);
         
         MediaPlayer.lifxBeatHistory = [];
-        MediaPlayer.lifxBeatDetection.threshold = 0.25;
+        MediaPlayer.lifxBeatDetection.threshold = 0.22;
         MediaPlayer.lifxBeatDetection.lastHue = 0;
+        MediaPlayer.lifxBeatDetection.sensitivity = 0.75;
         
         // Create equalizer
         MediaPlayer.equalizer = {

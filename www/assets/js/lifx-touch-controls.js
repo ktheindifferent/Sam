@@ -38,11 +38,11 @@ const LifXTouchControls = {
     gestureHistory: [],
     maxGestureHistory: 10,
     gestureSensitivity: {
-        swipeDistance: 50,
-        swipeTime: 300,
-        pinchDistance: 30,
-        longPressDelay: 500,
-        doubleTapDelay: 300
+        swipeDistance: 40,
+        swipeTime: 250,
+        pinchDistance: 25,
+        longPressDelay: 400,
+        doubleTapDelay: 250
     },
     touchSensitivityLevels: {
         low: { swipeDistance: 80, swipeTime: 400, pinchDistance: 50 },
