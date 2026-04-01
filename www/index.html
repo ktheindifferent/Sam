@@ -1206,6 +1206,12 @@ Licensed under GPLv3....see LICENSE file. -->
               <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5><i class="fas fa-lightbulb text-warning"></i> LIFX Quick Scenes</h5>
                 <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-sm" onclick="LifXTouchControls.showZonePicker()" style="background: linear-gradient(135deg, #ff9f43, #e67e22); color: #fff; border-radius: 6px;" title="Zone Control">
+                    <i class="fas fa-th"></i> Zones
+                  </button>
+                  <button class="btn btn-sm" onclick="LifXTouchControls.showBreathingPanel()" style="background: linear-gradient(135deg, #00ff88, #00d4ff); color: #fff; border-radius: 6px;" title="Breathing Light">
+                    <i class="fas fa-lungs"></i> Breathing
+                  </button>
                   <button class="btn btn-sm" onclick="LifXTouchControls.showTouchSensitivityPanel()" style="background: var(--accent-primary); color: #fff; border-radius: 6px;" title="Touch Settings">
                     <i class="fas fa-sliders-h"></i>
                   </button>
@@ -1522,6 +1528,8 @@ Licensed under GPLv3....see LICENSE file. -->
   
   <!-- LIFX Color Picker Container -->
   <div id="lifx-color-picker-container"></div>
+  
+  <!-- LIFX Zone Control and Breathing Light panels will be injected here -->
   
   <!-- Media Sync Panel -->
   <div id="media-sync-panel" class="media-sync-panel">

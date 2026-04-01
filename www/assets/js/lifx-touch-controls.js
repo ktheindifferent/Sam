@@ -145,6 +145,38 @@ const LifXTouchControls = {
     lastColorHue: 180,
     lastColorSaturation: 100,
     quickColorPalette: ['#FF0000', '#FF8800', '#FFFF00', '#00FF00', '#00FFFF', '#0088FF', '#0000FF', '#FF00FF', '#FF88FF', '#FFFFFF', '#FFB6C1', '#87CEEB'],
+    smoothTransitionsEnabled: true,
+    transitionDuration: 0.5,
+    adaptiveColorMode: false,
+    circadianSyncEnabled: false,
+    sunriseMode: false,
+    sunsetMode: false,
+    focusTimer: null,
+    relaxationTimer: null,
+    breathingLightActive: false,
+    breathingLightPhase: 0,
+    breathingLightSpeed: 0.5,
+    zoneControlActive: false,
+    activeZones: [],
+    zonePresets: {
+        'morning': { zones: [1, 2], brightness: 80, kelvin: 5000 },
+        'evening': { zones: [3, 4], brightness: 40, kelvin: 2700 },
+        'night': { zones: [1, 2, 3, 4], brightness: 20, kelvin: 2000 },
+        'party': { zones: [1, 2, 3, 4], brightness: 100, effect: 'pulse' }
+    },
+    colorFlowActive: false,
+    colorFlowDirection: 'clockwise',
+    colorFlowSpeed: 1000,
+    colorFlowInterval: null,
+    touchAccuracyMode: 'precision',
+    gestureLearningEnabled: true,
+    personalizedGestures: {},
+    quickActionPresets: {
+        'doubleTap': 'toggle_power',
+        'longPress': 'brightness_adjust',
+        'swipeUp': 'scene_next',
+        'swipeDown': 'scene_prev'
+    },
     isModalOpen: function() {
         return !!(document.querySelector('.swal2-show') || 
                   document.querySelector('.modal.show') ||
@@ -520,9 +552,34 @@ const LifXTouchControls = {
                     <span id="color-hex-value">#FF00FF</span>
                 </div>
             </div>
+            <div id="lifx-zone-picker" class="lifx-zone-picker" style="display: none;">
+                <div class="color-picker-header">
+                    <span>Zone Control</span>
+                    <button class="btn-close" onclick="LifXTouchControls.hideZonePicker()">×</button>
+                </div>
+                <div class="zone-grid" id="zone-grid"></div>
+                <div class="zone-presets" id="zone-presets"></div>
+            </div>
+            <div id="lifx-breathing-light-panel" class="lifx-breathing-panel" style="display: none;">
+                <div class="color-picker-header">
+                    <span>Breathing Light</span>
+                    <button class="btn-close" onclick="LifXTouchControls.hideBreathingPanel()">×</button>
+                </div>
+                <div class="breathing-controls">
+                    <div class="slider-row">
+                        <label>Speed</label>
+                        <input type="range" id="breathing-speed" min="0.2" max="2" step="0.1" value="${this.breathingLightSpeed}" />
+                    </div>
+                    <button class="btn-breathing-toggle" onclick="LifXTouchControls.toggleBreathingLight()">
+                        <i class="fas fa-lungs"></i> <span class="breathing-status">Start</span>
+                    </button>
+                </div>
+            </div>
         `;
         
         this.setupColorPickerEvents();
+        this.setupZonePickerEvents();
+        this.setupBreathingControlEvents();
     },
     
     setupColorPickerEvents: function() {
@@ -567,6 +624,215 @@ const LifXTouchControls = {
         hueSlider.addEventListener('change', () => this.applyHSLColor());
         saturationSlider.addEventListener('change', () => this.applyHSLColor());
         brightnessSlider.addEventListener('change', () => this.applyBrightnessFromSlider());
+    },
+    
+    setupZonePickerEvents: function() {
+        const zoneGrid = document.getElementById('zone-grid');
+        if (!zoneGrid) return;
+        
+        const zones = [
+            { id: 1, name: 'Zone 1', icon: '🏠' },
+            { id: 2, name: 'Zone 2', icon: '🛋️' },
+            { id: 3, name: 'Zone 3', icon: '🍽️' },
+            { id: 4, name: 'Zone 4', icon: '🛏️' }
+        ];
+        
+        zoneGrid.innerHTML = zones.map(zone => `
+            <div class="zone-item" data-zone-id="${zone.id}">
+                <span class="zone-icon">${zone.icon}</span>
+                <span class="zone-name">${zone.name}</span>
+                <button class="zone-toggle-btn" onclick="LifXTouchControls.toggleZone(${zone.id})">
+                    <i class="fas fa-toggle-off"></i>
+                </button>
+            </div>
+        `).join('');
+        
+        const presetsContainer = document.getElementById('zone-presets');
+        if (presetsContainer) {
+            presetsContainer.innerHTML = `
+                <div class="zone-preset-title">Quick Presets</div>
+                <div class="zone-preset-buttons">
+                    <button class="btn-zone-preset" onclick="LifXTouchControls.applyZonePreset('morning')">
+                        <i class="fas fa-sun"></i> Morning
+                    </button>
+                    <button class="btn-zone-preset" onclick="LifXTouchControls.applyZonePreset('evening')">
+                        <i class="fas fa-cloud-sun"></i> Evening
+                    </button>
+                    <button class="btn-zone-preset" onclick="LifXTouchControls.applyZonePreset('night')">
+                        <i class="fas fa-moon"></i> Night
+                    </button>
+                    <button class="btn-zone-preset" onclick="LifXTouchControls.applyZonePreset('party')">
+                        <i class="fas fa-party-horn"></i> Party
+                    </button>
+                </div>
+            `;
+        }
+    },
+    
+    setupBreathingControlEvents: function() {
+        const breathingSpeed = document.getElementById('breathing-speed');
+        if (breathingSpeed) {
+            breathingSpeed.addEventListener('input', (e) => {
+                this.breathingLightSpeed = parseFloat(e.target.value);
+                if (this.breathingLightActive) {
+                    this.stopBreathingLight();
+                    this.startBreathingLight();
+                }
+            });
+        }
+    },
+    
+    showZonePicker: function() {
+        const picker = document.getElementById('lifx-zone-picker');
+        if (picker) {
+            picker.style.display = 'block';
+            setTimeout(() => picker.classList.add('visible'), 10);
+            this.zoneControlActive = true;
+            this.hapticFeedback('light');
+            this.renderZoneStatus();
+        }
+    },
+    
+    hideZonePicker: function() {
+        const picker = document.getElementById('lifx-zone-picker');
+        if (picker) {
+            picker.classList.remove('visible');
+            setTimeout(() => picker.style.display = 'none', 300);
+            this.zoneControlActive = false;
+        }
+    },
+    
+    renderZoneStatus: function() {
+        const zoneGrid = document.getElementById('zone-grid');
+        if (!zoneGrid) return;
+        
+        zoneGrid.querySelectorAll('.zone-item').forEach(item => {
+            const zoneId = parseInt(item.dataset.zoneId);
+            const isActive = this.activeZones.includes(zoneId);
+            const btn = item.querySelector('.zone-toggle-btn i');
+            if (btn) {
+                btn.className = isActive ? 'fas fa-toggle-on' : 'fas fa-toggle-off';
+                item.classList.toggle('zone-active', isActive);
+            }
+        });
+    },
+    
+    toggleZone: function(zoneId) {
+        const index = this.activeZones.indexOf(zoneId);
+        if (index > -1) {
+            this.activeZones.splice(index, 1);
+            this.showGestureFeedback(`Zone ${zoneId} OFF`, '🔴');
+        } else {
+            this.activeZones.push(zoneId);
+            this.showGestureFeedback(`Zone ${zoneId} ON`, '🟢');
+        }
+        this.hapticFeedback('light');
+        this.renderZoneStatus();
+    },
+    
+    applyZonePreset: function(presetName) {
+        const preset = this.zonePresets[presetName];
+        if (!preset) return;
+        
+        this.activeZones = preset.zones;
+        this.renderZoneStatus();
+        
+        $.ajax({
+            url: '/api/services/lifx/zone_control',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                zones: preset.zones,
+                brightness: preset.brightness,
+                kelvin: preset.kelvin,
+                effect: preset.effect || null,
+                duration: this.transitionDuration
+            }),
+            success: () => {
+                this.showGestureFeedback(`Applied ${presetName} preset`, '✅');
+                this.hapticFeedback('success');
+            }
+        });
+    },
+    
+    showBreathingPanel: function() {
+        const panel = document.getElementById('lifx-breathing-light-panel');
+        if (panel) {
+            panel.style.display = 'block';
+            setTimeout(() => panel.classList.add('visible'), 10);
+            this.updateBreathingButton();
+        }
+    },
+    
+    hideBreathingPanel: function() {
+        const panel = document.getElementById('lifx-breathing-light-panel');
+        if (panel) {
+            panel.classList.remove('visible');
+            setTimeout(() => panel.style.display = 'none', 300);
+        }
+    },
+    
+    toggleBreathingLight: function() {
+        if (this.breathingLightActive) {
+            this.stopBreathingLight();
+        } else {
+            this.startBreathingLight();
+        }
+    },
+    
+    startBreathingLight: function() {
+        this.breathingLightActive = true;
+        this.updateBreathingButton();
+        this.showGestureFeedback('Breathing Light ON', '🫁');
+        this.hapticFeedback('success');
+        
+        const animate = () => {
+            if (!this.breathingLightActive) return;
+            
+            this.breathingLightPhase += this.breathingLightSpeed * 0.05;
+            const brightness = 30 + Math.sin(this.breathingLightPhase) * 20;
+            const kelvin = 2000 + Math.sin(this.breathingLightPhase * 0.5) * 500;
+            
+            if (this.selectedBulb) {
+                $.ajax({
+                    url: '/api/services/lifx/set_state',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        bulb_id: this.selectedBulb,
+                        brightness: brightness / 100,
+                        kelvin: Math.round(kelvin),
+                        duration: 0.1
+                    })
+                });
+            }
+            
+            requestAnimationFrame(animate);
+        };
+        
+        this.breathingLightPhase = 0;
+        animate();
+    },
+    
+    stopBreathingLight: function() {
+        this.breathingLightActive = false;
+        this.updateBreathingButton();
+        this.showGestureFeedback('Breathing Light OFF', '⬛');
+        this.hapticFeedback('light');
+    },
+    
+    updateBreathingButton: function() {
+        const btn = document.querySelector('.btn-breathing-toggle');
+        if (btn) {
+            const status = btn.querySelector('.breathing-status');
+            if (this.breathingLightActive) {
+                btn.classList.add('active');
+                status.textContent = 'Stop';
+            } else {
+                btn.classList.remove('active');
+                status.textContent = 'Start';
+            }
+        }
     },
     
     showQuickColorPicker: function() {
