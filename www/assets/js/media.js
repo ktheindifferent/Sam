@@ -2629,12 +2629,15 @@ function initMediaTouchGestures() {
     let longPressTimer = null;
     let touchHoldProgressTimer = null;
     let touchHoldProgress = 0;
+    let touchTrail = [];
+    let touchTrailElement = null;
     
     mediaContainer.addEventListener('touchstart', (e) => {
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         touchStartTime = Date.now();
         touchHoldProgress = 0;
+        touchTrail = [{ x: touchStartX, y: touchStartY, time: Date.now() }];
         
         const settings = MediaPlayer.touchGestures;
         if (settings.enabled && settings.longPressDelay > 0) {
@@ -2642,6 +2645,7 @@ function initMediaTouchGestures() {
             
             touchHoldProgressTimer = setInterval(() => {
                 touchHoldProgress += 10;
+                updateTouchHoldProgress(touchHoldProgress);
                 if (touchHoldProgress >= 100) {
                     showMediaTouchHint('Long Press Detected', '👆', 800, 'top');
                     if (touchHoldProgressTimer) clearInterval(touchHoldProgressTimer);
@@ -2659,6 +2663,12 @@ function initMediaTouchGestures() {
             clearInterval(touchHoldProgressTimer);
             touchHoldProgressTimer = null;
         }
+        
+        const touch = e.touches[0];
+        touchTrail.push({ x: touch.clientX, y: touch.clientY, time: Date.now() });
+        if (touchTrail.length > 10) touchTrail.shift();
+        
+        updateGestureTrail(touch.clientX, touch.clientY);
     }, { passive: true });
     
     mediaContainer.addEventListener('touchend', (e) => {
@@ -2670,6 +2680,8 @@ function initMediaTouchGestures() {
             clearInterval(touchHoldProgressTimer);
             touchHoldProgressTimer = null;
         }
+        
+        clearGestureTrail();
         
         const touchEndX = e.changedTouches[0].clientX;
         const touchEndY = e.changedTouches[0].clientY;
@@ -2721,6 +2733,59 @@ function initNowPlayingToast() {
         toast.style.display = 'none';
         toast.classList.remove('visible');
     }
+}
+
+function updateTouchHoldProgress(progress) {
+    let progressEl = document.querySelector('.touch-hold-progress-value');
+    if (!progressEl) {
+        progressEl = document.createElement('div');
+        progressEl.className = 'touch-hold-progress-value';
+        progressEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:24px;color:#00d4ff;font-weight:bold;z-index:9999;pointer-events:none;';
+        document.body.appendChild(progressEl);
+    }
+    progressEl.textContent = progress + '%';
+    
+    if (progress >= 100) {
+        setTimeout(() => progressEl.remove(), 500);
+    }
+}
+
+function updateGestureTrail(x, y) {
+    if (!touchTrailElement) {
+        touchTrailElement = document.createElement('div');
+        touchTrailElement.className = 'gesture-trail';
+        touchTrailElement.style.cssText = 'position:fixed;pointer-events:none;z-index:9998;opacity:0.6;';
+        document.body.appendChild(touchTrailElement);
+    }
+    
+    const gradientStops = touchTrail.map((point, i) => {
+        const alpha = (i / touchTrail.length) * 0.8;
+        return `rgba(0, 212, 255, ${alpha}) ${i * 10}%`;
+    }).join(',');
+    
+    touchTrailElement.style.cssText = `
+        position:fixed;
+        left:${x - 20}px;
+        top:${y - 20}px;
+        width:40px;
+        height:40px;
+        border-radius:50%;
+        background:radial-gradient(circle, ${gradientStops});
+        pointer-events:none;
+        z-index:9998;
+        transition:opacity 0.1s ease;
+    `;
+}
+
+function clearGestureTrail() {
+    if (touchTrailElement) {
+        touchTrailElement.style.opacity = '0';
+        setTimeout(() => {
+            if (touchTrailElement) touchTrailElement.remove();
+            touchTrailElement = null;
+        }, 100);
+    }
+    touchTrail = [];
 }
 
 function initEqualizerVisualization() {
@@ -3752,27 +3817,33 @@ const BeatDetectionCalibration = {
     calibrationData: [],
     thresholdHistory: [],
     sensitivityHistory: [],
+    bpmHistory: [],
+    visualizationFrame: null,
     
     start: function() {
         this.isActive = true;
         this.calibrationData = [];
         this.thresholdHistory = [];
         this.sensitivityHistory = [];
+        this.bpmHistory = [];
         this.updateVisualization();
+        this.startRealTimeMonitoring();
         showNotification('Beat detection calibration started', 'info');
     },
     
     stop: function() {
         this.isActive = false;
+        this.stopRealTimeMonitoring();
         showNotification('Beat detection calibration stopped', 'info');
     },
     
-    addDataPoint: function(energy, threshold, sensitivity) {
+    addDataPoint: function(energy, threshold, sensitivity, bpm) {
         if (!this.isActive) return;
         
-        this.calibrationData.push({ energy, threshold, sensitivity, time: Date.now() });
+        this.calibrationData.push({ energy, threshold, sensitivity, bpm, time: Date.now() });
         this.thresholdHistory.push(threshold);
         this.sensitivityHistory.push(sensitivity);
+        this.bpmHistory.push(bpm || 0);
         
         if (this.calibrationData.length > 100) {
             this.calibrationData.shift();
@@ -3780,9 +3851,35 @@ const BeatDetectionCalibration = {
         if (this.thresholdHistory.length > 50) {
             this.thresholdHistory.shift();
             this.sensitivityHistory.shift();
+            this.bpmHistory.shift();
         }
         
         this.updateVisualization();
+        this.updateStatsPanel();
+    },
+    
+    startRealTimeMonitoring: function() {
+        const monitor = () => {
+            if (!this.isActive) return;
+            
+            const energy = MediaPlayer.lifxBeatDetection.energyHistory.length > 0 
+                ? MediaPlayer.lifxBeatDetection.energyHistory[MediaPlayer.lifxBeatDetection.energyHistory.length - 1] 
+                : 0;
+            const threshold = MediaPlayer.lifxBeatDetection.threshold || 0.3;
+            const sensitivity = MediaPlayer.lifxBeatDetection.sensitivity || 'medium';
+            const bpm = MediaPlayer.lifxBeatDetection.bpmEstimate || 0;
+            
+            this.addDataPoint(energy, threshold, sensitivity, bpm);
+            this.visualizationFrame = requestAnimationFrame(monitor);
+        };
+        monitor();
+    },
+    
+    stopRealTimeMonitoring: function() {
+        if (this.visualizationFrame) {
+            cancelAnimationFrame(this.visualizationFrame);
+            this.visualizationFrame = null;
+        }
     },
     
     updateVisualization: function() {
@@ -3790,7 +3887,7 @@ const BeatDetectionCalibration = {
         if (!barsContainer) return;
         
         barsContainer.innerHTML = '';
-        const barCount = 20;
+        const barCount = 32;
         
         for (let i = 0; i < barCount; i++) {
             const bar = document.createElement('div');
@@ -3798,19 +3895,83 @@ const BeatDetectionCalibration = {
             
             if (this.calibrationData.length > 0) {
                 const dataIndex = Math.floor((this.calibrationData.length / barCount) * i);
-                const data = this.calibrationData[dataIndex] || { energy: 0 };
+                const data = this.calibrationData[dataIndex] || { energy: 0, threshold: 0.3 };
                 const height = Math.max(5, data.energy * 100);
-                bar.style.height = `${height}%`;
+                const thresholdHeight = data.threshold * 100;
                 
-                if (data.energy > (data.threshold || 0.3)) {
+                bar.style.cssText = `
+                    height: ${height}%;
+                    background: linear-gradient(to top, 
+                        ${data.energy > data.threshold ? '#00d4ff' : '#6c757d'} 0%, 
+                        ${data.energy > data.threshold ? '#00ff88' : '#adb5bd'} 100%);
+                    position: relative;
+                    transition: height 0.1s ease;
+                `;
+                
+                if (data.energy > data.threshold) {
                     bar.classList.add('peak');
+                    bar.style.boxShadow = '0 0 10px rgba(0, 212, 255, 0.8)';
                 }
+                
+                const thresholdMarker = document.createElement('div');
+                thresholdMarker.className = 'threshold-marker';
+                thresholdMarker.style.cssText = `
+                    position: absolute;
+                    bottom: ${thresholdHeight}%;
+                    left: 0;
+                    right: 0;
+                    height: 2px;
+                    background: #ff6b6b;
+                    box-shadow: 0 0 5px rgba(255, 107, 107, 0.8);
+                `;
+                bar.appendChild(thresholdMarker);
             } else {
                 bar.style.height = '5%';
+                bar.style.background = 'linear-gradient(to top, #2c3e50 0%, #34495e 100%)';
             }
             
             barsContainer.appendChild(bar);
         }
+    },
+    
+    updateStatsPanel: function() {
+        const statsPanel = document.querySelector('.calibration-stats');
+        if (!statsPanel) return;
+        
+        const recentData = this.calibrationData.slice(-20);
+        const avgEnergy = recentData.length > 0 
+            ? recentData.reduce((sum, d) => sum + d.energy, 0) / recentData.length 
+            : 0;
+        const maxEnergy = recentData.length > 0 
+            ? Math.max(...recentData.map(d => d.energy)) 
+            : 0;
+        const beatCount = recentData.filter(d => d.energy > d.threshold).length;
+        const currentBpm = this.bpmHistory.length > 0 
+            ? this.bpmHistory[this.bpmHistory.length - 1] 
+            : 0;
+        
+        statsPanel.innerHTML = `
+            <div class="stat-item">
+                <span class="stat-label">Avg Energy:</span>
+                <span class="stat-value">${(avgEnergy * 100).toFixed(1)}%</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Max Energy:</span>
+                <span class="stat-value">${(maxEnergy * 100).toFixed(1)}%</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Beats Detected:</span>
+                <span class="stat-value" style="color: #00ff88;">${beatCount}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Current BPM:</span>
+                <span class="stat-value" style="color: #ff6b6b;">${currentBpm > 0 ? Math.round(currentBpm) : '--'}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Samples:</span>
+                <span class="stat-value">${this.calibrationData.length}</span>
+            </div>
+        `;
     },
     
     autoCalibrate: function() {
@@ -3823,15 +3984,18 @@ const BeatDetectionCalibration = {
         const avgEnergy = energies.reduce((a, b) => a + b, 0) / energies.length;
         const maxEnergy = Math.max(...energies);
         const minEnergy = Math.min(...energies);
+        const stdDev = Math.sqrt(energies.reduce((sum, e) => sum + Math.pow(e - avgEnergy, 2), 0) / energies.length);
         
-        const optimalThreshold = avgEnergy + ((maxEnergy - avgEnergy) * 0.3);
+        const optimalThreshold = avgEnergy + (stdDev * 0.5);
+        const recommendedSensitivity = optimalThreshold < 0.2 ? 'high' : optimalThreshold > 0.4 ? 'low' : 'medium';
         
         if (MediaPlayer.beatDetection) {
             MediaPlayer.beatDetection.threshold = Math.max(0.1, Math.min(0.9, optimalThreshold));
             MediaPlayer.beatDetection.userThreshold = Math.max(0.1, Math.min(0.9, optimalThreshold));
+            MediaPlayer.beatDetection.sensitivity = recommendedSensitivity;
         }
         
-        showNotification(`Auto-calibrated threshold: ${optimalThreshold.toFixed(3)}`, 'success');
+        showNotification(`Auto-calibrated: threshold=${optimalThreshold.toFixed(3)}, sensitivity=${recommendedSensitivity}`, 'success');
         this.stop();
     },
     
@@ -3839,8 +4003,64 @@ const BeatDetectionCalibration = {
         this.calibrationData = [];
         this.thresholdHistory = [];
         this.sensitivityHistory = [];
+        this.bpmHistory = [];
         this.updateVisualization();
+        this.updateStatsPanel();
         showNotification('Calibration data reset', 'info');
+    },
+    
+    exportCalibrationData: function() {
+        if (this.calibrationData.length === 0) {
+            showNotification('No calibration data to export', 'warning');
+            return null;
+        }
+        
+        const data = {
+            timestamp: Date.now(),
+            samples: this.calibrationData.length,
+            avgThreshold: this.calibrationData.reduce((s, d) => s + d.threshold, 0) / this.calibrationData.length,
+            avgEnergy: this.calibrationData.reduce((s, d) => s + d.energy, 0) / this.calibrationData.length,
+            detectedBeats: this.calibrationData.filter(d => d.energy > d.threshold).length,
+            data: this.calibrationData
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `beat-calibration-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        showNotification('Calibration data exported', 'success');
+        return data;
+    },
+    
+    importCalibrationData: function(jsonData) {
+        try {
+            const data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+            
+            if (data && data.data && Array.isArray(data.data)) {
+                this.calibrationData = data.data;
+                this.thresholdHistory = data.data.map(d => d.threshold);
+                this.sensitivityHistory = data.data.map(d => d.sensitivity);
+                this.bpmHistory = data.data.map(d => d.bpm || 0);
+                
+                this.updateVisualization();
+                this.updateStatsPanel();
+                
+                if (data.avgThreshold && MediaPlayer.beatDetection) {
+                    MediaPlayer.beatDetection.threshold = data.avgThreshold;
+                    MediaPlayer.beatDetection.userThreshold = data.avgThreshold;
+                }
+                
+                showNotification(`Imported ${data.samples} calibration samples`, 'success');
+                return true;
+            }
+        } catch (e) {
+            showNotification('Failed to import calibration data', 'error');
+        }
+        return false;
     }
 };
 
@@ -3852,6 +4072,7 @@ const EnhancedScenePresets = {
         'cooking': { hue: 30, saturation: 70, brightness: 90, temperature: 4500, name: 'Cooking', emoji: '🍳' },
         'creative': { hue: 290, saturation: 75, brightness: 70, temperature: 5500, name: 'Creative', emoji: '🎨' },
         'yoga': { hue: 150, saturation: 50, brightness: 60, temperature: 4000, name: 'Yoga', emoji: '🧘‍♀️' },
+        'workout': { hue: 0, saturation: 80, brightness: 90, temperature: 6500, name: 'Workout', emoji: '💪' },
         'movie': { hue: 25, saturation: 60, brightness: 40, temperature: 2700, name: 'Movie', emoji: '🎬' },
         'study': { hue: 210, saturation: 40, brightness: 80, temperature: 6000, name: 'Study', emoji: '📚' },
         'dinner': { hue: 35, saturation: 65, brightness: 50, temperature: 3000, name: 'Dinner', emoji: '🍽️' },
@@ -3926,12 +4147,55 @@ const EnhancedScenePresets = {
     
     startDynamicEffect: function(effectName, targets) {
         const effects = {
-            'nebula': { hues: [270, 300, 330], duration: 4000, brightness: [40, 70] },
-            'cosmic': { hues: [260, 290, 320], duration: 5000, brightness: [30, 60] },
-            'dream': { hues: [180, 200, 220], duration: 6000, brightness: [35, 55] },
-            'adventure': { hues: [30, 40, 50], duration: 3000, brightness: [60, 85] },
-            'festival': { hues: [320, 340, 0, 200], duration: 2000, brightness: [70, 95] },
-            'thunder': { hues: [50, 0], duration: 2000, brightness: [40, 100], flash: true }
+            'nebula': { 
+                hues: [270, 300, 330, 280, 310], 
+                duration: 4000, 
+                brightness: [40, 70],
+                saturation: [70, 90],
+                pattern: 'smooth',
+                description: 'Swirling cosmic clouds'
+            },
+            'cosmic': { 
+                hues: [260, 290, 320, 350, 280], 
+                duration: 5000, 
+                brightness: [30, 60],
+                saturation: [80, 100],
+                pattern: 'pulse',
+                description: 'Deep space rhythms'
+            },
+            'dream': { 
+                hues: [180, 200, 220, 190, 210], 
+                duration: 6000, 
+                brightness: [35, 55],
+                saturation: [50, 70],
+                pattern: 'fade',
+                description: 'Ethereal dreamscapes'
+            },
+            'adventure': { 
+                hues: [30, 40, 50, 35, 45], 
+                duration: 3000, 
+                brightness: [60, 85],
+                saturation: [70, 90],
+                pattern: 'energetic',
+                description: 'Bold exploration'
+            },
+            'festival': { 
+                hues: [320, 340, 0, 20, 200, 220], 
+                duration: 2000, 
+                brightness: [70, 95],
+                saturation: [85, 100],
+                pattern: 'party',
+                description: 'Celebration mode'
+            },
+            'thunder': { 
+                hues: [50, 0, 60], 
+                duration: 2000, 
+                brightness: [40, 100],
+                saturation: [30, 60],
+                pattern: 'storm',
+                flash: true,
+                description: 'Dramatic lightning storms'
+            }
         };
         
         const effect = effects[effectName];
@@ -3939,23 +4203,70 @@ const EnhancedScenePresets = {
         
         let hueIndex = 0;
         let brightnessUp = true;
+        let saturationUp = true;
         let currentBrightness = effect.brightness[0];
+        let currentSaturation = effect.saturation[0];
+        let phase = 0;
         
-        const interval = setInterval(() => {
+        const applyEffect = () => {
             if (this.currentScene !== effectName) {
-                clearInterval(interval);
                 return;
             }
             
-            const hue = effect.hues[hueIndex % effect.hues.length];
+            phase += 0.1;
             
-            if (effect.flash && Math.random() > 0.7) {
-                currentBrightness = 100;
-            } else {
-                currentBrightness += brightnessUp ? 5 : -5;
-                if (currentBrightness >= effect.brightness[1]) brightnessUp = false;
-                if (currentBrightness <= effect.brightness[0]) brightnessUp = true;
+            switch(effect.pattern) {
+                case 'smooth':
+                    hueIndex = (hueIndex + 1) % effect.hues.length;
+                    currentBrightness = effect.brightness[0] + 
+                        (Math.sin(phase) * (effect.brightness[1] - effect.brightness[0]) / 2) + 
+                        (effect.brightness[1] + effect.brightness[0]) / 2;
+                    currentSaturation = effect.saturation[0] + 
+                        (Math.cos(phase) * (effect.saturation[1] - effect.saturation[0]) / 2) + 
+                        (effect.saturation[1] + effect.saturation[0]) / 2;
+                    break;
+                    
+                case 'pulse':
+                    hueIndex = (hueIndex + 1) % effect.hues.length;
+                    currentBrightness = effect.brightness[0] + 
+                        (Math.abs(Math.sin(phase)) * (effect.brightness[1] - effect.brightness[0]));
+                    currentSaturation = effect.saturation[1];
+                    break;
+                    
+                case 'fade':
+                    hueIndex = Math.floor((phase / (Math.PI * 2)) * effect.hues.length) % effect.hues.length;
+                    currentBrightness = effect.brightness[0] + 
+                        ((Math.sin(phase) + 1) / 2 * (effect.brightness[1] - effect.brightness[0]));
+                    currentSaturation = effect.saturation[0] + 
+                        ((Math.cos(phase * 0.5) + 1) / 2 * (effect.saturation[1] - effect.saturation[0]));
+                    break;
+                    
+                case 'energetic':
+                    if (Math.random() > 0.7) hueIndex = (hueIndex + 1) % effect.hues.length;
+                    currentBrightness = effect.brightness[1] - (Math.random() * 10);
+                    currentSaturation = effect.saturation[1];
+                    break;
+                    
+                case 'party':
+                    hueIndex = (hueIndex + Math.floor(Math.random() * 2) + 1) % effect.hues.length;
+                    currentBrightness = effect.brightness[0] + (Math.random() * (effect.brightness[1] - effect.brightness[0]));
+                    currentSaturation = effect.saturation[1];
+                    break;
+                    
+                case 'storm':
+                    if (effect.flash && Math.random() > 0.85) {
+                        currentBrightness = 100;
+                        currentSaturation = 20;
+                        hueIndex = Math.floor(Math.random() * effect.hues.length);
+                    } else {
+                        currentBrightness = effect.brightness[0] + (Math.random() * 20);
+                        currentSaturation = effect.saturation[0] + (Math.random() * 20);
+                        if (Math.random() > 0.6) hueIndex = (hueIndex + 1) % effect.hues.length;
+                    }
+                    break;
             }
+            
+            const hue = effect.hues[hueIndex];
             
             $.ajax({
                 url: '/api/services/lifx/set_color',
@@ -3963,13 +4274,32 @@ const EnhancedScenePresets = {
                 contentType: 'application/json',
                 data: JSON.stringify({
                     selector: targets === 'all' ? 'all' : `id:${targets}`,
-                    color: `hue:${hue * 182} saturation:80% brightness:${currentBrightness / 100}`,
+                    color: `hue:${hue * 182} saturation:${Math.round(currentSaturation)}% brightness:${Math.round(currentBrightness) / 100}`,
                     duration: effect.duration / 1000
                 })
             });
-            
-            hueIndex++;
-        }, effect.duration / 4);
+        };
+        
+        const intervalId = setInterval(applyEffect, effect.duration / 8);
+        
+        this.dynamicEffectIntervals = this.dynamicEffectIntervals || {};
+        this.dynamicEffectIntervals[effectName] = intervalId;
+    },
+    
+    stopDynamicEffect: function(effectName) {
+        if (this.dynamicEffectIntervals && this.dynamicEffectIntervals[effectName]) {
+            clearInterval(this.dynamicEffectIntervals[effectName]);
+            delete this.dynamicEffectIntervals[effectName];
+        }
+    },
+    
+    stopAllDynamicEffects: function() {
+        if (this.dynamicEffectIntervals) {
+            for (const effectName in this.dynamicEffectIntervals) {
+                clearInterval(this.dynamicEffectIntervals[effectName]);
+            }
+            this.dynamicEffectIntervals = {};
+        }
     },
     
     showSceneIndicator: function(scene) {
@@ -3996,30 +4326,80 @@ const EnhancedScenePresets = {
         }
         
         const sceneKeys = Object.keys(this.presets);
-        const scenesHtml = sceneKeys.map(key => {
-            const scene = this.presets[key];
-            const gradient = this.getSceneGradient(key);
-            return `
-                <div class="scene-preview-item-enhanced ${this.currentScene === key ? 'active' : ''}" 
-                     onclick="EnhancedScenePresets.apply('${key}'); if (typeof Swal !== 'undefined') Swal.close();">
-                    <div class="scene-gradient-preview" style="${gradient}"></div>
-                    <div class="scene-preview-emoji">${scene.emoji}</div>
-                    <div class="scene-preview-label-enhanced">${scene.name}</div>
+        const categorizedScenes = {
+            'Ambient': ['meditation', 'yoga', 'chill', 'goodnight'],
+            'Focus': ['study', 'creative', 'gaming', 'morning'],
+            'Activity': ['cooking', 'workout', 'adventure', 'festival'],
+            'Entertainment': ['movie', 'dinner', 'party', 'rainbow'],
+            'Special Effects': ['fireplace', 'aurora', 'nebula', 'cosmic', 'dream', 'thunder', 'ice', 'ocean']
+        };
+        
+        let categoriesHtml = '';
+        for (const [category, scenes] of Object.entries(categorizedScenes)) {
+            const sceneItems = scenes.filter(s => this.presets[s]).map(key => {
+                const scene = this.presets[key];
+                const gradient = this.getSceneGradient(key);
+                const isSpecial = scene.special ? '<span class="special-badge"><i class="fas fa-star"></i></span>' : '';
+                return `
+                    <div class="scene-preview-item-enhanced ${this.currentScene === key ? 'active' : ''}" 
+                         onclick="EnhancedScenePresets.apply('${key}'); if (typeof Swal !== 'undefined') Swal.close();">
+                        <div class="scene-gradient-preview" style="${gradient}">
+                            ${isSpecial}
+                        </div>
+                        <div class="scene-preview-emoji">${scene.emoji}</div>
+                        <div class="scene-preview-label-enhanced">${scene.name}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            categoriesHtml += `
+                <div class="scene-category">
+                    <h4 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;">
+                        <i class="fas fa-${this.getCategoryIcon(category)}"></i> ${category}
+                    </h4>
+                    <div class="scene-preview-grid-enhanced" style="margin-bottom: 20px;">
+                        ${sceneItems}
+                    </div>
                 </div>
             `;
-        }).join('');
+        }
         
         Swal.fire({
             title: '<i class="fas fa-palette"></i> Scene Presets',
             html: `
-                <div class="scene-preview-grid-enhanced">
-                    ${scenesHtml}
+                <div class="scene-selector-categorized">
+                    ${categoriesHtml}
+                </div>
+                <div style="margin-top: 20px; padding: 15px; background: rgba(42, 42, 58, 0.5); border-radius: 10px;">
+                    <h5 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;">
+                        <i class="fas fa-info-circle"></i> Tips
+                    </h5>
+                    <ul style="color: #adb5bd; font-size: 12px; margin: 0; padding-left: 20px;">
+                        <li>Tap any scene to apply it instantly</li>
+                        <li>Special effect scenes have dynamic animations</li>
+                        <li>Double-tap ambient button to cycle scenes</li>
+                        <li>Hold scene button for quick settings</li>
+                    </ul>
                 </div>
             `,
             showConfirmButton: false,
             showCloseButton: true,
-            width: '600px'
+            width: '700px',
+            customClass: {
+                html: 'scene-selector-html'
+            }
         });
+    },
+    
+    getCategoryIcon: function(category) {
+        const icons = {
+            'Ambient': 'cloud-moon',
+            'Focus': 'brain',
+            'Activity': 'running',
+            'Entertainment': 'film',
+            'Special Effects': 'magic'
+        };
+        return icons[category] || 'lightbulb';
     },
     
     getSceneGradient: function(sceneName) {
@@ -4029,6 +4409,7 @@ const EnhancedScenePresets = {
             'cooking': 'background: linear-gradient(135deg, #f39c12, #e67e22);',
             'creative': 'background: linear-gradient(135deg, #8e44ad, #9b59b6);',
             'yoga': 'background: linear-gradient(135deg, #27ae60, #2ecc71);',
+            'workout': 'background: linear-gradient(135deg, #e74c3c, #c0392b);',
             'movie': 'background: linear-gradient(135deg, #d35400, #e67e22);',
             'study': 'background: linear-gradient(135deg, #3498db, #2980b9);',
             'dinner': 'background: linear-gradient(135deg, #f39c12, #d35400);',
@@ -4114,42 +4495,121 @@ function showMediaSyncQuickSettings() {
         return;
     }
     
+    const currentBpm = MediaPlayer.lifxBeatDetection.bpmEstimate || MediaPlayer.beatDetection?.bpmEstimate || 0;
+    const currentThreshold = MediaPlayer.beatDetection?.threshold || 0.3;
+    const currentSensitivity = MediaPlayer.beatDetection?.sensitivity || MediaPlayer.lifxBeatDetection?.sensitivity || 'medium';
+    
     Swal.fire({
-        title: '<i class="fas fa-sliders-h"></i> Quick Settings',
+        title: '<i class="fas fa-sliders-h"></i> Media Sync Quick Settings',
         html: `
-            <div class="media-sync-quick-settings">
-                <div class="media-sync-quick-setting ${MediaPlayer.lifxSyncEnabled ? 'active' : ''}" onclick="toggleLifxMediaSync(); showMediaSyncQuickSettings();">
-                    <i class="fas fa-${MediaPlayer.lifxSyncEnabled ? 'check-circle' : 'circle'}"></i>
-                    <span>LIFX Sync</span>
+            <div class="media-sync-dashboard">
+                <div class="sync-status-grid">
+                    <div class="sync-status-card ${MediaPlayer.lifxSyncEnabled ? 'active' : ''}">
+                        <div class="status-icon">${MediaPlayer.lifxSyncEnabled ? '🎵💡' : '💡'}</div>
+                        <div class="status-label">LIFX Sync</div>
+                        <div class="status-value">${MediaPlayer.lifxSyncEnabled ? 'ON' : 'OFF'}</div>
+                        <button class="btn-toggle" onclick="toggleLifxMediaSync(); showMediaSyncQuickSettings();">
+                            <i class="fas fa-toggle-${MediaPlayer.lifxSyncEnabled ? 'on' : 'off'}"></i>
+                        </button>
+                    </div>
+                    <div class="sync-status-card ${MediaPlayer.ambientLightEnabled ? 'active' : ''}">
+                        <div class="status-icon">${MediaPlayer.ambientLightEnabled ? '🌈' : '🌑'}</div>
+                        <div class="status-label">Ambient Light</div>
+                        <div class="status-value">${MediaPlayer.ambientLightEnabled ? 'ON' : 'OFF'}</div>
+                        <button class="btn-toggle" onclick="toggleAmbientLight(); showMediaSyncQuickSettings();">
+                            <i class="fas fa-toggle-${MediaPlayer.ambientLightEnabled ? 'on' : 'off'}"></i>
+                        </button>
+                    </div>
+                    <div class="sync-status-card ${MediaPlayer.beatDetection?.enabled || MediaPlayer.lifxBeatDetection?.enabled ? 'active' : ''}">
+                        <div class="status-icon">🎵</div>
+                        <div class="status-label">Beat Detection</div>
+                        <div class="status-value">${MediaPlayer.beatDetection?.enabled || MediaPlayer.lifxBeatDetection?.enabled ? 'ON' : 'OFF'}</div>
+                        <button class="btn-toggle" onclick="toggleBeatDetection(); showMediaSyncQuickSettings();">
+                            <i class="fas fa-toggle-${MediaPlayer.beatDetection?.enabled || MediaPlayer.lifxBeatDetection?.enabled ? 'on' : 'off'}"></i>
+                        </button>
+                    </div>
+                    <div class="sync-status-card ${MediaPlayer.isPlaying ? 'active' : ''}">
+                        <div class="status-icon">${MediaPlayer.isPlaying ? '▶️' : '⏸'}</div>
+                        <div class="status-label">Playback</div>
+                        <div class="status-value">${MediaPlayer.isPlaying ? 'PLAYING' : 'PAUSED'}</div>
+                        <button class="btn-toggle" onclick="togglePlayPause(); showMediaSyncQuickSettings();">
+                            <i class="fas fa-${MediaPlayer.isPlaying ? 'pause' : 'play'}"></i>
+                        </button>
+                    </div>
                 </div>
-                <div class="media-sync-quick-setting ${MediaPlayer.ambientLightEnabled ? 'active' : ''}" onclick="toggleAmbientLight(); showMediaSyncQuickSettings();">
-                    <i class="fas fa-${MediaPlayer.ambientLightEnabled ? 'lightbulb' : 'lightbulb-slash'}"></i>
-                    <span>Ambient Light</span>
+                
+                <div class="quick-actions-row">
+                    <button class="btn-quick-action" onclick="cycleAmbientLightMode(); showMediaSyncQuickSettings();">
+                        <i class="fas fa-sync"></i> Cycle Mode
+                    </button>
+                    <button class="btn-quick-action" onclick="showMediaSyncSettings('beat'); if (typeof Swal !== 'undefined') Swal.close();">
+                        <i class="fas fa-wave-square"></i> Beat Settings
+                    </button>
+                    <button class="btn-quick-action" onclick="showMediaSyncSettings('lifx'); if (typeof Swal !== 'undefined') Swal.close();">
+                        <i class="fas fa-lightbulb"></i> LIFX Settings
+                    </button>
+                    <button class="btn-quick-action" onclick="EnhancedScenePresets.showSceneSelector(); if (typeof Swal !== 'undefined') Swal.close();">
+                        <i class="fas fa-palette"></i> Scenes
+                    </button>
                 </div>
-                <div class="media-sync-quick-setting ${MediaPlayer.beatDetection.enabled ? 'active' : ''}" onclick="toggleBeatDetection(); showMediaSyncQuickSettings();">
-                    <i class="fas fa-${MediaPlayer.beatDetection.enabled ? 'wave-square' : 'wave-square'}"></i>
-                    <span>Beat Detection</span>
+                
+                <div class="real-time-metrics">
+                    <h4><i class="fas fa-chart-line"></i> Real-time Metrics</h4>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <span class="metric-label">BPM</span>
+                            <span class="metric-value bpm-value">${currentBpm > 0 ? Math.round(currentBpm) : '--'}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Threshold</span>
+                            <span class="metric-value">${currentThreshold.toFixed(2)}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Sensitivity</span>
+                            <span class="metric-value">${currentSensitivity}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Sync Mode</span>
+                            <span class="metric-value">${MediaPlayer.lifxSyncMode || 'pulse'}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="media-sync-quick-setting" onclick="showBeatDetectionCalibration(); if (typeof Swal !== 'undefined') Swal.close();">
-                    <i class="fas fa-sliders-h"></i>
-                    <span>Calibrate</span>
-                </div>
-            </div>
-            <div class="beat-detection-calibration">
-                <h4><i class="fas fa-chart-bar"></i> Real-time Energy</h4>
-                <div class="beat-energy-visualization"></div>
-                <div class="calibration-controls">
-                    <button class="btn btn-sm btn-primary" onclick="BeatDetectionCalibration.start()">Start</button>
-                    <button class="btn btn-sm btn-success" onclick="BeatDetectionCalibration.autoCalibrate()">Auto</button>
-                    <button class="btn btn-sm btn-secondary" onclick="BeatDetectionCalibration.reset()">Reset</button>
-                    <button class="btn btn-sm btn-danger" onclick="BeatDetectionCalibration.stop(); showMediaSyncQuickSettings();">Stop</button>
+                
+                <div class="beat-detection-calibration">
+                    <h4><i class="fas fa-chart-bar"></i> Real-time Energy Visualization</h4>
+                    <div class="beat-energy-visualization"></div>
+                    <div class="calibration-stats"></div>
+                    <div class="calibration-controls">
+                        <button class="btn btn-sm btn-primary" onclick="BeatDetectionCalibration.start()">
+                            <i class="fas fa-play"></i> Start
+                        </button>
+                        <button class="btn btn-sm btn-success" onclick="BeatDetectionCalibration.autoCalibrate()">
+                            <i class="fas fa-magic"></i> Auto
+                        </button>
+                        <button class="btn btn-sm btn-info" onclick="BeatDetectionCalibration.exportCalibrationData()">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="BeatDetectionCalibration.reset()">
+                            <i class="fas fa-undo"></i> Reset
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="BeatDetectionCalibration.stop(); showMediaSyncQuickSettings();">
+                            <i class="fas fa-stop"></i> Stop
+                        </button>
+                    </div>
                 </div>
             </div>
         `,
         showConfirmButton: false,
         showCloseButton: true,
-        width: '500px'
+        width: '750px',
+        customClass: {
+            html: 'media-sync-dashboard-html'
+        }
     });
+    
+    setTimeout(() => {
+        BeatDetectionCalibration.start();
+    }, 100);
 }
 
 function showBeatDetectionCalibration() {
