@@ -12,6 +12,18 @@ const TouchMediaEnhancements = (function() {
     let selectionToolbar = null;
     let gestureTrails = [];
     let mediaVisualizerBars = [];
+    let mediaSyncActive = false;
+    let mediaSyncMode = 'beat';
+    let currentBpm = 0;
+    let audioContext = null;
+    let analyser = null;
+    let mediaPlaybackState = {
+        isPlaying: false,
+        trackName: '',
+        artistName: '',
+        progress: 0,
+        duration: 0
+    };
     
     // Configuration
     const CONFIG = {
@@ -595,6 +607,212 @@ const TouchMediaEnhancements = (function() {
         document.dispatchEvent(event);
     }
 
+    function toggleMediaSyncPanel() {
+        const panel = document.getElementById('media-sync-panel');
+        if (panel) {
+            panel.classList.toggle('visible');
+            mediaSyncActive = !mediaSyncActive;
+            document.getElementById('sync-stat').textContent = mediaSyncActive ? 'On' : 'Off';
+        }
+    }
+    
+    function setMediaSyncMode(mode) {
+        mediaSyncMode = mode;
+        document.querySelectorAll('.media-sync-btn').forEach(btn => {
+            btn.classList.remove('active');
+            btn.classList.add('inactive');
+        });
+        const activeBtn = document.getElementById(`${mode}-sync-btn`);
+        if (activeBtn) {
+            activeBtn.classList.remove('inactive');
+            activeBtn.classList.add('active');
+        }
+        document.getElementById('sync-stat').textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+        
+        if (mode === 'beat') {
+            startBeatDetection();
+        } else if (mode === 'ambient') {
+            startAmbientAnalysis();
+        } else if (mode === 'spectrum') {
+            startSpectrumAnalysis();
+        }
+    }
+    
+    function toggleQuickScenesPanel() {
+        const panel = document.getElementById('quick-scenes-panel');
+        if (panel) {
+            panel.classList.toggle('visible');
+            if (panel.classList.contains('visible')) {
+                renderQuickScenes();
+            }
+        }
+    }
+    
+    function renderQuickScenes() {
+        const grid = document.getElementById('quick-scenes-grid');
+        if (!grid) return;
+        
+        const scenes = [
+            { name: 'relax', icon: '🧘', color: '#ff6b6b' },
+            { name: 'focus', icon: '🎯', color: '#4ecdc4' },
+            { name: 'energize', icon: '⚡', color: '#ffe66d' },
+            { name: 'night', icon: '🌙', color: '#1a1a2e' },
+            { name: 'sunset', icon: '🌅', color: '#ff9f43' },
+            { name: 'ocean', icon: '🌊', color: '#45b7d1' },
+            { name: 'reading', icon: '📖', color: '#feca57' },
+            { name: 'romance', icon: '💕', color: '#ff9ff3' },
+            { name: 'party', icon: '🎉', color: '#00d4ff' },
+            { name: 'golden', icon: '☀️', color: '#f9ca24' },
+            { name: 'arctic', icon: '❄️', color: '#70a1ff' },
+            { name: 'tropical', icon: '🏖️', color: '#00b894' }
+        ];
+        
+        grid.innerHTML = scenes.map(scene => `
+            <div class="scene-item" onclick="applyQuickScene('${scene.name}')">
+                <div class="scene-icon">${scene.icon}</div>
+                <div class="scene-name">${scene.name}</div>
+            </div>
+        `).join('');
+    }
+    
+    function applyQuickScene(sceneName) {
+        if (typeof LifXTouchControls !== 'undefined') {
+            LifXTouchControls.applyScene(sceneName);
+        }
+        toggleQuickScenesPanel();
+    }
+    
+    function mediaPlayPause() {
+        const icon = document.getElementById('media-play-icon');
+        if (mediaPlaybackState.isPlaying) {
+            mediaPlaybackState.isPlaying = false;
+            if (icon) icon.className = 'fas fa-play';
+            sendMediaCommand('pause');
+        } else {
+            mediaPlaybackState.isPlaying = true;
+            if (icon) icon.className = 'fas fa-pause';
+            sendMediaCommand('play');
+        }
+    }
+    
+    function mediaPrevious() {
+        sendMediaCommand('previous');
+    }
+    
+    function mediaNext() {
+        sendMediaCommand('next');
+    }
+    
+    function sendMediaCommand(command) {
+        if (typeof websocket !== 'undefined' && websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send(JSON.stringify({
+                type: 'command',
+                id: `media_${command}_${Date.now()}`,
+                command: `media_${command}`,
+                args: {}
+            }));
+        }
+    }
+    
+    function updateMediaPlayback(info) {
+        mediaPlaybackState = { ...mediaPlaybackState, ...info };
+        
+        const trackName = document.getElementById('media-track-name');
+        const artistName = document.getElementById('media-artist-name');
+        const progress = document.getElementById('media-progress');
+        const playIcon = document.getElementById('media-play-icon');
+        
+        if (trackName) trackName.textContent = info.trackName || 'No Track';
+        if (artistName) artistName.textContent = info.artistName || 'Unknown Artist';
+        if (progress) progress.style.width = `${(info.progress / info.duration) * 100 || 0}%`;
+        if (playIcon) playIcon.className = info.isPlaying ? 'fas fa-pause' : 'fas fa-play';
+    }
+    
+    function startBeatDetection() {
+        initAudioAnalyzer();
+        const vizContainer = document.getElementById('beat-visualization');
+        if (!vizContainer) return;
+        
+        if (vizContainer.children.length === 0) {
+            for (let i = 0; i < 16; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'beat-bar';
+                bar.style.height = '5px';
+                vizContainer.appendChild(bar);
+                mediaVisualizerBars.push(bar);
+            }
+        }
+        
+        requestAnimationFrame(updateBeatVisualization);
+    }
+    
+    function startAmbientAnalysis() {
+        initAudioAnalyzer();
+    }
+    
+    function startSpectrumAnalysis() {
+        initAudioAnalyzer();
+    }
+    
+    function initAudioAnalyzer() {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+        }
+    }
+    
+    function updateBeatVisualization() {
+        if (!analyser) return;
+        
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(dataArray);
+        
+        const bpmStat = document.getElementById('bpm-stat');
+        const intensityStat = document.getElementById('intensity-stat');
+        
+        let sum = 0;
+        let maxFreq = 0;
+        
+        for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+            if (dataArray[i] > maxFreq) maxFreq = dataArray[i];
+            
+            if (mediaVisualizerBars[i]) {
+                const height = Math.max(5, (dataArray[i] / 255) * 80);
+                mediaVisualizerBars[i].style.height = `${height}px`;
+                
+                if (dataArray[i] > 200) {
+                    mediaVisualizerBars[i].classList.add('peak');
+                } else {
+                    mediaVisualizerBars[i].classList.remove('peak');
+                }
+            }
+        }
+        
+        const avgIntensity = sum / dataArray.length;
+        currentBpm = Math.floor(60 + (avgIntensity / 255) * 60);
+        
+        if (bpmStat) bpmStat.textContent = currentBpm;
+        if (intensityStat) intensityStat.textContent = `${Math.floor((avgIntensity / 255) * 100)}%`;
+        
+        if (mediaSyncActive && mediaSyncMode === 'beat') {
+            updateLifxFromAudio(dataArray, maxFreq);
+        }
+        
+        requestAnimationFrame(updateBeatVisualization);
+    }
+    
+    function updateLifxFromAudio(dataArray, peak) {
+        const hue = (Date.now() / 50) % 360;
+        const saturation = Math.min(100, (peak / 255) * 100 * 1.5);
+        const brightness = Math.min(100, 30 + (dataArray[4] / 255) * 70);
+        
+        if (typeof LifXTouchControls !== 'undefined' && LifXTouchControls.selectedBulb) {
+            LifXTouchControls.applyHue(hue, saturation, brightness);
+        }
+    }
+    
     // Public API
     return {
         init,
@@ -614,6 +832,14 @@ const TouchMediaEnhancements = (function() {
         toggleAudioAnalysis,
         toggleLightSync,
         setTouchSensitivity,
+        toggleMediaSyncPanel,
+        setMediaSyncMode,
+        toggleQuickScenesPanel,
+        applyQuickScene,
+        mediaPlayPause,
+        mediaPrevious,
+        mediaNext,
+        updateMediaPlayback,
         CONFIG
     };
 })();
@@ -623,3 +849,32 @@ document.addEventListener('DOMContentLoaded', function() {
     TouchMediaEnhancements.init();
     TouchMediaEnhancements.setupColorTemperaturePicker();
 });
+
+// Global functions for HTML onclick handlers
+function toggleMediaSyncPanel() {
+    TouchMediaEnhancements.toggleMediaSyncPanel();
+}
+
+function setMediaSyncMode(mode) {
+    TouchMediaEnhancements.setMediaSyncMode(mode);
+}
+
+function toggleQuickScenesPanel() {
+    TouchMediaEnhancements.toggleQuickScenesPanel();
+}
+
+function applyQuickScene(sceneName) {
+    TouchMediaEnhancements.applyQuickScene(sceneName);
+}
+
+function mediaPlayPause() {
+    TouchMediaEnhancements.mediaPlayPause();
+}
+
+function mediaPrevious() {
+    TouchMediaEnhancements.mediaPrevious();
+}
+
+function mediaNext() {
+    TouchMediaEnhancements.mediaNext();
+}

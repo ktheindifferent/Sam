@@ -115,6 +115,11 @@ const LifXTouchControls = {
     lastGestureVelocity: 0,
     touchPressure: 0,
     pressureSensitiveEnabled: false,
+    colorPickerActive: false,
+    colorPickerElement: null,
+    lastColorHue: 180,
+    lastColorSaturation: 100,
+    quickColorPalette: ['#FF0000', '#FF8800', '#FFFF00', '#00FF00', '#00FFFF', '#0088FF', '#0000FF', '#FF00FF', '#FF88FF', '#FFFFFF', '#FFB6C1', '#87CEEB'],
     isModalOpen: function() {
         return !!(document.querySelector('.swal2-show') || 
                   document.querySelector('.modal.show') ||
@@ -343,12 +348,227 @@ const LifXTouchControls = {
                         break;
                     case ' ':
                     case 'Enter':
+                    case ' ':
                         e.preventDefault();
                         this.togglePower();
+                        break;
+                    case 'c':
+                    case 'C':
+                        e.preventDefault();
+                        this.showQuickColorPicker();
                         break;
                 }
             }
         });
+        
+        this.initColorPicker();
+    },
+    
+    initColorPicker: function() {
+        const colorPickerContainer = document.getElementById('lifx-color-picker-container');
+        if (!colorPickerContainer) return;
+        
+        colorPickerContainer.innerHTML = `
+            <div id="lifx-quick-color-picker" class="lifx-quick-color-picker" style="display: none;">
+                <div class="color-picker-header">
+                    <span>Quick Color</span>
+                    <button class="btn-close" onclick="LifXTouchControls.hideQuickColorPicker()">×</button>
+                </div>
+                <div class="color-palette-grid" id="color-palette-grid"></div>
+                <div class="color-sliders">
+                    <div class="slider-row">
+                        <label>Hue</label>
+                        <input type="range" id="hue-slider" min="0" max="360" value="${this.lastColorHue}" />
+                    </div>
+                    <div class="slider-row">
+                        <label>Saturation</label>
+                        <input type="range" id="saturation-slider" min="0" max="100" value="${this.lastColorSaturation}" />
+                    </div>
+                    <div class="slider-row">
+                        <label>Brightness</label>
+                        <input type="range" id="brightness-slider" min="0" max="100" value="${this.brightnessLevel}" />
+                    </div>
+                </div>
+                <div class="color-preview">
+                    <div id="color-preview-box" style="background: hsl(${this.lastColorHue}, ${this.lastColorSaturation}%, 50%)"></div>
+                    <span id="color-hex-value">#FF00FF</span>
+                </div>
+            </div>
+        `;
+        
+        this.setupColorPickerEvents();
+    },
+    
+    setupColorPickerEvents: function() {
+        const paletteGrid = document.getElementById('color-palette-grid');
+        if (paletteGrid) {
+            paletteGrid.innerHTML = this.quickColorPalette.map(color => 
+                `<div class="color-swatch" style="background: ${color}" data-color="${color}"></div>`
+            ).join('');
+            
+            paletteGrid.addEventListener('click', (e) => {
+                const swatch = e.target.closest('.color-swatch');
+                if (swatch) {
+                    this.applyColor(swatch.dataset.color);
+                }
+            });
+        }
+        
+        const hueSlider = document.getElementById('hue-slider');
+        const saturationSlider = document.getElementById('saturation-slider');
+        const brightnessSlider = document.getElementById('brightness-slider');
+        const previewBox = document.getElementById('color-preview-box');
+        const hexValue = document.getElementById('color-hex-value');
+        
+        const updateColorPreview = () => {
+            const h = hueSlider.value;
+            const s = saturationSlider.value;
+            const b = brightnessSlider.value;
+            this.lastColorHue = h;
+            this.lastColorSaturation = s;
+            this.brightnessLevel = b;
+            
+            previewBox.style.background = `hsl(${h}, ${s}%, ${b/2}%)`;
+            
+            const rgb = this.hslToRgb(h/360, s/100, b/200);
+            hexValue.textContent = this.rgbToHex(rgb[0], rgb[1], rgb[2]);
+        };
+        
+        hueSlider.addEventListener('input', updateColorPreview);
+        saturationSlider.addEventListener('input', updateColorPreview);
+        brightnessSlider.addEventListener('input', updateColorPreview);
+        
+        hueSlider.addEventListener('change', () => this.applyHSLColor());
+        saturationSlider.addEventListener('change', () => this.applyHSLColor());
+        brightnessSlider.addEventListener('change', () => this.applyBrightnessFromSlider());
+    },
+    
+    showQuickColorPicker: function() {
+        const picker = document.getElementById('lifx-quick-color-picker');
+        if (picker) {
+            picker.style.display = 'block';
+            this.colorPickerActive = true;
+            this.hapticFeedback('light');
+        }
+    },
+    
+    hideQuickColorPicker: function() {
+        const picker = document.getElementById('lifx-quick-color-picker');
+        if (picker) {
+            picker.style.display = 'none';
+            this.colorPickerActive = false;
+        }
+    },
+    
+    applyColor: function(hexColor) {
+        const bulb = this.selectedBulb || this.getFirstSelectedBulb();
+        if (!bulb) {
+            this.showGestureFeedback('Select a bulb first', '💡');
+            return;
+        }
+        
+        const rgb = this.hexToRgb(hexColor);
+        if (!rgb) return;
+        
+        const hsl = this.rgbToHsl(rgb[0], rgb[1], rgb[2]);
+        this.lastColorHue = hsl[0] * 360;
+        this.lastColorSaturation = hsl[1] * 100;
+        
+        if (typeof sendLifxCommand !== 'undefined') {
+            sendLifxCommand('set_color', {
+                bulb_id: bulb,
+                hue: this.lastColorHue,
+                saturation: this.lastColorSaturation,
+                brightness: this.brightnessLevel / 100
+            });
+        }
+        
+        document.getElementById('color-preview-box').style.background = hexColor;
+        document.getElementById('color-hex-value').textContent = hexColor;
+        
+        this.showGestureFeedback(`Color: ${hexColor}`, '🎨');
+        this.hapticFeedback('success');
+    },
+    
+    applyHSLColor: function() {
+        const bulb = this.selectedBulb || this.getFirstSelectedBulb();
+        if (!bulb) return;
+        
+        if (typeof sendLifxCommand !== 'undefined') {
+            sendLifxCommand('set_color', {
+                bulb_id: bulb,
+                hue: this.lastColorHue,
+                saturation: this.lastColorSaturation,
+                brightness: this.brightnessLevel / 100
+            });
+        }
+        
+        this.showGestureFeedback('Color updated', '🎨');
+    },
+    
+    applyBrightnessFromSlider: function() {
+        const bulb = this.selectedBulb || this.getFirstSelectedBulb();
+        if (!bulb) return;
+        
+        this.adjustBrightness(0);
+        this.showGestureFeedback(`Brightness: ${this.brightnessLevel}%`, '💡');
+    },
+    
+    hslToRgb: function(h, s, l) {
+        let r, g, b;
+        if (s === 0) {
+            r = g = b = l;
+        } else {
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+        return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    },
+    
+    rgbToHsl: function(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        if (max === min) {
+            h = s = 0;
+        } else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            switch (max) {
+                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                case g: h = (b - r) / d + 2; break;
+                case b: h = (r - g) / d + 4; break;
+            }
+            h /= 6;
+        }
+        return [h, s, l];
+    },
+    
+    rgbToHex: function(r, g, b) {
+        return '#' + [r, g, b].map(x => {
+            const hex = Math.round(x).toString(16);
+            return hex.length === 1 ? '0' + hex : hex;
+        }).join('').toUpperCase();
+    },
+    
+    hexToRgb: function(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? [
+            parseInt(result[1], 16),
+            parseInt(result[2], 16),
+            parseInt(result[3], 16)
+        ] : null;
     },
     
     checkGestureDebounce: function() {
@@ -847,6 +1067,23 @@ const LifXTouchControls = {
     stopRainbowCycle: function() {
         this.colorCycleActive = false;
         this.showGestureFeedback('Rainbow Cycle Stopped', '⏹');
+    },
+    
+    applyHue: function(hue, saturation, brightness) {
+        const bulb = this.selectedBulb || this.getFirstSelectedBulb();
+        if (!bulb) return;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${bulb}`,
+                color: `hue:${hue} saturation:${saturation}%`,
+                brightness: brightness / 100,
+                duration: 0.1
+            })
+        });
     },
     
     startPulseEffect: function(selector = 'all') {
