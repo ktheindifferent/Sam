@@ -44,6 +44,11 @@ const LifXTouchControls = {
         longPressDelay: 500,
         doubleTapDelay: 300
     },
+    touchSensitivityLevels: {
+        low: { swipeDistance: 80, swipeTime: 400, pinchDistance: 50 },
+        medium: { swipeDistance: 50, swipeTime: 300, pinchDistance: 30 },
+        high: { swipeDistance: 30, swipeTime: 200, pinchDistance: 20 }
+    },
     hapticEnabled: true,
     ambientLightSync: false,
     mediaPlaybackActive: false,
@@ -82,6 +87,9 @@ const LifXTouchControls = {
     beatFlashEnabled: true,
     touchSensitivity: 'medium',
     swipeEdgeZone: 20,
+    lastTouchCoordinates: { x: 0, y: 0 },
+    touchVelocity: 0,
+    touchDirection: null,
     isEdgeSwipe: false,
     edgeSwipeDirection: null,
     touchpadModeEnabled: false,
@@ -1668,6 +1676,66 @@ const LifXTouchControls = {
         });
     },
     
+    showTouchSensitivityPanel: function() {
+        if (typeof Swal === 'undefined') {
+            alert('Touch Sensitivity Settings:\n- Low: Requires larger gestures\n- Medium: Balanced sensitivity\n- High: Very responsive to small gestures\n- Very High: Maximum sensitivity');
+            return;
+        }
+        
+        const currentLevel = localStorage.getItem('lifx_gesture_sensitivity') || 'medium';
+        const sensitivityLevels = [
+            { level: 'low', icon: '🐢', title: 'Low', description: 'Requires deliberate gestures, fewer false positives' },
+            { level: 'medium', icon: '🚶', title: 'Medium', description: 'Balanced sensitivity for most users' },
+            { level: 'high', icon: '🏃', title: 'High', description: 'Quick response to gestures' },
+            { level: 'very_high', icon: '⚡', title: 'Very High', description: 'Maximum sensitivity, responds to micro-gestures' }
+        ];
+        
+        Swal.fire({
+            title: '<i class="fas fa-sliders-h"></i> Touch Sensitivity',
+            html: `
+                <div class="touch-sensitivity-panel" style="padding: 10px;">
+                    <div style="display: grid; gap: 12px;">
+                        ${sensitivityLevels.map(item => `
+                            <div class="sensitivity-option ${item.level === currentLevel ? 'active' : ''}" 
+                                 data-level="${item.level}"
+                                 style="
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: space-between;
+                                    padding: 15px;
+                                    background: rgba(42, 42, 58, 0.6);
+                                    border: 2px solid ${item.level === currentLevel ? '#00d4ff' : 'transparent'};
+                                    border-radius: 12px;
+                                    cursor: pointer;
+                                    transition: all 0.2s ease;
+                                 "
+                                 onclick="LifXTouchControls.setGestureSensitivity('${item.level}'); LifXTouchControls.showTouchSensitivityPanel();">
+                                <div class="sensitivity-option-label" style="display: flex; align-items: center; gap: 12px;">
+                                    <span class="sensitivity-option-icon" style="font-size: 28px;">${item.icon}</span>
+                                    <div>
+                                        <strong style="color: ${item.level === currentLevel ? '#00d4ff' : '#adb5bd'}; font-size: 14px;">${item.title}</strong>
+                                        <p style="color: #6c757d; font-size: 11px; margin: 0;">${item.description}</p>
+                                    </div>
+                                </div>
+                                ${item.level === currentLevel ? '<i class="fas fa-check-circle" style="color: #00d4ff; font-size: 20px;"></i>' : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: rgba(0, 212, 255, 0.1); border-radius: 10px; border: 1px solid rgba(0, 212, 255, 0.3);">
+                        <p style="color: #00d4ff; font-size: 12px; margin: 0;">
+                            <i class="fas fa-info-circle"></i> Changes apply immediately. Test different levels to find your perfect sensitivity.
+                        </p>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '500px',
+            backdrop: 'rgba(0,0,0,0.8)'
+        });
+    },
+    
     undoLastGesture: function() {
         if (this.gestureHistory.length === 0) {
             showNotification('No gestures to undo', 'info');
@@ -2974,6 +3042,26 @@ const LifXTouchControls = {
             };
         }
         this.initBeatDetection();
+        this.initBpmRealtimeDisplay();
+    },
+    
+    initBpmRealtimeDisplay: function() {
+        const bpmDisplay = document.getElementById('realtime-bpm');
+        const bpmValueDisplay = document.getElementById('bpm-value-display');
+        
+        if (!bpmDisplay && !bpmValueDisplay) return;
+        
+        setInterval(() => {
+            if (this.bpmValue > 0) {
+                if (bpmDisplay) bpmDisplay.textContent = Math.round(this.bpmValue);
+                if (bpmValueDisplay) bpmValueDisplay.textContent = Math.round(this.bpmValue);
+                
+                const bpmIndicator = document.getElementById('bpm-realtime-indicator');
+                if (bpmIndicator && this.mediaPlaybackActive) {
+                    bpmIndicator.classList.add('visible');
+                }
+            }
+        }, 500);
     },
     
     initBeatDetection: function() {
@@ -3254,8 +3342,36 @@ const LifXTouchControls = {
         if (targets.length === 0) return;
         
         const intensity = Math.min(1.0, this.beatDetectionSensitivity + 0.2);
-        const brightness = 70 + (this.frequencyBands.bass.value / 255) * 30;
+        const bassEnergy = this.frequencyBands.bass.value / 255;
+        const brightness = 70 + bassEnergy * 30;
         
+        switch(this.mediaSyncMode) {
+            case 'beat':
+                this.applyBeatSyncEffect(targets, brightness);
+                break;
+            case 'color':
+                this.applyColorSyncEffect(targets);
+                break;
+            case 'ambient':
+                this.applyAmbientSyncEffect(targets);
+                break;
+            case 'bass':
+                this.applyBassBoostEffect(targets, bassEnergy);
+                break;
+            case 'spectrum':
+                this.applySpectrumSyncEffect(targets);
+                break;
+        }
+        
+        this.showBeatVisualization();
+        this.showBeatFlashEffect();
+        
+        if (this.beatFlashEnabled) {
+            this.showBeatFlashOverlay();
+        }
+    },
+    
+    applyBeatSyncEffect: function(targets, brightness) {
         $.ajax({
             url: '/api/services/lifx/set_state',
             method: 'POST',
@@ -3266,9 +3382,94 @@ const LifXTouchControls = {
                 duration: 0.05
             })
         });
+    },
+    
+    applyColorSyncEffect: function(targets) {
+        const bassBand = this.frequencyBands.bass.value;
+        const trebleBand = this.frequencyBands.treble.value;
         
-        this.showBeatVisualization();
-        this.showBeatFlashEffect();
+        const hue = (bassBand / 255) * 360;
+        const saturation = 50 + (trebleBand / 255) * 50;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${Math.round(hue)},saturation:${Math.round(saturation)}%`,
+                duration: 0.1
+            })
+        });
+    },
+    
+    applyAmbientSyncEffect: function(targets) {
+        const lowMid = this.frequencyBands.lowMid.value;
+        const highMid = this.frequencyBands.highMid.value;
+        
+        const brightness = 30 + ((lowMid + highMid) / 255) * 40;
+        const kelvin = 2700 + (highMid / 255) * 3800;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                brightness: Math.round(brightness / 100),
+                color: `kelvin:${Math.round(kelvin)}`,
+                duration: 0.2
+            })
+        });
+    },
+    
+    applyBassBoostEffect: function(targets, bassEnergy) {
+        const redIntensity = Math.min(255, bassEnergy * 3);
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                color: `hue:0,saturation:100%,brightness:${30 + bassEnergy * 70}%`,
+                duration: 0.05
+            })
+        });
+    },
+    
+    applySpectrumSyncEffect: function(targets) {
+        const bands = this.frequencyBands;
+        const totalEnergy = (bands.subBass.value + bands.bass.value + bands.treble.value) / 3;
+        
+        const hue = (totalEnergy / 255) * 360;
+        const brightness = 40 + (totalEnergy / 255) * 60;
+        
+        $.ajax({
+            url: '/api/services/lifx/set_color',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: `id:${targets.join(',')}`,
+                color: `hue:${Math.round(hue)},saturation:80%,brightness:${Math.round(brightness)}%`,
+                duration: 0.08
+            })
+        });
+    },
+    
+    showBeatFlashOverlay: function() {
+        let overlay = document.querySelector('.lifx-beat-flash');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'lifx-beat-flash';
+            document.body.appendChild(overlay);
+        }
+        
+        overlay.classList.remove('active');
+        void overlay.offsetWidth;
+        overlay.classList.add('active');
+        
+        setTimeout(() => overlay.classList.remove('active'), 150);
     },
     
     showBeatVisualization: function() {
@@ -3414,6 +3615,14 @@ const LifXTouchControls = {
     setMediaSyncMode: function(mode) {
         this.mediaSyncMode = mode;
         localStorage.setItem('lifx_media_sync_mode', mode);
+        
+        document.querySelectorAll('.sync-mode-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.mode === mode) {
+                btn.classList.add('active');
+            }
+        });
+        
         const modeInfo = this.mediaSyncModes[mode] || { name: mode, icon: '🎵' };
         this.showEnhancedGestureFeedback(`Sync Mode: ${modeInfo.name}`, modeInfo.icon);
         this.applyMediaSyncModeEffects(mode);
@@ -3421,6 +3630,18 @@ const LifXTouchControls = {
     
     applyMediaSyncModeEffects: function(mode) {
         switch(mode) {
+            case 'beat':
+                this.beatDetectionSensitivity = 0.7;
+                console.log('Beat Sync mode: Standard sensitivity for beat detection');
+                break;
+            case 'color':
+                this.beatDetectionSensitivity = 0.65;
+                console.log('Color Sync mode: Moderate sensitivity for color transitions');
+                break;
+            case 'ambient':
+                this.beatDetectionSensitivity = 0.5;
+                console.log('Ambient mode: Low sensitivity for subtle effects');
+                break;
             case 'bass':
                 this.beatDetectionSensitivity = 0.5;
                 console.log('Bass Boost mode: Lowered sensitivity for bass emphasis');
@@ -3428,10 +3649,6 @@ const LifXTouchControls = {
             case 'spectrum':
                 this.beatDetectionSensitivity = 0.6;
                 console.log('Full Spectrum mode: Balanced sensitivity');
-                break;
-            case 'pulse':
-                this.beatDetectionSensitivity = 0.75;
-                console.log('Pulse mode: Higher sensitivity for rhythmic effects');
                 break;
         }
     },
