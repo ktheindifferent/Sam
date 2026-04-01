@@ -22,6 +22,9 @@
             enableVelocityRipples: true,
             enableSwipeTrails: true,
             enableMultiSelectDrag: true,
+            enableAdaptiveSensitivity: true,
+            minSwipeVelocity: 0.3,
+            maxTouchHistory: 10,
             hapticPatterns: {
                 tap: [10],
                 doubleTap: [15, 50, 15],
@@ -51,7 +54,15 @@
             isTouchHoldActive: false,
             frequencyData: new Uint8Array(6),
             beatHistory: [],
-            adaptiveThreshold: 0.75
+            adaptiveThreshold: 0.75,
+            bpmHistory: [],
+            bpmSmoothed: 0,
+            lastBeatTime: 0,
+            touchVelocity: null,
+            gestureScale: 1,
+            sensitivityCalibrated: false,
+            baselineEnergy: 128,
+            visualizationMode: 'bars'
         },
 
         scenePresets: [
@@ -425,11 +436,13 @@
             const ripple = document.createElement('span');
             ripple.classList.add('velocity-ripple');
             
-            const scale = Math.min(2.5, 1 + velocity / 10);
-            const duration = Math.max(300, 600 - velocity * 30);
+            const scale = Math.min(3.0, 1 + velocity / 8);
+            const duration = Math.max(250, 500 - velocity * 40);
+            const hue = Math.min(200, 160 + velocity * 2);
             
             ripple.style.setProperty('--ripple-scale', scale);
             ripple.style.setProperty('--ripple-duration', duration + 'ms');
+            ripple.style.setProperty('--ripple-hue', hue);
             
             const rect = target.getBoundingClientRect();
             const size = Math.max(rect.width, rect.height) * 0.8;
@@ -437,6 +450,7 @@
             ripple.style.left = '50%';
             ripple.style.top = '50%';
             ripple.style.transform = 'translate(-50%, -50%)';
+            ripple.style.background = `radial-gradient(circle, hsla(${hue}, 80%, 60%, 0.7) 0%, hsla(${hue}, 80%, 60%, 0.3) 40%, transparent 70%)`;
             
             target.appendChild(ripple);
             
@@ -1199,6 +1213,205 @@
             });
         },
 
+        async undoLastGesture() {
+            if (this.state.gestureHistory.length === 0) {
+                this.showToast('No actions to undo', 'info');
+                return;
+            }
+            
+            const lastAction = this.state.gestureHistory.pop();
+            this.showToast(`Undoing: ${lastAction.type}`, 'info');
+            
+            try {
+                if (lastAction.type === 'color') {
+                    await fetch('/api/services/lifx/set_color', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            selector: lastAction.selector,
+                            color: lastAction.previousColor
+                        })
+                    });
+                } else if (lastAction.type === 'power') {
+                    await fetch('/api/services/lifx/set_state', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            selector: lastAction.selector,
+                            power: lastAction.previousPower ? 'on' : 'off'
+                        })
+                    });
+                } else if (lastAction.type === 'brightness') {
+                    await fetch('/api/services/lifx/set_state', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            selector: lastAction.selector,
+                            brightness: lastAction.previousBrightness
+                        })
+                    });
+                } else if (lastAction.type === 'scene') {
+                    await fetch('/api/services/lifx/scenes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            selector: lastAction.selector,
+                            scene: lastAction.previousScene,
+                            duration: 0.5
+                        })
+                    });
+                }
+                this.showToast('Action undone', 'success');
+            } catch (error) {
+                this.showToast(`Undo failed: ${error.message}`, 'error');
+            }
+        },
+
+        recordGesture(action) {
+            this.state.gestureHistory.push(action);
+            if (this.state.gestureHistory.length > this.config.maxTouchHistory) {
+                this.state.gestureHistory.shift();
+            }
+            this.updateUndoButtonState();
+        },
+
+        updateUndoButtonState() {
+            const undoBtn = document.getElementById('lifx-undo-btn');
+            if (!undoBtn) return;
+            
+            if (this.state.gestureHistory.length > 0) {
+                undoBtn.classList.add('visible', 'has-history');
+                undoBtn.disabled = false;
+            } else {
+                undoBtn.classList.remove('visible', 'has-history');
+                undoBtn.disabled = true;
+            }
+        },
+
+        async powerAll(state) {
+            const selector = this.state.selectedBulbs.size > 0 
+                ? Array.from(this.state.selectedBulbs).map(id => `id:${id}`).join(',')
+                : 'all';
+            
+            try {
+                const response = await fetch('/api/services/lifx/set_state', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        selector: selector,
+                        power: state
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    this.showToast(`${state === 'on' ? '💡' : '🌑'} ${this.state.selectedBulbs.size > 0 ? this.state.selectedBulbs.size + ' bulbs' : 'All lights'} turned ${state}!`, 'success');
+                    this.clearMultiSelection();
+                }
+            } catch (error) {
+                this.showToast(`Failed: ${error.message}`, 'error');
+            }
+        },
+
+        clearMultiSelection() {
+            this.state.selectedBulbs.clear();
+            document.querySelectorAll('.lifx-bulb-control.multi-selected').forEach(el => {
+                el.classList.remove('multi-selected');
+            });
+            this.updateSelectionToolbar();
+        },
+
+        showGroupManagementPanel() {
+            Swal.fire({
+                title: 'Manage Bulb Groups',
+                html: `
+                    <div style="text-align: left;">
+                        <p>Create and manage groups of LIFX bulbs for batch control.</p>
+                        <div class="form-group">
+                            <label>Group Name</label>
+                            <input type="text" id="group-name" class="form-control" placeholder="Living Room">
+                        </div>
+                        <div class="form-group">
+                            <label>Select Bulbs</label>
+                            <div id="group-bulb-selector" style="max-height: 200px; overflow-y: auto;">
+                                ${this.getBulbSelectorHTML()}
+                            </div>
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: 'Create Group',
+                showCancelButton: true,
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    this.createLightGroup();
+                }
+            });
+        },
+
+        getBulbSelectorHTML() {
+            return `<p style="color: #adb5bd; text-align: center;">Bulb selection coming soon...</p>`;
+        },
+
+        createLightGroup() {
+            const groupName = document.getElementById('group-name')?.value;
+            if (!groupName) {
+                this.showToast('Please enter a group name', 'error');
+                return;
+            }
+            this.showToast(`Group "${groupName}" created!`, 'success');
+        },
+
+        adjustBrightnessBatch(delta) {
+            if (this.state.selectedBulbs.size === 0) {
+                this.showToast('Select bulbs first', 'warning');
+                return;
+            }
+            
+            const newBrightness = Math.max(0, Math.min(100, this.state.brightnessLevel + delta));
+            this.state.brightnessLevel = newBrightness;
+            
+            fetch('/api/services/lifx/set_state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    selector: Array.from(this.state.selectedBulbs).map(id => `id:${id}`).join(','),
+                    brightness: newBrightness / 100
+                })
+            }).then(res => res.json())
+              .then(data => {
+                  if (data.success) {
+                      this.showToast(`Brightness: ${newBrightness}%`, 'success');
+                  }
+              });
+        },
+
+        setVisualizationMode(mode) {
+            this.state.visualizationMode = mode;
+            const vizContainer = document.querySelector('.frequency-viz');
+            if (!vizContainer) return;
+            
+            vizContainer.className = `frequency-viz visualization-${mode}`;
+            
+            switch(mode) {
+                case 'bars':
+                    vizContainer.style.flexDirection = 'row';
+                    vizContainer.style.alignItems = 'flex-end';
+                    break;
+                case 'wave':
+                    vizContainer.style.flexDirection = 'row';
+                    vizContainer.style.alignItems = 'center';
+                    break;
+                case 'circular':
+                    vizContainer.style.display = 'flex';
+                    vizContainer.style.flexWrap = 'wrap';
+                    vizContainer.style.justifyContent = 'center';
+                    break;
+            }
+            
+            this.showToast(`Visualization: ${mode}`, 'info');
+        },
+
         setupMediaPlayers() {
             this.mediaPlayers = {
                 spotify: null,
@@ -1400,7 +1613,7 @@
                 const totalEnergy = Object.values(bandAverages).reduce((a, b) => a + b, 0) / 6;
                 
                 this.state.beatHistory.push(bassEnergy);
-                if (this.state.beatHistory.length > 20) {
+                if (this.state.beatHistory.length > 30) {
                     this.state.beatHistory.shift();
                 }
                 
@@ -1408,8 +1621,13 @@
                 const variance = this.state.beatHistory.reduce((sum, val) => sum + Math.pow(val - avgEnergy, 2), 0) / this.state.beatHistory.length;
                 const stdDev = Math.sqrt(variance);
                 
+                if (this.config.enableAdaptiveSensitivity && !this.state.sensitivityCalibrated) {
+                    this.state.baselineEnergy = avgEnergy;
+                    this.state.sensitivityCalibrated = true;
+                }
+                
                 this.state.adaptiveThreshold = Math.max(0.5, Math.min(0.9, 
-                    (avgEnergy / 255) + (stdDev / 50)
+                    (avgEnergy / 255) + (stdDev / 50) + 0.15
                 ));
                 
                 const beatThreshold = Math.max(
@@ -1417,12 +1635,26 @@
                     this.config.beatDetectionThreshold
                 );
                 
-                const isBeat = (bassEnergy / 255) > beatThreshold && bassEnergy > 180;
+                const isBeat = (bassEnergy / 255) > beatThreshold && bassEnergy > 160;
                 
-                if (isBeat && Date.now() - this.state.lastBeatTime > 200) {
+                if (isBeat && Date.now() - this.state.lastBeatTime > 180) {
+                    const prevBeatTime = this.state.lastBeatTime;
                     this.state.lastBeatTime = Date.now();
-                    const timeSinceLastBeat = Date.now() - (this.state.lastBeatTime || Date.now() - 500);
-                    this.state.bpmDetected = timeSinceLastBeat > 0 ? Math.round(60000 / timeSinceLastBeat) : 0;
+                    
+                    const interval = prevBeatTime ? (this.state.lastBeatTime - prevBeatTime) : 500;
+                    const instantBPM = Math.round(60000 / interval);
+                    
+                    if (instantBPM > 60 && instantBPM < 200) {
+                        this.state.bpmHistory.push(instantBPM);
+                        if (this.state.bpmHistory.length > 8) {
+                            this.state.bpmHistory.shift();
+                        }
+                        this.state.bpmSmoothed = Math.round(
+                            this.state.bpmHistory.reduce((a, b) => a + b, 0) / this.state.bpmHistory.length
+                        );
+                    }
+                    
+                    this.state.bpmDetected = this.state.bpmSmoothed || instantBPM;
                     this.triggerBeatEffect(bandAverages);
                     this.updateFrequencyVisualization(bandAverages);
                 }
@@ -1439,16 +1671,23 @@
             
             try {
                 const intensity = Math.min(1, (bandAverages.bass || 200) / 255);
-                const duration = 80 + (1 - intensity) * 120;
+                const duration = 60 + (1 - intensity) * 100;
+                
+                const effectConfig = {
+                    selector: 'all',
+                    brightness: Math.min(1, 0.6 + intensity * 0.4),
+                    duration: duration / 1000
+                };
+                
+                if (this.state.mediaSyncMode === 'color' || this.state.mediaSyncMode === 'spectrum') {
+                    const hue = this.bpmToHue(this.state.bpmDetected);
+                    effectConfig.color = `hsb(${hue},100,100)`;
+                }
                 
                 fetch('/api/services/lifx/set_state', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        selector: 'all',
-                        brightness: Math.min(1, 0.7 + intensity * 0.3),
-                        duration: duration / 1000
-                    })
+                    body: JSON.stringify(effectConfig)
                 }).catch(err => {
                     console.warn('[LIFXMediaTouchV2] Beat effect failed:', err);
                 });
@@ -1460,7 +1699,7 @@
                         body: JSON.stringify({
                             selector: 'all',
                             brightness: this.state.brightnessLevel / 100,
-                            duration: 0.2
+                            duration: 0.15
                         })
                     }).catch(err => {
                         console.warn('[LIFXMediaTouchV2] Beat recovery failed:', err);
@@ -1469,9 +1708,11 @@
                 
                 this.showBeatFlashOverlay(intensity);
                 
-                if (this.config.enableHapticFeedback && navigator.vibrate && intensity > 0.7) {
-                    const hapticPattern = intensity > 0.9 
-                        ? [30, 20, 30] 
+                if (this.config.enableHapticFeedback && navigator.vibrate && intensity > 0.6) {
+                    const hapticPattern = intensity > 0.85 
+                        ? [20, 15, 20, 15, 20]
+                        : intensity > 0.7
+                        ? [30, 20, 30]
                         : [25];
                     try {
                         navigator.vibrate(hapticPattern);
@@ -1482,6 +1723,12 @@
             } catch (error) {
                 console.error('[LIFXMediaTouchV2] Trigger beat effect error:', error);
             }
+        },
+
+        bpmToHue(bpm) {
+            if (!bpm || bpm < 60) bpm = 60;
+            if (bpm > 200) bpm = 200;
+            return Math.round(((bpm - 60) / 140) * 360) % 360;
         },
 
         showBeatFlashOverlay(intensity) {
