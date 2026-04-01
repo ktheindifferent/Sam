@@ -884,6 +884,52 @@
     50% { box-shadow: 0 0 30px rgba(0, 212, 255, 0.8); }
 }
 
+/* Special scene button animations */
+@keyframes rainbow-bg {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes fireplace-flicker {
+    0%, 100% { opacity: 1; filter: brightness(1); }
+    25% { opacity: 0.9; filter: brightness(1.1); }
+    50% { opacity: 0.85; filter: brightness(1.15); }
+    75% { opacity: 0.95; filter: brightness(1.05); }
+}
+
+@keyframes aurora-flow {
+    0%, 100% { opacity: 1; background-position: 0% 50%; }
+    50% { opacity: 0.85; background-position: 100% 50%; }
+}
+
+@keyframes nebula-pulse {
+    0%, 100% { opacity: 1; filter: brightness(1); background-position: 0% 50%; }
+    50% { opacity: 0.7; filter: brightness(1.3); background-position: 100% 50%; }
+}
+
+@keyframes thunder-flash {
+    0%, 90%, 100% { opacity: 1; filter: brightness(1); }
+    92% { opacity: 0.6; filter: brightness(2); }
+    95% { opacity: 1; filter: brightness(1); }
+}
+
+/* Scene buttons hover enhancement */
+#lifx-special-scenes .btn-primary-custom {
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#lifx-special-scenes .btn-primary-custom:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+}
+
+#lifx-special-scenes .btn-primary-custom:active {
+    transform: scale(0.95);
+}
+
 /* Enhanced quick settings panel */
 .quick-settings-container {
     padding: 10px;

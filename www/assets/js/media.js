@@ -228,8 +228,10 @@ function initTouchControls() {
             }
         }, { passive: true });
         
-        // Pinch gesture for brightness/ambient light
+        // Pinch gesture for volume control
         let initialPinchDistance = null;
+        let pinchStartTime = 0;
+        
         mediaPlayer.addEventListener('touchmove', (e) => {
             if (e.touches.length === 2) {
                 const distance = Math.hypot(
@@ -239,17 +241,15 @@ function initTouchControls() {
                 
                 if (initialPinchDistance === null) {
                     initialPinchDistance = distance;
+                    pinchStartTime = Date.now();
                 } else {
                     const delta = distance - initialPinchDistance;
                     if (Math.abs(delta) > 30) {
-                        // Pinch gesture detected
-                        if (MediaPlayer.ambientLightEnabled) {
-                            const brightness = delta > 0 ? 
-                                Math.min(100, MediaPlayer.volume + 10) : 
-                                Math.max(0, MediaPlayer.volume - 10);
-                            setVolume(brightness);
-                            showSwipeHint(`Volume: ${brightness}%`);
-                        }
+                        const brightness = delta > 0 ? 
+                            Math.min(100, MediaPlayer.volume + 10) : 
+                            Math.max(0, MediaPlayer.volume - 10);
+                        setVolume(brightness);
+                        showSwipeHint(`Volume: ${brightness}%`);
                         initialPinchDistance = distance;
                     }
                 }
@@ -258,10 +258,48 @@ function initTouchControls() {
         
         mediaPlayer.addEventListener('touchstart', () => {
             initialPinchDistance = null;
+            pinchStartTime = 0;
         }, { passive: true });
+        
+        // Edge swipe gestures for global controls
+        let edgeTouchStartX = null;
+        let edgeTouchStartY = null;
+        
+        document.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            edgeTouchStartX = touch.clientX;
+            edgeTouchStartY = touch.clientY;
+            
+            if (touch.clientX > window.innerWidth - 20) {
+                MediaPlayer.edgeTouchActive = true;
+            }
+        }, { passive: true });
+        
+        document.addEventListener('touchend', (e) => {
+            if (!MediaPlayer.edgeTouchActive) return;
+            
+            const touch = e.changedTouches[0];
+            const deltaX = touch.clientX - edgeTouchStartX;
+            const deltaY = touch.clientY - edgeTouchStartY;
+            
+            if (deltaX < -50 && Math.abs(deltaY) < 50) {
+                nextTrack();
+                showSwipeHint('Next Track', '⏭️');
+            } else if (deltaX > 50 && Math.abs(deltaY) < 50) {
+                previousTrack();
+                showSwipeHint('Previous Track', '⏮️');
+            } else if (deltaY < -50 && Math.abs(deltaX) < 50) {
+                increaseVolume();
+                showSwipeHint('Volume Up', '🔊');
+            } else if (deltaY > 50 && Math.abs(deltaX) < 50) {
+                decreaseVolume();
+                showSwipeHint('Volume Down', '🔉');
+            }
+            
+            MediaPlayer.edgeTouchActive = false;
+        });
     }
     
-    // Initialize media browser touch controls
     initMediaBrowserTouch();
 }
 
@@ -274,12 +312,14 @@ function initMediaBrowserTouch() {
         let isDown = false;
         let startX;
         let scrollLeft;
+        let touchStartTime;
         
         grid.addEventListener('touchstart', (e) => {
             isDown = true;
             startX = e.touches[0].pageX - grid.offsetLeft;
             scrollLeft = grid.scrollLeft;
             grid.style.transition = 'none';
+            touchStartTime = Date.now();
         }, { passive: true });
         
         grid.addEventListener('touchmove', (e) => {
@@ -289,9 +329,20 @@ function initMediaBrowserTouch() {
             grid.scrollLeft = scrollLeft - walk;
         }, { passive: true });
         
-        grid.addEventListener('touchend', () => {
+        grid.addEventListener('touchend', (e) => {
             isDown = false;
             grid.style.transition = '';
+            
+            // Detect quick swipe for fast scrolling
+            const touchEndTime = Date.now();
+            const deltaX = e.changedTouches[0].pageX - (startX + grid.offsetLeft);
+            const touchDuration = touchEndTime - touchStartTime;
+            
+            if (Math.abs(deltaX) > 100 && touchDuration < 300) {
+                // Quick swipe detected - scroll by full page
+                const scrollAmount = grid.clientWidth * 0.8;
+                grid.scrollLeft += deltaX > 0 ? -scrollAmount : scrollAmount;
+            }
         });
     });
 }
@@ -655,6 +706,20 @@ function updateMuteButton() {
             ? '<i class="fas fa-volume-mute"></i>'
             : '<i class="fas fa-volume-up"></i>';
     }
+}
+
+function showSwipeHint(text, icon) {
+    let hint = document.querySelector('.media-center-touch-hint');
+    if (!hint) {
+        hint = document.createElement('div');
+        hint.className = 'media-center-touch-hint';
+        document.body.appendChild(hint);
+    }
+    hint.innerHTML = `<span style="font-size: 32px; display: block; margin-bottom: 10px;">${icon || ''}</span>${text}`;
+    hint.classList.add('visible');
+    setTimeout(() => {
+        hint.classList.remove('visible');
+    }, 1500);
 }
 
 function showMediaTouchHint(text, icon) {
