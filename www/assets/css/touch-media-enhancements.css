@@ -48,6 +48,18 @@
     height: 60px;
     background: linear-gradient(135deg, #27a0b9, #1f8999);
     box-shadow: 0 4px 15px rgba(39, 160, 185, 0.4);
+    animation: play-pulse 2s ease-in-out infinite;
+}
+
+@keyframes play-pulse {
+    0%, 100% { 
+        box-shadow: 0 4px 15px rgba(39, 160, 185, 0.4);
+        transform: scale(1);
+    }
+    50% { 
+        box-shadow: 0 4px 25px rgba(39, 160, 185, 0.7), 0 0 10px rgba(0, 255, 136, 0.3);
+        transform: scale(1.02);
+    }
 }
 
 .media-center-mobile-btn.play-pause:active {
@@ -142,6 +154,18 @@
     background: rgba(39, 160, 185, 0.3);
     border-color: #27a0b9;
     box-shadow: 0 4px 15px rgba(39, 160, 185, 0.3);
+    animation: sync-mode-active-glow 2s ease-in-out infinite;
+}
+
+@keyframes sync-mode-active-glow {
+    0%, 100% { 
+        box-shadow: 0 4px 15px rgba(39, 160, 185, 0.3);
+        border-color: #27a0b9;
+    }
+    50% { 
+        box-shadow: 0 4px 25px rgba(39, 160, 185, 0.6), 0 0 15px rgba(0, 212, 255, 0.4);
+        border-color: #00d4ff;
+    }
 }
 
 .sync-mode-btn:active {
@@ -225,6 +249,7 @@
     font-size: 32px;
     color: #dc3545;
     animation: bpm-pulse 0.6s ease-in-out infinite;
+    filter: drop-shadow(0 0 8px rgba(220, 53, 69, 0.6));
 }
 
 @keyframes bpm-pulse {
@@ -270,6 +295,25 @@
     min-height: 5px;
     transition: height 0.1s ease;
     max-height: 100%;
+    position: relative;
+}
+
+.beat-energy-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 2px 2px 0 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.beat-energy-bar.peak::after {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
 }
 
 /* Sync Presets */
