@@ -73,11 +73,13 @@ const LifXTouchControls = {
     mediaSyncMode: 'beat',
     beatDetectionSensitivity: 0.7,
     bpmValue: 0,
+    bpmSmoothed: 0,
     lastBeatTime: 0,
     beatDebounce: 100,
     audioAnalyzer: null,
     audioContext: null,
     mediaSyncTargets: [],
+    beatFlashEnabled: true,
     touchSensitivity: 'medium',
     swipeEdgeZone: 20,
     isEdgeSwipe: false,
@@ -2578,7 +2580,7 @@ const LifXTouchControls = {
             this.initFrequencyBandAnalysis();
             this.monitorBeat();
             this.monitorFrequencyBands();
-            console.log('Beat detection initialized successfully');
+            console.log('Beat detection initialized successfully with enhanced visualization');
         } catch (e) {
             console.warn('Beat detection not available:', e);
             this.showBeatDetectionFallback();
@@ -2658,14 +2660,43 @@ const LifXTouchControls = {
         bandElements.forEach((band, index) => {
             const el = document.getElementById(`band-${band}`);
             if (el) {
-                const height = Math.min(100, (bands[band].value / 255) * 100);
-                el.style.height = `${height}%`;
+                const targetHeight = Math.min(100, (bands[band].value / 255) * 100);
+                const currentHeight = parseFloat(el.dataset.currentHeight || '0');
+                const smoothedHeight = currentHeight + (targetHeight - currentHeight) * 0.3;
+                
+                el.dataset.currentHeight = smoothedHeight;
+                el.style.height = `${smoothedHeight}%`;
                 el.style.background = `linear-gradient(to top, ${colors[index]} 0%, ${colors[index]}88 100%)`;
                 
-                if (height > 85) {
+                if (targetHeight > 85) {
                     el.classList.add('peak');
+                    if (!el.dataset.peakHeight || targetHeight > parseFloat(el.dataset.peakHeight)) {
+                        el.dataset.peakHeight = targetHeight;
+                        el.dataset.peakTime = Date.now();
+                    }
                 } else {
                     el.classList.remove('peak');
+                }
+                
+                let peakEl = el.querySelector('.peak-hold');
+                if (!peakEl && targetHeight > 50) {
+                    peakEl = document.createElement('div');
+                    peakEl.className = 'peak-hold';
+                    peakEl.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.8); border-radius: 2px; pointer-events: none; transition: top 0.3s ease-out;';
+                    el.appendChild(peakEl);
+                }
+                
+                if (peakEl) {
+                    const peakHeight = parseFloat(el.dataset.peakHeight || '0');
+                    const peakTime = parseInt(el.dataset.peakTime || '0');
+                    const decay = (Date.now() - peakTime) / 2000;
+                    const decayedPeak = Math.max(0, peakHeight - (decayedPeak * decay));
+                    peakEl.style.top = `${100 - decayedPeak}%`;
+                    
+                    if (decayedPeak <= 0) {
+                        el.dataset.peakHeight = '0';
+                        if (peakEl.parentNode) peakEl.parentNode.removeChild(peakEl);
+                    }
                 }
             }
         });
@@ -2777,18 +2808,24 @@ const LifXTouchControls = {
             ? this.multiBulbSelection 
             : (this.selectedBulb ? [this.selectedBulb] : ['all']);
         
+        if (targets.length === 0) return;
+        
+        const intensity = Math.min(1.0, this.beatDetectionSensitivity + 0.2);
+        const brightness = 70 + (this.frequencyBands.bass.value / 255) * 30;
+        
         $.ajax({
             url: '/api/services/lifx/set_state',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
                 selector: `id:${targets.join(',')}`,
-                brightness: 100,
+                brightness: Math.round(brightness),
                 duration: 0.05
             })
         });
         
         this.showBeatVisualization();
+        this.showBeatFlashEffect();
     },
     
     showBeatVisualization: function() {
@@ -2805,15 +2842,83 @@ const LifXTouchControls = {
             setTimeout(() => indicator.classList.remove('visible'), 2000);
         } else {
             const valueEl = existing.querySelector('#bpm-value-display');
-            if (valueEl) valueEl.textContent = this.bpmValue || '--';
+            if (valueEl) {
+                const newValue = this.bpmValue || '--';
+                if (valueEl.textContent !== newValue) {
+                    valueEl.style.transform = 'scale(1.3)';
+                    valueEl.style.transition = 'transform 0.15s ease-out';
+                    setTimeout(() => {
+                        valueEl.style.transform = 'scale(1)';
+                    }, 150);
+                }
+                valueEl.textContent = newValue;
+            }
+        }
+    },
+    
+    showBeatFlashEffect: function() {
+        let flash = document.querySelector('.beat-flash-effect');
+        if (!flash) {
+            flash = document.createElement('div');
+            flash.className = 'beat-flash-effect';
+            flash.innerHTML = '<i class="fas fa-bolt"></i>';
+            flash.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                font-size: 48px;
+                color: #ff6b6b;
+                opacity: 0;
+                pointer-events: none;
+                z-index: 10000;
+                transition: all 0.2s ease-out;
+            `;
+            document.body.appendChild(flash);
+            
+            requestAnimationFrame(() => {
+                flash.style.opacity = '0.8';
+                flash.style.transform = 'translate(-50%, -50%) scale(1.2)';
+            });
+            
+            setTimeout(() => {
+                flash.style.opacity = '0';
+                flash.style.transform = 'translate(-50%, -50%) scale(0.8)';
+                setTimeout(() => {
+                    if (flash.parentNode) flash.parentNode.removeChild(flash);
+                }, 200);
+            }, 300);
+        } else {
+            flash.style.opacity = '0.8';
+            flash.style.transform = 'translate(-50%, -50%) scale(1.2)';
+            setTimeout(() => {
+                flash.style.opacity = '0';
+                flash.style.transform = 'translate(-50%, -50%) scale(0.8)';
+            }, 300);
         }
     },
     
     updateBpmDisplay: function() {
         const bpmDisplay = document.querySelector('.bpm-display .bpm-value');
         if (bpmDisplay) {
-            bpmDisplay.textContent = this.bpmValue || '--';
+            const newValue = this.bpmValue || '--';
+            if (bpmDisplay.textContent !== newValue) {
+                bpmDisplay.style.transform = 'scale(1.2)';
+                bpmDisplay.style.color = '#ff6b6b';
+                setTimeout(() => {
+                    bpmDisplay.style.transform = 'scale(1)';
+                    bpmDisplay.style.color = '';
+                }, 150);
+            }
+            bpmDisplay.textContent = newValue;
         }
+        
+        const bpmDisplays = document.querySelectorAll('#realtime-bpm, #bpm-value-display, .bpm-value');
+        bpmDisplays.forEach(el => {
+            if (el.textContent !== (this.bpmValue || '--')) {
+                el.textContent = this.bpmValue || '--';
+            }
+        });
     },
     
     applyMediaLighting: function(mediaData) {
@@ -2821,16 +2926,24 @@ const LifXTouchControls = {
             ? this.multiBulbSelection 
             : (this.selectedBulb ? [this.selectedBulb] : ['all']);
         
+        if (targets.length === 0) return;
+        
         if (mediaData.type === 'beat') {
+            const intensity = Math.min(1.0, 0.7 + (this.frequencyBands.bass.value / 255) * 0.3);
             $.ajax({
                 url: '/api/services/lifx/set_state',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({
                     selector: `id:${targets.join(',')}`,
-                    brightness: 100,
-                    duration: 0.1
-                })
+                    brightness: Math.round(70 + (this.frequencyBands.bass.value / 255) * 30),
+                    duration: 0.05
+                }),
+                success: () => {
+                    if (this.beatFlashEnabled) {
+                        this.showBeatFlashEffect();
+                    }
+                }
             });
         } else if (mediaData.type === 'color') {
             $.ajax({
@@ -4168,6 +4281,10 @@ const LifXTouchControls = {
         const modeInfo = this.mediaSyncModes[mode] || { name: mode, icon: '🎵' };
         this.showGestureFeedback(`Sync Mode: ${modeInfo.name}`, modeInfo.icon);
         this.applyMediaSyncModeEffects(mode);
+        
+        if (typeof window.updateMediaSyncUI === 'function') {
+            window.updateMediaSyncUI(mode);
+        }
     },
     
     setBeatSensitivity: function(value) {
