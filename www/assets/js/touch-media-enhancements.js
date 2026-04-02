@@ -71,18 +71,8 @@ const TouchMediaEnhancements = (function() {
         enableMovieMode: true,
         enableGamingMode: true,
         enableNightLight: true,
-        enableSunriseSimulation: true,
-        enableSunsetSimulation: true,
-        enableStormSimulation: true,
-        enableFireplaceSimulation: true,
-        enableOceanSimulation: true,
-        enableForestSimulation: true,
-        enableAuroraSimulation: true,
-        enableRainbowCycle: true,
-        enableColorPulse: true,
-        enableColorFade: true,
-        enableColorStrobe: true,
-        enableRandomFlash: true,
+        enableSimulations: ['sunrise', 'sunset', 'storm', 'fireplace', 'ocean', 'forest', 'aurora'],
+        enableEffects: ['rainbow', 'pulse', 'fade', 'strobe', 'flash'],
         enableMusicSync: true,
         enableMicrophoneInput: true,
         enableSystemAudioInput: true,
@@ -151,7 +141,6 @@ const TouchMediaEnhancements = (function() {
         enableWineScene: true,
         enableBeerScene: true,
         enableCocktailScene: true,
-        enableSmoothTransitions: true,
         enableFadeIn: true,
         enableFadeOut: true,
         enablePulse: true,
@@ -160,9 +149,6 @@ const TouchMediaEnhancements = (function() {
         enableBlink: true,
         enableDim: true,
         enableBrighten: true,
-        enableWarm: true,
-        enableCool: true,
-        enableNatural: true,
         enableVibrant: true,
         enableMuted: true,
         enablePastel: true,
@@ -184,227 +170,18 @@ const TouchMediaEnhancements = (function() {
         enableEfficiency: true,
         enableSustainability: true,
         enableEco: true,
-        enableGreen: true,
-        enableBlue: true,
-        enableRed: true,
-        enableYellow: true,
-        enableOrange: true,
-        enablePurple: true,
-        enablePink: true,
-        enableCyan: true,
-        enableMagenta: true,
-        enableLime: true,
-        enableTeal: true,
-        enableNavy: true,
-        enableMaroon: true,
-        enableOlive: true,
-        enableBrown: true,
-        enableGray: true,
-        enableWhite: true,
-        enableBlack: true,
-        enableSilver: true,
-        enableGold: true,
-        enableBronze: true,
-        enableCopper: true,
-        enableBrass: true,
-        enableChrome: true,
-        enableMetallic: true,
-        enableMatte: true,
-        enableGlossy: true,
-        enableSatin: true,
-        enableTextured: true,
-        enablePatterned: true,
-        enableStriped: true,
-        enableDotted: true,
-        enableCheckered: true,
-        enablePlaid: true,
-        enableFloral: true,
-        enableGeometric: true,
-        enableAbstract: true,
-        enableModern: true,
-        enableContemporary: true,
-        enableTraditional: true,
-        enableRustic: true,
-        enableIndustrial: true,
-        enableMinimalist: true,
-        enableMaximalist: true,
-        enableEclectic: true,
-        enableBohemian: true,
-        enableScandinavian: true,
-        enableJapanese: true,
-        enableChinese: true,
-        enableIndian: true,
-        enableMexican: true,
-        enableMediterranean: true,
-        enableTropical: true,
-        enableCoastal: true,
-        enableMountain: true,
-        enableDesert: true,
-        enableUrban: true,
-        enableRural: true,
-        enableSuburban: true,
-        enableClassic: true,
-        enableVintage: true,
-        enableRetro: true,
-        enableFuturistic: true,
-        enableSciFi: true,
-        enableFantasy: true,
-        enableMagical: true,
-        enableMysterious: true,
-        enableRomantic: true,
-        enableDramatic: true,
-        enableCalm: true,
-        enableEnergizing: true,
-        enableUplifting: true,
-        enableSoothing: true,
-        enableRelaxing: true,
-        enableInvigorating: true,
-        enableRefreshing: true,
-        enableRevitalizing: true,
-        enableRejuvenating: true,
-        enableHealing: true,
-        enableTherapeutic: true,
-        enableWellness: true,
-        enableHealthy: true,
-        enableSafe: true,
-        enableSecure: true,
-        enableProtected: true,
-        enableComfortable: true,
-        enableCozy: true,
-        enableWarm: true,
-        enableCool: true,
-        enableFresh: true,
-        enableClean: true,
-        enablePure: true,
-        enableNatural: true,
-        enableOrganic: true,
-        enableSustainable: true,
-        enableRenewable: true,
-        enableRecyclable: true,
-        enableBiodegradable: true,
-        enableCompostable: true,
-        enableZeroWaste: true,
-        enableCarbonNeutral: true,
-        enableClimatePositive: true,
-        enableEnvironmentallyFriendly: true,
-        enableEcoFriendly: true,
-        enableGreen: true,
-        enableClean: true,
-        enableSafe: true,
-        enableHealthy: true,
-        enableWellness: true,
-        enableTherapeutic: true,
-        enableHealing: true,
-        enableRejuvenating: true,
-        enableRevitalizing: true,
-        enableRefreshing: true,
-        enableInvigorating: true,
-        enableRelaxing: true,
-        enableSoothing: true,
-        enableUplifting: true,
-        enableEnergizing: true,
-        enableCalm: true,
-        enableDramatic: true,
-        enableRomantic: true,
-        enableMysterious: true,
-        enableMagical: true,
-        enableFantasy: true,
-        enableSciFi: true,
-        enableFuturistic: true,
-        enableRetro: true,
-        enableVintage: true,
-        enableClassic: true,
-        enableSuburban: true,
-        enableRural: true,
-        enableUrban: true,
-        enableDesert: true,
-        enableMountain: true,
-        enableCoastal: true,
-        enableTropical: true,
-        enableMediterranean: true,
-        enableMexican: true,
-        enableIndian: true,
-        enableChinese: true,
-        enableJapanese: true,
-        enableScandinavian: true,
-        enableBohemian: true,
-        enableEclectic: true,
-        enableMaximalist: true,
-        enableMinimalist: true,
-        enableIndustrial: true,
-        enableRustic: true,
-        enableTraditional: true,
-        enableContemporary: true,
-        enableModern: true,
-        enableAbstract: true,
-        enableGeometric: true,
-        enableFloral: true,
-        enablePlaid: true,
-        enableCheckered: true,
-        enableDotted: true,
-        enableStriped: true,
-        enablePatterned: true,
-        enableTextured: true,
-        enableSatin: true,
-        enableGlossy: true,
-        enableMatte: true,
-        enableMetallic: true,
-        enableChrome: true,
-        enableBrass: true,
-        enableCopper: true,
-        enableBronze: true,
-        enableGold: true,
-        enableSilver: true,
-        enableBlack: true,
-        enableWhite: true,
-        enableGray: true,
-        enableBrown: true,
-        enableOlive: true,
-        enableMaroon: true,
-        enableNavy: true,
-        enableTeal: true,
-        enableLime: true,
-        enableMagenta: true,
-        enableCyan: true,
-        enablePink: true,
-        enablePurple: true,
-        enableOrange: true,
-        enableYellow: true,
-        enableRed: true,
-        enableBlue: true,
-        enableGreen: true,
-        enableEco: true,
-        enableSustainability: true,
-        enableEfficiency: true,
-        enableConvenience: true,
-        enableComfort: true,
-        enableSafety: true,
-        enableSecurity: true,
-        enableEmergency: true,
-        enableFunctional: true,
-        enableDecorative: true,
-        enableMood: true,
-        enableTask: true,
-        enableAmbient: true,
-        enableAccent: true,
-        enableHighlight: true,
-        enableShadow: true,
-        enableGlow: true,
-        enableNeon: true,
-        enablePastel: true,
-        enableMuted: true,
-        enableVibrant: true,
-        enableNatural: true,
-        enableCool: true,
-        enableWarm: true,
-        enableBrighten: true,
-        enableDim: true,
-        enableBlink: true,
-        enableFlash: true,
-        enableStrobe: true,
-        enablePulse: true,
-        enableFadeOut: true,
-        enableFadeIn: true
+        enableColorPresets: ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'cyan', 'magenta', 'lime', 'teal', 'navy', 'maroon', 'olive', 'brown', 'gray', 'white', 'black', 'silver', 'gold', 'bronze', 'copper', 'brass', 'chrome'],
+        enableFinishPresets: ['metallic', 'matte', 'glossy', 'satin', 'textured'],
+        enablePatternPresets: ['patterned', 'striped', 'dotted', 'checkered', 'plaid', 'floral', 'geometric', 'abstract'],
+        enableStylePresets: ['modern', 'contemporary', 'traditional', 'rustic', 'industrial', 'minimalist', 'maximalist', 'eclectic', 'bohemian', 'scandinavian'],
+        enableThemePresets: ['japanese', 'chinese', 'indian', 'mexican', 'mediterranean', 'tropical', 'coastal', 'mountain', 'desert', 'urban', 'rural', 'suburban'],
+        enableEraPresets: ['classic', 'vintage', 'retro', 'futuristic', 'sciFi', 'fantasy'],
+        enableMoodPresets: ['magical', 'mysterious', 'romantic', 'dramatic', 'calm', 'energizing', 'uplifting', 'soothing', 'relaxing', 'invigorating', 'refreshing', 'revitalizing', 'rejuvenating'],
+        enableWellnessPresets: ['healing', 'therapeutic', 'wellness', 'healthy'],
+        enableSafetyPresets: ['safe', 'secure', 'protected', 'comfortable', 'cozy'],
+        enableEcoPresets: ['fresh', 'clean', 'pure', 'natural', 'organic', 'sustainable', 'renewable', 'recyclable', 'biodegradable', 'compostable', 'zeroWaste', 'carbonNeutral', 'climatePositive', 'environmentallyFriendly', 'ecoFriendly'],
+        enableEffectPresets: ['pulse', 'fade', 'strobe', 'flash', 'blink', 'dim', 'brighten'],
+        enableTransitionEffects: ['fadeIn', 'fadeOut']
     };
 
     // Initialize all enhancements
@@ -2152,6 +1929,13 @@ const TouchMediaEnhancements = (function() {
     let consecutiveBeatCount = 0;
     let beatConfidence = 0;
     let lastBeatEnergy = 0;
+    let calibrationData = {
+        baselineEnergy: 0,
+        peakEnergy: 0,
+        calibrationCount: 0,
+        isCalibrating: true,
+        calibrationSamples: []
+    };
     
     function initAudioAnalyzer() {
         if (!audioContext) {
@@ -2164,10 +1948,57 @@ const TouchMediaEnhancements = (function() {
             beatEnergyHistory = [];
             beatConfidence = 0;
             consecutiveBeatCount = 0;
+            calibrationData = {
+                baselineEnergy: 0,
+                peakEnergy: 0,
+                calibrationCount: 0,
+                isCalibrating: true,
+                calibrationSamples: []
+            };
         }
     }
     
+    function calibrateBeatDetection(dataArray) {
+        const bassRange = dataArray.slice(0, 8);
+        const bassAvg = bassRange.reduce((a, b) => a + b, 0) / bassRange.length;
+        const currentEnergy = bassAvg / 255;
+        
+        calibrationData.calibrationSamples.push(currentEnergy);
+        if (calibrationData.calibrationSamples.length > 50) {
+            calibrationData.calibrationSamples.shift();
+        }
+        
+        calibrationData.calibrationCount++;
+        
+        const samples = calibrationData.calibrationSamples;
+        calibrationData.baselineEnergy = samples.reduce((a, b) => a + b, 0) / samples.length;
+        calibrationData.peakEnergy = Math.max(...samples);
+        
+        if (calibrationData.calibrationCount > 100) {
+            calibrationData.isCalibrating = false;
+            const dynamicRange = calibrationData.peakEnergy - calibrationData.baselineEnergy;
+            beatThreshold = Math.max(0.4, Math.min(0.85, calibrationData.baselineEnergy + (dynamicRange * 0.6)));
+        }
+        
+        return calibrationData;
+    }
+    
+    function resetCalibration() {
+        calibrationData = {
+            baselineEnergy: 0,
+            peakEnergy: 0,
+            calibrationCount: 0,
+            isCalibrating: true,
+            calibrationSamples: []
+        };
+        beatThreshold = 0.8;
+    }
+    
     function detectBeat(dataArray) {
+        if (calibrationData.isCalibrating) {
+            calibrateBeatDetection(dataArray);
+        }
+        
         const bassRange = dataArray.slice(0, 8);
         const subBassRange = dataArray.slice(0, 4);
         const lowMidRange = dataArray.slice(8, 16);
@@ -2179,7 +2010,7 @@ const TouchMediaEnhancements = (function() {
         
         const currentBeatEnergy = bassAvg / 255;
         const subBassEnergy = subBassAvg / 255;
-        const energyRatio = subBassEnergy / (bassEnergy + 0.01);
+        const energyRatio = subBassEnergy / (currentBeatEnergy + 0.01);
         
         beatEnergyHistory.push(currentBeatEnergy);
         if (beatEnergyHistory.length > maxBeatEnergyHistory) {
@@ -2195,8 +2026,12 @@ const TouchMediaEnhancements = (function() {
         const expectedInterval = bpmHistory.length > 0 ? 60000 / bpmHistory[bpmHistory.length - 1] : 500;
         const intervalDeviation = Math.abs(timeSinceLastBeat - expectedInterval) / expectedInterval;
         
-        const dynamicThreshold = Math.max(0.4, Math.min(0.9, 
-            beatThreshold 
+        const calibratedThreshold = calibrationData.isCalibrating 
+            ? beatThreshold 
+            : calibrationData.baselineEnergy + ((calibrationData.peakEnergy - calibrationData.baselineEnergy) * 0.6);
+        
+        const dynamicThreshold = Math.max(0.4, Math.min(0.95, 
+            calibratedThreshold
             - (avgEnergy * 0.15) 
             - (Math.max(0, energyChange) * 0.1)
             - (Math.max(0, energyAcceleration) * 0.05)
@@ -2206,8 +2041,8 @@ const TouchMediaEnhancements = (function() {
         const isBeat = bassPeak > dynamicThreshold * 255 
             && timeSinceLastBeat > 150 
             && timeSinceLastBeat < 1500
-            && subBassEnergy > 0.5
-            && energyRatio > 0.8;
+            && subBassEnergy > 0.4
+            && energyRatio > 0.7;
         
         if (isBeat) {
             lastBeatTime = now;
@@ -2276,11 +2111,46 @@ const TouchMediaEnhancements = (function() {
         return false;
     }
     
-    function triggerLifxBeat() {
+    function triggerLifxBeat(energy = 1.0, options = {}) {
+        const {
+            zones = null,
+            color = null,
+            brightness = null,
+            effect = 'pulse'
+        } = options;
+        
         const event = new CustomEvent('lifx-beat-trigger', {
-            detail: { timestamp: Date.now() }
+            detail: { 
+                timestamp: Date.now(),
+                energy,
+                zones,
+                color,
+                brightness,
+                effect
+            }
         });
         document.dispatchEvent(event);
+        
+        if (mediaSyncActive && CONFIG.enableHapticFeedback && navigator.vibrate) {
+            navigator.vibrate([15]);
+        }
+    }
+    
+    function triggerLifxBeatMultiZone(zones, pattern = 'wave') {
+        const patterns = {
+            'wave': zones.map((_, i) => ({ delay: i * 50, intensity: 1.0 })),
+            'pulse': zones.map((_, i) => ({ delay: 0, intensity: 1.0 })),
+            'cascade': zones.map((_, i) => ({ delay: i * 100, intensity: 1.0 - (i * 0.1) })),
+            'random': zones.map(() => ({ delay: Math.random() * 200, intensity: 0.5 + Math.random() * 0.5 }))
+        };
+        
+        const patternData = patterns[pattern] || patterns.wave;
+        
+        patternData.forEach(({ delay, intensity }, i) => {
+            setTimeout(() => {
+                triggerLifxBeat(intensity, { zones: [zones[i]], effect: 'flash' });
+            }, delay);
+        });
     }
     
     function triggerBeatVisualization(energy, subBassEnergy = 0) {
@@ -2704,6 +2574,29 @@ const TouchMediaEnhancements = (function() {
         return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
     }
     
+    function interpolateHexColors(hex1, hex2, progress) {
+        const r1 = parseInt(hex1.slice(1, 3), 16);
+        const g1 = parseInt(hex1.slice(3, 5), 16);
+        const b1 = parseInt(hex1.slice(5, 7), 16);
+        
+        const r2 = parseInt(hex2.slice(1, 3), 16);
+        const g2 = parseInt(hex2.slice(3, 5), 16);
+        const b2 = parseInt(hex2.slice(5, 7), 16);
+        
+        const r = Math.round(r1 + (r2 - r1) * progress);
+        const g = Math.round(g1 + (g2 - g1) * progress);
+        const b = Math.round(b1 + (b2 - b1) * progress);
+        
+        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+    }
+    
+    function interpolateHsl(hsl1, hsl2, progress) {
+        const h = hsl1.h + (hsl2.h - hsl1.h) * progress;
+        const s = hsl1.s + (hsl2.s - hsl1.s) * progress;
+        const l = hsl1.l + (hsl2.l - hsl1.l) * progress;
+        return `hsl(${h}, ${s}%, ${l}%)`;
+    }
+    
     // Enhanced LIFX Scene Presets with more options
     const extendedScenePresets = {
         ...scenePresets,
@@ -2808,6 +2701,88 @@ const TouchMediaEnhancements = (function() {
         } else {
             setBedtimeMode(false);
         }
+    }
+    
+    function transitionSceneSmooth(fromScene, toScene, duration = 2000) {
+        const fromPreset = extendedScenePresets[fromScene];
+        const toPreset = extendedScenePresets[toScene];
+        
+        if (!fromPreset || !toPreset) {
+            applyEnhancedScene(toScene);
+            return;
+        }
+        
+        const startTime = Date.now();
+        const fromColor = fromPreset.color || '#00d4ff';
+        const toColor = toPreset.color || '#00d4ff';
+        const fromBrightness = fromPreset.brightness || 50;
+        const toBrightness = toPreset.brightness || 50;
+        const fromTemp = fromPreset.temperature || 4000;
+        const toTemp = toPreset.temperature || 4000;
+        
+        function easeInOut(t) {
+            return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        }
+        
+        function animate() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(1, elapsed / duration);
+            const easedProgress = easeInOut(progress);
+            
+            const currentColor = interpolateHexColors(fromColor, toColor, easedProgress);
+            const currentBrightness = fromBrightness + (toBrightness - fromBrightness) * easedProgress;
+            const currentTemp = fromTemp + (toTemp - fromTemp) * easedProgress;
+            
+            const event = new CustomEvent('lifx-scene-transition', {
+                detail: {
+                    color: currentColor,
+                    brightness: currentBrightness,
+                    temperature: currentTemp,
+                    progress: easedProgress,
+                    fromScene,
+                    toScene
+                }
+            });
+            document.dispatchEvent(event);
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                applyEnhancedScene(toScene);
+            }
+        }
+        
+        requestAnimationFrame(animate);
+    }
+    
+    function sceneSequence(scenes, options = {}) {
+        const { loop = false, transitionDuration = 2000, pauseBetween = 1000 } = options;
+        let currentIndex = 0;
+        let isRunning = true;
+        
+        function playNext() {
+            if (!isRunning) return;
+            
+            const currentScene = scenes[currentIndex];
+            const nextScene = scenes[(currentIndex + 1) % scenes.length];
+            
+            transitionSceneSmooth(currentScene, nextScene, {
+                duration: transitionDuration
+            });
+            
+            currentIndex = (currentIndex + 1) % scenes.length;
+            
+            if (currentIndex === 0 && !loop) {
+                isRunning = false;
+                return;
+            }
+            
+            setTimeout(playNext, transitionDuration + pauseBetween);
+        }
+        
+        playNext();
+        
+        return () => { isRunning = false; };
     }
     
     function startAmbientMode() {
@@ -3516,7 +3491,10 @@ const TouchMediaEnhancements = (function() {
         createPulseZoneEffect,
         transitionScene,
         createSceneSequence,
-        setupRhythmSync
+        setupRhythmSync,
+        resetCalibration,
+        getCalibrationData: () => calibrationData,
+        isCalibrating: () => calibrationData.isCalibrating
     };
 })();
 

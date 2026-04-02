@@ -528,6 +528,104 @@
             if (this.state.equalizer.length > 0) {
                 this.state.equalizer[this.state.equalizer.length - 1].connect(this.state.gainNode);
             }
+            
+            this.createEqualizerUI();
+        },
+        
+        createEqualizerUI() {
+            const container = document.getElementById('equalizer-container');
+            if (!container) return;
+            
+            const frequencies = ['32Hz', '64Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz'];
+            const presets = {
+                'flat': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                'bass-boost': [8, 6, 4, 2, 0, 0, 0, 1, 2, 3],
+                'treble-boost': [0, 0, 0, 0, 1, 2, 3, 4, 6, 8],
+                'vocal': [-2, -2, 0, 2, 4, 4, 4, 2, 0, -2],
+                'rock': [5, 4, 3, 1, 0, 0, 2, 3, 4, 5],
+                'pop': [-2, 0, 2, 3, 4, 4, 3, 2, 1, 0],
+                'jazz': [3, 2, 1, 2, 3, 4, 3, 2, 1, 2],
+                'classical': [4, 3, 2, 1, 0, 0, 0, 1, 2, 3],
+                'electronic': [6, 5, 4, 3, 2, 1, 2, 3, 4, 5],
+                'acoustic': [2, 1, 0, 1, 2, 3, 2, 1, 0, 1]
+            };
+            
+            container.innerHTML = `
+                <div class="eq-presets">
+                    ${Object.keys(presets).map(preset => 
+                        `<button class="eq-preset-btn" data-preset="${preset}">${preset.replace('-', ' ')}</button>`
+                    ).join('')}
+                </div>
+                <div class="eq-sliders">
+                    ${frequencies.map((freq, i) => `
+                        <div class="eq-band">
+                            <input type="range" class="eq-slider" min="-12" max="12" value="0" 
+                                data-index="${i}" aria-label="${freq}">
+                            <span class="eq-label">${freq}</span>
+                            <span class="eq-value">0dB</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            container.querySelectorAll('.eq-slider').forEach(slider => {
+                slider.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.dataset.index);
+                    const value = parseFloat(e.target.value);
+                    this.setEqualizerBand(index, value);
+                    e.target.nextElementSibling.nextElementSibling.textContent = `${value > 0 ? '+' : ''}${value}dB`;
+                });
+            });
+            
+            container.querySelectorAll('.eq-preset-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const preset = e.target.dataset.preset;
+                    this.applyEqualizerPreset(presets[preset]);
+                    container.querySelectorAll('.eq-preset-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                });
+            });
+        },
+        
+        setEqualizerBand(index, gain) {
+            if (this.state.equalizer && this.state.equalizer[index]) {
+                this.state.equalizer[index].gain.value = gain;
+            }
+        },
+        
+        applyEqualizerPreset(gains) {
+            if (!this.state.equalizer) return;
+            
+            gains.forEach((gain, i) => {
+                if (this.state.equalizer[i]) {
+                    this.state.equalizer[i].gain.value = gain;
+                    const slider = document.querySelector(`.eq-slider[data-index="${i}"]`);
+                    if (slider) {
+                        slider.value = gain;
+                        slider.nextElementSibling.nextElementSibling.textContent = `${gain > 0 ? '+' : ''}${gain}dB`;
+                    }
+                }
+            });
+        },
+        
+        setEqualizerPreset(presetName) {
+            const presets = {
+                'flat': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                'bass-boost': [8, 6, 4, 2, 0, 0, 0, 1, 2, 3],
+                'treble-boost': [0, 0, 0, 0, 1, 2, 3, 4, 6, 8],
+                'vocal': [-2, -2, 0, 2, 4, 4, 4, 2, 0, -2],
+                'rock': [5, 4, 3, 1, 0, 0, 2, 3, 4, 5],
+                'pop': [-2, 0, 2, 3, 4, 4, 3, 2, 1, 0],
+                'jazz': [3, 2, 1, 2, 3, 4, 3, 2, 1, 2],
+                'classical': [4, 3, 2, 1, 0, 0, 0, 1, 2, 3],
+                'electronic': [6, 5, 4, 3, 2, 1, 2, 3, 4, 5],
+                'acoustic': [2, 1, 0, 1, 2, 3, 2, 1, 0, 1]
+            };
+            
+            if (presets[presetName]) {
+                this.applyEqualizerPreset(presets[presetName]);
+                this.showToast(`EQ: ${presetName.replace('-', ' ')}`, 'info');
+            }
         },
 
         setupPartyMode() {
@@ -549,20 +647,61 @@
             this.state.isShuffled = true;
             this.config.enableVisualizations = true;
             
-            const partyVisualizer = document.createElement('div');
-            partyVisualizer.className = 'party-visualizer';
-            partyVisualizer.innerHTML = `
-                <div class="party-lights"></div>
-                <div class="party-strobe"></div>
-            `;
-            document.body.appendChild(partyVisualizer);
+            let partyVisualizer = document.querySelector('.party-visualizer');
+            if (!partyVisualizer) {
+                partyVisualizer = document.createElement('div');
+                partyVisualizer.className = 'party-visualizer';
+                partyVisualizer.innerHTML = `
+                    <div class="party-lights"></div>
+                    <div class="party-strobe"></div>
+                    <div class="party-particles"></div>
+                `;
+                document.body.appendChild(partyVisualizer);
+                
+                for (let i = 0; i < 30; i++) {
+                    const dot = document.createElement('div');
+                    dot.className = 'party-dot';
+                    dot.style.left = Math.random() * 100 + '%';
+                    dot.style.top = Math.random() * 100 + '%';
+                    dot.style.animationDelay = Math.random() * 2 + 's';
+                    dot.style.background = `hsl(${Math.random() * 360}, 100%, 50%)`;
+                    partyVisualizer.querySelector('.party-particles').appendChild(dot);
+                }
+                
+                this.startPartyLightAnimation();
+            }
+            
+            partyVisualizer.classList.add('active');
+            document.body.classList.add('party-mode');
             
             this.showToast('Party Mode Activated!', 'success');
+        },
+        
+        startPartyLightAnimation() {
+            const animatePartyLights = () => {
+                if (!this.state.isPartyMode) return;
+                
+                const partyDots = document.querySelectorAll('.party-dot');
+                partyDots.forEach(dot => {
+                    const hue = (Date.now() / 20) % 360;
+                    dot.style.background = `hsl(${hue + Math.random() * 60}, 100%, 50%)`;
+                    dot.style.boxShadow = `0 0 20px hsl(${hue}, 100%, 50%)`;
+                });
+                
+                requestAnimationFrame(animatePartyLights);
+            };
+            
+            requestAnimationFrame(animatePartyLights);
         },
 
         stopPartyMode() {
             this.state.isPartyMode = false;
-            document.querySelector('.party-visualizer')?.remove();
+            document.body.classList.remove('party-mode');
+            const visualizer = document.querySelector('.party-visualizer');
+            if (visualizer) {
+                visualizer.classList.remove('active');
+                setTimeout(() => visualizer.remove(), 300);
+            }
             this.showToast('Party Mode Deactivated', 'info');
         },
 
@@ -596,16 +735,36 @@
 
         setupSleepTimer() {
             const sleepTimerInput = document.getElementById('sleep-timer-input');
+            const sleepTimerDisplay = document.getElementById('sleep-timer-display');
+            
             if (sleepTimerInput) {
                 sleepTimerInput.addEventListener('change', (e) => {
                     const minutes = parseInt(e.target.value);
                     if (minutes > 0) {
                         this.startSleepTimer(minutes);
-                    } else {
-                        this.cancelSleepTimer();
                     }
                 });
             }
+            
+            if (sleepTimerDisplay) {
+                this.startSleepTimerDisplayUpdate(sleepTimerDisplay);
+            }
+        },
+        
+        startSleepTimerDisplayUpdate(displayEl) {
+            const updateDisplay = () => {
+                if (this.state.isSleepTimerActive) {
+                    const mins = Math.floor(this.state.sleepTimerRemaining / 60);
+                    const secs = this.state.sleepTimerRemaining % 60;
+                    displayEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+                    displayEl.classList.add('visible');
+                } else {
+                    displayEl.classList.remove('visible');
+                }
+                requestAnimationFrame(updateDisplay);
+            };
+            
+            requestAnimationFrame(updateDisplay);
         },
 
         startSleepTimer(minutes) {
@@ -704,11 +863,71 @@
         },
 
         setupCrossfade() {
-            if (!this.config.enableCrossfade) return;
+            if (!this.config.enableCrossfade || !this.state.audioContext) return;
+            
+            this.state.crossfadeGain = this.state.audioContext.createGain();
+            this.state.crossfadeGain.gain.value = 1;
+            this.state.crossfadeGain.connect(this.state.gainNode);
+        },
+        
+        async crossfadeToTrack(newTrackSource, duration = 3) {
+            if (!this.state.crossfadeGain || !this.state.audioContext) return;
+            
+            const fadeOutStart = this.state.crossfadeGain.gain.value;
+            const fadeOutSteps = 20;
+            const stepDuration = (duration * 1000) / fadeOutSteps;
+            
+            for (let i = 0; i <= fadeOutSteps; i++) {
+                const progress = i / fadeOutSteps;
+                const easeProgress = progress * progress * (3 - 2 * progress);
+                this.state.crossfadeGain.gain.value = fadeOutStart * (1 - easeProgress);
+                await new Promise(resolve => setTimeout(resolve, stepDuration));
+            }
+            
+            this.loadTrack(newTrackSource);
+            this.play();
+            
+            for (let i = 0; i <= fadeOutSteps; i++) {
+                const progress = i / fadeOutSteps;
+                const easeProgress = progress * progress * (3 - 2 * progress);
+                this.state.crossfadeGain.gain.value = easeProgress;
+                await new Promise(resolve => setTimeout(resolve, stepDuration));
+            }
+            
+            this.state.crossfadeGain.gain.value = 1;
         },
 
         setupGaplessPlayback() {
+            if (!this.config.enableGapless || !this.state.audioContext) return;
+            
+            this.state.nextTrackBuffer = null;
+            this.state.gaplessEnabled = true;
+        },
+        
+        async preloadNextTrack(trackSource) {
             if (!this.config.enableGapless) return;
+            
+            try {
+                const response = await fetch(trackSource);
+                const arrayBuffer = await response.arrayBuffer();
+                this.state.nextTrackBuffer = await this.state.audioContext.decodeAudioData(arrayBuffer);
+            } catch (e) {
+                console.warn('[MediaCenterEnhancements] Failed to preload track:', e);
+            }
+        },
+        
+        playGapless(nextTrackSource) {
+            if (this.state.nextTrackBuffer) {
+                const source = this.state.audioContext.createBufferSource();
+                source.buffer = this.state.nextTrackBuffer;
+                source.connect(this.state.analyser);
+                source.start(0);
+                this.state.nextTrackBuffer = null;
+                
+                if (nextTrackSource) {
+                    this.preloadNextTrack(nextTrackSource);
+                }
+            }
         },
 
         setupAudioNormalization() {
@@ -717,6 +936,83 @@
 
         setupLyricsDisplay() {
             if (!this.config.enableLyricsDisplay) return;
+            
+            const lyricsPanel = document.getElementById('lyrics-panel');
+            if (!lyricsPanel) return;
+            
+            lyricsPanel.innerHTML = `
+                <div class="lyrics-header">
+                    <h3><i class="fas fa-music"></i> Lyrics</h3>
+                    <button class="lyrics-close" onclick="MediaCenterEnhancements.toggleLyrics()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="lyrics-content" id="lyrics-content">
+                    <div class="lyrics-placeholder">
+                        <i class="fas fa-microphone-alt"></i>
+                        <p>No lyrics available</p>
+                    </div>
+                </div>
+                <div class="lyrics-controls">
+                    <button class="btn-lyrics-action" onclick="MediaCenterEnhancements.searchLyrics()">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button class="btn-lyrics-action" onclick="MediaCenterEnhancements.syncLyrics()">
+                        <i class="fas fa-clock"></i> Sync
+                    </button>
+                </div>
+            `;
+        },
+        
+        displayLyrics(lyrics, isSynced = false) {
+            const contentEl = document.getElementById('lyrics-content');
+            if (!contentEl || !lyrics) return;
+            
+            if (isSynced && Array.isArray(lyrics)) {
+                this.state.lyricsSync = lyrics;
+                contentEl.innerHTML = lyrics.map((line, i) => `
+                    <div class="lyrics-line synced" data-time="${line.time}" data-index="${i}">
+                        ${line.text}
+                    </div>
+                `).join('');
+            } else {
+                contentEl.innerHTML = `<div class="lyrics-text">${lyrics}</div>`;
+            }
+            
+            this.state.lyrics = lyrics;
+        },
+        
+        searchLyrics() {
+            if (!this.state.currentTrack) return;
+            const { artist, title } = this.state.currentTrack;
+            const query = encodeURIComponent(`${artist} ${title} lyrics`);
+            window.open(`https://www.google.com/search?q=${query}`, '_blank');
+        },
+        
+        syncLyrics() {
+            this.showToast('Lyrics sync feature - coming soon', 'info');
+        },
+        
+        updateSyncedLyrics(currentTime) {
+            if (!this.state.lyricsSync || !Array.isArray(this.state.lyricsSync)) return;
+            
+            const currentIndex = this.state.lyricsSync.findIndex(
+                (line, i) => {
+                    const nextLine = this.state.lyricsSync[i + 1];
+                    return currentTime >= line.time && (!nextLine || currentTime < nextLine.time);
+                }
+            );
+            
+            if (currentIndex !== -1) {
+                document.querySelectorAll('.lyrics-line').forEach((line, i) => {
+                    line.classList.toggle('active', i === currentIndex);
+                });
+                
+                const activeLine = document.querySelector('.lyrics-line.active');
+                if (activeLine) {
+                    activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
         },
 
         setupAlbumArtCache() {
