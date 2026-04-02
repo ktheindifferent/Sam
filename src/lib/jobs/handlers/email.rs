@@ -75,7 +75,9 @@ impl JobHandler for EmailJobHandler {
             .map_err(|e| JobError::SerializationError(format!("Invalid email payload: {}", e)))?;
         
         // Validate the payload
-        self.validate_payload(&serde_json::to_value(&email_payload).unwrap()).await?;
+        let payload_value = serde_json::to_value(&email_payload)
+            .map_err(|e| JobError::SerializationError(format!("Failed to serialize email payload: {}", e)))?;
+        self.validate_payload(&payload_value).await?;
         
         // Send the email
         match self.send_email(email_payload).await {

@@ -110,13 +110,8 @@ pub async fn append_and_tts(output_lines: Arc<Mutex<Vec<String>>>, text: String)
 fn play_wav_from_bytes_send(
     wav_bytes: &[u8],
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use rodio::{Decoder, OutputStream, Sink};
-    use std::io::Cursor;
-    let (_stream, stream_handle) = OutputStream::try_default()?;
-    let sink = Sink::try_new(&stream_handle)?;
-    let cursor = Cursor::new(wav_bytes.to_vec());
-    let source = Decoder::new(cursor)?;
-    sink.append(source);
-    sink.sleep_until_end();
+    // rodio disabled due to ALSA system dependency
+    // TODO: Re-enable when ALSA is available or use alternative audio backend
+    log::debug!("Audio playback requested (rodio unavailable): {} bytes", wav_bytes.len());
     Ok(())
 }

@@ -1,5 +1,6 @@
 use super::bulb::BulbInfo;
 use super::protocol::ProtocolHandler;
+use super::get_global_discovery;
 use colors_transform::{Color as TransformColor, Rgb as TransformRgb};
 use lifx_rs::lan::{PowerLevel, HSBK};
 use palette::{FromColor, Hsv};
@@ -720,7 +721,7 @@ const SCENES: &[(&str, u16, u16, u16, u16)] = &[
 
 /// Handle scene operations
 fn handle_scenes(request: &Request) -> Response {
-    if request.method() == &rouille::Method::Get {
+    if request.method() == "GET" {
         // List available scenes
         let scenes: Vec<serde_json::Value> = SCENES.iter().map(|scene| {
             json!({
@@ -738,7 +739,7 @@ fn handle_scenes(request: &Request) -> Response {
         }));
     }
     
-    if request.method() == &rouille::Method::Post {
+    if request.method() == "POST" {
         let input = try_or_400!(post_input!(request, {
             selector: String,
             scene: String,
@@ -811,7 +812,7 @@ fn handle_effects(request: &Request) -> Response {
     use std::thread;
     use std::time::Duration;
     
-    if request.method() != &rouille::Method::Post {
+    if request.method() != "POST" {
         return Response::empty_404();
     }
     
@@ -1205,7 +1206,7 @@ fn handle_effects(request: &Request) -> Response {
 
 /// Handle multi-zone light strip control
 fn handle_zones(request: &Request) -> Response {
-    if request.method() != &rouille::Method::Post {
+    if request.method() != "POST" {
         return Response::empty_404();
     }
     
@@ -1318,7 +1319,7 @@ fn get_circadian_color(hour: u32) -> (u16, u16, u16, u16) {
 fn handle_circadian(request: &Request) -> Response {
     use std::time::{SystemTime, UNIX_EPOCH};
     
-    if request.method() != &rouille::Method::Post {
+    if request.method() != "POST" {
         return Response::empty_404();
     }
     
@@ -1406,7 +1407,7 @@ fn handle_circadian(request: &Request) -> Response {
 
 /// Handle preset lighting configurations
 fn handle_presets(request: &Request) -> Response {
-    if request.method() == &rouille::Method::Get {
+    if request.method() == "GET" {
         // Return saved presets from configuration
         return Response::json(&json!({
             "presets": [
@@ -1418,7 +1419,7 @@ fn handle_presets(request: &Request) -> Response {
         }));
     }
     
-    if request.method() == &rouille::Method::Post {
+    if request.method() == "POST" {
         let input = try_or_400!(post_input!(request, {
             preset_id: String,
             selector: Option<String>
@@ -1497,7 +1498,7 @@ fn handle_presets(request: &Request) -> Response {
 
 /// Handle touch gesture commands
 fn handle_gesture(request: &Request) -> Response {
-    if request.method() != &rouille::Method::Post {
+    if request.method() != "POST" {
         return Response::empty_404();
     }
     
@@ -1631,7 +1632,7 @@ fn handle_gesture(request: &Request) -> Response {
 
 /// Handle media sync operations
 fn handle_media_sync(request: &Request) -> Response {
-    if request.method() == &rouille::Method::Post {
+    if request.method() == "POST" {
         let input = try_or_400!(post_input!(request, {
             action: String,
             bpm: Option<u32>,
@@ -1729,7 +1730,7 @@ fn handle_wave_effect(request: &Request) -> Response {
     use std::thread;
     use std::time::Duration;
     
-    if request.method() != &rouille::Method::Post {
+    if request.method() != "POST" {
         return Response::empty_404();
     }
     
@@ -1800,7 +1801,7 @@ fn handle_disco_mode(request: &Request) -> Response {
     use std::thread;
     use std::time::Duration;
     
-    if request.method() != &rouille::Method::Post {
+    if request.method() != "POST" {
         return Response::empty_404();
     }
     
