@@ -3313,6 +3313,82 @@
     transform: translateY(0);
 }
 
+/* Visualization Mode Selector */
+.viz-mode-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.viz-mode-btn:hover {
+    background: rgba(0, 212, 255, 0.2) !important;
+    border-color: rgba(0, 212, 255, 0.5) !important;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 212, 255, 0.4);
+}
+
+.viz-mode-btn.active {
+    background: rgba(0, 212, 255, 0.3) !important;
+    border-color: rgba(0, 212, 255, 0.6) !important;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    animation: viz-mode-glow 2s ease-in-out infinite;
+}
+
+@keyframes viz-mode-glow {
+    0%, 100% { 
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    }
+    50% { 
+        box-shadow: 0 0 30px rgba(0, 212, 255, 0.8), 0 0 10px rgba(0, 255, 136, 0.4);
+    }
+}
+
+/* Particle Visualization */
+.media-viz-particle {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+/* Circular Visualization Ring */
+.media-viz-circular-ring {
+    position: relative;
+    border-radius: 50%;
+    animation: circular-rotate 30s linear infinite;
+}
+
+@keyframes circular-rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Wave Visualization Path */
+.media-viz-wave-path {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
+/* Matrix Visualization Cell */
+.media-viz-matrix-cell {
+    transition: background-color 0.05s ease, transform 0.1s ease;
+}
+
+.media-viz-matrix-cell.active {
+    background-color: rgba(0, 255, 136, 0.8) !important;
+    transform: scale(1.2);
+}
+
+/* Spectrum Visualization Gradient */
+.media-viz-spectrum-bar {
+    background: linear-gradient(to top, 
+        #ff0080 0%, 
+        #ff6b6b 25%, 
+        #ffd93d 50%, 
+        #6bcb77 75%, 
+        #00d4ff 100%);
+}
+
 /* Print styles - hide interactive elements */
 @media print {
     .touch-sensitivity-panel,
@@ -3324,7 +3400,8 @@
     .calibration-complete-toast,
     .circular-color-picker,
     .quick-scenes-panel,
-    .media-sync-panel {
+    .media-sync-panel,
+    .viz-mode-selector {
         display: none !important;
     }
 }

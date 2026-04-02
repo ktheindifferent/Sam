@@ -509,6 +509,27 @@ function initKeyboardShortcuts() {
                     previousTrack();
                 }
                 break;
+            case 'KeyV':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    showVisualizationModeSelector();
+                }
+                break;
+            case 'Digit1':
+            case 'Digit2':
+            case 'Digit3':
+            case 'Digit4':
+            case 'Digit5':
+            case 'Digit6':
+                if (e.ctrlKey && !e.shiftKey) {
+                    const modes = ['bars', 'circular', 'wave', 'spectrum', 'particles', 'matrix'];
+                    const index = parseInt(e.code.replace('Digit', '')) - 1;
+                    if (modes[index]) {
+                        e.preventDefault();
+                        setVisualizationMode(modes[index]);
+                    }
+                }
+                break;
         }
     });
 }
@@ -6560,6 +6581,18 @@ function initEnhancedMediaFeatures() {
     // Update media visualization if active
     setInterval(updateMediaVisualization, 50);
     
+    // Update particle visualization
+    setInterval(() => {
+        if (MediaPlayer.visualizationMode === 'particles' && MediaPlayer.isPlaying) {
+            const analyser = MediaPlayer.analyser;
+            if (analyser) {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                updateParticleVisualization(dataArray);
+            }
+        }
+    }, 100);
+    
     document.addEventListener('DOMContentLoaded', function() {
         showBpmIndicator();
         
@@ -6744,10 +6777,71 @@ function initLifxMediaSync() {
     if (typeof LifXTouchControls === 'undefined') return;
     
     MediaPlayer.lifxSyncEnabled = localStorage.getItem('lifx_media_sync_enabled') === 'true';
+    MediaPlayer.visualizationMode = localStorage.getItem('media_viz_mode') || 'bars';
     
     if (MediaPlayer.lifxSyncEnabled) {
         console.log('LIFX media sync enabled');
     }
+}
+
+function showVisualizationModeSelector() {
+    const modes = [
+        { id: 'bars', name: 'Bars', icon: '📊' },
+        { id: 'circular', name: 'Circular', icon: '⭕' },
+        { id: 'wave', name: 'Wave', icon: '🌊' },
+        { id: 'spectrum', name: 'Spectrum', icon: '🌈' },
+        { id: 'particles', name: 'Particles', icon: '✨' },
+        { id: 'matrix', name: 'Matrix', icon: '🔲' }
+    ];
+    
+    const selector = document.createElement('div');
+    selector.style.cssText = `
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: rgba(42, 42, 58, 0.95);
+        border: 2px solid rgba(0, 212, 255, 0.5);
+        border-radius: 16px;
+        padding: 15px 20px;
+        z-index: 9999;
+        display: flex;
+        gap: 10px;
+        opacity: 0;
+        transition: all 0.3s ease;
+    `;
+    
+    selector.innerHTML = modes.map(mode => `
+        <button class="viz-mode-btn ${MediaPlayer.visualizationMode === mode.id ? 'active' : ''}" 
+                onclick="setVisualizationMode('${mode.id}')"
+                style="background: ${MediaPlayer.visualizationMode === mode.id ? 'rgba(0, 212, 255, 0.3)' : 'transparent'};
+                       border: 1px solid rgba(0, 212, 255, 0.3);
+                       border-radius: 8px;
+                       padding: 8px 12px;
+                       color: ${MediaPlayer.visualizationMode === mode.id ? '#00d4ff' : '#adb5bd'};
+                       cursor: pointer;
+                       transition: all 0.2s ease;
+                       display: flex;
+                       flex-direction: column;
+                       align-items: center;
+                       gap: 4px;">
+            <span style="font-size: 20px;">${mode.icon}</span>
+            <span style="font-size: 10px;">${mode.name}</span>
+        </button>
+    `).join('');
+    
+    document.body.appendChild(selector);
+    
+    setTimeout(() => {
+        selector.style.opacity = '1';
+        selector.style.transform = 'translateX(-50%) translateY(0)';
+    }, 10);
+    
+    setTimeout(() => {
+        selector.style.opacity = '0';
+        selector.style.transform = 'translateX(-50%) translateY(20px)';
+        setTimeout(() => selector.remove(), 300);
+    }, 5000);
 }
 
 function toggleLifxMediaSync() {
