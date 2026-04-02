@@ -54,6 +54,7 @@
             circadianActive: false,
             lastTouchTime: 0,
             lastTapTime: 0,
+            tapCount: 0,
             gestureHistory: [],
             touchHoldProgress: 0,
             isTouchHoldActive: false,
@@ -177,7 +178,100 @@
             { id: 'chromatic', name: 'Chromatic', icon: '🎨', hue: 21840, saturation: 49152, brightness: 52428, kelvin: 4800 },
             { id: 'magnify', name: 'Magnify', icon: '🔍', hue: 16380, saturation: 19660, brightness: 49151, kelvin: 4600 },
             { id: 'contemplation', name: 'Contemplation', icon: '💭', hue: 49140, saturation: 26214, brightness: 32767, kelvin: 3800 },
-            { id: 'faded', name: 'Faded', icon: '👻', hue: 0, saturation: 3276, brightness: 39321, kelvin: 5000 }
+            { id: 'faded', name: 'Faded', icon: '👻', hue: 0, saturation: 3276, brightness: 39321, kelvin: 5000 },
+            { id: 'calm', name: 'Calm', icon: '🕊️', hue: 34580, saturation: 19660, brightness: 32767, kelvin: 3500 },
+            { id: 'serenity', name: 'Serenity', icon: '🌺', hue: 32760, saturation: 26214, brightness: 39321, kelvin: 4000 },
+            { id: 'tranquility', name: 'Tranquility', icon: '🪷', hue: 50960, saturation: 13107, brightness: 26214, kelvin: 3200 },
+            { id: 'peace', name: 'Peace', icon: '☮️', hue: 18200, saturation: 19660, brightness: 45875, kelvin: 4200 },
+            { id: 'harmony', name: 'Harmony', icon: '☯️', hue: 25480, saturation: 32767, brightness: 42598, kelvin: 3800 },
+            { id: 'balance', name: 'Balance', icon: '⚖️', hue: 27300, saturation: 26214, brightness: 49151, kelvin: 4500 },
+            { id: 'zen', name: 'Zen', icon: '🎋', hue: 32760, saturation: 19660, brightness: 39321, kelvin: 4000 },
+            { id: 'mindfulness', name: 'Mindfulness', icon: '🧠', hue: 18200, saturation: 15000, brightness: 52428, kelvin: 5000 },
+            { id: 'breathe', name: 'Breathe', icon: '🌬️', hue: 34580, saturation: 13107, brightness: 32767, kelvin: 3800 },
+            { id: 'restore', name: 'Restore', icon: '🔄', hue: 18200, saturation: 19660, brightness: 45875, kelvin: 4500 },
+            { id: 'rejuvenate', name: 'Rejuvenate', icon: '💧', hue: 34580, saturation: 26214, brightness: 42598, kelvin: 4200 },
+            { id: 'refresh', name: 'Refresh', icon: '🍃', hue: 25480, saturation: 32767, brightness: 49151, kelvin: 4800 },
+            { id: 'revitalize', name: 'Revitalize', icon: '⚡', hue: 9100, saturation: 39321, brightness: 55705, kelvin: 5500 },
+            { id: 'awaken', name: 'Awaken', icon: '👁️', hue: 18200, saturation: 26214, brightness: 52428, kelvin: 5200 },
+            { id: 'inspire', name: 'Inspire', icon: '💡', hue: 43680, saturation: 45875, brightness: 58982, kelvin: 5000 },
+            { id: 'motivate', name: 'Motivate', icon: '🔥', hue: 7098, saturation: 52428, brightness: 58982, kelvin: 4500 },
+            { id: 'empower', name: 'Empower', icon: '💪', hue: 5460, saturation: 45875, brightness: 65535, kelvin: 5000 },
+            { id: 'celebrate', name: 'Celebrate', icon: '🎊', hue: 27300, saturation: 58982, brightness: 65535, kelvin: 4800 },
+            { id: 'joy', name: 'Joy', icon: '😊', hue: 9100, saturation: 45875, brightness: 58982, kelvin: 4500 },
+            { id: 'happiness', name: 'Happiness', icon: '😄', hue: 8000, saturation: 39321, brightness: 55705, kelvin: 4200 },
+            { id: 'bliss', name: 'Bliss', icon: '😌', hue: 32760, saturation: 32767, brightness: 45875, kelvin: 4000 },
+            { id: 'euphoria', name: 'Euphoria', icon: '🌟', hue: 43680, saturation: 58982, brightness: 65535, kelvin: 5500 },
+            { id: 'ecstasy', name: 'Ecstasy', icon: '💫', hue: 50960, saturation: 52428, brightness: 58982, kelvin: 5000 },
+            { id: 'rapture', name: 'Rapture', icon: '😍', hue: 60000, saturation: 45875, brightness: 52428, kelvin: 4500 },
+            { id: 'delight', name: 'Delight', icon: '🎁', hue: 27300, saturation: 39321, brightness: 52428, kelvin: 4200 },
+            { id: 'pleasure', name: 'Pleasure', icon: '🍫', hue: 7098, saturation: 32767, brightness: 42598, kelvin: 3500 },
+            { id: 'comfort', name: 'Comfort', icon: '🛋️', hue: 5460, saturation: 26214, brightness: 39321, kelvin: 3000 },
+            { id: 'cozy', name: 'Cozy', icon: '🧸', hue: 5460, saturation: 32767, brightness: 32767, kelvin: 2700 },
+            { id: 'warmth', name: 'Warmth', icon: '🔆', hue: 7098, saturation: 39321, brightness: 42598, kelvin: 2800 },
+            { id: 'hygge', name: 'Hygge', icon: '🕯️', hue: 5460, saturation: 26214, brightness: 26214, kelvin: 2400 },
+            { id: 'sanctuary', name: 'Sanctuary', icon: '🏛️', hue: 32760, saturation: 19660, brightness: 32767, kelvin: 3500 },
+            { id: 'retreat', name: 'Retreat', icon: '🏡', hue: 25480, saturation: 26214, brightness: 39321, kelvin: 3800 },
+            { id: 'haven', name: 'Haven', icon: '🕊️', hue: 34580, saturation: 19660, brightness: 39321, kelvin: 4000 },
+            { id: 'oasis', name: 'Oasis', icon: '🌴', hue: 34580, saturation: 32767, brightness: 45875, kelvin: 4200 },
+            { id: 'paradise', name: 'Paradise', icon: '🏝️', hue: 27300, saturation: 45875, brightness: 52428, kelvin: 4500 },
+            { id: 'utopia', name: 'Utopia', icon: '🌈', hue: 0, saturation: 32767, brightness: 52428, kelvin: 5000 },
+            { id: 'eden', name: 'Eden', icon: '🍎', hue: 25480, saturation: 39321, brightness: 45875, kelvin: 4200 },
+            { id: 'shangri_la', name: 'Shangri-La', icon: '🏔️', hue: 32760, saturation: 26214, brightness: 42598, kelvin: 4500 },
+            { id: 'camelot', name: 'Camelot', icon: '🏰', hue: 50960, saturation: 39321, brightness: 45875, kelvin: 4000 },
+            { id: 'avalon', name: 'Avalon', icon: '🌫️', hue: 34580, saturation: 19660, brightness: 32767, kelvin: 3800 },
+            { id: 'olympus', name: 'Olympus', icon: '⚡', hue: 0, saturation: 6553, brightness: 65535, kelvin: 6500 },
+            { id: 'asgard', name: 'Asgard', icon: '⚔️', hue: 9100, saturation: 45875, brightness: 52428, kelvin: 5000 },
+            { id: 'valhalla', name: 'Valhalla', icon: '🛡️', hue: 7098, saturation: 52428, brightness: 58982, kelvin: 4500 },
+            { id: 'atlantis', name: 'Atlantis', icon: '🌊', hue: 34580, saturation: 45875, brightness: 42598, kelvin: 4800 },
+            { id: 'lemuria', name: 'Lemuria', icon: '🔮', hue: 50960, saturation: 39321, brightness: 39321, kelvin: 4200 },
+            { id: 'mu', name: 'Mu', icon: '🌏', hue: 27300, saturation: 32767, brightness: 45875, kelvin: 4500 },
+            { id: 'hyperborea', name: 'Hyperborea', icon: '❄️', hue: 32760, saturation: 19660, brightness: 52428, kelvin: 7000 },
+            { id: 'golden_age', name: 'Golden Age', icon: '👑', hue: 9100, saturation: 52428, brightness: 65535, kelvin: 5500 },
+            { id: 'silver_age', name: 'Silver Age', icon: '🥈', hue: 32760, saturation: 13107, brightness: 58982, kelvin: 6000 },
+            { id: 'bronze_age', name: 'Bronze Age', icon: '🥉', hue: 7098, saturation: 39321, brightness: 45875, kelvin: 3500 },
+            { id: 'iron_age', name: 'Iron Age', icon: '⛓️', hue: 0, saturation: 6553, brightness: 39321, kelvin: 4000 },
+            { id: 'stone_age', name: 'Stone Age', icon: '🪨', hue: 0, saturation: 0, brightness: 32767, kelvin: 4500 },
+            { id: 'digital_age', name: 'Digital Age', icon: '💻', hue: 32760, saturation: 52428, brightness: 58982, kelvin: 6500 },
+            { id: 'space_age', name: 'Space Age', icon: '🚀', hue: 0, saturation: 0, brightness: 65535, kelvin: 6500 },
+            { id: 'atomic', name: 'Atomic', icon: '☢️', hue: 12000, saturation: 65535, brightness: 65535, kelvin: 6000 },
+            { id: 'quantum', name: 'Quantum', icon: '⚛️', hue: 43680, saturation: 52428, brightness: 65535, kelvin: 6500 },
+            { id: 'cosmic', name: 'Cosmic', icon: '🌌', hue: 50960, saturation: 45875, brightness: 52428, kelvin: 5500 },
+            { id: 'universal', name: 'Universal', icon: '♾️', hue: 0, saturation: 0, brightness: 65535, kelvin: 6000 },
+            { id: 'infinite', name: 'Infinite', icon: '🔁', hue: 0, saturation: 0, brightness: 65535, kelvin: 5500 },
+            { id: 'eternal', name: 'Eternal', icon: '⏳', hue: 50960, saturation: 39321, brightness: 45875, kelvin: 4500 },
+            { id: 'timeless', name: 'Timeless', icon: '🕰️', hue: 32760, saturation: 19660, brightness: 39321, kelvin: 4000 },
+            { id: 'ancient', name: 'Ancient', icon: '🏺', hue: 7098, saturation: 32767, brightness: 39321, kelvin: 3000 },
+            { id: 'primordial', name: 'Primordial', icon: '🌑', hue: 0, saturation: 0, brightness: 19660, kelvin: 2500 },
+            { id: 'elemental', name: 'Elemental', icon: '🔥', hue: 0, saturation: 52428, brightness: 58982, kelvin: 3000 },
+            { id: 'earth', name: 'Earth', icon: '🌍', hue: 25480, saturation: 39321, brightness: 45875, kelvin: 4000 },
+            { id: 'air', name: 'Air', icon: '💨', hue: 32760, saturation: 13107, brightness: 52428, kelvin: 5500 },
+            { id: 'fire', name: 'Fire', icon: '🔥', hue: 5460, saturation: 58982, brightness: 65535, kelvin: 2500 },
+            { id: 'water', name: 'Water', icon: '💧', hue: 34580, saturation: 32767, brightness: 45875, kelvin: 4500 },
+            { id: 'metal', name: 'Metal', icon: '🔩', hue: 0, saturation: 0, brightness: 58982, kelvin: 6000 },
+            { id: 'wood', name: 'Wood', icon: '🪵', hue: 7098, saturation: 39321, brightness: 39321, kelvin: 3500 },
+            { id: 'aether', name: 'Aether', icon: '✨', hue: 32760, saturation: 19660, brightness: 65535, kelvin: 7000 },
+            { id: 'void', name: 'Void', icon: '⚫', hue: 0, saturation: 0, brightness: 6553, kelvin: 2000 },
+            { id: 'light', name: 'Light', icon: '💡', hue: 9100, saturation: 6553, brightness: 65535, kelvin: 6500 },
+            { id: 'dark', name: 'Dark', icon: '🌑', hue: 0, saturation: 0, brightness: 13107, kelvin: 2000 },
+            { id: 'shadow', name: 'Shadow', icon: '🌒', hue: 0, saturation: 0, brightness: 19660, kelvin: 2500 },
+            { id: 'twilight_zone', name: 'Twilight Zone', icon: '🌆', hue: 50960, saturation: 32767, brightness: 26214, kelvin: 3200 },
+            { id: 'fifth_dimension', name: '5th Dimension', icon: '🌀', hue: 43680, saturation: 45875, brightness: 52428, kelvin: 5000 },
+            { id: 'parallel', name: 'Parallel', icon: '↔️', hue: 32760, saturation: 39321, brightness: 45875, kelvin: 4500 },
+            { id: 'dimension', name: 'Dimension', icon: '📐', hue: 18200, saturation: 32767, brightness: 52428, kelvin: 5000 },
+            { id: 'matrix', name: 'Matrix', icon: '0️⃣', hue: 25480, saturation: 52428, brightness: 45875, kelvin: 4500 },
+            { id: 'simulation', name: 'Simulation', icon: '🖥️', hue: 32760, saturation: 45875, brightness: 52428, kelvin: 5500 },
+            { id: 'virtual', name: 'Virtual', icon: '🥽', hue: 43680, saturation: 52428, brightness: 58982, kelvin: 5500 },
+            { id: 'augmented', name: 'Augmented', icon: '📱', hue: 27300, saturation: 45875, brightness: 58982, kelvin: 5000 },
+            { id: 'mixed_reality', name: 'Mixed Reality', icon: '🔀', hue: 32760, saturation: 39321, brightness: 55705, kelvin: 5200 },
+            { id: 'extended_reality', name: 'XR', icon: '🌐', hue: 43680, saturation: 45875, brightness: 58982, kelvin: 5500 },
+            { id: 'metaverse', name: 'Metaverse', icon: '🪐', hue: 50960, saturation: 52428, brightness: 58982, kelvin: 5000 },
+            { id: 'web3', name: 'Web3', icon: '🔗', hue: 32760, saturation: 45875, brightness: 55705, kelvin: 5500 },
+            { id: 'blockchain', name: 'Blockchain', icon: '⛓️', hue: 43680, saturation: 39321, brightness: 52428, kelvin: 5000 },
+            { id: 'crypto', name: 'Crypto', icon: '🪙', hue: 9100, saturation: 52428, brightness: 58982, kelvin: 5500 },
+            { id: 'nft', name: 'NFT', icon: '🖼️', hue: 43680, saturation: 58982, brightness: 65535, kelvin: 5500 },
+            { id: 'dao', name: 'DAO', icon: '🗳️', hue: 32760, saturation: 39321, brightness: 52428, kelvin: 5000 },
+            { id: 'defi', name: 'DeFi', icon: '💰', hue: 9100, saturation: 45875, brightness: 58982, kelvin: 5000 },
+            { id: 'smart_contract', name: 'Smart Contract', icon: '📜', hue: 25480, saturation: 39321, brightness: 52428, kelvin: 4800 }
         ],
 
         effectPresets: [
@@ -193,10 +287,52 @@
         mediaPresets: [
             { id: 'spotify', name: 'Spotify', icon: '🎵', service: 'spotify' },
             { id: 'youtube', name: 'YouTube', icon: '📺', service: 'youtube' },
+            { id: 'youtube_music', name: 'YouTube Music', icon: '🎵', service: 'youtube-music' },
             { id: 'plex', name: 'Plex', icon: '🎬', service: 'plex' },
+            { id: 'jellyfin', name: 'Jellyfin', icon: '🎬', service: 'jellyfin' },
+            { id: 'emby', name: 'Emby', icon: '🎭', service: 'emby' },
             { id: 'radio', name: 'Radio', icon: '📻', service: 'radio' },
             { id: 'tidal', name: 'Tidal', icon: '🌊', service: 'tidal' },
-            { id: 'apple_music', name: 'Apple Music', icon: '🎶', service: 'apple_music' }
+            { id: 'apple_music', name: 'Apple Music', icon: '🎶', service: 'apple_music' },
+            { id: 'soundcloud', name: 'SoundCloud', icon: '☁️', service: 'soundcloud' },
+            { id: 'bandcamp', name: 'Bandcamp', icon: '🎸', service: 'bandcamp' },
+            { id: 'deezer', name: 'Deezer', icon: '💙', service: 'deezer' },
+            { id: 'qobuz', name: 'Qobuz', icon: '🎼', service: 'qobuz' },
+            { id: 'audiobook', name: 'Audiobook', icon: '📚', service: 'audiobook' },
+            { id: 'podcast', name: 'Podcast', icon: '🎙️', service: 'podcast' },
+            { id: 'twitch', name: 'Twitch', icon: '🎮', service: 'twitch' },
+            { id: 'netflix', name: 'Netflix', icon: '🎬', service: 'netflix' },
+            { id: 'disney', name: 'Disney+', icon: '✨', service: 'disney' },
+            { id: 'hulu', name: 'Hulu', icon: '🟢', service: 'hulu' },
+            { id: 'prime', name: 'Prime Video', icon: '📦', service: 'prime' },
+            { id: 'hbo', name: 'HBO Max', icon: '🎭', service: 'hbo' },
+            { id: 'paramount', name: 'Paramount+', icon: '🏔️', service: 'paramount' },
+            { id: 'peacock', name: 'Peacock', icon: '🦚', service: 'peacock' },
+            { id: 'crunchyroll', name: 'Crunchyroll', icon: '👺', service: 'crunchyroll' },
+            { id: 'funimation', name: 'Funimation', icon: '🎌', service: 'funimation' },
+            { id: 'discord', name: 'Discord', icon: '💬', service: 'discord' },
+            { id: 'zoom', name: 'Zoom', icon: '📹', service: 'zoom' },
+            { id: 'teams', name: 'Teams', icon: '👥', service: 'teams' },
+            { id: 'meet', name: 'Meet', icon: '📷', service: 'meet' },
+            { id: 'game', name: 'Gaming', icon: '🎮', service: 'game' },
+            { id: 'vr', name: 'VR', icon: '🥽', service: 'vr' },
+            { id: 'stream', name: 'Streaming', icon: '📡', service: 'stream' },
+            { id: 'record', name: 'Recording', icon: '🔴', service: 'record' },
+            { id: 'edit', name: 'Editing', icon: '✂️', service: 'edit' },
+            { id: 'present', name: 'Presentation', icon: '📊', service: 'present' }
+        ],
+
+        syncModePresets: [
+            { id: 'beat', name: 'Beat Sync', icon: '💓', description: 'Lights pulse with the beat' },
+            { id: 'color', name: 'Color Sync', icon: '🎨', description: 'Colors match the music mood' },
+            { id: 'spectrum', name: 'Spectrum', icon: '🌈', description: 'Full frequency visualization' },
+            { id: 'ambient', name: 'Ambient', icon: '🌊', description: 'Gentle ambient reactions' },
+            { id: 'intense', name: 'Intense', icon: '⚡', description: 'High-energy light show' },
+            { id: 'cinema', name: 'Cinema', icon: '🎬', description: 'Movie-optimized sync' },
+            { id: 'party', name: 'Party Mode', icon: '🎉', description: 'Full party experience' },
+            { id: 'chill', name: 'Chill', icon: '🧘', description: 'Relaxed lighting' },
+            { id: 'focus', name: 'Focus', icon: '🎯', description: 'Minimal distraction' },
+            { id: 'custom', name: 'Custom', icon: '⚙️', description: 'Your custom settings' }
         ],
 
         init() {
@@ -351,9 +487,20 @@
                     this.showSwipeTrailEnd(touch.clientX, touch.clientY, horizontal === 'right' || horizontal === 'left' ? deltaX : deltaY);
                 }
             } else if (duration < this.config.doubleTapDelay && currentTime - this.state.lastTapTime < this.config.doubleTapDelay) {
-                this.handleDoubleTap(target, e);
-                this.state.lastTapTime = 0;
+                if (this.state.tapCount === 1) {
+                    this.handleDoubleTap(target, e);
+                    this.state.tapCount = 2;
+                    this.state.lastTapTime = currentTime;
+                } else if (this.state.tapCount === 2) {
+                    this.handleTripleTap(target, e);
+                    this.state.tapCount = 0;
+                    this.state.lastTapTime = 0;
+                } else {
+                    this.handleDoubleTap(target, e);
+                    this.state.tapCount = 2;
+                }
             } else {
+                this.state.tapCount = 1;
                 this.state.lastTapTime = currentTime;
                 
                 if (this.config.enableVelocityRipples && this.touchVelocity && this.touchVelocity.length > 2) {
@@ -482,6 +629,79 @@
             }
             
             this.triggerHaptic('doubleTap');
+        },
+
+        handleTripleTap(target, e) {
+            const bulbId = target.dataset.bulbId;
+            
+            if (bulbId) {
+                this.toggleBulbPower(bulbId, 'off');
+                this.showTouchFeedback(target, 'Triple Tap - Off');
+                this.triggerHaptic('success');
+            }
+        },
+
+        handlePinch(target, scale) {
+            const bulbId = target.dataset.bulbId;
+            
+            if (bulbId) {
+                const brightnessDelta = Math.round((scale - 1) * 50);
+                this.adjustBulbBrightness(bulbId, brightnessDelta);
+                this.showPinchFeedback(scale);
+                this.triggerHaptic('ripple');
+            }
+        },
+
+        handleRotate(target, rotation) {
+            const bulbId = target.dataset.bulbId;
+            
+            if (bulbId) {
+                const hueDelta = Math.round(rotation * 10);
+                this.adjustBulbHue(bulbId, hueDelta);
+                this.showRotateFeedback(rotation);
+                this.triggerHaptic('gesture');
+            }
+        },
+
+        showPinchFeedback(scale) {
+            const brightnessChange = scale > 1 ? 'Brighter' : 'Dimmer';
+            this.showTouchFeedback(null, `${brightnessChange} +${Math.abs(Math.round((scale - 1) * 50))}%`);
+        },
+
+        showRotateFeedback(rotation) {
+            const colorShift = rotation > 0 ? 'Warmer' : 'Cooler';
+            this.showTouchFeedback(null, `${colorShift} ${Math.abs(Math.round(rotation * 10))}°`);
+        },
+
+        showTripleTapFeedback(e) {
+            const feedback = document.createElement('div');
+            feedback.className = 'touch-feedback-message triple-tap';
+            feedback.textContent = '✕ Power Off';
+            feedback.style.cssText = `
+                position: fixed;
+                left: ${e.clientX}px;
+                top: ${e.clientY - 50}px;
+                color: #ff6b6b;
+                font-weight: bold;
+                font-size: 16px;
+                text-shadow: 0 0 10px rgba(255, 107, 107, 0.8);
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.3s ease, transform 0.3s ease;
+                transform: translateY(20px);
+                z-index: 10000;
+            `;
+            document.body.appendChild(feedback);
+            
+            setTimeout(() => {
+                feedback.style.opacity = '1';
+                feedback.style.transform = 'translateY(0)';
+            }, 10);
+            setTimeout(() => {
+                feedback.style.opacity = '0';
+                feedback.style.transform = 'translateY(-30px)';
+                setTimeout(() => feedback.remove(), 300);
+            }, 1000);
         },
 
         showTouchFeedback(target, message) {
