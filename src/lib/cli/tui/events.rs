@@ -113,11 +113,17 @@ pub async fn handle_services_mode(
                     crate::services::redis::start().await;
                     helpers::append_line(output_lines, format!("✓ {} restarted", service)).await;
                 } else if service_lower == "lifx" {
-                    helpers::append_line(output_lines, format!("✓ {} toggle command sent", service)).await;
+                    let _ = crate::services::lifx::start_server().await;
+                    helpers::append_line(output_lines, format!("✓ {} service started", service)).await;
                 } else if service_lower == "ssh_server" {
-                    helpers::append_line(output_lines, format!("✓ {} toggle command sent", service)).await;
-                } else if service_lower == "media" || service_lower == "snapcast" {
-                    helpers::append_line(output_lines, format!("✓ {} toggle command sent", service)).await;
+                    let _ = crate::services::ssh::server::start_ssh_server().await;
+                    helpers::append_line(output_lines, format!("✓ {} started", service)).await;
+                } else if service_lower == "media" {
+                    let _ = crate::services::media::start().await;
+                    helpers::append_line(output_lines, format!("✓ {} started", service)).await;
+                } else if service_lower == "snapcast" {
+                    let _ = crate::services::media::snapcast::init().await;
+                    helpers::append_line(output_lines, format!("✓ {} started", service)).await;
                 } else {
                     helpers::append_line(output_lines, format!("Service control for {} coming soon", service)).await;
                 }
@@ -138,10 +144,26 @@ pub async fn handle_services_mode(
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     crate::services::redis::start().await;
                     helpers::append_line(output_lines, format!("✓ {} restarted", service)).await;
+                } else if service_lower == "lifx" {
+                    let _ = crate::services::lifx::stop_server().await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                    let _ = crate::services::lifx::start_server().await;
+                    helpers::append_line(output_lines, format!("✓ {} restarted", service)).await;
                 } else if service_lower == "ssh_server" {
-                    helpers::append_line(output_lines, format!("✓ {} restart command sent", service)).await;
-                } else if service_lower == "media" || service_lower == "snapcast" {
-                    helpers::append_line(output_lines, format!("✓ {} restart command sent", service)).await;
+                    let _ = crate::services::ssh::server::stop_ssh_server().await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                    let _ = crate::services::ssh::server::start_ssh_server().await;
+                    helpers::append_line(output_lines, format!("✓ {} restarted", service)).await;
+                } else if service_lower == "media" {
+                    let _ = crate::services::media::stop().await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                    let _ = crate::services::media::start().await;
+                    helpers::append_line(output_lines, format!("✓ {} restarted", service)).await;
+                } else if service_lower == "snapcast" {
+                    let _ = crate::services::media::snapcast::deinit().await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                    let _ = crate::services::media::snapcast::init().await;
+                    helpers::append_line(output_lines, format!("✓ {} restarted", service)).await;
                 } else {
                     helpers::append_line(output_lines, format!("Service restart for {} coming soon", service)).await;
                 }
@@ -159,8 +181,8 @@ pub async fn handle_services_mode(
                     "ssh_server" => crate::services::ssh::server::is_ssh_server_running().await.to_string(),
                     "lifx" => crate::services::lifx::status_service().unwrap_or_else(|_| "unknown".to_string()),
                     "crawler" => crate::services::crawler::service_status(),
-                    "media" => "running".to_string(),
-                    "snapcast" => "running".to_string(),
+                    "media" => crate::services::media::is_running().await.to_string(),
+                    "snapcast" => crate::services::media::snapcast::is_running().await.to_string(),
                     "postgres" => "healthy".to_string(),
                     "http_server" => "running".to_string(),
                     _ => "unknown".to_string()
@@ -181,6 +203,18 @@ pub async fn handle_services_mode(
                 if service_lower == "redis" {
                     crate::services::redis::start().await;
                     helpers::append_line(output_lines, format!("✓ {} started", service)).await;
+                } else if service_lower == "lifx" {
+                    let _ = crate::services::lifx::start_server().await;
+                    helpers::append_line(output_lines, format!("✓ {} started", service)).await;
+                } else if service_lower == "ssh_server" {
+                    let _ = crate::services::ssh::server::start_ssh_server().await;
+                    helpers::append_line(output_lines, format!("✓ {} started", service)).await;
+                } else if service_lower == "media" {
+                    let _ = crate::services::media::start().await;
+                    helpers::append_line(output_lines, format!("✓ {} started", service)).await;
+                } else if service_lower == "snapcast" {
+                    let _ = crate::services::media::snapcast::init().await;
+                    helpers::append_line(output_lines, format!("✓ {} started", service)).await;
                 } else {
                     helpers::append_line(output_lines, format!("Start command sent for {}", service)).await;
                 }
@@ -198,6 +232,18 @@ pub async fn handle_services_mode(
                 let service_lower = service.to_lowercase();
                 if service_lower == "redis" {
                     crate::services::redis::stop().await;
+                    helpers::append_line(output_lines, format!("✓ {} stopped", service)).await;
+                } else if service_lower == "lifx" {
+                    let _ = crate::services::lifx::stop_server().await;
+                    helpers::append_line(output_lines, format!("✓ {} stopped", service)).await;
+                } else if service_lower == "ssh_server" {
+                    let _ = crate::services::ssh::server::stop_ssh_server().await;
+                    helpers::append_line(output_lines, format!("✓ {} stopped", service)).await;
+                } else if service_lower == "media" {
+                    let _ = crate::services::media::stop().await;
+                    helpers::append_line(output_lines, format!("✓ {} stopped", service)).await;
+                } else if service_lower == "snapcast" {
+                    let _ = crate::services::media::snapcast::deinit().await;
                     helpers::append_line(output_lines, format!("✓ {} stopped", service)).await;
                 } else {
                     helpers::append_line(output_lines, format!("Stop command sent for {}", service)).await;

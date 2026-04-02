@@ -61,13 +61,15 @@ pub enum SnapcastError {
     IoError(#[from] std::io::Error),
 }
 
+static SNAPCAST_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Initialize the Snapcast server
 /// 
 /// This function:
 /// 1. Checks if snapserver is installed, installs if missing
 /// 2. Starts snapserver in a background thread
 /// 3. Handles platform-specific quirks (e.g., Debian Bullseye)
-pub fn init() -> Result<(), SnapcastError> {
+pub async fn init() -> Result<(), SnapcastError> {
     info!("Initializing Snapcast server");
     
     // Check and install if needed
@@ -88,8 +90,22 @@ pub fn init() -> Result<(), SnapcastError> {
         })
         .map_err(|e| SnapcastError::ServiceStartFailed(e.to_string()))?;
 
+    SNAPCAST_RUNNING.store(true, std::sync::atomic::Ordering::SeqCst);
     info!("snapcast server started successfully on thread: {:?}", snap_cast_thread.thread().name());
     Ok(())
+}
+
+/// Stop the Snapcast server
+pub async fn deinit() -> Result<(), SnapcastError> {
+    info!("Stopping Snapcast server");
+    crate::tools::safe_uinx_cmd("pkill", &["snapserver"]);
+    SNAPCAST_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+/// Check if Snapcast is running
+pub async fn is_running() -> bool {
+    SNAPCAST_RUNNING.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// Configure Snapcast server with security settings

@@ -1385,6 +1385,214 @@ async fn process_command(
             }
         }
 
+        // LIFX light control commands
+        "lifx_get_bulbs" => {
+            match crate::services::lifx::get_bulbs() {
+                Ok(bulbs) => {
+                    let bulbs_json: Vec<serde_json::Value> = bulbs.iter().map(|b| {
+                        serde_json::json!({
+                            "id": b.id,
+                            "label": b.label,
+                            "power": b.power,
+                            "color": {
+                                "hue": b.color.hue,
+                                "saturation": b.color.saturation,
+                                "brightness": b.color.brightness,
+                                "kelvin": b.color.kelvin
+                            },
+                            "connected": b.connected
+                        })
+                    }).collect();
+                    Ok(serde_json::json!({ "success": true, "bulbs": bulbs_json }))
+                }
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+            }
+        }
+        
+        "lifx_set_power" => {
+            if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
+                let power = args.get("power").and_then(|p| p.as_bool()).unwrap_or(true);
+                let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
+                
+                let power_str = if power { "on" } else { "off" };
+                let url = format!("/api/services/lifx/selector/{}/power/{}", selector, power_str);
+                
+                let client = reqwest::Client::new();
+                match client.post(&url)
+                    .json(&serde_json::json!({ "duration": duration }))
+                    .send()
+                    .await 
+                {
+                    Ok(resp) => {
+                        if resp.status().is_success() {
+                            Ok(serde_json::json!({ "success": true, "message": format!("Bulbs {} powered {}", selector, if power { "on" } else { "off" }) }))
+                        } else {
+                            Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                        }
+                    }
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                }
+            } else {
+                Err("Missing selector argument".into())
+            }
+        }
+        
+        "lifx_set_color" => {
+            if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
+                if let Some(color) = args.get("color").and_then(|c| c.as_str()) {
+                    let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
+                    let brightness = args.get("brightness").and_then(|b| b.as_f64());
+                    
+                    let url = format!("/api/services/lifx/selector/{}/color/{}", selector, color);
+                    
+                    let mut req_body = serde_json::json!({ "duration": duration });
+                    if let Some(b) = brightness {
+                        req_body["brightness"] = serde_json::json!(b);
+                    }
+                    
+                    let client = reqwest::Client::new();
+                    match client.put(&url)
+                        .json(&req_body)
+                        .send()
+                        .await 
+                    {
+                        Ok(resp) => {
+                            if resp.status().is_success() {
+                                Ok(serde_json::json!({ "success": true, "message": format!("Bulbs {} set to color {}", selector, color) }))
+                            } else {
+                                Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                            }
+                        }
+                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    }
+                } else {
+                    Err("Missing color argument".into())
+                }
+            } else {
+                Err("Missing selector argument".into())
+            }
+        }
+        
+        "lifx_set_brightness" => {
+            if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
+                if let Some(brightness) = args.get("brightness").and_then(|b| b.as_f64()) {
+                    let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
+                    
+                    let url = format!("/api/services/lifx/selector/{}/brightness/{}", selector, brightness);
+                    
+                    let client = reqwest::Client::new();
+                    match client.put(&url)
+                        .json(&serde_json::json!({ "duration": duration }))
+                        .send()
+                        .await 
+                    {
+                        Ok(resp) => {
+                            if resp.status().is_success() {
+                                Ok(serde_json::json!({ "success": true, "message": format!("Bulbs {} brightness set to {}", selector, brightness) }))
+                            } else {
+                                Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                            }
+                        }
+                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    }
+                } else {
+                    Err("Missing brightness argument".into())
+                }
+            } else {
+                Err("Missing selector argument".into())
+            }
+        }
+        
+        "lifx_set_scene" => {
+            if let Some(scene) = args.get("scene").and_then(|s| s.as_str()) {
+                let selector = args.get("selector").and_then(|s| s.as_str()).unwrap_or("all");
+                
+                let url = format!("/api/services/lifx/selector/{}/effects/scene", selector);
+                
+                let client = reqwest::Client::new();
+                match client.post(&url)
+                    .json(&serde_json::json!({ "scene": scene }))
+                    .send()
+                    .await 
+                {
+                    Ok(resp) => {
+                        if resp.status().is_success() {
+                            Ok(serde_json::json!({ "success": true, "message": format!("Scene {} applied to {}", scene, selector) }))
+                        } else {
+                            Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                        }
+                    }
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                }
+            } else {
+                Err("Missing scene argument".into())
+            }
+        }
+        
+        "lifx_effect_pulse" => {
+            if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
+                let color = args.get("color").and_then(|c| c.as_str()).unwrap_or("red");
+                let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
+                let cycles = args.get("cycles").and_then(|c| c.as_f64()).unwrap_or(1.0);
+                
+                let url = format!("/api/services/lifx/selector/{}/effects/pulse", selector);
+                
+                let client = reqwest::Client::new();
+                match client.post(&url)
+                    .json(&serde_json::json!({ 
+                        "color": color,
+                        "duration": duration,
+                        "cycles": cycles
+                    }))
+                    .send()
+                    .await 
+                {
+                    Ok(resp) => {
+                        if resp.status().is_success() {
+                            Ok(serde_json::json!({ "success": true, "message": "Pulse effect started" }))
+                        } else {
+                            Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                        }
+                    }
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                }
+            } else {
+                Err("Missing selector argument".into())
+            }
+        }
+        
+        "lifx_effect_breathe" => {
+            if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
+                let color = args.get("color").and_then(|c| c.as_str()).unwrap_or("blue");
+                let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
+                let cycles = args.get("cycles").and_then(|c| c.as_f64()).unwrap_or(1.0);
+                
+                let url = format!("/api/services/lifx/selector/{}/effects/breathe", selector);
+                
+                let client = reqwest::Client::new();
+                match client.post(&url)
+                    .json(&serde_json::json!({ 
+                        "color": color,
+                        "duration": duration,
+                        "cycles": cycles
+                    }))
+                    .send()
+                    .await 
+                {
+                    Ok(resp) => {
+                        if resp.status().is_success() {
+                            Ok(serde_json::json!({ "success": true, "message": "Breathe effect started" }))
+                        } else {
+                            Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                        }
+                    }
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                }
+            } else {
+                Err("Missing selector argument".into())
+            }
+        }
+
         // Notification commands
         "get_notification_rules" => {
             let user_config = crate::services::config::SamUserConfig::load();
