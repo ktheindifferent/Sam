@@ -1889,6 +1889,121 @@ const TouchMediaEnhancements = (function() {
         
         const event = new CustomEvent('touch-sensitivity-change', { detail: { level } });
         document.dispatchEvent(event);
+        
+        // Update UI if sensitivity panel exists
+        const panel = document.querySelector('.touch-sensitivity-panel');
+        if (panel) {
+            panel.querySelectorAll('.sensitivity-option').forEach(opt => {
+                opt.classList.toggle('active', opt.dataset.sensitivity === level);
+            });
+        }
+        
+        // Show sensitivity badge
+        showSensitivityBadge(level);
+    }
+    
+    function showSensitivityBadge(level) {
+        let badge = document.querySelector('.sensitivity-badge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'sensitivity-badge';
+            document.body.appendChild(badge);
+        }
+        
+        const icons = {
+            'low': 'fa-hand-paper',
+            'medium': 'fa-hand-pointer',
+            'high': 'fa-bolt'
+        };
+        
+        badge.innerHTML = `<i class="fas ${icons[level] || icons.medium}"></i> ${level.charAt(0).toUpperCase() + level.slice(1)} Sensitivity`;
+        badge.classList.add('visible');
+        
+        setTimeout(() => badge.classList.remove('visible'), 2000);
+    }
+    
+    function showVelocityIndicator(velocity) {
+        let indicator = document.querySelector('.velocity-indicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.className = 'velocity-indicator';
+            indicator.innerHTML = `
+                <span style="color: #adb5bd; font-size: 12px;">Velocity:</span>
+                <div class="velocity-bar">
+                    <div class="velocity-fill"></div>
+                </div>
+                <div class="velocity-value">0</div>
+            `;
+            document.body.appendChild(indicator);
+        }
+        
+        const fill = indicator.querySelector('.velocity-fill');
+        const value = indicator.querySelector('.velocity-value');
+        const percentage = Math.min(100, velocity * 10);
+        
+        fill.style.width = percentage + '%';
+        value.textContent = velocity.toFixed(1);
+        
+        indicator.classList.add('visible');
+        
+        clearTimeout(indicator.timeout);
+        indicator.timeout = setTimeout(() => {
+            indicator.classList.remove('visible');
+        }, 1000);
+    }
+    
+    function showEdgeSwipeHints() {
+        let hints = document.querySelectorAll('.edge-swipe-hint');
+        if (hints.length === 0) {
+            const leftHint = document.createElement('div');
+            leftHint.className = 'edge-swipe-hint visible';
+            document.body.appendChild(leftHint);
+            
+            const rightHint = document.createElement('div');
+            rightHint.className = 'edge-swipe-hint right visible';
+            document.body.appendChild(rightHint);
+            
+            setTimeout(() => {
+                leftHint.classList.remove('visible');
+                rightHint.classList.remove('visible');
+                setTimeout(() => {
+                    leftHint.remove();
+                    rightHint.remove();
+                }, 300);
+            }, 3000);
+        }
+    }
+    
+    function showThreeFingerTutorial() {
+        let tutorial = document.querySelector('.three-finger-tutorial');
+        if (!tutorial) {
+            tutorial = document.createElement('div');
+            tutorial.className = 'three-finger-tutorial';
+            tutorial.innerHTML = `
+                <div class="tutorial-content">
+                    <div class="tutorial-icon">
+                        <i class="fas fa-hand-paper"></i>
+                    </div>
+                    <h3>Three-Finger Swipe</h3>
+                    <p>Use three fingers to access quick controls:</p>
+                    <ul style="text-align: left; color: #adb5bd; margin: 15px 0; padding-left: 20px;">
+                        <li>Swipe Up: Quick Scenes Panel</li>
+                        <li>Swipe Down: Media Sync Panel</li>
+                        <li>Swipe Left: Previous Scene</li>
+                        <li>Swipe Right: Next Scene</li>
+                    </ul>
+                    <div class="tutorial-buttons">
+                        <button class="tutorial-btn tutorial-btn-primary" onclick="this.closest('.three-finger-tutorial').remove()">Got It</button>
+                        <button class="tutorial-btn tutorial-btn-secondary" onclick="this.closest('.three-finger-tutorial').remove(); localStorage.setItem('three-finger-tutorial-shown', 'true')">Don't Show Again</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(tutorial);
+            
+            setTimeout(() => tutorial.classList.add('visible'), 10);
+        } else {
+            tutorial.classList.add('visible');
+        }
     }
 
     function toggleMediaSyncPanel() {
@@ -3630,7 +3745,18 @@ const TouchMediaEnhancements = (function() {
         setupRhythmSync,
         resetCalibration,
         getCalibrationData: () => calibrationData,
-        isCalibrating: () => calibrationData.isCalibrating
+        isCalibrating: () => calibrationData.isCalibrating,
+        triggerLifxBeat,
+        triggerLifxBeatMultiZone,
+        updateLifxFromAudio,
+        detectBeat,
+        initAudioAnalyzer,
+        getMediaPlaybackState: () => mediaPlaybackState,
+        getMediaSyncMode: () => mediaSyncMode,
+        isMediaSyncActive: () => mediaSyncActive,
+        getCurrentBpm: () => currentBpm,
+        setMediaSyncActive: (active) => { mediaSyncActive = active; },
+        setCurrentBpm: (bpm) => { currentBpm = bpm; }
     };
 })();
 

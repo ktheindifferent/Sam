@@ -695,6 +695,144 @@ Licensed under GPLv3....see LICENSE file. -->
       <i class="fas fa-times"></i>
     </button>
   </div>
+
+  <!-- Touch sensitivity panel -->
+  <div class="touch-sensitivity-panel" id="touch-sensitivity-panel" style="display: none;">
+    <h5 style="color: #27a0b9; margin-bottom: 15px;"><i class="fas fa-hand-pointer"></i> Touch Sensitivity</h5>
+    <div class="sensitivity-options">
+      <button class="sensitivity-option" data-sensitivity="low" onclick="TouchMediaEnhancements.setTouchSensitivity('low')">
+        <i class="fas fa-hand-paper"></i> Low
+      </button>
+      <button class="sensitivity-option active" data-sensitivity="medium" onclick="TouchMediaEnhancements.setTouchSensitivity('medium')">
+        <i class="fas fa-hand-pointer"></i> Medium
+      </button>
+      <button class="sensitivity-option" data-sensitivity="high" onclick="TouchMediaEnhancements.setTouchSensitivity('high')">
+        <i class="fas fa-bolt"></i> High
+      </button>
+    </div>
+  </div>
+
+  <!-- Velocity indicator -->
+  <div class="velocity-indicator" id="velocity-indicator">
+    <span style="color: #adb5bd; font-size: 12px;">Velocity:</span>
+    <div class="velocity-bar">
+      <div class="velocity-fill"></div>
+    </div>
+    <div class="velocity-value">0</div>
+  </div>
+
+  <!-- Edge swipe hints -->
+  <div class="edge-swipe-hint left-edge-hint" id="left-edge-hint">
+    <i class="fas fa-chevron-right"></i>
+  </div>
+  <div class="edge-swipe-hint right-edge-hint" id="right-edge-hint">
+    <i class="fas fa-chevron-left"></i>
+  </div>
+
+  <!-- Three-finger tutorial -->
+  <div class="three-finger-tutorial" id="three-finger-tutorial" style="display: none;">
+    <div class="tutorial-content">
+      <div class="tutorial-icon">
+        <i class="fas fa-hand-paper"></i>
+      </div>
+      <h3>Three-Finger Swipe</h3>
+      <p>Use three fingers to access quick controls:</p>
+      <ul style="text-align: left; color: #adb5bd; margin: 15px 0; padding-left: 20px;">
+        <li>Swipe Up: Quick Scenes Panel</li>
+        <li>Swipe Down: Media Sync Panel</li>
+        <li>Swipe Left: Previous Scene</li>
+        <li>Swipe Right: Next Scene</li>
+      </ul>
+      <div class="tutorial-buttons">
+        <button class="tutorial-btn tutorial-btn-primary" onclick="this.closest('.three-finger-tutorial').classList.remove('visible')">Got It</button>
+        <button class="tutorial-btn tutorial-btn-secondary" onclick="this.closest('.three-finger-tutorial').classList.remove('visible'); localStorage.setItem('three-finger-tutorial-shown', 'true')">Don't Show Again</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gesture hint overlay -->
+  <div class="gesture-hint-overlay" id="gesture-hint-overlay"></div>
+
+  <!-- Pinch brightness indicator -->
+  <div class="pinch-brightness-indicator" id="pinch-brightness-indicator">
+    <i class="fas fa-sun"></i>
+    <span>50%</span>
+  </div>
+
+  <!-- Swipe indicator -->
+  <div class="swipe-indicator" id="swipe-indicator"></div>
+
+  <!-- Three-finger swipe indicator -->
+  <div class="three-finger-indicator" id="three-finger-indicator"></div>
+
+  <!-- Scene particles container -->
+  <div class="scene-particles-container" id="scene-particles-container"></div>
+
+  <!-- Beat visualization container -->
+  <div class="beat-visualization-container" id="beat-visualization-container"></div>
+
+  <!-- Party mode visualizer -->
+  <div class="party-mode-visualizer" id="party-mode-visualizer" style="display: none;"></div>
+
+  <!-- Media visualization container -->
+  <div class="media-visualization-container" id="media-visualization-container"></div>
+
+  <!-- Circular color picker -->
+  <div class="circular-color-picker" id="circular-color-picker" style="display: none;"></div>
+
+  <!-- Color temperature picker -->
+  <div class="color-temp-gradient" id="color-temp-gradient" style="display: none;">
+    <div class="color-temp-indicator"></div>
+  </div>
+
+  <!-- Quick scenes panel -->
+  <div class="quick-scenes-panel" id="quick-scenes-panel">
+    <div class="quick-scenes-panel-header">
+      <h4><i class="fas fa-palette"></i> Quick Scenes</h4>
+      <button class="quick-scenes-panel-close" onclick="TouchMediaEnhancements.toggleQuickScenesPanel()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="quick-scenes-panel-content">
+      <div class="quick-scenes-grid" id="quick-scenes-grid"></div>
+    </div>
+  </div>
+
+  <!-- Media sync panel (enhanced) -->
+  <div class="media-sync-panel" id="media-sync-panel-enhanced">
+    <div class="media-sync-panel-header">
+      <h4><i class="fas fa-lightbulb"></i> LIFX Media Sync</h4>
+      <button class="media-sync-panel-close" onclick="TouchMediaEnhancements.toggleMediaSyncPanel()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="media-sync-panel-content">
+      <div class="sync-mode-buttons">
+        <button class="sync-mode-btn active" data-mode="beat" onclick="TouchMediaEnhancements.setMediaSyncMode('beat')">
+          <i class="fas fa-heartbeat"></i>
+          <span>Beat Sync</span>
+        </button>
+        <button class="sync-mode-btn" data-mode="ambient" onclick="TouchMediaEnhancements.setMediaSyncMode('ambient')">
+          <i class="fas fa-film"></i>
+          <span>Ambient</span>
+        </button>
+        <button class="sync-mode-btn" data-mode="spectrum" onclick="TouchMediaEnhancements.setMediaSyncMode('spectrum')">
+          <i class="fas fa-wave-square"></i>
+          <span>Full Spectrum</span>
+        </button>
+      </div>
+      
+      <div class="beat-detection-calibration" id="beat-detection-calibration">
+        <h5 style="color: #27a0b9; margin-bottom: 10px;"><i class="fas fa-microchip"></i> Beat Detection</h5>
+        <div class="calibration-stats"></div>
+      </div>
+      
+      <div class="media-sync-dashboard" id="media-sync-dashboard">
+        <h5 style="color: #27a0b9; margin-bottom: 10px;"><i class="fas fa-tachometer-alt"></i> Sync Status</h5>
+        <div class="sync-status-grid"></div>
+      </div>
+    </div>
+  </div>
 </body>
 
 </html>
