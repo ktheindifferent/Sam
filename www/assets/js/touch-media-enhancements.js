@@ -868,25 +868,127 @@ const TouchMediaEnhancements = (function() {
             beat: [15],
             beatStrong: [30],
             beatDouble: [15, 40, 15],
+            beatSync: [25, 15, 25],
             swipe: [8],
+            swipeFast: [12],
+            swipeSlow: [5],
             tap: [5],
+            tapSoft: [3],
+            tapFirm: [8],
             hold: [25],
+            holdLong: [50],
             release: [10],
             snap: [3],
             click: [8],
+            clickSoft: [5],
+            clickFirm: [12],
             toggle: [12],
+            toggleOn: [10, 15],
+            toggleOff: [15, 10],
             slide: [5, 5, 5],
             zoom: [10, 20, 10],
+            zoomIn: [10, 15],
+            zoomOut: [15, 10],
             scroll: [3],
             select: [15],
+            selectMulti: [15, 20, 15],
             deselect: [8],
             activate: [20],
             deactivate: [10],
             start: [30, 50, 30],
             stop: [50, 50],
             complete: [50, 100, 50],
-            error: [100, 50, 100, 50, 100],
-            critical: [200, 100, 200, 100, 200]
+            critical: [200, 100, 200, 100, 200],
+            scene: [20, 30, 20],
+            sceneApply: [18, 25, 18],
+            sceneChange: [15, 30, 15],
+            color: [10],
+            colorPick: [12, 8, 12],
+            colorCycle: [8, 8, 8],
+            brightness: [12],
+            brightnessUp: [10, 15],
+            brightnessDown: [15, 10],
+            zone: [15, 25, 15],
+            zoneStart: [15, 20],
+            zoneMiddle: [15, 20, 15],
+            zoneEnd: [20, 15],
+            effect: [20, 15, 20],
+            effectStart: [25, 15, 25],
+            effectStop: [20, 20],
+            bpm: [15, 25, 15],
+            bpmDetect: [25, 15, 25],
+            bpmSync: [20, 20, 20],
+            visualization: [10, 15, 10],
+            vizBar: [5],
+            vizPeak: [15],
+            ambient: [8, 12, 8],
+            party: [30, 20, 30, 20, 30],
+            partyMode: [30, 20, 30, 20, 30],
+            focus: [15, 25, 15],
+            relax: [20, 40, 20],
+            energy: [25, 15, 25, 15, 25],
+            sleep: [10, 20, 10, 20],
+            wake: [15, 15, 15, 15, 15],
+            sunrise: [10, 15, 20, 15, 10],
+            sunset: [10, 15, 10, 15, 10],
+            storm: [30, 20, 30, 50, 30],
+            fireplace: [15, 25, 15, 25, 15],
+            ocean: [20, 30, 20, 30, 20],
+            forest: [15, 20, 15, 20, 15],
+            aurora: [20, 15, 20, 15, 20],
+            bulbSelect: [12],
+            bulbDeselect: [8],
+            bulbPower: [15, 40, 15],
+            bulbBrighten: [10, 15],
+            bulbDim: [15, 10],
+            groupAction: [15, 20, 15],
+            presetApply: [18, 25, 18],
+            sliderAdjust: [5],
+            menuOpen: [8, 12],
+            menuClose: [12, 8],
+            contextMenu: [25, 40, 25],
+            dragStart: [10],
+            dragEnd: [8],
+            drop: [12, 8, 12],
+            expand: [10, 15, 10],
+            collapse: [10, 10],
+            refresh: [15, 10, 15],
+            save: [20, 30, 20],
+            delete: [30, 20, 30],
+            undo: [15, 20, 15],
+            redo: [15, 10, 15, 20],
+            play: [15, 20],
+            pause: [20, 15],
+            stop: [20, 10],
+            next: [12, 18],
+            previous: [18, 12],
+            volumeUp: [8, 12],
+            volumeDown: [12, 8],
+            mute: [15, 15],
+            threeFinger: [5, 5, 5],
+            threeFingerUp: [10, 15, 10],
+            threeFingerDown: [10, 10, 15],
+            threeFingerLeft: [15, 10, 10],
+            threeFingerRight: [10, 10, 15],
+            powerToggle: [15, 40, 15],
+            velocity: [10, 30, 5],
+            swipeHint: [8],
+            gesture: [10, 20, 10],
+            mediaAction: [20, 30, 20],
+            longPress: [30, 50, 30],
+            doubleTap: [15, 40, 15],
+            calibration: [10, 15, 10, 15, 10],
+            calibrationStart: [15, 20, 15],
+            calibrationEnd: [20, 30, 20],
+            sync: [20, 20, 20],
+            syncStart: [15, 25, 15],
+            syncEnd: [25, 15, 25],
+            connected: [15, 30, 15],
+            disconnected: [30, 30],
+            loading: [5, 10, 5, 10, 5],
+            progress: [5, 5, 5],
+            download: [12, 18, 12, 18],
+            upload: [18, 12, 18, 12]
         };
         
         // Expose haptic function globally
@@ -1337,6 +1439,18 @@ const TouchMediaEnhancements = (function() {
         });
     }
 
+    function getVelocityHapticPattern(velocity, basePattern = 'swipe') {
+        const intensity = Math.min(3, Math.max(1, Math.ceil(velocity / 3)));
+        
+        if (intensity === 1) {
+            return hapticPatterns.swipeSlow || [5];
+        } else if (intensity === 2) {
+            return hapticPatterns.swipe || [8];
+        } else {
+            return hapticPatterns.swipeFast || [12];
+        }
+    }
+    
     function handleSwipe(direction, deltaTime = 0) {
         const velocity = deltaTime > 0 ? 1000 / deltaTime : 0;
         console.log(`[TouchMediaEnhancements] Swipe detected: ${direction} (${deltaTime}ms, velocity: ${velocity.toFixed(1)})`);
@@ -1344,7 +1458,6 @@ const TouchMediaEnhancements = (function() {
         const event = new CustomEvent('swipe-gesture', { detail: { direction, deltaTime, velocity } });
         document.dispatchEvent(event);
         
-        // Show enhanced swipe indicator with velocity-based styling
         const indicator = document.createElement('div');
         indicator.className = 'swipe-indicator visible swipe-enhanced';
         
@@ -1355,7 +1468,6 @@ const TouchMediaEnhancements = (function() {
             'right': 'fa-chevron-right'
         };
         
-        // Velocity-based color (blue -> purple -> pink -> red)
         const hue = Math.min(360, 180 + velocity * 20);
         const scale = Math.min(1.5, 1 + velocity * 0.005);
         
@@ -1377,17 +1489,23 @@ const TouchMediaEnhancements = (function() {
         `;
         document.body.appendChild(indicator);
         
-        // Create swipe trail particles for fast swipes
         if (velocity > 2 && CONFIG.animationsEnabled) {
             createSwipeTrail(direction, velocity, hue);
         }
         
         setTimeout(() => indicator.remove(), 600);
         
-        // Velocity-based haptic feedback
         if (CONFIG.hapticFeedback) {
+            const hapticPattern = getVelocityHapticPattern(velocity, 'swipe');
             const hapticStrength = Math.min(30, 8 + Math.floor(velocity));
-            navigator.vibrate?.([hapticStrength, 30, hapticStrength / 2]);
+            
+            if (velocity > 4) {
+                navigator.vibrate?.([hapticStrength, 20, hapticStrength / 2, 15, hapticStrength / 3]);
+            } else if (velocity > 2) {
+                navigator.vibrate?.([hapticStrength, 30, hapticStrength / 2]);
+            } else {
+                navigator.vibrate?.(hapticPattern);
+            }
         }
     }
     
@@ -1459,29 +1577,29 @@ const TouchMediaEnhancements = (function() {
         
         setTimeout(() => indicator.remove(), 700);
         
-        // Enhanced haptic for three-finger
         if (CONFIG.hapticFeedback) {
-            navigator.vibrate?.([10, 20, 10]);
+            const directionPattern = {
+                'three-finger-up': hapticPatterns.threeFingerUp || [10, 15, 10],
+                'three-finger-down': hapticPatterns.threeFingerDown || [10, 10, 15],
+                'three-finger-left': hapticPatterns.threeFingerLeft || [15, 10, 10],
+                'three-finger-right': hapticPatterns.threeFingerRight || [10, 10, 15]
+            };
+            navigator.vibrate?.(directionPattern[direction] || hapticPatterns.threeFinger);
         }
         
-        // Handle three-finger actions
         switch(direction) {
             case 'three-finger-up':
-                // Show all scenes
                 toggleQuickScenesPanel();
                 break;
             case 'three-finger-down':
-                // Quick settings
                 toggleMediaSyncPanel();
                 break;
             case 'three-finger-left':
-                // Previous scene
                 if (typeof LifXTouchControls !== 'undefined') {
                     LifXTouchControls.previousScene?.();
                 }
                 break;
             case 'three-finger-right':
-                // Next scene
                 if (typeof LifXTouchControls !== 'undefined') {
                     LifXTouchControls.nextScene?.();
                 }
@@ -2002,15 +2120,21 @@ const TouchMediaEnhancements = (function() {
         const bassRange = dataArray.slice(0, 8);
         const subBassRange = dataArray.slice(0, 4);
         const lowMidRange = dataArray.slice(8, 16);
+        const midRange = dataArray.slice(16, 32);
+        const highMidRange = dataArray.slice(32, 48);
         
         const bassAvg = bassRange.reduce((a, b) => a + b, 0) / bassRange.length;
         const subBassAvg = subBassRange.reduce((a, b) => a + b, 0) / subBassRange.length;
         const lowMidAvg = lowMidRange.reduce((a, b) => a + b, 0) / lowMidRange.length;
+        const midAvg = midRange.reduce((a, b) => a + b, 0) / midRange.length;
         const bassPeak = Math.max(...bassRange);
+        const subBassPeak = Math.max(...subBassRange);
         
         const currentBeatEnergy = bassAvg / 255;
         const subBassEnergy = subBassAvg / 255;
         const energyRatio = subBassEnergy / (currentBeatEnergy + 0.01);
+        const bassToMidRatio = bassAvg / (midAvg + 1);
+        const spectralBalance = (bassAvg + subBassAvg * 1.5) / (lowMidAvg + midAvg + 1);
         
         beatEnergyHistory.push(currentBeatEnergy);
         if (beatEnergyHistory.length > maxBeatEnergyHistory) {
@@ -2018,31 +2142,43 @@ const TouchMediaEnhancements = (function() {
         }
         
         const avgEnergy = beatEnergyHistory.reduce((a, b) => a + b, 0) / beatEnergyHistory.length;
+        const energyVariance = beatEnergyHistory.reduce((sum, val) => sum + Math.pow(val - avgEnergy, 2), 0) / beatEnergyHistory.length;
+        const energyStdDev = Math.sqrt(energyVariance);
         const energyChange = currentBeatEnergy - lastBeatEnergy;
         const energyAcceleration = energyChange - (beatEnergyHistory[beatEnergyHistory.length - 2] - beatEnergyHistory[beatEnergyHistory.length - 3] || 0);
+        const energySpike = currentBeatEnergy > (avgEnergy + energyStdDev * 1.5);
         
         const now = Date.now();
         const timeSinceLastBeat = now - lastBeatTime;
         const expectedInterval = bpmHistory.length > 0 ? 60000 / bpmHistory[bpmHistory.length - 1] : 500;
         const intervalDeviation = Math.abs(timeSinceLastBeat - expectedInterval) / expectedInterval;
+        const intervalConsistency = intervalDeviation < 0.3;
         
         const calibratedThreshold = calibrationData.isCalibrating 
             ? beatThreshold 
-            : calibrationData.baselineEnergy + ((calibrationData.peakEnergy - calibrationData.baselineEnergy) * 0.6);
+            : calibrationData.baselineEnergy + ((calibrationData.peakEnergy - calibrationData.baselineEnergy) * 0.55);
         
-        const dynamicThreshold = Math.max(0.4, Math.min(0.95, 
+        const rhythmBonus = intervalConsistency ? 0.05 : 0;
+        const spectralBonus = spectralBalance > 1.2 ? 0.03 : 0;
+        
+        const dynamicThreshold = Math.max(0.35, Math.min(0.90, 
             calibratedThreshold
-            - (avgEnergy * 0.15) 
-            - (Math.max(0, energyChange) * 0.1)
-            - (Math.max(0, energyAcceleration) * 0.05)
-            + (intervalDeviation * 0.2)
+            - (avgEnergy * 0.12) 
+            - (Math.max(0, energyChange) * 0.08)
+            - (Math.max(0, energyAcceleration) * 0.04)
+            - rhythmBonus
+            - spectralBonus
+            + (intervalDeviation * 0.15)
+            + (energyStdDev * 0.1)
         ));
         
         const isBeat = bassPeak > dynamicThreshold * 255 
-            && timeSinceLastBeat > 150 
-            && timeSinceLastBeat < 1500
-            && subBassEnergy > 0.4
-            && energyRatio > 0.7;
+            && timeSinceLastBeat > 120 
+            && timeSinceLastBeat < 1800
+            && subBassEnergy > 0.35
+            && energyRatio > 0.65
+            && bassToMidRatio > 1.1
+            && (energySpike || intervalConsistency);
         
         if (isBeat) {
             lastBeatTime = now;
