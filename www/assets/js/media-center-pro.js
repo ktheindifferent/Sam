@@ -279,9 +279,167 @@
                 this.state.compressor.connect(this.state.audioContext.destination);
 
                 this.state.volume = this.config.defaultVolume / 100;
+                
+                this.setupEnhancedBeatDetection();
             } catch (e) {
                 console.warn('[MediaCenterPro] Audio context not available:', e);
             }
+        },
+        
+        setupEnhancedBeatDetection() {
+            this.beatDetection = {
+                bpm: 0,
+                bpmHistory: [],
+                maxBpmHistory: 30,
+                lastBeatTime: 0,
+                beatThreshold: 1.2,
+                beatCount: 0,
+                energyLevel: 0,
+                lowEnergy: 0,
+                midEnergy: 0,
+                highEnergy: 0,
+                beatHistory: [],
+                maxBeatHistory: 8,
+                smoothingFactor: 0.3,
+                minBpm: 60,
+                maxBpm: 200,
+                lastBeatEnergy: 0,
+                consecutiveBeats: 0,
+                missedBeats: 0,
+                confidence: 0,
+                phase: 'detecting'
+            };
+            
+            console.log('[MediaCenterPro] Enhanced beat detection initialized');
+        },
+        
+        analyzeBeat(dataArray) {
+            if (!this.beatDetection || !dataArray) return;
+            
+            const chunkSize = Math.floor(dataArray.length / 3);
+            let lowSum = 0, midSum = 0, highSum = 0;
+            
+            for (let i = 0; i < chunkSize; i++) {
+                lowSum += dataArray[i];
+                midSum += dataArray[i + chunkSize];
+                highSum += dataArray[i + chunkSize * 2];
+            }
+            
+            const lowEnergy = lowSum / chunkSize;
+            const midEnergy = midSum / chunkSize;
+            const highEnergy = highSum / chunkSize;
+            const currentEnergy = lowEnergy * 0.6 + midEnergy * 0.3 + highEnergy * 0.1;
+            
+            this.beatDetection.lowEnergy = lowEnergy;
+            this.beatDetection.midEnergy = midEnergy;
+            this.beatDetection.highEnergy = highEnergy;
+            
+            const timeSinceLastBeat = Date.now() - this.beatDetection.lastBeatTime;
+            const minBeatInterval = 60000 / this.beatDetection.maxBpm;
+            const maxBeatInterval = 60000 / this.beatDetection.minBpm;
+            
+            let beatDetected = false;
+            
+            if (currentEnergy > this.beatDetection.energyLevel * this.beatDetection.beatThreshold &&
+                timeSinceLastBeat > minBeatInterval &&
+                timeSinceLastBeat < maxBeatInterval) {
+                beatDetected = true;
+                this.beatDetection.lastBeatTime = Date.now();
+                this.beatDetection.beatCount++;
+                this.beatDetection.consecutiveBeats++;
+                this.beatDetection.lastBeatEnergy = currentEnergy;
+                
+                if (this.beatDetection.beatHistory.length > 0) {
+                    const intervals = [];
+                    for (let i = 1; i < this.beatDetection.beatHistory.length; i++) {
+                        intervals.push(this.beatDetection.beatHistory[i] - this.beatDetection.beatHistory[i - 1]);
+                    }
+                    
+                    if (intervals.length >= 2) {
+                        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                        this.beatDetection.bpm = Math.round(60000 / avgInterval);
+                        
+                        if (this.beatDetection.bpm < this.beatDetection.minBpm || 
+                            this.beatDetection.bpm > this.beatDetection.maxBpm) {
+                            this.beatDetection.bpm = this.beatDetection.bpmHistory.length > 0 ?
+                                this.beatDetection.bpmHistory.reduce((a, b) => a + b, 0) / this.beatDetection.bpmHistory.length :
+                                120;
+                        }
+                        
+                        this.beatDetection.bpmHistory.push(this.beatDetection.bpm);
+                        if (this.beatDetection.bpmHistory.length > this.beatDetection.maxBpmHistory) {
+                            this.beatDetection.bpmHistory.shift();
+                        }
+                        
+                        const validBpms = this.beatDetection.bpmHistory.filter(bpm => 
+                            bpm >= this.beatDetection.minBpm && bpm <= this.beatDetection.maxBpm
+                        );
+                        
+                        if (validBpms.length > 0) {
+                            this.beatDetection.bpm = Math.round(
+                                validBpms.reduce((a, b) => a + b, 0) / validBpms.length
+                            );
+                        }
+                        
+                        this.beatDetection.confidence = Math.min(100, (validBpms.length / 10) * 100);
+                    }
+                }
+                
+                this.beatDetection.beatHistory.push(Date.now());
+                if (this.beatDetection.beatHistory.length > this.beatDetection.maxBeatHistory) {
+                    this.beatDetection.beatHistory.shift();
+                }
+                
+                this.onBeatDetected();
+            }
+            
+            if (timeSinceLastBeat > maxBeatInterval) {
+                this.beatDetection.missedBeats++;
+                if (this.beatDetection.missedBeats > 3) {
+                    this.beatDetection.consecutiveBeats = 0;
+                    this.beatDetection.missedBeats = 0;
+                }
+            }
+            
+            this.beatDetection.energyLevel = currentEnergy * this.beatDetection.smoothingFactor + 
+                this.beatDetection.energyLevel * (1 - this.beatDetection.smoothingFactor);
+            
+            return beatDetected;
+        },
+        
+        onBeatDetected() {
+            if (window.LifXTouchControls && window.LifXTouchControls.mediaSyncActive) {
+                window.LifXTouchControls.flashOnBeat();
+            }
+            
+            this.updateBpmDisplay();
+        },
+        
+        updateBpmDisplay() {
+            const bpmElement = document.getElementById('bpm-realtime-value');
+            if (bpmElement) {
+                bpmElement.textContent = this.beatDetection.bpm || '--';
+                bpmElement.style.transform = 'scale(1.2)';
+                setTimeout(() => bpmElement.style.transform = 'scale(1)', 100);
+            }
+            
+            const beatIcon = document.getElementById('beat-pulse-icon');
+            if (beatIcon) {
+                beatIcon.style.transform = 'scale(1.3) rotate(10deg)';
+                setTimeout(() => beatIcon.style.transform = 'scale(1) rotate(0deg)', 100);
+            }
+        },
+        
+        getBpmData() {
+            return {
+                bpm: this.beatDetection?.bpm || 0,
+                confidence: this.beatDetection?.confidence || 0,
+                energyLevel: this.beatDetection?.energyLevel || 0,
+                lowEnergy: this.beatDetection?.lowEnergy || 0,
+                midEnergy: this.beatDetection?.midEnergy || 0,
+                highEnergy: this.beatDetection?.highEnergy || 0,
+                consecutiveBeats: this.beatDetection?.consecutiveBeats || 0
+            };
         },
 
         setupEqualizerBands() {
@@ -407,6 +565,8 @@
                 const dataArray = new Uint8Array(this.state.analyser.frequencyBinCount);
                 this.state.analyser.getByteFrequencyData(dataArray);
                 this.state.visualizerData = dataArray;
+
+                this.analyzeBeat(dataArray);
 
                 const bars = document.querySelectorAll('.viz-bar');
                 bars.forEach((bar, i) => {

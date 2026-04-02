@@ -44,6 +44,15 @@ const LifXTouchControls = {
         longPressDelay: 350,
         doubleTapDelay: 200
     },
+    gestureAccuracyMetrics: {
+        totalGestures: 0,
+        successfulGestures: 0,
+        failedGestures: 0,
+        averageVelocity: 0,
+        successRate: 100,
+        learningMode: true,
+        personalizedThresholds: {}
+    },
     gestureHints: {
         enabled: true,
         position: 'center',
@@ -3436,7 +3445,12 @@ const LifXTouchControls = {
     
     recordGestureSuccess: function() {
         this.gestureSuccessCount++;
+        this.gestureAccuracyMetrics.totalGestures++;
+        this.gestureAccuracyMetrics.successfulGestures++;
+        this.gestureAccuracyMetrics.successRate = 
+            (this.gestureAccuracyMetrics.successfulGestures / this.gestureAccuracyMetrics.totalGestures) * 100;
         this.adjustSensitivity(true);
+        this.saveGestureMetrics();
     },
     
     adjustSensitivity: function(success, gestureType = null) {
@@ -3759,9 +3773,53 @@ const LifXTouchControls = {
     recordGestureFail: function(gestureType, distance = 0) {
         if (!this.adaptiveSensitivityEnabled) return;
         this.gestureFailCount++;
+        this.gestureAccuracyMetrics.totalGestures++;
+        this.gestureAccuracyMetrics.failedGestures++;
+        this.gestureAccuracyMetrics.successRate = 
+            (this.gestureAccuracyMetrics.successfulGestures / this.gestureAccuracyMetrics.totalGestures) * 100;
         this.lastMissedGestures.push({ type: gestureType, distance, timestamp: Date.now() });
         if (this.lastMissedGestures.length > 5) this.lastMissedGestures.shift();
         this.saveAdaptiveSensitivityStats();
+        this.saveGestureMetrics();
+    },
+    
+    saveGestureMetrics: function() {
+        localStorage.setItem('lifx_gesture_metrics', JSON.stringify({
+            totalGestures: this.gestureAccuracyMetrics.totalGestures,
+            successfulGestures: this.gestureAccuracyMetrics.successfulGestures,
+            failedGestures: this.gestureAccuracyMetrics.failedGestures,
+            successRate: this.gestureAccuracyMetrics.successRate,
+            averageVelocity: this.gestureAccuracyMetrics.averageVelocity,
+            lastUpdated: Date.now()
+        }));
+    },
+    
+    loadGestureMetrics: function() {
+        const saved = localStorage.getItem('lifx_gesture_metrics');
+        if (saved) {
+            try {
+                const metrics = JSON.parse(saved);
+                Object.assign(this.gestureAccuracyMetrics, metrics);
+                console.log('[LIFX] Loaded gesture metrics:', this.gestureAccuracyMetrics.successRate.toFixed(1) + '% success rate');
+            } catch (e) {
+                console.error('[LIFX] Failed to load gesture metrics:', e);
+            }
+        }
+    },
+    
+    getGestureAccuracyReport: function() {
+        const total = this.gestureAccuracyMetrics.totalGestures;
+        const success = this.gestureAccuracyMetrics.successfulGestures;
+        const rate = this.gestureAccuracyMetrics.successRate;
+        
+        if (total === 0) return 'No gesture data yet';
+        
+        let quality = 'Excellent';
+        if (rate < 70) quality = 'Needs Improvement';
+        else if (rate < 85) quality = 'Good';
+        else if (rate < 95) quality = 'Very Good';
+        
+        return `${quality} - ${success}/${total} gestures successful (${rate.toFixed(1)}%)`;
     },
     
     saveAdaptiveSensitivityStats: function() {
@@ -8907,6 +8965,62 @@ const LifXTouchControls = {
             this.audioContext = null;
         }
         this.showEnhancedGestureFeedback('Media Sync Stopped', '🔇');
+    },
+    
+    flashOnBeat: function() {
+        if (!this.mediaSyncActive || !this.beatFlashEnabled) return;
+        
+        const selectedBulbs = this.multiBulbSelection.length > 0 ? 
+            this.multiBulbSelection : [this.selectedBulb];
+        
+        const flashBrightness = 0.5 + Math.random() * 0.5;
+        const flashColor = this.getCurrentFlashColor();
+        
+        $.ajax({
+            url: '/api/services/lifx/set_state',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                selector: selectedBulbs.filter(b => b).join(',') || 'all',
+                brightness: flashBrightness,
+                duration: 0.05
+            }),
+            error: () => {}
+        });
+        
+        if (flashColor) {
+            setTimeout(() => {
+                $.ajax({
+                    url: '/api/services/lifx/set_color',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        selector: selectedBulbs.filter(b => b).join(',') || 'all',
+                        color: flashColor,
+                        duration: 0.05
+                    }),
+                    error: () => {}
+                });
+            }, 50);
+        }
+        
+        this.lastBeatFlash = Date.now();
+    },
+    
+    getCurrentFlashColor: function() {
+        if (!this.colorFlowActive) return null;
+        
+        const colors = [
+            'hue:0',
+            'hue:10920',
+            'hue:21840',
+            'hue:32760',
+            'hue:43680',
+            'hue:54600'
+        ];
+        
+        const index = Math.floor(Date.now() / 1000) % colors.length;
+        return colors[index];
     },
     
     initMediaSync: function() {
