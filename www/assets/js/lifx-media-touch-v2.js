@@ -172,7 +172,12 @@
             { id: 'hearth', name: 'Hearth', icon: '🏠', hue: 7098, saturation: 32767, brightness: 39321, kelvin: 2600 },
             { id: 'forge', name: 'Forge', icon: '⚒️', hue: 5460, saturation: 52428, brightness: 58982, kelvin: 2800 },
             { id: 'kiln', name: 'Kiln', icon: '🏺', hue: 9100, saturation: 39321, brightness: 52428, kelvin: 3000 },
-            { id: 'furnace', name: 'Furnace', icon: '🔥', hue: 7098, saturation: 45875, brightness: 49151, kelvin: 2700 }
+            { id: 'furnace', name: 'Furnace', icon: '🔥', hue: 7098, saturation: 45875, brightness: 49151, kelvin: 2700 },
+            { id: 'concentrate', name: 'Concentrate', icon: '🧠', hue: 18200, saturation: 12000, brightness: 58982, kelvin: 5200 },
+            { id: 'chromatic', name: 'Chromatic', icon: '🎨', hue: 21840, saturation: 49152, brightness: 52428, kelvin: 4800 },
+            { id: 'magnify', name: 'Magnify', icon: '🔍', hue: 16380, saturation: 19660, brightness: 49151, kelvin: 4600 },
+            { id: 'contemplation', name: 'Contemplation', icon: '💭', hue: 49140, saturation: 26214, brightness: 32767, kelvin: 3800 },
+            { id: 'faded', name: 'Faded', icon: '👻', hue: 0, saturation: 3276, brightness: 39321, kelvin: 5000 }
         ],
 
         effectPresets: [
@@ -383,11 +388,13 @@
 
         handleSwipe(target, horizontal, vertical) {
             const bulbId = target.dataset.bulbId;
+            const now = Date.now();
             
             if (bulbId && horizontal === 'right') {
                 this.toggleBulbPower(bulbId, 'toggle');
                 this.showSwipeHint(horizontal);
                 this.triggerHaptic('swipeRight');
+                this.recordGesture({ type: 'power', selector: `id:${bulbId}`, previousPower: null });
             } else if (bulbId && horizontal === 'left') {
                 this.showBrightnessSlider(bulbId);
                 this.showSwipeHint(horizontal);
@@ -403,6 +410,8 @@
             } else {
                 this.triggerHaptic('swipe');
             }
+            
+            this.state.lastGestureTime = now;
         },
 
         handleGestureStart(e) {
