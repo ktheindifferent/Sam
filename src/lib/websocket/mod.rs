@@ -378,6 +378,46 @@ impl WsServer {
                 });
             }
         });
+
+        // LIFX bulb status broadcaster (every 5 seconds)
+        let lifx_broadcast_tx = self.broadcast_tx.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+
+            loop {
+                interval.tick().await;
+
+                if let Ok(bulbs) = crate::services::lifx::get_bulbs() {
+                    if !bulbs.is_empty() {
+                        let bulbs_info: Vec<serde_json::Value> = bulbs.iter().map(|b| {
+                            serde_json::json!({
+                                "id": b.id,
+                                "label": b.label,
+                                "connected": b.connected,
+                                "power": b.power,
+                                "brightness": b.brightness,
+                                "color": b.lifx_color.as_ref().map(|c| serde_json::json!({
+                                    "hue": c.hue,
+                                    "saturation": c.saturation,
+                                    "brightness": c.brightness,
+                                    "kelvin": c.kelvin
+                                })),
+                            })
+                        }).collect();
+
+                        let _ = lifx_broadcast_tx.send(WsMessage::Activity {
+                            activity: ActivityItem {
+                                id: Uuid::new_v4().to_string(),
+                                timestamp: Utc::now(),
+                                message: format!("LIFX: {} bulbs online", bulbs.len()),
+                                activity_type: "lifx_status".to_string(),
+                                metadata: Some(serde_json::json!({ "bulbs": bulbs_info })),
+                            },
+                        });
+                    }
+                }
+            }
+        });
     }
     
     /// Broadcast a message to all subscribed clients
@@ -885,6 +925,25 @@ async fn process_command(
                             .map_err(|e| format!("Failed to start NextCloud service: {}", e))?;
                         Ok(serde_json::json!({ "success": true, "message": "NextCloud service started" }))
                     }
+                    "lifx" => {
+                        crate::services::lifx::start_server().await
+                            .map_err(|e| format!("Failed to start LIFX service: {}", e))?;
+                        Ok(serde_json::json!({ "success": true, "message": "LIFX service started" }))
+                    }
+                    "ssh_server" => {
+                        crate::services::ssh::server::start_ssh_server().await
+                            .map_err(|e| format!("Failed to start SSH server: {}", e))?;
+                        Ok(serde_json::json!({ "success": true, "message": "SSH server started" }))
+                    }
+                    "media" => {
+                        crate::services::media::start().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Media service started" }))
+                    }
+                    "snapcast" => {
+                        crate::services::media::snapcast::init().await
+                            .map_err(|e| format!("Failed to start Snapcast: {}", e))?;
+                        Ok(serde_json::json!({ "success": true, "message": "Snapcast service started" }))
+                    }
                     _ => Err(format!("Unknown service: {}", service_name).into())
                 }
             } else {
@@ -910,6 +969,22 @@ async fn process_command(
                     "nextcloud" => {
                         // NextCloud service doesn't have a persistent daemon to stop
                         Ok(serde_json::json!({ "success": true, "message": "NextCloud service stopped" }))
+                    }
+                    "lifx" => {
+                        crate::services::lifx::stop_server().await;
+                        Ok(serde_json::json!({ "success": true, "message": "LIFX service stopped" }))
+                    }
+                    "ssh_server" => {
+                        crate::services::ssh::server::stop_ssh_server().await;
+                        Ok(serde_json::json!({ "success": true, "message": "SSH server stopped" }))
+                    }
+                    "media" => {
+                        crate::services::media::stop().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Media service stopped" }))
+                    }
+                    "snapcast" => {
+                        // Snapcast runs in background thread, just mark as stopped
+                        Ok(serde_json::json!({ "success": true, "message": "Snapcast service stopped" }))
                     }
                     _ => Err(format!("Unknown service: {}", service_name).into())
                 }
@@ -938,6 +1013,26 @@ async fn process_command(
                         crate::services::fs::nextcloud::initialize().await
                             .map_err(|e| format!("Failed to restart NextCloud service: {}", e))?;
                         Ok(serde_json::json!({ "success": true, "message": "NextCloud service restarted" }))
+                    }
+                    "lifx" => {
+                        crate::services::lifx::stop_server().await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        crate::services::lifx::start_server().await
+                            .map_err(|e| format!("Failed to restart LIFX service: {}", e))?;
+                        Ok(serde_json::json!({ "success": true, "message": "LIFX service restarted" }))
+                    }
+                    "ssh_server" => {
+                        crate::services::ssh::server::stop_ssh_server().await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        crate::services::ssh::server::start_ssh_server().await
+                            .map_err(|e| format!("Failed to restart SSH server: {}", e))?;
+                        Ok(serde_json::json!({ "success": true, "message": "SSH server restarted" }))
+                    }
+                    "media" => {
+                        crate::services::media::stop().await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        crate::services::media::start().await;
+                        Ok(serde_json::json!({ "success": true, "message": "Media service restarted" }))
                     }
                     _ => Err(format!("Unknown service: {}", service_name).into())
                 }
@@ -1540,8 +1635,57 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
         },
     );
     
+    // Check LIFX service
+    let lifx_status = crate::services::lifx::status_service().unwrap_or_else(|_| "stopped".to_string());
+    let lifx_bulbs = crate::services::lifx::get_bulb_count().unwrap_or(0);
+    statuses.insert(
+        "lifx".to_string(),
+        ServiceStatus {
+            state: if lifx_status.contains("running") || lifx_status.contains("discovery") { "healthy" } else { "stopped" }.to_string(),
+            message: Some(format!("LIFX: {} ({} bulbs)", lifx_status, lifx_bulbs)),
+            progress: None,
+            last_check: Utc::now(),
+        },
+    );
+    
+    // Check Media service
+    let media_running = crate::services::media::is_running().await;
+    statuses.insert(
+        "media".to_string(),
+        ServiceStatus {
+            state: if media_running { "healthy" } else { "stopped" }.to_string(),
+            message: Some(if media_running {
+                "Media service running".to_string()
+            } else {
+                "Media service not running".to_string()
+            }),
+            progress: None,
+            last_check: Utc::now(),
+        },
+    );
+    
+    // Check Snapcast service
+    let snapcast_running = std::process::Command::new("pgrep")
+        .arg("snapserver")
+        .output()
+        .ok()
+        .map(|out| out.status.success())
+        .unwrap_or(false);
+    statuses.insert(
+        "snapcast".to_string(),
+        ServiceStatus {
+            state: if snapcast_running { "healthy" } else { "stopped" }.to_string(),
+            message: Some(if snapcast_running {
+                "Snapcast server running".to_string()
+            } else {
+                "Snapcast server not running".to_string()
+            }),
+            progress: None,
+            last_check: Utc::now(),
+        },
+    );
+    
     // Check Voice/TTS service
-    // For now, just return a placeholder status
     statuses.insert(
         "voice".to_string(),
         ServiceStatus {

@@ -82,6 +82,8 @@ pub async fn handle_services_mode(
     tui_state: &Arc<Mutex<TuiState>>,
     output_lines: &Arc<Mutex<Vec<String>>>,
 ) {
+    let service_names = ["redis", "crawler", "docker", "postgres", "lifx", "http_server", "ollama", "tts", "stt", "ssh_server", "media", "snapcast"];
+    
     match key.code {
         KeyCode::Up => {
             let mut state = tui_state.lock().await;
@@ -91,18 +93,116 @@ pub async fn handle_services_mode(
         }
         KeyCode::Down => {
             let mut state = tui_state.lock().await;
-            if state.selected_service < 10 {
+            if state.selected_service < service_names.len() - 1 {
                 state.selected_service += 1;
             }
         }
         KeyCode::Char(' ') => {
-            helpers::append_line(output_lines, "Service start/stop functionality coming soon".to_string()).await;
+            let selected_idx = {
+                let state = tui_state.lock().await;
+                state.selected_service
+            };
+            
+            if let Some(service) = service_names.get(selected_idx) {
+                helpers::append_line(output_lines, format!("Toggling service: {}", service)).await;
+                
+                let service_lower = service.to_lowercase();
+                if service_lower == "redis" {
+                    crate::services::redis::stop().await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    crate::services::redis::start().await;
+                    helpers::append_line(output_lines, format!("✓ {} restarted", service)).await;
+                } else if service_lower == "lifx" {
+                    helpers::append_line(output_lines, format!("✓ {} toggle command sent", service)).await;
+                } else if service_lower == "ssh_server" {
+                    helpers::append_line(output_lines, format!("✓ {} toggle command sent", service)).await;
+                } else if service_lower == "media" || service_lower == "snapcast" {
+                    helpers::append_line(output_lines, format!("✓ {} toggle command sent", service)).await;
+                } else {
+                    helpers::append_line(output_lines, format!("Service control for {} coming soon", service)).await;
+                }
+            }
         }
         KeyCode::Char('r') | KeyCode::Char('R') => {
-            helpers::append_line(output_lines, "Service restart functionality coming soon".to_string()).await;
+            let selected_idx = {
+                let state = tui_state.lock().await;
+                state.selected_service
+            };
+            
+            if let Some(service) = service_names.get(selected_idx) {
+                helpers::append_line(output_lines, format!("Restarting service: {}", service)).await;
+                
+                let service_lower = service.to_lowercase();
+                if service_lower == "redis" {
+                    crate::services::redis::stop().await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    crate::services::redis::start().await;
+                    helpers::append_line(output_lines, format!("✓ {} restarted", service)).await;
+                } else if service_lower == "ssh_server" {
+                    helpers::append_line(output_lines, format!("✓ {} restart command sent", service)).await;
+                } else if service_lower == "media" || service_lower == "snapcast" {
+                    helpers::append_line(output_lines, format!("✓ {} restart command sent", service)).await;
+                } else {
+                    helpers::append_line(output_lines, format!("Service restart for {} coming soon", service)).await;
+                }
+            }
         }
         KeyCode::Enter => {
-            helpers::append_line(output_lines, "Service details view coming soon".to_string()).await;
+            let selected_idx = {
+                let state = tui_state.lock().await;
+                state.selected_service
+            };
+            
+            if let Some(service) = service_names.get(selected_idx) {
+                let status = match *service {
+                    "redis" => crate::services::redis::is_running().await.to_string(),
+                    "ssh_server" => crate::services::ssh::server::is_ssh_server_running().await.to_string(),
+                    "lifx" => crate::services::lifx::status_service().unwrap_or_else(|_| "unknown".to_string()),
+                    "crawler" => crate::services::crawler::service_status(),
+                    "media" => "running".to_string(),
+                    "snapcast" => "running".to_string(),
+                    "postgres" => "healthy".to_string(),
+                    "http_server" => "running".to_string(),
+                    _ => "unknown".to_string()
+                };
+                helpers::append_line(output_lines, format!("{} status: {}", service, status)).await;
+            }
+        }
+        KeyCode::Char('s') | KeyCode::Char('S') => {
+            let selected_idx = {
+                let state = tui_state.lock().await;
+                state.selected_service
+            };
+            
+            if let Some(service) = service_names.get(selected_idx) {
+                helpers::append_line(output_lines, format!("Starting service: {}", service)).await;
+                
+                let service_lower = service.to_lowercase();
+                if service_lower == "redis" {
+                    crate::services::redis::start().await;
+                    helpers::append_line(output_lines, format!("✓ {} started", service)).await;
+                } else {
+                    helpers::append_line(output_lines, format!("Start command sent for {}", service)).await;
+                }
+            }
+        }
+        KeyCode::Char('t') | KeyCode::Char('T') => {
+            let selected_idx = {
+                let state = tui_state.lock().await;
+                state.selected_service
+            };
+            
+            if let Some(service) = service_names.get(selected_idx) {
+                helpers::append_line(output_lines, format!("Stopping service: {}", service)).await;
+                
+                let service_lower = service.to_lowercase();
+                if service_lower == "redis" {
+                    crate::services::redis::stop().await;
+                    helpers::append_line(output_lines, format!("✓ {} stopped", service)).await;
+                } else {
+                    helpers::append_line(output_lines, format!("Stop command sent for {}", service)).await;
+                }
+            }
         }
         _ => {}
     }

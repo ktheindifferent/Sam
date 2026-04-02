@@ -104,3 +104,22 @@ pub async fn start_server() -> anyhow::Result<()> {
     log::info!("LIFX server started");
     Ok(())
 }
+
+pub async fn stop_server() -> anyhow::Result<()> {
+    stop_service()
+}
+
+pub fn get_bulbs() -> anyhow::Result<Vec<bulb::BulbInfo>> {
+    if let Some(discovery_arc) = get_global_discovery() {
+        if let Ok(discovery) = discovery_arc.lock() {
+            if let Ok(bulbs_arc) = discovery.get_bulbs().lock() {
+                return Ok(bulbs_arc.values().cloned().collect());
+            }
+        }
+    }
+    Ok(Vec::new())
+}
+
+pub fn get_bulb_count() -> anyhow::Result<usize> {
+    Ok(BULB_COUNT.load(Ordering::SeqCst))
+}

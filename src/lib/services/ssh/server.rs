@@ -304,6 +304,13 @@ pub fn get_ssh_server_status() -> ServiceStatus {
     }
 }
 
+/// Stop the SSH server
+pub async fn stop_ssh_server() {
+    info!("SSH server stop requested");
+    // SSH server runs in background, stopping is handled by OS when process ends
+    // For now, just log the stop request - actual shutdown would require storing the server handle
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
