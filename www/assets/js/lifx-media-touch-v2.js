@@ -2564,13 +2564,18 @@
                 this.state.frequencyData = new Uint8Array(6);
                 
                 const bands = {
-                    subBass: dataArray.slice(0, 4),
-                    bass: dataArray.slice(4, 10),
-                    lowMid: dataArray.slice(10, 20),
-                    mid: dataArray.slice(20, 40),
-                    highMid: dataArray.slice(40, 80),
-                    treble: dataArray.slice(80, 128)
+                    subBass: dataArray.slice(0, 3),
+                    bass: dataArray.slice(3, 8),
+                    lowMid: dataArray.slice(8, 18),
+                    mid: dataArray.slice(18, 36),
+                    highMid: dataArray.slice(36, 72),
+                    treble: dataArray.slice(72, 128)
                 };
+                
+                const instantEnergy = this.calculateInstantEnergy(bands);
+                this.state.currentInstantEnergy = instantEnergy;
+                this.state.currentBassEnergy = (bands.subBass.reduce((a, b) => a + b, 0) / bands.subBass.length + 
+                                               bands.bass.reduce((a, b) => a + b, 0) / bands.bass.length) / 2;
                 
                 const bandAverages = {
                     subBass: bands.subBass.reduce((a, b) => a + b, 0) / bands.subBass.length,
@@ -2762,6 +2767,44 @@
                     <div class="live-label">Bass Energy</div>
                 `;
             }
+        },
+
+        calculateInstantEnergy(bands) {
+            const subBassEnergy = bands.subBass.reduce((a, b) => a + b, 0) / bands.subBass.length;
+            const bassEnergy = bands.bass.reduce((a, b) => a + b, 0) / bands.bass.length;
+            const totalEnergy = Object.values(bands).reduce((sum, band) => 
+                sum + band.reduce((a, b) => a + b, 0) / band.length, 0) / 6;
+            
+            const bassWeight = 0.4;
+            const subBassWeight = 0.3;
+            const totalWeight = 0.3;
+            
+            return (subBassEnergy * subBassWeight + bassEnergy * bassWeight + totalEnergy * totalWeight) / 255;
+        },
+
+        calculateBPMConfidence() {
+            if (this.state.bpmHistory.length < 5) return 0;
+            
+            const mean = this.state.bpmHistory.reduce((a, b) => a + b, 0) / this.state.bpmHistory.length;
+            const variance = this.state.bpmHistory.reduce((sum, bpm) => sum + Math.pow(bpm - mean, 2), 0) / this.state.bpmHistory.length;
+            const stdDev = Math.sqrt(variance);
+            
+            const consistency = Math.max(0, 1 - (stdDev / 30));
+            const sampleBonus = Math.min(0.2, this.state.bpmHistory.length / 60);
+            
+            return Math.min(1, consistency + sampleBonus);
+        },
+
+        getMoodFromFrequency(bandAverages) {
+            const total = Object.values(bandAverages).reduce((a, b) => a + b, 0);
+            const bassRatio = (bandAverages.subBass + bandAverages.bass) / total;
+            const midRatio = (bandAverages.lowMid + bandAverages.mid) / total;
+            const trebleRatio = (bandAverages.highMid + bandAverages.treble) / total;
+            
+            if (bassRatio > 0.4) return { name: 'energetic', hue: 0, saturation: 80, brightness: 90 };
+            if (midRatio > 0.35) return { name: 'balanced', hue: 180, saturation: 60, brightness: 70 };
+            if (trebleRatio > 0.35) return { name: 'calm', hue: 240, saturation: 40, brightness: 60 };
+            return { name: 'neutral', hue: 120, saturation: 50, brightness: 65 };
         },
 
         triggerBeatEffect(bandAverages = {}) {

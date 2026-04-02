@@ -608,6 +608,15 @@ const SCENES: &[(&str, u16, u16, u16, u16)] = &[
     ("rainbow", 0, 65535, 52428, 4000),
     ("fireplace", 5460, 52428, 39321, 2000),
     ("ice", 36400, 32767, 45875, 8000),
+    // Enhanced scenes with improved color accuracy
+    ("relax_enhanced", 5800, 18000, 30000, 2600),
+    ("focus_enhanced", 18000, 10000, 55000, 4800),
+    ("energize_enhanced", 40000, 25000, 65535, 6200),
+    ("night_vision", 5800, 8000, 8000, 1800),
+    ("deep_focus", 20000, 6000, 58000, 5200),
+    ("ultra_energize", 38000, 28000, 65535, 6800),
+    ("sleep_prep", 5800, 5000, 15000, 2000),
+    ("wake_up", 9100, 35000, 60000, 5800),
     // Extended scenes
     ("aurora", 32760, 45875, 49151, 6000),
     ("nebula", 50960, 52428, 45875, 4500),
@@ -1103,11 +1112,84 @@ fn handle_effects(request: &Request) -> Response {
                             "duration": total_duration
                         }));
                     },
+                    "smooth_breath" => {
+                        let original_colors: Vec<(u64, HSBK)> = bulbs_vec.iter().map(|b| {
+                            let color = b.lifx_color.as_ref().map(|c| HSBK {
+                                hue: c.hue,
+                                saturation: c.saturation,
+                                brightness: c.brightness,
+                                kelvin: c.kelvin,
+                            }).unwrap_or(HSBK { hue: 0, saturation: 0, brightness: 65535, kelvin: 6500 });
+                            (b.target, color)
+                        }).collect();
+                        
+                        let sock_clone = sock.try_clone().ok();
+                        let bulbs_clone: Vec<(u64, HSBK, std::net::SocketAddr)> = bulbs_vec.iter()
+                            .map(|b| (b.target, original_colors.iter().find(|(t, _)| *t == b.target).unwrap().1, b.addr))
+                            .collect();
+                        
+                        thread::spawn(move || {
+                            if let Some(socket) = sock_clone {
+                                let breath_duration = (total_duration / cycles * 1000.0) as u64;
+                                let half_cycle = breath_duration / 2;
+                                
+                                for cycle in 0..(cycles as u64) {
+                                    let fade_out_steps = 20u64;
+                                    let fade_out_duration = half_cycle / fade_out_steps;
+                                    
+                                    for step in 0..fade_out_steps {
+                                        for (target, color, addr) in &bulbs_clone {
+                                            let progress = 1.0 - ((step as f64) / (fade_out_steps as f64));
+                                            let eased = 1.0 - (1.0 - progress).powi(3);
+                                            let dimmed = HSBK {
+                                                hue: color.hue,
+                                                saturation: color.saturation,
+                                                brightness: (color.brightness as f64 * (0.15 + 0.85 * eased)) as u16,
+                                                kelvin: color.kelvin,
+                                            };
+                                            let _ = handlers.protocol.send_color_command(&socket, *target, *addr, dimmed, 0);
+                                        }
+                                        thread::sleep(Duration::from_millis(fade_out_duration));
+                                    }
+                                    
+                                    let fade_in_steps = 20u64;
+                                    let fade_in_duration = half_cycle / fade_in_steps;
+                                    
+                                    for step in 0..fade_in_steps {
+                                        for (target, color, addr) in &bulbs_clone {
+                                            let progress = (step as f64) / (fade_in_steps as f64);
+                                            let eased = progress.powi(3);
+                                            let brightened = HSBK {
+                                                hue: color.hue,
+                                                saturation: color.saturation,
+                                                brightness: (color.brightness as f64 * (0.15 + 0.85 * eased)) as u16,
+                                                kelvin: color.kelvin,
+                                            };
+                                            let _ = handlers.protocol.send_color_command(&socket, *target, *addr, brightened, 0);
+                                        }
+                                        thread::sleep(Duration::from_millis(fade_in_duration));
+                                    }
+                                }
+                                
+                                for (target, color, addr) in &bulbs_clone {
+                                    let _ = handlers.protocol.send_color_command(&socket, *target, *addr, *color, 0);
+                                }
+                            }
+                        });
+                        
+                        return Response::json(&json!({
+                            "success": true,
+                            "message": format!("Smooth breath effect started on {} bulbs", bulbs_vec.len()),
+                            "effect": "smooth_breath",
+                            "cycles": cycles,
+                            "duration": total_duration
+                        }));
+                    },
                     _ => {
                         return Response::json(&json!({
                             "success": false,
                             "message": format!("Unknown effect: {}", input.effect),
-                            "available_effects": ["pulse", "rainbow", "strobe", "flash", "color_cycle", "fireplace", "aurora", "breath"]
+                            "available_effects": ["pulse", "rainbow", "strobe", "flash", "color_cycle", "fireplace", "aurora", "breath", "smooth_breath"]
                         }));
                     }
                 }

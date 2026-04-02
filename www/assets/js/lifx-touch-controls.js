@@ -38,11 +38,11 @@ const LifXTouchControls = {
     gestureHistory: [],
     maxGestureHistory: 10,
     gestureSensitivity: {
-        swipeDistance: 40,
-        swipeTime: 250,
-        pinchDistance: 25,
-        longPressDelay: 400,
-        doubleTapDelay: 250
+        swipeDistance: 35,
+        swipeTime: 200,
+        pinchDistance: 20,
+        longPressDelay: 350,
+        doubleTapDelay: 200
     },
     gestureHints: {
         enabled: true,
@@ -66,6 +66,17 @@ const LifXTouchControls = {
         failThreshold: 0.3
     },
     hapticEnabled: true,
+    hapticPatterns: {
+        light: [5],
+        medium: [10],
+        success: [15, 50, 15],
+        selection: [8, 30, 8],
+        scene_change: [20],
+        brightness: [12],
+        colortemp: [10],
+        media: [25, 50, 25],
+        error: [50, 50, 50]
+    },
     ambientLightSync: false,
     mediaPlaybackActive: false,
     colorCycleActive: false,
@@ -2543,6 +2554,112 @@ const LifXTouchControls = {
                 console.error('Failed to adjust color temp:', err);
             }
         });
+    },
+    
+    smoothTransition: function(targetBulbs, targetState, options = {}) {
+        const {
+            duration = 0.5,
+            easing = 'easeInOut',
+            steps = 10,
+            onComplete = null
+        } = options;
+        
+        if (!targetBulbs || targetBulbs.length === 0) return;
+        
+        const stepDuration = duration / steps;
+        let currentStep = 0;
+        
+        const animateStep = () => {
+            if (currentStep >= steps) {
+                if (onComplete) onComplete();
+                return;
+            }
+            
+            const progress = currentStep / steps;
+            const easedProgress = this.applyEasing(progress, easing);
+            
+            const currentState = {
+                brightness: targetState.startBrightness + (targetState.endBrightness - targetState.startBrightness) * easedProgress,
+                hue: targetState.startHue + (targetState.endHue - targetState.startHue) * easedProgress,
+                saturation: targetState.startSaturation + (targetState.endSaturation - targetState.startSaturation) * easedProgress,
+                kelvin: Math.round(targetState.startKelvin + (targetState.endKelvin - targetState.startKelvin) * easedProgress)
+            };
+            
+            $.ajax({
+                url: '/api/services/lifx/set_state',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    selector: `id:${targetBulbs.join(',')}`,
+                    brightness: currentState.brightness / 100,
+                    color: `hue:${Math.round(currentState.hue)},saturation:${Math.round(currentState.saturation)},kelvin:${currentState.kelvin}`,
+                    duration: stepDuration
+                })
+            });
+            
+            currentStep++;
+            setTimeout(animateStep, stepDuration * 1000);
+        };
+        
+        animateStep();
+    },
+    
+    applyEasing: function(progress, easing) {
+        switch (easing) {
+            case 'easeInOut':
+                return progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress;
+            case 'easeIn':
+                return progress * progress;
+            case 'easeOut':
+                return progress * (2 - progress);
+            case 'linear':
+                return progress;
+            case 'bounce':
+                const n1 = 7.5625, d1 = 2.75;
+                if (progress < 1 / d1) return n1 * progress * progress;
+                if (progress < 2 / d1) return n1 * (progress -= 1.5 / d1) * progress + 0.75;
+                if (progress < 2.5 / d1) return n1 * (progress -= 2.25 / d1) * progress + 0.9375;
+                return n1 * (progress -= 2.625 / d1) * progress + 0.984375;
+            default:
+                return progress;
+        }
+    },
+    
+    enhanceGestureVelocity: function(data) {
+        const now = Date.now();
+        const deltaTime = now - this.gestureStartTime;
+        const distance = data.distance || this.lastSwipeDistance;
+        
+        if (deltaTime > 0 && distance > 0) {
+            const velocity = distance / deltaTime;
+            this.touchVelocity = velocity;
+            this.lastGestureVelocity = velocity;
+            
+            this.touchVelocityHistory.push(velocity);
+            if (this.touchVelocityHistory.length > this.maxVelocityHistory) {
+                this.touchVelocityHistory.shift();
+            }
+            
+            const avgVelocity = this.touchVelocityHistory.reduce((a, b) => a + b, 0) / this.touchVelocityHistory.length;
+            
+            if (this.adaptiveSensitivity.enabled) {
+                if (velocity > 1.5 && avgVelocity > 1.2) {
+                    this.gestureSensitivity.swipeDistance = Math.max(20, this.gestureSensitivity.swipeDistance - 2);
+                    this.gestureSensitivity.swipeTime = Math.max(150, this.gestureSensitivity.swipeTime - 10);
+                } else if (velocity < 0.5 && avgVelocity < 0.7) {
+                    this.gestureSensitivity.swipeDistance = Math.min(60, this.gestureSensitivity.swipeDistance + 2);
+                    this.gestureSensitivity.swipeTime = Math.min(350, this.gestureSensitivity.swipeTime + 10);
+                }
+            }
+        }
+        
+        return {
+            ...data,
+            velocity: this.lastGestureVelocity,
+            avgVelocity: this.touchVelocityHistory.length > 0 
+                ? this.touchVelocityHistory.reduce((a, b) => a + b, 0) / this.touchVelocityHistory.length 
+                : 0
+        };
     },
     
     updateBulbColorTempPreview: function(bulbId, kelvin) {
