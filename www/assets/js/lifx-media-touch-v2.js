@@ -25,13 +25,18 @@
             enableAdaptiveSensitivity: true,
             minSwipeVelocity: 0.3,
             maxTouchHistory: 10,
+            gestureTrailDecay: 0.8,
+            maxVelocityRipples: 5,
+            calibrationSamples: 20,
             hapticPatterns: {
                 tap: [10],
                 doubleTap: [15, 50, 15],
                 longPress: [50, 50, 50],
                 swipe: [20],
                 beat: [25],
-                success: [10, 50, 10, 50, 10]
+                success: [10, 50, 10, 50, 10],
+                gesture: [15, 30, 15],
+                calibration: [20, 40, 20, 40, 20]
             }
         },
 
@@ -58,11 +63,23 @@
             bpmHistory: [],
             bpmSmoothed: 0,
             lastBeatTime: 0,
+            lastBassEnergy: 0,
             touchVelocity: null,
             gestureScale: 1,
             sensitivityCalibrated: false,
             baselineEnergy: 128,
-            visualizationMode: 'bars'
+            visualizationMode: 'bars',
+            gestureCalibrationData: [],
+            touchSensitivityMap: {
+                low: { threshold: 0.85, multiplier: 0.7 },
+                medium: { threshold: 0.75, multiplier: 1.0 },
+                high: { threshold: 0.65, multiplier: 1.3 },
+                custom: { threshold: 0.75, multiplier: 1.0 }
+            },
+            lastGestureTime: 0,
+            gestureDebounce: 50,
+            calibrationInProgress: false,
+            touchAccuracyScore: 100
         },
 
         scenePresets: [
@@ -178,6 +195,8 @@
         ],
 
         init() {
+            this.loadTouchSensitivity();
+            this.loadVisualizationPreference();
             this.setupTouchGestures();
             this.setupMediaPlayers();
             this.setupLightGroups();
@@ -190,10 +209,11 @@
             this.setupEffectSelector();
             this.setupZoneControl();
             this.setupGestureHints();
+            this.setupCalibrationButton();
             this.setupCleanupHandlers();
             this.syncStatus();
             this.startPeriodicSync();
-            console.log('[LIFXMediaTouchV2] Initialized');
+            console.log('[LIFXMediaTouchV2] Initialized with sensitivity:', this.state.touchSensitivity);
         },
 
         setupTouchGestures() {
@@ -218,6 +238,12 @@
             const touch = e.touches[0];
             if (!touch) return;
             
+            const now = Date.now();
+            if (now - this.state.lastGestureTime < this.state.gestureDebounce) {
+                return;
+            }
+            this.state.lastGestureTime = now;
+            
             target.dataset.touchStartX = touch.clientX;
             target.dataset.touchStartY = touch.clientY;
             target.dataset.touchStartTime = Date.now();
@@ -234,11 +260,15 @@
                 }
             }
             
-            this.showTouchRipple(e, target);
+            this.showEnhancedTouchRipple(e, target);
             this.startTouchHoldTimer(target);
             
             if (this.config.enableVelocityRipples) {
                 this.touchVelocity = [];
+            }
+            
+            if (this.state.calibrationInProgress) {
+                this.recordCalibrationTouch(touch.clientX, touch.clientY);
             }
         },
 
@@ -262,13 +292,14 @@
             target.dataset.lastTouchX = touch.clientX;
             target.dataset.lastTouchY = touch.clientY;
             
-            if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+            const movementThreshold = this.getMovementThreshold();
+            if (Math.abs(deltaX) > movementThreshold || Math.abs(deltaY) > movementThreshold) {
                 target.classList.remove('touch-active');
                 this.cancelTouchHoldTimer();
             }
             
             if (this.config.enableGestureTrails) {
-                this.showGestureTrail(touch.clientX, touch.clientY);
+                this.showEnhancedGestureTrail(touch.clientX, touch.clientY, instantDeltaX, instantDeltaY);
             }
             
             if (this.config.enableVelocityRipples && this.touchVelocity) {
@@ -278,11 +309,16 @@
                 }
             }
             
-            if (this.config.enableSwipeTrails && (Math.abs(instantDeltaX) > 3 || Math.abs(instantDeltaY) > 3)) {
+            const velocity = Math.sqrt(instantDeltaX * instantDeltaX + instantDeltaY * instantDeltaY);
+            if (this.config.enableSwipeTrails && velocity > 2) {
                 this.showSwipeTrail(touch.clientX, touch.clientY, instantDeltaX, instantDeltaY);
             }
             
             this.updateTouchHoldProgress(target, deltaX, deltaY);
+            
+            if (this.state.calibrationInProgress) {
+                this.recordCalibrationTouch(touch.clientX, touch.clientY);
+            }
         },
 
         handleTouchEnd(e) {
@@ -472,6 +508,52 @@
             }, 800);
         },
 
+        showEnhancedTouchRipple(e, target) {
+            const ripple = document.createElement('span');
+            ripple.classList.add('ripple-enhanced');
+            
+            const rect = target.getBoundingClientRect();
+            const size = Math.max(rect.width, rect.height) * 1.5;
+            
+            const bulbId = target.dataset.bulbId;
+            let hue = 180;
+            let saturation = 80;
+            let lightness = 60;
+            
+            if (bulbId && this.state.selectedBulbs.has(bulbId)) {
+                hue = 0;
+                saturation = 70;
+                lightness = 55;
+            }
+            
+            const touchSensitivity = this.state.touchSensitivityMap[this.state.touchSensitivity] || this.state.touchSensitivityMap.medium;
+            const scale = 1 + (1 - touchSensitivity.multiplier) * 0.3;
+            
+            ripple.style.cssText = `
+                position: absolute;
+                width: ${size}px;
+                height: ${size}px;
+                left: ${e.clientX - rect.left - size / 2}px;
+                top: ${e.clientY - rect.top - size / 2}px;
+                background: radial-gradient(circle, 
+                    hsla(${hue}, ${saturation}%, ${lightness}%, 0.4) 0%, 
+                    hsla(${hue}, ${saturation}%, ${lightness}%, 0) 70%);
+                border-radius: 50%;
+                transform: scale(0);
+                animation: ripple-enhanced-anim ${this.config.rippleDuration}ms ease-out forwards;
+                pointer-events: none;
+                box-shadow: 0 0 20px hsla(${hue}, ${saturation}%, ${lightness}%, 0.6);
+                --ripple-hue: ${hue};
+                --ripple-opacity: 0.4;
+            `;
+            
+            target.appendChild(ripple);
+            
+            setTimeout(() => {
+                if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+            }, this.config.rippleDuration);
+        },
+        
         showTouchRipple(e, target) {
             const ripple = document.createElement('span');
             ripple.classList.add('lifx-touch-ripple');
@@ -551,6 +633,38 @@
             setTimeout(() => trail.remove(), 500);
         },
 
+        showEnhancedGestureTrail(x, y, deltaX, deltaY) {
+            const trail = document.createElement('div');
+            trail.classList.add('gesture-trail-enhanced');
+            
+            const velocity = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const size = this.config.gestureTrailSize * (1 + Math.min(velocity / 20, 1));
+            const opacity = Math.min(0.8, 0.3 + velocity / 30);
+            
+            const hue = 180 + Math.min(velocity * 2, 40);
+            trail.style.cssText = `
+                position: fixed;
+                width: ${size}px;
+                height: ${size}px;
+                left: ${x - size / 2}px;
+                top: ${y - size / 2}px;
+                background: radial-gradient(circle, 
+                    hsla(${hue}, 80%, 60%, ${opacity}) 0%, 
+                    hsla(${hue}, 80%, 60%, 0) 70%);
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 9998;
+                filter: blur(2px);
+                animation: gesture-trail-fade ${0.4 + velocity / 50}s ease-out forwards;
+            `;
+            
+            document.body.appendChild(trail);
+            
+            setTimeout(() => {
+                if (trail.parentNode) trail.parentNode.removeChild(trail);
+            }, 500);
+        },
+        
         showGestureTrail(x, y) {
             const trail = document.createElement('div');
             trail.classList.add('lifx-gesture-trail');
@@ -980,6 +1094,13 @@
                     <button class="zone-btn" data-zone="middle">Middle</button>
                     <button class="zone-btn" data-zone="end">End</button>
                 </div>
+                <div class="zone-selection zone-selection-fine">
+                    <button class="zone-btn" data-zone="left">Left</button>
+                    <button class="zone-btn" data-zone="center-left">Center-L</button>
+                    <button class="zone-btn" data-zone="center-right">Center-R</button>
+                    <button class="zone-btn" data-zone="right">Right</button>
+                </div>
+                <div id="lifx-zone-strip" class="zone-strip-container"></div>
             `;
             
             zoneControl.querySelectorAll('.zone-btn').forEach(btn => {
@@ -987,7 +1108,17 @@
                     const zone = e.currentTarget.dataset.zone;
                     this.applyZoneColor(zone);
                 });
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    btn.classList.add('active');
+                });
+                btn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    btn.classList.remove('active');
+                });
             });
+            
+            this.setupZoneStripVisualization();
         },
 
         setupGestureHints() {
@@ -1013,6 +1144,8 @@
                 return;
             }
             
+            const sensitivityInfo = this.state.touchSensitivityMap[this.state.touchSensitivity] || this.state.touchSensitivityMap.medium;
+            
             hintsContainer.innerHTML = `
                 <div class="gesture-hint-item">
                     <span class="gesture-icon">👆</span>
@@ -1034,7 +1167,31 @@
                     <span class="gesture-icon">🤏</span>
                     <span class="gesture-text">Pinch to adjust global brightness</span>
                 </div>
+                <div class="gesture-hint-item">
+                    <span class="gesture-icon">🎯</span>
+                    <span class="gesture-text">Sensitivity: ${this.state.touchSensitivity} (${Math.round(sensitivityInfo.multiplier * 100)}%)</span>
+                </div>
             `;
+        },
+        
+        setupCalibrationButton() {
+            const calibrateBtn = document.getElementById('touch-calibrate-btn');
+            if (!calibrateBtn) return;
+            
+            calibrateBtn.addEventListener('click', () => {
+                this.startTouchSensitivityCalibration();
+            });
+            
+            calibrateBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                calibrateBtn.classList.add('active');
+                this.startTouchSensitivityCalibration();
+            });
+            
+            calibrateBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                calibrateBtn.classList.remove('active');
+            });
         },
         
         setupCleanupHandlers() {
@@ -1078,11 +1235,21 @@
                 'all': { start: 0, end: 255 },
                 'start': { start: 0, end: 85 },
                 'middle': { start: 86, end: 170 },
-                'end': { start: 171, end: 255 }
+                'end': { start: 171, end: 255 },
+                'left': { start: 0, end: 63 },
+                'center-left': { start: 64, end: 127 },
+                'center-right': { start: 128, end: 191 },
+                'right': { start: 192, end: 255 },
+                'first-quarter': { start: 0, end: 63 },
+                'second-quarter': { start: 64, end: 127 },
+                'third-quarter': { start: 128, end: 191 },
+                'fourth-quarter': { start: 192, end: 255 }
             };
             
             const range = zoneRanges[zone];
             if (!range) return;
+            
+            const color = this.getCurrentColor();
             
             fetch('/api/services/lifx/zones', {
                 method: 'POST',
@@ -1091,13 +1258,98 @@
                     selector: 'all',
                     start_index: range.start,
                     end_index: range.end,
-                    color: '#00d4ff',
+                    color: color,
                     duration: 0.5
                 })
             }).then(res => res.json())
               .then(data => {
                   if (data.success) {
                       this.showToast(`Zone ${zone} updated`, 'success');
+                      this.highlightZoneSegment(zone, range.start, range.end);
+                  }
+              });
+        },
+        
+        getCurrentColor() {
+            const colorPicker = document.getElementById('lifx-color-picker');
+            if (colorPicker && colorPicker.value) {
+                return colorPicker.value;
+            }
+            return '#00d4ff';
+        },
+        
+        highlightZoneSegment(zone, start, end) {
+            const segments = document.querySelectorAll('.zone-segment');
+            const totalSegments = segments.length;
+            
+            if (totalSegments === 0) return;
+            
+            const startIndex = Math.floor((start / 255) * totalSegments);
+            const endIndex = Math.floor((end / 255) * totalSegments);
+            
+            segments.forEach((segment, index) => {
+                if (index >= startIndex && index <= endIndex) {
+                    segment.classList.add('active');
+                    setTimeout(() => segment.classList.remove('active'), 1000);
+                }
+            });
+        },
+        
+        setupZoneStripVisualization() {
+            const zoneStrip = document.getElementById('lifx-zone-strip');
+            if (!zoneStrip) return;
+            
+            const segmentCount = 32;
+            let html = '';
+            
+            for (let i = 0; i < segmentCount; i++) {
+                const zoneIndex = Math.floor((i / segmentCount) * 256);
+                html += `<div class="zone-segment" data-zone-index="${zoneIndex}" title="Zone ${zoneIndex}">
+                    <span class="segment-tooltip">Zone ${zoneIndex}</span>
+                </div>`;
+            }
+            
+            zoneStrip.innerHTML = html;
+            
+            zoneStrip.querySelectorAll('.zone-segment').forEach(segment => {
+                segment.addEventListener('click', (e) => {
+                    const zoneIndex = parseInt(e.currentTarget.dataset.zoneIndex);
+                    const segmentSize = Math.ceil(256 / segmentCount);
+                    const start = zoneIndex;
+                    const end = Math.min(255, zoneIndex + segmentSize - 1);
+                    
+                    this.applyZoneColorToRange(start, end);
+                });
+                
+                segment.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    segment.classList.add('touch-active');
+                });
+                
+                segment.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    segment.classList.remove('touch-active');
+                });
+            });
+        },
+        
+        applyZoneColorToRange(start, end) {
+            const color = this.getCurrentColor();
+            
+            fetch('/api/services/lifx/zones', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    selector: 'all',
+                    start_index: start,
+                    end_index: end,
+                    color: color,
+                    duration: 0.3
+                })
+            }).then(res => res.json())
+              .then(data => {
+                  if (data.success) {
+                      this.showToast(`Zones ${start}-${end} updated`, 'success');
                   }
               });
         },
@@ -1348,6 +1600,154 @@
             }
         },
 
+        getMovementThreshold() {
+            const sensitivity = this.state.touchSensitivityMap[this.state.touchSensitivity] || this.state.touchSensitivityMap.medium;
+            return 10 * sensitivity.multiplier;
+        },
+
+        recordCalibrationTouch(x, y) {
+            this.state.gestureCalibrationData.push({ x, y, time: Date.now() });
+            
+            if (this.state.gestureCalibrationData.length >= this.config.calibrationSamples) {
+                this.completeCalibration();
+            }
+        },
+
+        startTouchSensitivityCalibration() {
+            this.state.calibrationInProgress = true;
+            this.state.gestureCalibrationData = [];
+            this.state.touchAccuracyScore = 100;
+            
+            this.showToast('Touch calibration started - tap the centers of bulbs', 'info');
+            
+            if (this.config.enableHapticFeedback && navigator.vibrate) {
+                navigator.vibrate(this.config.hapticPatterns.calibration);
+            }
+            
+            this.showCalibrationOverlay();
+        },
+
+        completeCalibration() {
+            this.state.calibrationInProgress = false;
+            
+            const data = this.state.gestureCalibrationData;
+            if (data.length < 5) {
+                this.showToast('Calibration failed - not enough samples', 'error');
+                this.hideCalibrationOverlay();
+                return;
+            }
+            
+            let totalDeviation = 0;
+            for (let i = 1; i < data.length; i++) {
+                const dx = data[i].x - data[i-1].x;
+                const dy = data[i].y - data[i-1].y;
+                totalDeviation += Math.sqrt(dx * dx + dy * dy);
+            }
+            
+            const avgDeviation = totalDeviation / (data.length - 1);
+            const accuracy = Math.max(0, Math.min(100, 100 - (avgDeviation - 50) / 2));
+            this.state.touchAccuracyScore = Math.round(accuracy);
+            
+            if (accuracy < 70) {
+                this.state.touchSensitivity = 'low';
+            } else if (accuracy < 85) {
+                this.state.touchSensitivity = 'medium';
+            } else {
+                this.state.touchSensitivity = 'high';
+            }
+            
+            this.showToast(`Calibration complete! Accuracy: ${Math.round(accuracy)}%`, 'success');
+            this.hideCalibrationOverlay();
+            this.setupGestureHints();
+            
+            if (this.config.enableHapticFeedback && navigator.vibrate) {
+                navigator.vibrate(this.config.hapticPatterns.success);
+            }
+        },
+
+        showCalibrationOverlay() {
+            let overlay = document.querySelector('.gesture-calibration-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'gesture-calibration-overlay';
+                overlay.innerHTML = `
+                    <div style="text-align: center; color: #fff;">
+                        <i class="gesture-icon" style="font-size: 48px; color: #27a0b9;">🎯</i>
+                        <h3 style="margin: 15px 0 10px;">Touch Calibration</h3>
+                        <p style="color: #adb5bd; font-size: 14px;">Tap the center of each bulb to calibrate sensitivity</p>
+                        <div class="calibration-progress" style="margin-top: 20px;">
+                            <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; overflow: hidden;">
+                                <div id="calibration-progress-fill" style="background: linear-gradient(90deg, #27a0b9, #00d4ff); height: 100%; width: 0%; transition: width 0.2s ease;"></div>
+                            </div>
+                            <p id="calibration-progress-text" style="color: #27a0b9; font-size: 12px; margin-top: 8px;">0 / ${this.config.calibrationSamples} samples</p>
+                        </div>
+                    </div>
+                `;
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: rgba(30, 30, 45, 0.95);
+                    border: 2px solid rgba(39, 160, 185, 0.5);
+                    border-radius: 16px;
+                    padding: 30px 40px;
+                    z-index: 10000;
+                    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+                `;
+                document.body.appendChild(overlay);
+            }
+            
+            this.updateCalibrationProgress();
+        },
+
+        hideCalibrationOverlay() {
+            const overlay = document.querySelector('.gesture-calibration-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        },
+
+        updateCalibrationProgress() {
+            const progressFill = document.getElementById('calibration-progress-fill');
+            const progressText = document.getElementById('calibration-progress-text');
+            
+            if (progressFill && progressText) {
+                const progress = (this.state.gestureCalibrationData.length / this.config.calibrationSamples) * 100;
+                progressFill.style.width = `${progress}%`;
+                progressText.textContent = `${this.state.gestureCalibrationData.length} / ${this.config.calibrationSamples} samples`;
+            }
+        },
+
+        setTouchSensitivity(level) {
+            if (['low', 'medium', 'high', 'custom'].includes(level)) {
+                this.state.touchSensitivity = level;
+                this.showToast(`Touch sensitivity: ${level}`, 'info');
+                this.setupGestureHints();
+                
+                try {
+                    localStorage.setItem('lifx-touch-sensitivity', level);
+                } catch (e) {
+                    console.warn('[LIFXMediaTouchV2] Failed to save sensitivity:', e);
+                }
+            }
+        },
+
+        loadTouchSensitivity() {
+            try {
+                const saved = localStorage.getItem('lifx-touch-sensitivity');
+                if (saved && ['low', 'medium', 'high', 'custom'].includes(saved)) {
+                    this.state.touchSensitivity = saved;
+                    const sensitivity = this.state.touchSensitivityMap[saved];
+                    console.log(`[LIFXMediaTouchV2] Loaded sensitivity: ${saved} (threshold: ${sensitivity.threshold}, multiplier: ${sensitivity.multiplier})`);
+                    return saved;
+                }
+            } catch (e) {
+                console.warn('[LIFXMediaTouchV2] Failed to load sensitivity:', e);
+            }
+            return 'medium';
+        },
+
         async powerAll(state) {
             const selector = this.state.selectedBulbs.size > 0 
                 ? Array.from(this.state.selectedBulbs).map(id => `id:${id}`).join(',')
@@ -1470,6 +1870,28 @@
             }
             
             this.showToast(`Visualization: ${mode}`, 'info');
+            this.saveVisualizationPreference(mode);
+        },
+        
+        saveVisualizationPreference(mode) {
+            try {
+                localStorage.setItem('lifx-viz-mode', mode);
+            } catch (e) {
+                console.warn('[LIFXMediaTouchV2] Failed to save viz preference:', e);
+            }
+        },
+        
+        loadVisualizationPreference() {
+            try {
+                const saved = localStorage.getItem('lifx-viz-mode');
+                if (saved && ['bars', 'wave', 'circular'].includes(saved)) {
+                    this.state.visualizationMode = saved;
+                    return saved;
+                }
+            } catch (e) {
+                console.warn('[LIFXMediaTouchV2] Failed to load viz preference:', e);
+            }
+            return 'bars';
         },
 
         setupMediaPlayers() {
@@ -1724,16 +2146,21 @@
                     this.state.sensitivityCalibrated = true;
                 }
                 
-                this.state.adaptiveThreshold = Math.max(0.5, Math.min(0.9, 
-                    (avgEnergy / 255) + (stdDev / 50) + 0.15
-                ));
+                const energyRatio = avgEnergy / 255;
+                const stdDevRatio = stdDev / 50;
+                const dynamicThreshold = energyRatio * 0.6 + stdDevRatio * 0.4 + 0.15;
+                this.state.adaptiveThreshold = Math.max(0.5, Math.min(0.9, dynamicThreshold));
                 
                 const beatThreshold = Math.max(
                     this.state.adaptiveThreshold,
-                    this.config.beatDetectionThreshold
+                    this.config.beatDetectionThreshold * 0.85
                 );
                 
-                const isBeat = (bassEnergy / 255) > beatThreshold && bassEnergy > 160;
+                const bassRatio = bassEnergy / 255;
+                const bassSpike = bassRatio > (this.state.lastBassEnergy / 255) * 1.15;
+                const isBeat = bassRatio > beatThreshold && bassEnergy > 160 && bassSpike;
+                
+                this.state.lastBassEnergy = bassEnergy;
                 
                 if (isBeat && Date.now() - this.state.lastBeatTime > 180) {
                     const prevBeatTime = this.state.lastBeatTime;
@@ -1744,17 +2171,30 @@
                     
                     if (instantBPM > 60 && instantBPM < 200) {
                         this.state.bpmHistory.push(instantBPM);
-                        if (this.state.bpmHistory.length > 8) {
+                        if (this.state.bpmHistory.length > 12) {
                             this.state.bpmHistory.shift();
                         }
-                        this.state.bpmSmoothed = Math.round(
-                            this.state.bpmHistory.reduce((a, b) => a + b, 0) / this.state.bpmHistory.length
-                        );
+                        
+                        const sortedBPM = [...this.state.bpmHistory].sort((a, b) => a - b);
+                        const median = sortedBPM[Math.floor(sortedBPM.length / 2)];
+                        
+                        const bpmVariance = this.state.bpmHistory.reduce((sum, bpm) => sum + Math.pow(bpm - median, 2), 0) / this.state.bpmHistory.length;
+                        const bpmStdDev = Math.sqrt(bpmVariance);
+                        
+                        if (bpmStdDev < 15) {
+                            const weights = this.state.bpmHistory.map((bpm, idx) => Math.pow(0.9, this.state.bpmHistory.length - idx - 1));
+                            const weightedSum = this.state.bpmHistory.reduce((sum, bpm, idx) => sum + bpm * weights[idx], 0);
+                            const weightTotal = weights.reduce((a, b) => a + b, 0);
+                            this.state.bpmSmoothed = Math.round(weightedSum / weightTotal);
+                        } else {
+                            this.state.bpmSmoothed = median;
+                        }
                     }
                     
                     this.state.bpmDetected = this.state.bpmSmoothed || instantBPM;
                     this.triggerBeatEffect(bandAverages);
                     this.updateFrequencyVisualization(bandAverages);
+                    this.updateBPMVisualization();
                 }
                 
                 this.updateRealtimeBPM();
@@ -1951,6 +2391,36 @@
                 if (bpmIndicator) bpmIndicator.classList.remove('visible');
                 bpmDisplay.textContent = '--';
                 bpmDisplay.style.color = '#adb5bd';
+            }
+        },
+
+        updateBPMVisualization() {
+            const bpmBars = document.querySelectorAll('.bpm-bar');
+            if (!bpmBars || bpmBars.length === 0) return;
+            
+            const bpm = this.state.bpmDetected || 0;
+            const normalizedBPM = bpm / 200;
+            
+            bpmBars.forEach((bar, index) => {
+                const delay = index * 0.1;
+                const targetHeight = 20 + (normalizedBPM * 60) * (0.5 + Math.sin(index + Date.now() / 200) * 0.5);
+                bar.style.height = `${Math.min(100, targetHeight)}%`;
+                
+                if (this.state.lastBeatTime && Date.now() - this.state.lastBeatTime < 150) {
+                    bar.classList.add('active');
+                    setTimeout(() => bar.classList.remove('active'), 150);
+                }
+            });
+            
+            const bpmRing = document.querySelector('.bpm-ring');
+            if (bpmRing) {
+                const rotationSpeed = Math.max(0.5, 2 - normalizedBPM);
+                bpmRing.style.animationDuration = `${rotationSpeed}s`;
+                
+                if (this.state.lastBeatTime && Date.now() - this.state.lastBeatTime < 150) {
+                    bpmRing.classList.add('pulsing');
+                    setTimeout(() => bpmRing.classList.remove('pulsing'), 150);
+                }
             }
         },
     };
