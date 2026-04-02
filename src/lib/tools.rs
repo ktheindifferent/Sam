@@ -274,23 +274,7 @@ pub fn python3_with_args(script_path: &str, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Executes a shell command and returns its output as a `String`.
-///
-/// # WARNING: DEPRECATED - COMMAND INJECTION VULNERABILITY
-/// This function is vulnerable to command injection attacks. Use `safe_cmd` instead.
-/// This function is kept for backward compatibility but should not be used with user input.
-#[deprecated(note = "Use safe_cmd instead to prevent command injection")]
-pub fn cmd(command: &str) -> Result<String> {
-    log::warn!(
-        "SECURITY WARNING: Using deprecated cmd() function with command injection vulnerability"
-    );
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output()
-        .map_err(ToolsError::from)?;
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
+// SECURITY: cmd() function removed - use safe_cmd() instead to prevent command injection
 
 /// Executes a command safely with separate arguments to prevent injection.
 ///
@@ -305,28 +289,7 @@ pub fn safe_cmd(program: &str, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Executes a Linux shell command and logs the result.
-///
-/// # WARNING: DEPRECATED - COMMAND INJECTION VULNERABILITY  
-/// This function is vulnerable to command injection attacks. Use `safe_uinx_cmd` instead.
-/// This function is kept for backward compatibility but should not be used with user input.
-#[deprecated(note = "Use safe_uinx_cmd instead to prevent command injection")]
-pub fn uinx_cmd(command: &str) {
-    log::warn!("SECURITY WARNING: Using deprecated uinx_cmd() function with command injection vulnerability");
-    let output = Command::new("sh").arg("-c").arg(command).output();
-
-    match output {
-        Ok(cmd) if cmd.status.success() => {
-            log::info!("{}:{}", command, String::from_utf8_lossy(&cmd.stdout));
-        }
-        Ok(cmd) => {
-            log::error!("{}:{}", command, String::from_utf8_lossy(&cmd.stderr));
-        }
-        Err(e) => {
-            log::error!("Failed to execute command '{}': {}", command, e);
-        }
-    }
-}
+// SECURITY: uinx_cmd() function removed - use safe_uinx_cmd() instead to prevent command injection
 
 /// Executes a command safely with separate arguments and logs the result.
 ///

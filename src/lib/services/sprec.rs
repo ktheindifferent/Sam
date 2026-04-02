@@ -112,7 +112,7 @@ pub fn predict(file_path: &str) -> Result<SprecPrediction, crate::services::Erro
     }
     std::fs::copy(file_path, test_file)?;
 
-    let result = crate::tools::cmd("python3 /opt/sam/scripts/sprec/predict.py")
+    let result = crate::tools::safe_cmd("python3", &["/opt/sam/scripts/sprec/predict.py"])
         .map_err(|e| crate::services::Error::Other(e.to_string()))?;
     let vec: Vec<&str> = result.split(":::::").collect();
 

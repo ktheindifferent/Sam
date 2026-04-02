@@ -42,14 +42,24 @@ use std::sync::Mutex;
 /// Main entry point for the SAM application.
 /// Initializes logging, environment variables, configuration, and all core services.
 fn main() {
-    let runtime = build_tokio_runtime();
-    runtime.block_on(async {
-        initialize_application().await;
-    });
+    match build_tokio_runtime() {
+        Ok(runtime) => {
+            runtime.block_on(async {
+                initialize_application().await;
+            });
+        }
+        Err(e) => {
+            eprintln!("Fatal error during startup: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Builds and configures the Tokio runtime
-fn build_tokio_runtime() -> tokio::runtime::Runtime {
+/// 
+/// # Errors
+/// Returns error if runtime creation fails
+fn build_tokio_runtime() -> Result<tokio::runtime::Runtime, String> {
     let num_workers = num_cpus::get().max(4) + 2;
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_workers)
@@ -57,7 +67,7 @@ fn build_tokio_runtime() -> tokio::runtime::Runtime {
         .thread_stack_size(8 * 1024 * 1024) // Increased from 4MB to 8MB to prevent stack overflow
         .enable_all()
         .build()
-        .expect("Failed to build Tokio runtime")
+        .map_err(|e| format!("Failed to build Tokio runtime: {}", e))
 }
 
 /// Setup dual logging to console and file
@@ -139,7 +149,9 @@ async fn initialize_application() {
     // Create .sam directory if it doesn't exist
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let sam_dir = std::path::PathBuf::from(home).join(".sam");
-    let _ = std::fs::create_dir_all(&sam_dir);
+    if let Err(e) = std::fs::create_dir_all(&sam_dir) {
+        eprintln!("Warning: Failed to create .sam directory: {}", e);
+    }
 
     // Ensure default config exists on first run
     libsam::services::config::SamUserConfig::write_defaults_if_missing();
@@ -148,7 +160,9 @@ async fn initialize_application() {
     let log_file = sam_dir.join("output.log");
 
     // Clear the log file at startup
-    let _ = std::fs::write(&log_file, format!("=== SAM Log Started at {} ===\n", chrono::Local::now()));
+    if let Err(e) = std::fs::write(&log_file, format!("=== SAM Log Started at {} ===\n", chrono::Local::now())) {
+        eprintln!("Warning: Failed to initialize log file: {}", e);
+    }
 
     // Initialize dual logger (console + file) for all modes
     setup_dual_logger(&log_file, is_serve_mode);

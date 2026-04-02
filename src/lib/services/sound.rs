@@ -642,7 +642,7 @@ pub fn s3_init() {
                             ) {
                                 Ok(stt) if !stt.text.is_empty() => {
                                     // Optionally play a notification sound
-                                    // crate::tools::uinx_cmd("aplay /opt/sam/beep.wav".to_string());
+                                    // crate::tools::safe_uinx_cmd("aplay", &["/opt/sam/beep.wav"]);
 
                                     // Observe the sound and prediction
                                     observe(stt, &fpath_thread);

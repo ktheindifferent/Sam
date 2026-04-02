@@ -236,6 +236,9 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     }));
 
     // Install signal handlers
+    // SAFETY: These unsafe blocks are necessary for signal handler registration.
+    // The libc::signal function requires unsafe as it deals with C function pointers.
+    // The function pointers (terminal::handle_suspend, etc.) are static and safe to use.
     #[cfg(unix)]
     {
         unsafe {

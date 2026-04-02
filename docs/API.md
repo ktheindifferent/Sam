@@ -5,18 +5,26 @@ The S.A.M. API provides RESTful endpoints for interacting with all system servic
 
 ## Base URL
 ```
-http://localhost:8000/api/v1
+http://localhost:8000/api
 ```
 
 ## Authentication
-All API requests require authentication using session tokens or API keys.
 
-### Headers
+### Session-Based Authentication
+Most endpoints use session-based authentication with CSRF protection.
+
+### Required Headers
 ```http
-Authorization: Bearer <token>
+Authorization: Bearer <session_token>
 X-CSRF-Token: <csrf_token>
 Content-Type: application/json
 ```
+
+### Getting a Session
+1. Use TUI/CLI to establish a local session
+2. Or authenticate via HTTP POST to `/auth/login`
+3. Session tokens are stored in Redis or memory
+4. CSRF tokens provided in login response
 
 ## API Endpoints
 
@@ -772,6 +780,20 @@ client.p2p.sync_state(
 
 ---
 
-*Last Updated: 2025-08-08*
-*API Version: 1.0.0*
-*Documentation Version: 1.0.0*
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Voice Services | ✅ Implemented | STT via Whisper, TTS support |
+| P2P Networking | ✅ Implemented | Peer discovery and file sharing |
+| Security | ✅ Implemented | Session management, CSRF protection |
+| Media Services | ✅ Implemented | Library management, streaming |
+| Smart Home (LIFX) | ✅ Implemented | Light control and automation |
+| Job Queue | ✅ Implemented | Background task processing |
+| Web Crawler | ✅ Implemented | With robots.txt support |
+
+---
+
+*Last Updated: 2026-04-02*
+*API Version: 0.0.2*
+*Documentation Version: 2.0.0*
