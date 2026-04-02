@@ -125,7 +125,26 @@ const MediaPlayer = {
     touchTrailMaxCount: 10,
     gestureHistory: [],
     lastGestureTime: 0,
-    gestureCooldown: 100
+    gestureCooldown: 100,
+    particleVisualization: false,
+    particleCount: 50,
+    particleArray: [],
+    visualizationMode: 'bars',
+    wavePoints: [],
+    circularSegments: 64,
+    spectrumBars: 128,
+    mediaSessionMetadata: {},
+    watchPartyEnabled: false,
+    watchPartySyncInterval: null,
+    collaborativeQueue: false,
+    smartVolumeEnabled: false,
+    nightModeEnabled: false,
+    autoDJMode: false,
+    crossfadeActive: false,
+    gaplessPlayback: false,
+    hifiResAudio: false,
+    dolbyAtmosEnabled: false,
+    spatialAudioEnabled: false
 };
 
 // Initialize when DOM is ready
@@ -6075,6 +6094,283 @@ function initEnhancedMediaVisualization() {
     MediaPlayer.visualizationActive = true;
 }
 
+function setVisualizationMode(mode) {
+    MediaPlayer.visualizationMode = mode;
+    localStorage.setItem('media_viz_mode', mode);
+    
+    const vizContainer = document.getElementById('media-visualization-container');
+    if (!vizContainer) return;
+    
+    vizContainer.innerHTML = '';
+    
+    switch(mode) {
+        case 'bars':
+            initBarVisualization(vizContainer);
+            break;
+        case 'circular':
+            initCircularVisualization(vizContainer);
+            break;
+        case 'wave':
+            initWaveVisualization(vizContainer);
+            break;
+        case 'spectrum':
+            initSpectrumVisualization(vizContainer);
+            break;
+        case 'particles':
+            initParticleVisualization(vizContainer);
+            break;
+        case 'matrix':
+            initMatrixVisualization(vizContainer);
+            break;
+    }
+    
+    showNotification(`Visualization: ${mode}`, 'info');
+}
+
+function initBarVisualization(container) {
+    container.style.display = 'flex';
+    container.style.justifyContent = 'center';
+    container.style.alignItems = 'flex-end';
+    
+    for (let i = 0; i < 32; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'media-viz-bar';
+        bar.style.cssText = `
+            flex: 1;
+            max-width: 20px;
+            background: linear-gradient(to top, #27a0b9, #00d4ff, #00ff88);
+            border-radius: 3px 3px 0 0;
+            transition: height 0.05s ease;
+            min-height: 5px;
+        `;
+        bar.dataset.index = i;
+        container.appendChild(bar);
+    }
+}
+
+function initCircularVisualization(container) {
+    container.style.display = 'flex';
+    container.style.justifyContent = 'center';
+    container.style.alignItems = 'center';
+    container.style.height = '200px';
+    
+    const circle = document.createElement('div');
+    circle.style.cssText = `
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        border: 4px solid rgba(0, 212, 255, 0.3);
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    `;
+    
+    for (let i = 0; i < MediaPlayer.circularSegments; i++) {
+        const segment = document.createElement('div');
+        const angle = (i / MediaPlayer.circularSegments) * 360;
+        segment.style.cssText = `
+            position: absolute;
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(to top, #27a0b9, #00d4ff);
+            border-radius: 2px;
+            transform-origin: center 85px;
+            transform: rotate(${angle}deg) translateY(-85px);
+            transition: height 0.05s ease, background 0.1s ease;
+        `;
+        segment.dataset.index = i;
+        circle.appendChild(segment);
+    }
+    
+    container.appendChild(circle);
+}
+
+function initWaveVisualization(container) {
+    container.style.display = 'flex';
+    container.style.justifyContent = 'center';
+    container.style.alignItems = 'center';
+    container.style.height = '150px';
+    
+    MediaPlayer.wavePoints = [];
+    const canvas = document.createElement('canvas');
+    canvas.width = container.clientWidth || 400;
+    canvas.height = 100;
+    canvas.style.cssText = 'width: 100%; height: 100%;';
+    container.appendChild(canvas);
+    
+    const ctx = canvas.getContext('2d');
+    for (let i = 0; i < 100; i++) {
+        MediaPlayer.wavePoints.push({ x: i * 4, y: 50 });
+    }
+    
+    MediaPlayer.waveCanvas = ctx;
+}
+
+function initSpectrumVisualization(container) {
+    container.style.display = 'flex';
+    container.style.justifyContent = 'center';
+    container.style.alignItems = 'flex-end';
+    container.style.gap = '2px';
+    
+    for (let i = 0; i < 64; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'media-viz-bar';
+        bar.style.cssText = `
+            flex: 1;
+            max-width: 8px;
+            background: linear-gradient(to top, #ff0080, #ff6b6b, #ff8e8e);
+            border-radius: 2px 2px 0 0;
+            transition: height 0.03s ease, background 0.1s ease;
+            min-height: 3px;
+        `;
+        bar.dataset.index = i;
+        container.appendChild(bar);
+    }
+}
+
+function initParticleVisualization(container) {
+    container.style.display = 'block';
+    container.style.position = 'relative';
+    container.style.height = '200px';
+    container.style.overflow = 'hidden';
+    
+    MediaPlayer.particleArray = [];
+    
+    for (let i = 0; i < MediaPlayer.particleCount; i++) {
+        const particle = document.createElement('div');
+        const x = Math.random() * 100;
+        const y = Math.random() * 100;
+        const size = Math.random() * 8 + 4;
+        const hue = Math.random() * 360;
+        
+        particle.style.cssText = `
+            position: absolute;
+            left: ${x}%;
+            top: ${y}%;
+            width: ${size}px;
+            height: ${size}px;
+            background: radial-gradient(circle, hsl(${hue}, 100%, 60%), transparent);
+            border-radius: 50%;
+            opacity: 0.8;
+            transition: transform 0.1s ease, opacity 0.2s ease;
+        `;
+        particle.dataset.vx = (Math.random() - 0.5) * 2;
+        particle.dataset.vy = (Math.random() - 0.5) * 2;
+        particle.dataset.hue = hue;
+        container.appendChild(particle);
+        MediaPlayer.particleArray.push(particle);
+    }
+    
+    MediaPlayer.particleVisualization = true;
+}
+
+function initMatrixVisualization(container) {
+    container.style.display = 'grid';
+    container.style.gridTemplateColumns = 'repeat(16, 1fr)';
+    container.style.gap = '2px';
+    container.style.height = '150px';
+    
+    for (let i = 0; i < 64; i++) {
+        const cell = document.createElement('div');
+        cell.style.cssText = `
+            background: rgba(0, 255, 136, 0.2);
+            border-radius: 2px;
+            transition: background 0.05s ease, transform 0.1s ease;
+            min-height: 8px;
+        `;
+        cell.dataset.index = i;
+        container.appendChild(cell);
+    }
+}
+
+function updateParticleVisualization(dataArray) {
+    if (!MediaPlayer.particleVisualization || MediaPlayer.particleArray.length === 0) return;
+    
+    const avgEnergy = dataArray ? dataArray.reduce((a, b) => a + b, 0) / dataArray.length / 255 : 0;
+    
+    MediaPlayer.particleArray.forEach((particle, i) => {
+        const vx = parseFloat(particle.dataset.vx);
+        const vy = parseFloat(particle.dataset.vy);
+        let x = parseFloat(particle.style.left) + vx * (avgEnergy * 2);
+        let y = parseFloat(particle.style.top) + vy * (avgEnergy * 2);
+        
+        if (x < 0 || x > 100) particle.dataset.vx = -vx;
+        if (y < 0 || y > 100) particle.dataset.vy = -vy;
+        
+        x = Math.max(0, Math.min(100, x));
+        y = Math.max(0, Math.min(100, y));
+        
+        particle.style.left = x + '%';
+        particle.style.top = y + '%';
+        
+        const energy = dataArray ? dataArray[i % dataArray.length] / 255 : 0;
+        particle.style.transform = `scale(${1 + energy * 2})`;
+        particle.style.opacity = 0.3 + energy * 0.7;
+        
+        const newHue = (parseFloat(particle.dataset.hue) + avgEnergy * 10) % 360;
+        particle.dataset.hue = newHue;
+        particle.style.background = `radial-gradient(circle, hsl(${newHue}, 100%, 60%), transparent)`;
+    });
+}
+
+function updateCircularVisualization(dataArray) {
+    const segments = document.querySelectorAll('#media-visualization-container circle > div');
+    if (segments.length === 0) return;
+    
+    segments.forEach((segment, i) => {
+        const value = dataArray ? dataArray[i % dataArray.length] / 255 : 0;
+        const height = 20 + value * 40;
+        segment.style.height = height + 'px';
+        
+        if (value > 0.8) {
+            segment.style.background = 'linear-gradient(to top, #ff0080, #ff6b6b)';
+        } else if (value > 0.5) {
+            segment.style.background = 'linear-gradient(to top, #27a0b9, #00d4ff)';
+        } else {
+            segment.style.background = 'linear-gradient(to top, #00d4ff, #00ff88)';
+        }
+    });
+}
+
+function updateWaveVisualization() {
+    if (!MediaPlayer.waveCanvas || !MediaPlayer.wavePoints.length) return;
+    
+    const ctx = MediaPlayer.waveCanvas;
+    const canvas = ctx.canvas;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height / 2);
+    
+    MediaPlayer.wavePoints.forEach((point, i) => {
+        const offset = Math.sin(Date.now() / 200 + i / 5) * 20;
+        point.y = canvas.height / 2 + offset;
+        ctx.lineTo(point.x, point.y);
+    });
+    
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    gradient.addColorStop(0, '#27a0b9');
+    gradient.addColorStop(0.5, '#00d4ff');
+    gradient.addColorStop(1, '#00ff88');
+    
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+}
+
+function updateMatrixVisualization(dataArray) {
+    const cells = document.querySelectorAll('#media-visualization-container > div');
+    if (cells.length === 0) return;
+    
+    cells.forEach((cell, i) => {
+        const value = dataArray ? dataArray[i % dataArray.length] / 255 : 0;
+        const intensity = Math.floor(value * 255);
+        cell.style.background = `rgba(0, 255, 136, ${0.2 + value * 0.8})`;
+        cell.style.transform = `scale(${1 + value * 0.5})`;
+    });
+}
+
 function updateMediaVisualization() {
     if (!MediaPlayer.visualizationActive || !MediaPlayer.isPlaying) return;
     
@@ -6083,6 +6379,26 @@ function updateMediaVisualization() {
     
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(dataArray);
+    
+    const mode = MediaPlayer.visualizationMode || 'bars';
+    
+    switch(mode) {
+        case 'circular':
+            updateCircularVisualization(dataArray);
+            return;
+        case 'wave':
+            updateWaveVisualization();
+            return;
+        case 'spectrum':
+            updateSpectrumVisualization(dataArray);
+            return;
+        case 'particles':
+            updateParticleVisualization(dataArray);
+            return;
+        case 'matrix':
+            updateMatrixVisualization(dataArray);
+            return;
+    }
     
     const bars = document.querySelectorAll('.media-viz-bar');
     if (bars.length === 0) return;
@@ -6102,6 +6418,22 @@ function updateMediaVisualization() {
             bar.classList.remove('peak');
             bar.style.background = 'linear-gradient(to top, #27a0b9, #00d4ff, #00ff88)';
         }
+    });
+}
+
+function updateSpectrumVisualization(dataArray) {
+    const bars = document.querySelectorAll('#media-visualization-container > div');
+    if (bars.length === 0) return;
+    
+    const step = Math.floor(dataArray.length / bars.length);
+    
+    bars.forEach((bar, i) => {
+        const value = dataArray[i * step] || 0;
+        const height = Math.max(3, (value / 255) * 100);
+        bar.style.height = height + '%';
+        
+        const hue = 280 - (value / 255) * 280;
+        bar.style.background = `linear-gradient(to top, hsl(${hue}, 100%, 50%), hsl(${hue}, 100%, 70%))`;
     });
 }
 

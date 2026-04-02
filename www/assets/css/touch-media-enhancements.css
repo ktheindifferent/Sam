@@ -2830,6 +2830,489 @@
     }
 }
 
+/* Touch Calibration Overlay */
+.touch-calibration-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.touch-calibration-overlay.visible {
+    display: flex;
+    opacity: 1;
+}
+
+.calibration-container {
+    background: linear-gradient(135deg, rgba(30, 30, 46, 0.98), rgba(20, 20, 35, 0.98));
+    border: 2px solid rgba(39, 160, 185, 0.4);
+    border-radius: 24px;
+    padding: 30px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(39, 160, 185, 0.2);
+}
+
+.calibration-header {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.calibration-header i {
+    font-size: 48px;
+    color: #00d4ff;
+    margin-bottom: 15px;
+    display: block;
+    animation: calibration-pulse 2s ease-in-out infinite;
+}
+
+@keyframes calibration-pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+}
+
+.calibration-header h2 {
+    color: #fff;
+    font-size: 24px;
+    margin: 0 0 8px 0;
+    font-weight: 600;
+}
+
+.calibration-header p {
+    color: #adb5bd;
+    font-size: 14px;
+    margin: 0;
+}
+
+.calibration-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.calibration-step {
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 15px;
+    transition: all 0.3s ease;
+    opacity: 0.5;
+    transform: scale(0.95);
+}
+
+.calibration-step.active {
+    opacity: 1;
+    transform: scale(1);
+    border-color: rgba(39, 160, 185, 0.6);
+    background: rgba(39, 160, 185, 0.1);
+    box-shadow: 0 0 20px rgba(39, 160, 185, 0.2);
+}
+
+.calibration-step.completed {
+    opacity: 0.7;
+    border-color: rgba(0, 255, 136, 0.5);
+}
+
+.calibration-step.completed .step-indicator {
+    background: linear-gradient(135deg, #00ff88, #00d4ff);
+}
+
+.calibration-step.completed .step-number {
+    display: none;
+}
+
+.calibration-step.completed .step-icon::before {
+    content: '\f00c';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    color: #fff;
+}
+
+.calibration-step .step-indicator {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #27a0b9, #00d4ff);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 12px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.calibration-step .step-number {
+    position: absolute;
+    color: #fff;
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.calibration-step .step-icon {
+    color: #fff;
+    font-size: 18px;
+}
+
+.calibration-step h4 {
+    color: #fff;
+    font-size: 14px;
+    margin: 0 0 6px 0;
+    text-align: center;
+}
+
+.calibration-step p {
+    color: #adb5bd;
+    font-size: 11px;
+    margin: 0 0 10px 0;
+    text-align: center;
+}
+
+.step-progress {
+    margin-bottom: 10px;
+}
+
+.progress-dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+}
+
+.progress-dots .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+}
+
+.progress-dots .dot.filled {
+    background: #00ff88;
+    box-shadow: 0 0 10px #00ff88;
+    transform: scale(1.1);
+}
+
+.progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #27a0b9, #00ff88);
+    transition: width 0.1s linear;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.direction-arrows {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.direction-arrows i {
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 18px;
+    transition: all 0.3s ease;
+}
+
+.pinch-indicator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 50px;
+    height: 40px;
+}
+
+.pinch-dot {
+    width: 12px;
+    height: 12px;
+    background: linear-gradient(135deg, #27a0b9, #00d4ff);
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+    box-shadow: 0 0 10px rgba(39, 160, 185, 0.5);
+}
+
+.step-feedback {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.step-feedback .feedback-label {
+    color: #adb5bd;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.step-feedback .feedback-value {
+    color: #00ff88;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.calibration-live {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(39, 160, 185, 0.3);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.calibration-live h4 {
+    color: #fff;
+    font-size: 14px;
+    margin: 0 0 15px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.calibration-live h4::before {
+    content: '\f06c';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    color: #00d4ff;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 15px;
+}
+
+.metric {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.metric-label {
+    color: #adb5bd;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.metric-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.metric-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #27a0b9, #00ff88);
+    transition: width 0.3s ease;
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
+}
+
+.metric-value {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.calibration-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+.calibration-btn {
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.calibration-btn:active {
+    transform: scale(0.95);
+}
+
+.calibration-btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: #adb5bd;
+}
+
+.calibration-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.calibration-btn-primary {
+    background: linear-gradient(135deg, #27a0b9, #00d4ff);
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(39, 160, 185, 0.4);
+}
+
+.calibration-btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(39, 160, 185, 0.6);
+    transform: translateY(-2px);
+}
+
+.calibration-btn-success {
+    background: linear-gradient(135deg, #00ff88, #00d4ff);
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(0, 255, 136, 0.4);
+}
+
+.calibration-btn-success:hover {
+    box-shadow: 0 6px 20px rgba(0, 255, 136, 0.6);
+    transform: translateY(-2px);
+}
+
+.calibration-results {
+    background: rgba(0, 255, 136, 0.05);
+    border: 2px solid rgba(0, 255, 136, 0.3);
+    border-radius: 16px;
+    padding: 20px;
+    margin-top: 15px;
+}
+
+.calibration-results h3 {
+    color: #fff;
+    font-size: 16px;
+    margin: 0 0 15px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.calibration-results h3::before {
+    content: '\f00c';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    color: #00ff88;
+}
+
+.results-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.result-item {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 15px;
+    text-align: center;
+}
+
+.result-label {
+    color: #adb5bd;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.result-value {
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    display: block;
+}
+
+.calibration-complete-toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.95), rgba(0, 212, 255, 0.95));
+    border-radius: 16px;
+    padding: 15px 25px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 10001;
+    box-shadow: 0 10px 40px rgba(0, 255, 136, 0.4);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.calibration-complete-toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.calibration-complete-toast i {
+    color: #fff;
+    font-size: 24px;
+}
+
+.calibration-complete-toast span {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Calibration trigger button */
+.calibration-trigger-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.calibration-trigger-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.calibration-trigger-btn:hover::before {
+    left: 100%;
+}
+
+.calibration-trigger-btn:hover {
+    box-shadow: 0 6px 20px rgba(39, 160, 185, 0.5);
+    transform: translateY(-2px);
+}
+
+.calibration-trigger-btn:active {
+    transform: translateY(0);
+}
+
 /* Print styles - hide interactive elements */
 @media print {
     .touch-sensitivity-panel,
@@ -2837,6 +3320,8 @@
     .velocity-indicator,
     .edge-swipe-hint,
     .three-finger-tutorial,
+    .touch-calibration-overlay,
+    .calibration-complete-toast,
     .circular-color-picker,
     .quick-scenes-panel,
     .media-sync-panel {
