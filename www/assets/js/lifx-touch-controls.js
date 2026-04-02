@@ -281,6 +281,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    if (this.calibrationModeActive) {
+                        this.updateCalibrationProgress('swipeUp', data.distance, data.duration);
+                    }
                     const currentBrightness = this.brightnessLevel;
                     const velocity = data.velocity || this.lastGestureVelocity;
                     const step = Math.max(10, Math.floor(velocity * 15));
@@ -297,6 +300,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    if (this.calibrationModeActive) {
+                        this.updateCalibrationProgress('swipeDown', data.distance, data.duration);
+                    }
                     const currentBrightness = this.brightnessLevel;
                     const velocity = data.velocity || this.lastGestureVelocity;
                     const step = Math.max(10, Math.floor(velocity * 15));
@@ -314,6 +320,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    if (this.calibrationModeActive) {
+                        this.updateCalibrationProgress('swipeRight', data.distance, data.duration);
+                    }
                     const currentTemp = this.colorTempLevel;
                     const velocity = data.velocity || this.lastGestureVelocity;
                     const step = Math.max(200, Math.floor(velocity * 300));
@@ -330,6 +339,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    if (this.calibrationModeActive) {
+                        this.updateCalibrationProgress('swipeLeft', data.distance, data.duration);
+                    }
                     const currentTemp = this.colorTempLevel;
                     const velocity = data.velocity || this.lastGestureVelocity;
                     const step = Math.max(200, Math.floor(velocity * 300));
@@ -347,6 +359,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    if (this.calibrationModeActive) {
+                        this.updateCalibrationProgress('pinch', data.distance, data.duration);
+                    }
                     this.nextScene();
                     this.showGestureFeedback('Next Scene', '🎨');
                     this.hapticFeedback('success');
@@ -359,6 +374,9 @@ const LifXTouchControls = {
                 if (!this.checkGestureDebounce()) return;
                 const bulb = this.selectedBulb || this.getFirstSelectedBulb();
                 if (bulb) {
+                    if (this.calibrationModeActive) {
+                        this.updateCalibrationProgress('pinch', data.distance, data.duration);
+                    }
                     this.previousScene();
                     this.showGestureFeedback('Previous Scene', '🎨');
                     this.hapticFeedback('success');
@@ -1841,6 +1859,24 @@ const LifXTouchControls = {
         }, 5000);
     },
     
+    showToast: function(message, type = 'info') {
+        if (typeof toastr !== 'undefined') {
+            toastr[type](message);
+        } else if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: type,
+                title: message,
+                showConfirmButton: false,
+                timer: 3000,
+                timerProgressBar: true
+            });
+        } else {
+            console.log('[LifXTouchControls Toast]', message);
+        }
+    },
+    
     showGestureFeedback: function(text, icon, duration = 1000, velocity = null) {
         if (this.reducedMotionMode) {
             duration = 300;
@@ -1934,13 +1970,13 @@ const LifXTouchControls = {
         }, duration + 200);
     },
     
-    showGestureTutorial: function(force = false) {
-        if (!force && localStorage.getItem('lifxGestureTutorialShown')) {
+    showGestureTutorial: function(force = false, showCalibration = false) {
+        if (!force && localStorage.getItem('lifxGestureTutorialShown') && !showCalibration) {
             return;
         }
         
         const tutorial = document.createElement('div');
-        tutorial.className = 'lifx-gesture-tutorial active enhanced';
+        tutorial.className = 'lifx-gesture-tutorial active enhanced' + (showCalibration ? ' calibration-mode' : '');
         tutorial.innerHTML = `
             <div class="lifx-gesture-tutorial-content">
                 <div class="tutorial-header">
@@ -1948,6 +1984,94 @@ const LifXTouchControls = {
                     <p class="tutorial-subtitle">Interactive guide for controlling your lights</p>
                 </div>
                 
+                ${showCalibration ? `
+                <div class="tutorial-section calibration-section">
+                    <h4><i class="fas fa-sliders-h"></i> Gesture Sensitivity Calibration</h4>
+                    <p class="calibration-intro">Perform the following gestures to calibrate touch sensitivity to your preference:</p>
+                    
+                    <div class="calibration-steps">
+                        <div class="calibration-step" data-step="1">
+                            <div class="step-icon">⬆️</div>
+                            <div class="step-content">
+                                <strong>Step 1: Swipe Up for Brightness</strong>
+                                <p>Swipe up on any bulb card to increase brightness. Perform this gesture 3 times.</p>
+                                <div class="step-progress">
+                                    <div class="progress-bar"><div class="progress-fill" id="swipe-up-progress"></div></div>
+                                    <span class="step-counter"><span id="swipe-up-count">0</span>/3</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="calibration-step" data-step="2">
+                            <div class="step-icon">⬇️</div>
+                            <div class="step-content">
+                                <strong>Step 2: Swipe Down for Brightness</strong>
+                                <p>Swipe down to decrease brightness. Perform 3 times.</p>
+                                <div class="step-progress">
+                                    <div class="progress-bar"><div class="progress-fill" id="swipe-down-progress"></div></div>
+                                    <span class="step-counter"><span id="swipe-down-count">0</span>/3</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="calibration-step" data-step="3">
+                            <div class="step-icon">➡️</div>
+                            <div class="step-content">
+                                <strong>Step 3: Swipe Right for Warmer Light</strong>
+                                <p>Swipe right to make the light warmer (more yellow). Perform 3 times.</p>
+                                <div class="step-progress">
+                                    <div class="progress-bar"><div class="progress-fill" id="swipe-right-progress"></div></div>
+                                    <span class="step-counter"><span id="swipe-right-count">0</span>/3</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="calibration-step" data-step="4">
+                            <div class="step-icon">⬅️</div>
+                            <div class="step-content">
+                                <strong>Step 4: Swipe Left for Cooler Light</strong>
+                                <p>Swipe left to make the light cooler (more blue). Perform 3 times.</p>
+                                <div class="step-progress">
+                                    <div class="progress-bar"><div class="progress-fill" id="swipe-left-progress"></div></div>
+                                    <span class="step-counter"><span id="swipe-left-count">0</span>/3</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="calibration-step" data-step="5">
+                            <div class="step-icon">🤏</div>
+                            <div class="step-content">
+                                <strong>Step 5: Pinch to Cycle Scenes</strong>
+                                <p>Pinch in or out to cycle through lighting scenes. Perform 3 times.</p>
+                                <div class="step-progress">
+                                    <div class="progress-bar"><div class="progress-fill" id="pinch-progress"></div></div>
+                                    <span class="step-counter"><span id="pinch-count">0</span>/3</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="calibration-results" id="calibration-results" style="display: none;">
+                        <div class="results-icon">✅</div>
+                        <h4>Calibration Complete!</h4>
+                        <p>Your gesture sensitivity has been personalized based on your input.</p>
+                        <div class="sensitivity-summary">
+                            <div class="sensitivity-item">
+                                <span class="label">Swipe Distance:</span>
+                                <span class="value" id="calibrated-swipe-distance">--</span>
+                            </div>
+                            <div class="sensitivity-item">
+                                <span class="label">Swipe Time:</span>
+                                <span class="value" id="calibrated-swipe-time">--</span>
+                            </div>
+                            <div class="sensitivity-item">
+                                <span class="label">Pinch Distance:</span>
+                                <span class="value" id="calibrated-pinch-distance">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : `
                 <div class="tutorial-section">
                     <h4><i class="fas fa-hand-pointer"></i> Basic Gestures</h4>
                     <div class="lifx-gesture-tutorial-grid">
@@ -2015,23 +2139,33 @@ const LifXTouchControls = {
                         </div>
                     </div>
                 </div>
+                `}
                 
                 <div class="tutorial-footer">
                     <div class="tutorial-tips">
                         <i class="fas fa-lightbulb"></i>
-                        <p>Tip: Customize sensitivity and visual feedback in Touch Settings!</p>
+                        <p>${showCalibration ? 'Follow the steps above to personalize your experience.' : 'Tip: Customize sensitivity and visual feedback in Touch Settings!'}</p>
                     </div>
-                    <button class="lifx-gesture-tutorial-close" onclick="LifXTouchControls.closeGestureTutorial()">
-                        <i class="fas fa-check"></i> Got It!
-                    </button>
+                    <div class="tutorial-buttons">
+                        ${!showCalibration ? `<button class="btn btn-outline-primary btn-sm" onclick="LifXTouchControls.showGestureTutorial(false, true)">
+                            <i class="fas fa-sliders-h"></i> Calibrate Gestures
+                        </button>` : ''}
+                        <button class="lifx-gesture-tutorial-close" onclick="LifXTouchControls.closeGestureTutorial(${showCalibration ? 'true' : 'false'})">
+                            <i class="fas fa-check"></i> ${showCalibration ? 'Finish' : 'Got It!'}
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
         document.body.appendChild(tutorial);
         localStorage.setItem('lifxGestureTutorialShown', 'true');
+        
+        if (showCalibration) {
+            this.startCalibrationMode();
+        }
     },
     
-    closeGestureTutorial: function() {
+    closeGestureTutorial: function(finishCalibration = false) {
         const tutorial = document.querySelector('.lifx-gesture-tutorial');
         if (tutorial) {
             tutorial.classList.remove('active');
@@ -2042,12 +2176,189 @@ const LifXTouchControls = {
             }, 300);
         }
         localStorage.setItem('lifxGestureTutorialShown', 'true');
+        
+        if (finishCalibration && this.calibrationModeActive) {
+            this.completeCalibrationMode();
+        }
+        this.calibrationModeActive = false;
     },
     
     resetGestureTutorial: function() {
         localStorage.removeItem('lifxGestureTutorialShown');
         this.showGestureTutorial(true);
         showNotification('Gesture tutorial reset', 'info');
+    },
+    
+    calibrationModeActive: false,
+    calibrationStep: 1,
+    calibrationCounts: {
+        'swipeUp': 0,
+        'swipeDown': 0,
+        'swipeRight': 0,
+        'swipeLeft': 0,
+        'pinch': 0
+    },
+    calibrationGestureDistances: [],
+    calibrationGestureTimes: [],
+    calibrationPinchDistances: [],
+    
+    startCalibrationMode: function() {
+        this.calibrationModeActive = true;
+        this.calibrationStep = 1;
+        this.calibrationCounts = { 'swipeUp': 0, 'swipeDown': 0, 'swipeRight': 0, 'swipeLeft': 0, 'pinch': 0 };
+        this.calibrationGestureDistances = [];
+        this.calibrationGestureTimes = [];
+        this.calibrationPinchDistances = [];
+        this.highlightCalibrationStep(1);
+        console.log('[LifXTouchControls] Calibration mode started');
+    },
+    
+    highlightCalibrationStep: function(step) {
+        document.querySelectorAll('.calibration-step').forEach(el => {
+            el.classList.remove('active', 'completed');
+        });
+        const currentStep = document.querySelector(`.calibration-step[data-step="${step}"]`);
+        if (currentStep) {
+            currentStep.classList.add('active');
+        }
+        document.querySelectorAll('.calibration-step[data-step]').forEach(el => {
+            const stepNum = parseInt(el.dataset.step);
+            if (stepNum < step) {
+                el.classList.add('completed');
+            }
+        });
+    },
+    
+    updateCalibrationProgress: function(gestureType, distance, time) {
+        if (!this.calibrationModeActive) return;
+        
+        this.calibrationCounts[gestureType] = Math.min(3, this.calibrationCounts[gestureType] + 1);
+        
+        if (distance) {
+            this.calibrationGestureDistances.push(distance);
+            if (this.calibrationGestureDistances.length > 10) {
+                this.calibrationGestureDistances.shift();
+            }
+        }
+        
+        if (time) {
+            this.calibrationGestureTimes.push(time);
+            if (this.calibrationGestureTimes.length > 10) {
+                this.calibrationGestureTimes.shift();
+            }
+        }
+        
+        const count = this.calibrationCounts[gestureType];
+        const progressEl = document.getElementById(`${gestureType}-progress`);
+        const countEl = document.getElementById(`${gestureType}-count`);
+        
+        if (progressEl) {
+            progressEl.style.width = (count / 3 * 100) + '%';
+        }
+        if (countEl) {
+            countEl.textContent = count;
+        }
+        
+        if (count >= 3) {
+            const currentStepEl = document.querySelector(`.calibration-step[data-step="${this.calibrationStep}"]`);
+            if (currentStepEl) {
+                currentStepEl.classList.add('completed');
+            }
+            
+            if (this.calibrationStep < 5) {
+                this.calibrationStep++;
+                this.highlightCalibrationStep(this.calibrationStep);
+                this.showCalibrationFeedback(`Step ${this.calibrationStep} of 5`, 'success');
+            } else {
+                this.showCalibrationResults();
+            }
+        }
+    },
+    
+    showCalibrationFeedback: function(message, type) {
+        const feedback = document.createElement('div');
+        feedback.className = `calibration-feedback ${type}`;
+        feedback.textContent = message;
+        feedback.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: ${type === 'success' ? 'rgba(40, 167, 69, 0.9)' : 'rgba(0, 212, 255, 0.9)'};
+            color: white;
+            padding: 20px 40px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 10000;
+            animation: calibration-feedback-fade 1s ease forwards;
+        `;
+        document.body.appendChild(feedback);
+        setTimeout(() => {
+            if (feedback.parentNode) feedback.parentNode.removeChild(feedback);
+        }, 1000);
+    },
+    
+    showCalibrationResults: function() {
+        const avgDistance = this.calibrationGestureDistances.length > 0 
+            ? Math.round(this.calibrationGestureDistances.reduce((a, b) => a + b, 0) / this.calibrationGestureDistances.length)
+            : 40;
+        const avgTime = this.calibrationGestureTimes.length > 0
+            ? Math.round(this.calibrationGestureTimes.reduce((a, b) => a + b, 0) / this.calibrationGestureTimes.length)
+            : 250;
+        const avgPinchDistance = this.calibrationPinchDistances.length > 0
+            ? Math.round(this.calibrationPinchDistances.reduce((a, b) => a + b, 0) / this.calibrationPinchDistances.length)
+            : 25;
+        
+        document.getElementById('calibrated-swipe-distance').textContent = avgDistance + 'px';
+        document.getElementById('calibrated-swipe-time').textContent = avgTime + 'ms';
+        document.getElementById('calibrated-pinch-distance').textContent = avgPinchDistance + 'px';
+        
+        document.querySelectorAll('.calibration-step').forEach(el => el.style.display = 'none');
+        const resultsEl = document.getElementById('calibration-results');
+        if (resultsEl) {
+            resultsEl.style.display = 'block';
+        }
+        
+        this.gestureSensitivity = {
+            swipeDistance: avgDistance,
+            swipeTime: avgTime,
+            pinchDistance: avgPinchDistance
+        };
+        
+        this.saveGestureSensitivity();
+        
+        if (this.hapticEnabled && navigator.vibrate) {
+            navigator.vibrate([50, 50, 50, 50, 50]);
+        }
+    },
+    
+    completeCalibrationMode: function() {
+        this.calibrationModeActive = false;
+        console.log('[LifXTouchControls] Calibration mode completed');
+        this.showToast('Gesture sensitivity calibrated', 'success');
+    },
+    
+    saveGestureSensitivity: function() {
+        localStorage.setItem('lifx_gesture_sensitivity', JSON.stringify(this.gestureSensitivity));
+        localStorage.setItem('lifx_gesture_calibrated', 'true');
+    },
+    
+    loadGestureSensitivity: function() {
+        const calibrated = localStorage.getItem('lifx_gesture_calibrated') === 'true';
+        const saved = localStorage.getItem('lifx_gesture_sensitivity');
+        
+        if (calibrated && saved) {
+            try {
+                const sensitivity = JSON.parse(saved);
+                if (sensitivity.swipeDistance) this.gestureSensitivity.swipeDistance = sensitivity.swipeDistance;
+                if (sensitivity.swipeTime) this.gestureSensitivity.swipeTime = sensitivity.swipeTime;
+                if (sensitivity.pinchDistance) this.gestureSensitivity.pinchDistance = sensitivity.pinchDistance;
+                console.log('[LifXTouchControls] Loaded calibrated sensitivity:', sensitivity);
+            } catch (e) {
+                console.warn('[LifXTouchControls] Failed to load sensitivity:', e);
+            }
+        }
     },
     
     openQuickSettings: function() {
@@ -2494,7 +2805,10 @@ const LifXTouchControls = {
         
         const delta = this.startY - currentY;
         const sensitivity = this.touchSensitivityLevels[this.touchSensitivity] || this.touchSensitivityLevels.medium;
-        const brightnessDelta = Math.round((delta / sensitivity.swipeDistance) * 100);
+        const baseBrightnessDelta = Math.round((delta / sensitivity.swipeDistance) * 100);
+        
+        const velocityMultiplier = this.touchVelocity ? Math.max(1.0, Math.min(3.0, 1 + this.touchVelocity / 5)) : 1.0;
+        const brightnessDelta = Math.round(baseBrightnessDelta * velocityMultiplier);
         const newBrightness = Math.max(0, Math.min(100, this.startBrightness + brightnessDelta));
         
         if (newBrightness !== this.brightnessLevel) {
@@ -2580,17 +2894,30 @@ const LifXTouchControls = {
         
         colorWheelContainer.innerHTML = `
             <div id="lifx-color-wheel" class="lifx-color-wheel" style="display: none;">
-                <canvas id="color-wheel-canvas" width="300" height="300"></canvas>
-                <div class="color-wheel-center">
-                    <div class="color-wheel-preview" id="color-wheel-preview"></div>
+                <div class="color-wheel-wrapper">
+                    <canvas id="color-wheel-canvas" width="320" height="320"></canvas>
+                    <canvas id="saturation-ring-canvas" width="320" height="320" class="saturation-ring"></canvas>
+                    <div class="color-wheel-center">
+                        <div class="color-wheel-preview" id="color-wheel-preview"></div>
+                        <div class="color-values-display">
+                            <span id="color-hex-display">#FFFFFF</span>
+                            <span id="color-kelvin-display">4000K</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="color-wheel-controls">
                     <button class="btn-close" onclick="LifXTouchControls.hideColorWheel()">×</button>
+                    <button class="btn-apply-color" onclick="LifXTouchControls.applyColorFromWheel()">Apply</button>
+                </div>
+                <div class="brightness-slider-inline">
+                    <input type="range" id="inline-brightness" min="0" max="100" value="50" oninput="LifXTouchControls.updateWheelBrightness(this.value)" />
+                    <span id="inline-brightness-value">50%</span>
                 </div>
             </div>
         `;
         
         this.setupColorWheelEvents();
+        this.initSaturationRing();
     },
     
     setupColorWheelEvents: function() {
@@ -2600,8 +2927,10 @@ const LifXTouchControls = {
         const ctx = canvas.getContext('2d');
         this.colorWheelCtx = ctx;
         this.drawColorWheel();
+        this.drawSaturationRing();
         
         let isDragging = false;
+        let isSaturationDragging = false;
         
         const getColorFromPosition = (x, y) => {
             const rect = canvas.getBoundingClientRect();
@@ -2614,10 +2943,29 @@ const LifXTouchControls = {
             const hue = (angle / (2 * Math.PI)) * 360;
             
             const distance = Math.sqrt(dx * dx + dy * dy);
-            const maxDistance = rect.width / 2;
-            const saturation = Math.min(100, (distance / maxDistance) * 100);
+            const maxDistance = rect.width / 2 - 20;
+            const saturation = Math.min(100, Math.max(0, (distance / maxDistance) * 100));
             
             return { hue, saturation };
+        };
+        
+        const getSaturationFromPosition = (x, y) => {
+            const rect = canvas.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const dx = x - centerX;
+            const dy = y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const innerRadius = rect.width / 2 - 35;
+            const outerRadius = rect.width / 2 - 5;
+            
+            if (distance < innerRadius || distance > outerRadius) return null;
+            
+            const angle = Math.atan2(dy, dx) + Math.PI;
+            let saturation = ((angle / (2 * Math.PI)) * 360);
+            if (saturation < 0) saturation += 360;
+            
+            return { saturation: Math.round(saturation) };
         };
         
         const handleColorSelect = (clientX, clientY) => {
@@ -2626,52 +2974,133 @@ const LifXTouchControls = {
             const y = clientY - rect.top;
             const color = getColorFromPosition(x, y);
             
-            this.lastColorHue = color.hue;
-            this.lastColorSaturation = color.saturation;
+            this.lastColorHue = Math.round(color.hue);
+            this.lastColorSaturation = Math.round(color.saturation);
             
-            const previewEl = document.getElementById('color-wheel-preview');
-            if (previewEl) {
-                previewEl.style.background = `hsl(${color.hue}, ${color.saturation}%, 50%)`;
-            }
-            
+            this.updateColorWheelDisplay();
             this.applyHSLColor();
+        };
+        
+        const handleSaturationSelect = (clientX, clientY) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            const result = getSaturationFromPosition(x, y);
+            
+            if (result) {
+                this.lastColorSaturation = result.saturation;
+                this.updateColorWheelDisplay();
+                this.applyHSLColor();
+            }
         };
         
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            isDragging = true;
             const touch = e.touches[0];
-            handleColorSelect(touch.clientX, touch.clientY);
-            this.hapticFeedback('light');
+            const satResult = getSaturationFromPosition(touch.clientX - canvas.getBoundingClientRect().left, touch.clientY - canvas.getBoundingClientRect().top);
+            
+            if (satResult) {
+                isSaturationDragging = true;
+                handleSaturationSelect(touch.clientX, touch.clientY);
+            } else {
+                isDragging = true;
+                handleColorSelect(touch.clientX, touch.clientY);
+            }
+            this.hapticFeedback('color_pick');
         }, { passive: false });
         
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            if (!isDragging) return;
+            if (!isDragging && !isSaturationDragging) return;
             const touch = e.touches[0];
-            handleColorSelect(touch.clientX, touch.clientY);
+            
+            if (isDragging) {
+                handleColorSelect(touch.clientX, touch.clientY);
+            }
+            if (isSaturationDragging) {
+                handleSaturationSelect(touch.clientX, touch.clientY);
+            }
             this.createColorWheelTrail(touch.clientX, touch.clientY);
         }, { passive: false });
         
         canvas.addEventListener('touchend', () => {
             isDragging = false;
+            isSaturationDragging = false;
             this.showGestureFeedback('Color updated', '🎨');
             this.hapticFeedback('success');
         });
         
         canvas.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            handleColorSelect(e.clientX, e.clientY);
+            const satResult = getSaturationFromPosition(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
+            if (satResult) {
+                isSaturationDragging = true;
+                handleSaturationSelect(e.clientX, e.clientY);
+            } else {
+                isDragging = true;
+                handleColorSelect(e.clientX, e.clientY);
+            }
         });
         
         canvas.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            handleColorSelect(e.clientX, e.clientY);
+            if (isDragging) handleColorSelect(e.clientX, e.clientY);
+            if (isSaturationDragging) handleSaturationSelect(e.clientX, e.clientY);
         });
         
         canvas.addEventListener('mouseup', () => {
             isDragging = false;
+            isSaturationDragging = false;
         });
+    },
+    
+    initSaturationRing: function() {
+        const satCanvas = document.getElementById('saturation-ring-canvas');
+        if (!satCanvas) return;
+        this.saturationRingCtx = satCanvas.getContext('2d');
+        this.drawSaturationRing();
+    },
+    
+    drawSaturationRing: function() {
+        const ctx = this.saturationRingCtx;
+        if (!ctx) return;
+        
+        const canvas = document.getElementById('saturation-ring-canvas');
+        if (!canvas) return;
+        
+        const width = canvas.width;
+        const height = canvas.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const outerRadius = width / 2 - 5;
+        const innerRadius = width / 2 - 35;
+        
+        ctx.clearRect(0, 0, width, height);
+        
+        for (let angle = 0; angle < 360; angle++) {
+            const startAngle = (angle - 0.5) * Math.PI / 180;
+            const endAngle = (angle + 0.5) * Math.PI / 180;
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, outerRadius, startAngle, endAngle);
+            ctx.arc(centerX, centerY, innerRadius, endAngle, startAngle, true);
+            ctx.closePath();
+            
+            const saturation = angle / 3.6;
+            ctx.fillStyle = `hsl(${this.lastColorHue || 0}, ${saturation}%, 50%)`;
+            ctx.fill();
+        }
+        
+        const indicatorAngle = ((this.lastColorSaturation || 50) / 360) * 2 * Math.PI - Math.PI / 2;
+        const indicatorRadius = (outerRadius + innerRadius) / 2;
+        const indicatorX = centerX + Math.cos(indicatorAngle) * indicatorRadius;
+        const indicatorY = centerY + Math.sin(indicatorAngle) * indicatorRadius;
+        
+        ctx.beginPath();
+        ctx.arc(indicatorX, indicatorY, 8, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#00d4ff';
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
     },
     
     drawColorWheel: function() {
@@ -2683,7 +3112,9 @@ const LifXTouchControls = {
         const height = canvas.height;
         const centerX = width / 2;
         const centerY = height / 2;
-        const radius = width / 2 - 10;
+        const radius = width / 2 - 40;
+        
+        ctx.clearRect(0, 0, width, height);
         
         for (let angle = 0; angle < 360; angle++) {
             const startAngle = (angle - 1) * Math.PI / 180;
@@ -2701,6 +3132,66 @@ const LifXTouchControls = {
             ctx.fillStyle = gradient;
             ctx.fill();
         }
+        
+        const hueAngle = ((this.lastColorHue || 0) / 360) * 2 * Math.PI - Math.PI / 2;
+        const satRad = ((this.lastColorSaturation || 50) / 100) * radius;
+        const indicatorX = centerX + Math.cos(hueAngle) * satRad;
+        const indicatorY = centerY + Math.sin(hueAngle) * satRad;
+        
+        ctx.beginPath();
+        ctx.arc(indicatorX, indicatorY, 10, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#00d4ff';
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+    },
+    
+    updateColorWheelDisplay: function() {
+        const previewEl = document.getElementById('color-wheel-preview');
+        const hexDisplay = document.getElementById('color-hex-display');
+        const kelvinDisplay = document.getElementById('color-kelvin-display');
+        
+        if (previewEl) {
+            previewEl.style.background = `hsl(${this.lastColorHue}, ${this.lastColorSaturation}%, 50%)`;
+        }
+        
+        if (hexDisplay) {
+            const rgb = this.hslToRgb(this.lastColorHue / 360, this.lastColorSaturation / 100, 0.5);
+            hexDisplay.textContent = this.rgbToHex(rgb[0], rgb[1], rgb[2]);
+        }
+        
+        if (kelvinDisplay) {
+            const kelvin = Math.round(1500 + (this.lastColorSaturation / 100) * 7500);
+            kelvinDisplay.textContent = kelvin + 'K';
+        }
+        
+        this.drawColorWheel();
+        this.drawSaturationRing();
+    },
+    
+    updateWheelBrightness: function(value) {
+        this.brightnessLevel = parseInt(value);
+        const valueDisplay = document.getElementById('inline-brightness-value');
+        if (valueDisplay) valueDisplay.textContent = value + '%';
+        
+        const previewEl = document.getElementById('color-wheel-preview');
+        if (previewEl) {
+            previewEl.style.filter = `brightness(${value}%)`;
+        }
+    },
+    
+    applyColorFromWheel: function() {
+        const bulb = this.selectedBulb || this.getFirstSelectedBulb();
+        if (!bulb) {
+            this.showGestureFeedback('Select a bulb first', '💡');
+            return;
+        }
+        
+        this.applyHSLColor();
+        this.showGestureFeedback('Color applied!', '🎨');
+        this.hapticFeedback('success');
+        setTimeout(() => this.hideColorWheel(), 500);
     },
     
     createColorWheelTrail: function(x, y) {
