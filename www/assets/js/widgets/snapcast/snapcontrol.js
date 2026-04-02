@@ -566,6 +566,94 @@ let audio = document.createElement('audio');
 function autoplayRequested() {
     return document.location.hash.match(/autoplay/) !== null;
 }
+function updateClientVolumeSlider(clientId, volume) {
+    const slider = document.querySelector(`.volume-slider[data-client-id="${clientId}"]`);
+    if (slider) {
+        slider.value = volume.percent;
+    }
+    const muteBtn = document.querySelector(`.mute-btn[data-client-id="${clientId}"]`);
+    if (muteBtn) {
+        muteBtn.classList.toggle('muted', volume.muted);
+    }
+}
+
+function updateClientLatencyDisplay(clientId, latency) {
+    const latencyElem = document.querySelector(`.latency-display[data-client-id="${clientId}"]`);
+    if (latencyElem) {
+        latencyElem.textContent = `${latency}ms`;
+    }
+}
+
+function updateClientNameDisplay(clientId, name) {
+    const nameElem = document.querySelector(`.client-name[data-client-id="${clientId}"]`);
+    if (nameElem) {
+        nameElem.textContent = name || 'Unknown';
+    }
+}
+
+function updateClientConnectionStatus(clientId, connected) {
+    const clientElem = document.querySelector(`.client-item[data-client-id="${clientId}"]`);
+    if (clientElem) {
+        clientElem.classList.toggle('connected', connected);
+        clientElem.classList.toggle('disconnected', !connected);
+    }
+    const indicator = document.querySelector(`.connection-indicator[data-client-id="${clientId}"]`);
+    if (indicator) {
+        indicator.className = `connection-indicator ${connected ? 'connected' : 'disconnected'}`;
+    }
+}
+
+function updateGroupMuteIndicator(groupId, muted) {
+    const groupElem = document.querySelector(`.group-item[data-group-id="${groupId}"]`);
+    if (groupElem) {
+        groupElem.classList.toggle('muted', muted);
+    }
+    const muteIcon = document.querySelector(`.group-mute-icon[data-group-id="${groupId}"]`);
+    if (muteIcon) {
+        muteIcon.textContent = muted ? '🔇' : '🔊';
+    }
+}
+
+function updateGroupStreamIndicator(groupId, streamId) {
+    const groupElem = document.querySelector(`.group-item[data-group-id="${groupId}"]`);
+    if (groupElem) {
+        groupElem.dataset.streamId = streamId;
+    }
+}
+
+function updateStreamInfo(streamId, stream) {
+    const streamName = document.querySelector(`.stream-name[data-stream-id="${streamId}"]`);
+    if (streamName) {
+        streamName.textContent = stream.friendly_name || stream.id;
+    }
+    const streamStatus = document.querySelector(`.stream-status[data-stream-id="${streamId}"]`);
+    if (streamStatus) {
+        streamStatus.textContent = stream.status || 'idle';
+    }
+}
+
+function updateServerStatus(server) {
+    const serverName = document.querySelector('.server-name');
+    if (serverName) {
+        serverName.textContent = server.host ? server.host.name : 'Server';
+    }
+    const serverVersion = document.querySelector('.server-version');
+    if (serverVersion && server.snapserver) {
+        serverVersion.textContent = server.snapserver.version || '';
+    }
+}
+
+function updateStreamProperties(streamId, properties) {
+    const playbackStatus = document.querySelector(`.playback-status[data-stream-id="${streamId}"]`);
+    if (playbackStatus) {
+        playbackStatus.textContent = properties.playbackStatus || 'unknown';
+    }
+    const volumeDisplay = document.querySelector(`.stream-volume[data-stream-id="${streamId}"]`);
+    if (volumeDisplay) {
+        volumeDisplay.textContent = `${Math.round(properties.volume * 100)}%`;
+    }
+}
+
 function show() {
     // Render the page
     const versionElem = document.getElementsByTagName("meta").namedItem("version");

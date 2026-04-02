@@ -988,7 +988,21 @@ const TouchMediaEnhancements = (function() {
             loading: [5, 10, 5, 10, 5],
             progress: [5, 5, 5],
             download: [12, 18, 12, 18],
-            upload: [18, 12, 18, 12]
+            upload: [18, 12, 18, 12],
+            swipeRight: [12, 20, 8],
+            swipeLeft: [8, 20, 12],
+            swipeUp: [10, 15, 10],
+            swipeDown: [10, 10, 15],
+            scene: [15, 25, 15],
+            effect: [12, 18, 12, 18],
+            color: [10, 15, 10],
+            zone: [8, 12, 8],
+            brightness: [10, 20, 10],
+            error: [25, 20, 25, 20, 25],
+            ripple: [8],
+            success: [10, 20, 10, 20, 10],
+            warning: [20, 15, 20],
+            strong: [30, 20, 30]
         };
         
         // Expose haptic function globally

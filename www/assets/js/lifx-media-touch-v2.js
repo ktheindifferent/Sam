@@ -1294,6 +1294,27 @@
             });
         },
         
+        highlightZoneSegmentByRange(start, end) {
+            const segments = document.querySelectorAll('.zone-segment');
+            const totalSegments = segments.length;
+            
+            if (totalSegments === 0) return;
+            
+            const startIndex = Math.floor((start / 255) * totalSegments);
+            const endIndex = Math.floor((end / 255) * totalSegments);
+            
+            segments.forEach((segment, index) => {
+                if (index >= startIndex && index <= endIndex) {
+                    segment.classList.add('active');
+                    segment.style.boxShadow = '0 0 15px rgba(0, 212, 255, 0.8)';
+                    setTimeout(() => {
+                        segment.classList.remove('active');
+                        segment.style.boxShadow = '';
+                    }, 300);
+                }
+            });
+        },
+        
         setupZoneStripVisualization() {
             const zoneStrip = document.getElementById('lifx-zone-strip');
             if (!zoneStrip) return;
@@ -1310,29 +1331,58 @@
             
             zoneStrip.innerHTML = html;
             
+            let activeSegment = null;
+            let zoneDragTimeout = null;
+            
             zoneStrip.querySelectorAll('.zone-segment').forEach(segment => {
+                segment.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    segment.classList.add('touch-active');
+                    activeSegment = segment;
+                    this.triggerHaptic('tap');
+                }, { passive: true });
+                
+                segment.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                    if (target && target.classList.contains('zone-segment') && target !== activeSegment) {
+                        if (activeSegment) activeSegment.classList.remove('touch-active');
+                        activeSegment = target;
+                        activeSegment.classList.add('touch-active');
+                        
+                        const zoneIndex = parseInt(activeSegment.dataset.zoneIndex);
+                        const segmentSize = Math.ceil(256 / segmentCount);
+                        const start = zoneIndex;
+                        const end = Math.min(255, zoneIndex + segmentSize - 1);
+                        
+                        if (zoneDragTimeout) clearTimeout(zoneDragTimeout);
+                        zoneDragTimeout = setTimeout(() => {
+                            this.applyZoneColorToRange(start, end, false);
+                        }, 50);
+                    }
+                }, { passive: true });
+                
+                segment.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    segment.classList.remove('touch-active');
+                    if (zoneDragTimeout) clearTimeout(zoneDragTimeout);
+                    activeSegment = null;
+                });
+                
                 segment.addEventListener('click', (e) => {
+                    if (activeSegment) return;
                     const zoneIndex = parseInt(e.currentTarget.dataset.zoneIndex);
                     const segmentSize = Math.ceil(256 / segmentCount);
                     const start = zoneIndex;
                     const end = Math.min(255, zoneIndex + segmentSize - 1);
                     
-                    this.applyZoneColorToRange(start, end);
-                });
-                
-                segment.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    segment.classList.add('touch-active');
-                });
-                
-                segment.addEventListener('touchend', (e) => {
-                    e.preventDefault();
-                    segment.classList.remove('touch-active');
+                    this.applyZoneColorToRange(start, end, true);
                 });
             });
         },
         
-        applyZoneColorToRange(start, end) {
+        applyZoneColorToRange(start, end, showFeedback = true) {
             const color = this.getCurrentColor();
             
             fetch('/api/services/lifx/zones', {
@@ -1343,13 +1393,20 @@
                     start_index: start,
                     end_index: end,
                     color: color,
-                    duration: 0.3
+                    duration: 0.15
                 })
             }).then(res => res.json())
               .then(data => {
                   if (data.success) {
-                      this.showToast(`Zones ${start}-${end} updated`, 'success');
+                      this.highlightZoneSegmentByRange(start, end);
+                      if (showFeedback) {
+                          this.showToast(`Zones ${start}-${end} updated`, 'success');
+                          this.triggerHaptic('zone');
+                      }
                   }
+              })
+              .catch(err => {
+                  console.warn('[LIFXMediaTouchV2] Zone update failed:', err);
               });
         },
 
@@ -1714,6 +1771,42 @@
                 const progress = (this.state.gestureCalibrationData.length / this.config.calibrationSamples) * 100;
                 progressFill.style.width = `${progress}%`;
                 progressText.textContent = `${this.state.gestureCalibrationData.length} / ${this.config.calibrationSamples} samples`;
+            }
+        },
+
+        triggerHaptic(pattern, intensity = 1.0) {
+            if (!this.config.enableHapticFeedback || !navigator.vibrate) return;
+            
+            const hapticPatterns = {
+                tap: [10],
+                doubleTap: [15, 50, 15],
+                longPress: [50, 50, 50],
+                swipe: [20],
+                swipeRight: [12, 20, 8],
+                swipeLeft: [8, 20, 12],
+                swipeUp: [10, 15, 10],
+                swipeDown: [10, 10, 15],
+                beat: [25],
+                success: [10, 20, 10, 20, 10],
+                gesture: [15, 30, 15],
+                calibration: [20, 40, 20, 40, 20],
+                scene: [15, 25, 15],
+                effect: [12, 18, 12, 18],
+                color: [10, 15, 10],
+                zone: [8, 12, 8],
+                brightness: [10, 20, 10],
+                error: [25, 20, 25, 20, 25],
+                ripple: [8],
+                warning: [20, 15, 20]
+            };
+            
+            const basePattern = hapticPatterns[pattern] || hapticPatterns.tap;
+            
+            if (intensity !== 1.0) {
+                const scaledPattern = basePattern.map(duration => Math.round(duration * intensity));
+                navigator.vibrate(scaledPattern);
+            } else {
+                navigator.vibrate(basePattern);
             }
         },
 
@@ -2128,6 +2221,7 @@
                 this.state.frequencyData[5] = bandAverages.treble;
                 
                 const bassEnergy = (bandAverages.subBass + bandAverages.bass) / 2;
+                const lowMidEnergy = bandAverages.lowMid;
                 const totalEnergy = Object.values(bandAverages).reduce((a, b) => a + b, 0) / 6;
                 
                 this.state.beatHistory.push(bassEnergy);
@@ -2156,7 +2250,11 @@
                 
                 const bassRatio = bassEnergy / 255;
                 const bassSpike = bassRatio > (this.state.lastBassEnergy / 255) * 1.15;
-                const isBeat = bassRatio > beatThreshold && bassEnergy > 160 && bassSpike;
+                const bassTransient = bassEnergy > (this.state.baselineEnergy * 1.3);
+                const lowMidSupport = lowMidEnergy > (bassEnergy * 0.4);
+                const energySpike = totalEnergy > (avgEnergy + stdDev * 0.8);
+                const isBeat = (bassRatio > beatThreshold && bassEnergy > 160 && bassSpike) ||
+                               (bassTransient && lowMidSupport && energySpike);
                 
                 this.state.lastBassEnergy = bassEnergy;
                 
