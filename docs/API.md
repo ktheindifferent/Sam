@@ -26,9 +26,380 @@ Content-Type: application/json
 3. Session tokens are stored in Redis or memory
 4. CSRF tokens provided in login response
 
-## API Endpoints
+## Core API Endpoints
 
-### Voice Services
+### Session & Authentication
+
+#### GET /api/sid
+Get current session ID.
+
+**Response:**
+```json
+"session_id_abc123"
+```
+
+#### GET /api/current_session
+Get current session information.
+
+**Response:**
+```json
+{
+  "sid": "session_abc123",
+  "human_oid": "human_123",
+  "user_id": "user_123",
+  "created_at": "2026-04-02T10:00:00Z"
+}
+```
+
+#### GET /api/current_human
+Get current user information.
+
+**Response:**
+```json
+{
+  "oid": "human_123",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "roles": ["user", "admin"],
+  "created_at": "2025-01-01T00:00:00Z"
+}
+```
+
+### Core Data Endpoints
+
+#### Humans
+
+##### GET /api/humans
+List all humans.
+
+**Query Parameters:**
+- `limit`: Number of results
+- `offset`: Pagination offset
+
+**Response:**
+```json
+{
+  "humans": [
+    {
+      "oid": "human_123",
+      "name": "John Doe",
+      "email": "john@example.com"
+    }
+  ],
+  "total": 100
+}
+```
+
+##### POST /api/humans
+Create new human.
+
+**Request:**
+```json
+{
+  "name": "Jane Smith",
+  "email": "jane@example.com"
+}
+```
+
+##### GET /api/humans/{oid}
+Get human by OID.
+
+##### PUT /api/humans/{oid}
+Update human information.
+
+##### DELETE /api/humans/{oid}
+Delete human.
+
+#### Rooms
+
+##### GET /api/rooms
+List all rooms.
+
+**Response:**
+```json
+{
+  "rooms": [
+    {
+      "oid": "room_123",
+      "name": "Living Room",
+      "description": "Main living space",
+      "location_oid": "location_456"
+    }
+  ]
+}
+```
+
+##### POST /api/rooms
+Create new room.
+
+##### PUT /api/rooms/{oid}
+Update room details.
+
+##### DELETE /api/rooms/{oid}
+Delete room.
+
+#### Locations
+
+##### GET /api/locations
+List all locations.
+
+**Response:**
+```json
+{
+  "locations": [
+    {
+      "oid": "location_123",
+      "name": "Home",
+      "latitude": 37.7749,
+      "longitude": -122.4194
+    }
+  ]
+}
+```
+
+##### POST /api/locations
+Create new location.
+
+##### PUT /api/locations/{oid}
+Update location.
+
+#### Things (IoT Devices)
+
+##### GET /api/things
+List all connected IoT devices.
+
+**Response:**
+```json
+{
+  "things": [
+    {
+      "oid": "thing_123",
+      "name": "Living Room Light",
+      "type": "light",
+      "room_oid": "room_456",
+      "state": "on"
+    }
+  ]
+}
+```
+
+##### POST /api/things
+Register new IoT device.
+
+##### PUT /api/things/{oid}
+Update thing state/properties.
+
+##### DELETE /api/things/{oid}
+Unregister device.
+
+### Input & Output (I/O)
+
+#### POST /api/io
+Send command to Sam assistant.
+
+**Request:**
+```json
+{
+  "type": "command",
+  "text": "Turn on the living room light",
+  "context": {
+    "room_oid": "room_123",
+    "human_oid": "human_123"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "response": "I've turned on the living room light.",
+  "actions": [
+    {
+      "type": "device_control",
+      "device_id": "thing_123",
+      "action": "turn_on"
+    }
+  ]
+}
+```
+
+#### POST /api/io/process
+Process natural language input.
+
+**Request:**
+```json
+{
+  "text": "What's the temperature in the living room?",
+  "mode": "query"
+}
+```
+
+**Response:**
+```json
+{
+  "intent": "query_temperature",
+  "entities": {
+    "location": "living room"
+  },
+  "confidence": 0.95
+}
+```
+
+#### POST /api/io/validate
+Validate input for security threats.
+
+**Request:**
+```json
+{
+  "text": "user input text",
+  "checks": ["xss", "sql", "path_traversal"]
+}
+```
+
+**Response:**
+```json
+{
+  "is_safe": true,
+  "threats": [],
+  "sanitized_text": "user input text"
+}
+```
+
+### Observations & Telemetry
+
+#### POST /api/observations
+Record observation/event.
+
+**Request:**
+```json
+{
+  "type": "temperature_reading",
+  "source": "sensor_123",
+  "value": 72.5,
+  "unit": "fahrenheit",
+  "location_oid": "room_123",
+  "timestamp": "2026-04-02T10:47:00Z"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "observation_id": "obs_789"
+}
+```
+
+#### GET /api/observations
+Query observations.
+
+**Query Parameters:**
+- `type`: Observation type filter
+- `source`: Source filter
+- `limit`: Results limit
+- `offset`: Pagination offset
+
+#### GET /api/telemetry
+Get system telemetry data.
+
+**Response:**
+```json
+{
+  "timestamp": "2026-04-02T10:47:00Z",
+  "uptime_seconds": 3600,
+  "requests_total": 1500,
+  "requests_per_minute": 25,
+  "active_sessions": 3
+}
+```
+
+### Services Control
+
+#### GET /api/services/status
+Get all services status.
+
+**Response:**
+```json
+{
+  "services": {
+    "postgres": {
+      "status": "operational",
+      "uptime_seconds": 86400
+    },
+    "redis": {
+      "status": "operational",
+      "memory_used_mb": 256
+    },
+    "voice": {
+      "status": "operational",
+      "model": "whisper-base"
+    },
+    "crawler": {
+      "status": "idle",
+      "jobs_completed": 15
+    }
+  }
+}
+```
+
+#### POST /api/services/redis/test
+Test Redis connection.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Redis connection successful",
+  "ping": "PONG"
+}
+```
+
+#### POST /api/services/postgres/test
+Test PostgreSQL connection.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "PostgreSQL connection successful",
+  "version": "PostgreSQL 13.0"
+}
+```
+
+#### GET /api/services/voice/status
+Get voice service status.
+
+**Response:**
+```json
+{
+  "status": "operational",
+  "stt_engine": "whisper-base",
+  "tts_engine": "piper",
+  "models_loaded": true
+}
+```
+
+#### GET /api/environment
+Get environment information.
+
+**Response:**
+```json
+{
+  "mode": "production",
+  "rust_log": "info",
+  "database_engine": "postgresql",
+  "redis_enabled": true,
+  "version": "0.0.2",
+  "uptime_seconds": 86400
+}
+```
+
+---
+
+## Legacy/Deprecated Endpoints
+
+### Voice Services (Deprecated)
 
 #### Speech-to-Text (STT)
 

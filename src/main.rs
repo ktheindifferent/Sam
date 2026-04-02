@@ -57,8 +57,20 @@ fn main() {
 
 /// Builds and configures the Tokio runtime
 /// 
+/// Creates a multi-threaded Tokio runtime with appropriate worker thread count
+/// and stack size to support CPU-bound and I/O-bound tasks.
+/// 
+/// # Configuration
+/// - Worker threads: CPU cores + 2 (minimum 4)
+/// - Stack size per thread: 8MB (prevents stack overflow on recursive operations)
+/// - All async runtime features enabled
+/// 
+/// # Returns
+/// - `Ok(Runtime)` on successful creation
+/// - `Err(String)` with error message if runtime creation fails
+/// 
 /// # Errors
-/// Returns error if runtime creation fails
+/// Returns error if runtime creation fails (usually due to system resource limits)
 fn build_tokio_runtime() -> Result<tokio::runtime::Runtime, String> {
     let num_workers = num_cpus::get().max(4) + 2;
     tokio::runtime::Builder::new_multi_thread()
@@ -71,6 +83,19 @@ fn build_tokio_runtime() -> Result<tokio::runtime::Runtime, String> {
 }
 
 /// Setup dual logging to console and file
+/// 
+/// This function configures logging to output simultaneously to stderr and a log file.
+/// Used for all running modes (TUI, serve, CapRover) to ensure comprehensive logging.
+/// 
+/// # Arguments
+/// * `log_file` - Path to the log file where output will be appended
+/// * `is_serve_mode` - Whether running in serve/server mode (affects log filtering)
+/// 
+/// # Behavior
+/// - Creates log file if it doesn't exist
+/// - Appends to existing log file
+/// - Falls back to stderr-only if file creation fails
+/// - Log level controlled by RUST_LOG environment variable (default: "info")
 fn setup_dual_logger(log_file: &std::path::Path, is_serve_mode: bool) {
     use env_logger::{Builder, Target};
 
@@ -130,6 +155,21 @@ fn setup_dual_logger(log_file: &std::path::Path, is_serve_mode: bool) {
 }
 
 /// Main application initialization logic
+/// 
+/// This is the primary async entry point for the SAM application.
+/// Responsible for:
+/// 1. Setting up error tracking (Sentry)
+/// 2. Initializing logging system
+/// 3. Detecting running mode (serve, CapRover, doctor, TUI)
+/// 4. Setting up configuration and environment
+/// 5. Initializing database connections
+/// 6. Starting plugin system (if enabled)
+/// 7. Launching appropriate runtime (HTTP server, TUI, etc.)
+/// 
+/// # Panics
+/// - If critical configuration is missing (PostgreSQL credentials in server mode)
+/// - If database schema initialization fails
+/// - If port binding fails in serve mode
 async fn initialize_application() {
     // Initialize Sentry for error tracking and monitoring
     let _sentry_guard = sam::monitoring::init_sentry();
@@ -496,6 +536,10 @@ fn setup_environment_variables() {
                 log::debug!("Set default PG_USER=sam");
             }
             if env::var("PG_PASS").is_err() {
+                // SECURITY: In development (sudo context), we set a default password.
+                // This is ONLY for developer convenience and must NOT be used in production.
+                log::warn!("⚠️  SECURITY: No PG_PASS environment variable set. Using development default.");
+                log::warn!("⚠️  In production, PG_PASS must be explicitly set via environment variables.");
                 env::set_var("PG_PASS", "sam");
                 log::debug!("Set default PG_PASS=[REDACTED]");
             }

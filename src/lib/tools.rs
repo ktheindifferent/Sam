@@ -344,8 +344,12 @@ pub fn find_opencl_lib(start_dirs: &[&str]) -> Option<String> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    if let Some(found) = find_opencl_lib(&[path.to_str().unwrap()]) {
-                        return Some(found);
+                    // SAFETY: path.to_str() safely converts a PathBuf to &str
+                    // We use map() and flatten() to handle None gracefully
+                    if let Some(path_str) = path.to_str() {
+                        if let Some(found) = find_opencl_lib(&[path_str]) {
+                            return Some(found);
+                        }
                     }
                 } else if let Some(name) = path.file_name() {
                     if name == "OpenCL.lib" {

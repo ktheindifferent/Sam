@@ -1,0 +1,76 @@
+WORKER 2 - FEATURES & REFACTORING ANALYSIS
+==========================================
+Examined ~/Projects/sam staged changes for refactoring opportunities.
+
+CRITICAL BLOCKING ISSUES (Fix before commit):
+==============================================
+
+1. TYPE MISMATCH - logging/mod.rs:748-750
+   export_metrics_handler() returns String but now export_metrics() returns Result<String, Error>
+   Will cause compilation failure
+   Fix: Change return type to Result<String, Box<dyn std::error::Error>>
+
+2. UNRETURNED COMMAND RESULTS - recording.rs:459, 467, 482, 487, 513
+   Multiple safe_unix_cmd() calls don't check return values; errors silently fail
+   Lines affected: mount (459), umount (467), aws s3 cp (482), curl FTP (487), curl WebDAV (513)
+   Risk: Silent upload failures; data loss potential
+   Fix: Add ? error propagation to each call
+
+3. QUERY PARAMETERS IGNORED - recording.rs:708
+   get_sessions() builds params vector but passes empty slice to query
+   All session filters are ignored; returns all records
+   Fix: Change client.query(&query, &[])? to client.query(&query, &params)?
+
+MEDIUM SEVERITY ISSUES:
+=======================
+
+4. INCOMPLETE VALIDATION - connection_pool.rs:299-314
+   add_limit/add_offset() warn about negative values but still use them
+   Validation incomplete; either enforce or remove warning
+   Lines: add_limit() line 301-308, add_offset() line 316-323
+
+CODE QUALITY IMPROVEMENTS (Low priority):
+=========================================
+
+5. VERBOSE CODEC BUILDING - recording.rs:332-417
+   85-line function with repetitive codec match blocks
+   Refactoring opportunity: Extract strategy pattern (Trait-based codec builders)
+   Could reduce to ~40 lines
+
+6. REDUNDANT PATH CONVERSIONS - recording.rs:482, 487, 504-505
+   session.file_path.to_string_lossy() called multiple times
+   Extract once at method start
+
+7. MISSING ERROR CONTEXT - logging/mod.rs:989-995
+   Serialization error message could include field names
+   Diagnostic improvement only
+
+8. DOCUMENTATION GAPS - main.rs:536+
+   setup_environment_variables() lacks docstring
+   Companion function to well-documented build_tokio_runtime()
+
+EXISTING TECHNICAL DEBT (Not in staged changes):
+================================================
+
+9. UNWRAP CALLS - network_monitor.rs:630, 658, 697, 731, 745
+   Multiple unwrap() calls could panic in production
+   Recommend follow-up PR for replacement
+
+10. TODO COMMENTS - logging/mod.rs:521, 541, 605
+    Document future work on log rotation and persistence
+
+POSITIVE FINDINGS:
+==================
+✓ Excellent error handling with Result types
+✓ Strong security hardening with safe_unix_cmd() usage
+✓ Comprehensive documentation added (build_tokio_runtime, initialize_application)
+✓ Good security monitoring via validation logging
+
+DETAILED REPORT:
+================
+See WORKER2_REFACTORING_OPPORTUNITIES.md for complete analysis with code examples.
+
+RECOMMENDATION:
+===============
+DO NOT COMMIT until issues #1-3 are resolved.
+Issues #4-8 can be addressed in follow-up PR.

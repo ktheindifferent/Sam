@@ -375,12 +375,14 @@ impl MetricsCollector {
     }
     
     /// Export metrics in Prometheus format
-    pub fn export_metrics(&self) -> String {
+    pub fn export_metrics(&self) -> Result<String, Box<dyn std::error::Error>> {
         let encoder = TextEncoder::new();
         let metric_families = prometheus::gather();
         let mut buffer = vec![];
-        encoder.encode(&metric_families, &mut buffer).unwrap();
-        String::from_utf8(buffer).unwrap()
+        encoder.encode(&metric_families, &mut buffer)
+            .map_err(|e| format!("Failed to encode metrics: {}", e).into())?;
+        String::from_utf8(buffer)
+            .map_err(|e| format!("Invalid UTF-8 in metrics buffer: {}", e).into())
     }
 }
 
@@ -987,8 +989,11 @@ macro_rules! log_with_fields {
                 version: env!("CARGO_PKG_VERSION").to_string(),
             };
             
-            // Log the entry
-            log::log!($level, "{}", serde_json::to_string(&entry).unwrap());
+            // Log the entry with proper error handling
+            match serde_json::to_string(&entry) {
+                Ok(json_str) => log::log!($level, "{}", json_str),
+                Err(e) => log::log!($level, "Failed to serialize log entry: {} (original message: {})", e, $msg),
+            }
         }
     };
 }

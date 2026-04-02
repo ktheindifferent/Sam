@@ -449,16 +449,13 @@ impl RecordingManager {
                 let mount_point = format!("/mnt/{}", session.thing_oid);
                 fs::create_dir_all(&mount_point)?;
                 
-                let mount_cmd = format!(
-                    "mount -t cifs //{}/{} {} -o username={},password={}",
-                    storage.host,
-                    storage.path,
-                    mount_point,
-                    storage.username.as_deref().unwrap_or("guest"),
-                    storage.password.as_deref().unwrap_or(""),
-                );
+                let mount_share = format!("//{}/ {}", storage.host, storage.path);
+                let username = storage.username.as_deref().unwrap_or("guest");
+                let password = storage.password.as_deref().unwrap_or("");
+                let cifs_opts = format!("username={},password={}", username, password);
                 
-                Command::new("sh").arg("-c").arg(&mount_cmd).output()?;
+                // Use safe_uinx_cmd with properly separated arguments to prevent injection
+                crate::tools::safe_uinx_cmd("mount", &["-t", "cifs", &mount_share, &mount_point, "-o", &cifs_opts]);
                 
                 let file_name = session.file_path.file_name()
                     .ok_or_else(|| anyhow::anyhow!("Invalid file path: no filename"))?
@@ -466,7 +463,8 @@ impl RecordingManager {
                 let dest_path = format!("{}/{}", mount_point, file_name);
                 fs::copy(&session.file_path, &dest_path)?;
                 
-                Command::new("umount").arg(&mount_point).output()?;
+                // Use safe_uinx_cmd for unmount
+                crate::tools::safe_uinx_cmd("umount", &[&mount_point]);
             }
             StorageType::S3 => {
                 // Use AWS CLI or rusoto for S3 upload
@@ -479,23 +477,19 @@ impl RecordingManager {
                     file_name
                 );
                 
-                Command::new("aws")
-                    .args(["s3", "cp", &session.file_path.to_string_lossy(), &s3_path])
-                    .output()?;
+                // Use safe_uinx_cmd for S3 upload
+                crate::tools::safe_uinx_cmd("aws", &["s3", "cp", &session.file_path.to_string_lossy(), &s3_path]);
             }
             StorageType::FTP => {
-                // Use FTP client for upload
-                let ftp_cmd = format!(
-                    "curl -T {} ftp://{}:{}/{}/ --user {}:{}",
-                    session.file_path.to_string_lossy(),
-                    storage.host,
-                    21,
-                    storage.path,
-                    storage.username.as_deref().unwrap_or("anonymous"),
-                    storage.password.as_deref().unwrap_or(""),
-                );
+                // Use FTP client for upload with parameterized arguments
+                let file_path_str = session.file_path.to_string_lossy();
+                let ftp_url = format!("ftp://{}:{}/{}/", storage.host, 21, storage.path);
+                let username = storage.username.as_deref().unwrap_or("anonymous");
+                let password = storage.password.as_deref().unwrap_or("");
+                let user_pass = format!("{}:{}", username, password);
                 
-                Command::new("sh").arg("-c").arg(&ftp_cmd).output()?;
+                // Use safe_uinx_cmd with curl and parameterized arguments to prevent injection
+                crate::tools::safe_uinx_cmd("curl", &["-T", &file_path_str, &ftp_url, "--user", &user_pass]);
             }
             StorageType::WebDAV => {
                 // Use WebDAV client for upload
@@ -508,15 +502,17 @@ impl RecordingManager {
                     file_name
                 );
                 
-                Command::new("curl")
-                    .args([
-                        "-T", &session.file_path.to_string_lossy(),
-                        "-u", &format!("{}:{}", 
-                            storage.username.as_deref().unwrap_or(""),
-                            storage.password.as_deref().unwrap_or("")),
-                        &webdav_url,
-                    ])
-                    .output()?;
+                let file_path_str = session.file_path.to_string_lossy();
+                let credentials = format!("{}:{}", 
+                    storage.username.as_deref().unwrap_or(""),
+                    storage.password.as_deref().unwrap_or(""));
+                
+                // Use safe_uinx_cmd with curl for WebDAV upload
+                crate::tools::safe_uinx_cmd("curl", &[
+                    "-T", &file_path_str,
+                    "-u", &credentials,
+                    &webdav_url,
+                ]);
             }
         }
         

@@ -1,0 +1,130 @@
+diff --git a/src/main.rs b/src/main.rs
+index original..fixed 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -195,8 +195,16 @@ async fn main() {
+             // Check if we have valid postgres credentials
+             // These are used in both serve and migration modes
+             // Set placeholder values for early startup
+-            env::set_var("PG_USER", "dummy");
+-            env::set_var("PG_PASS", "dummy");
++            // NOTE: These are only for early startup check
++            // Real credentials must come from environment variables
++            #[cfg(debug_assertions)]
++            {
++                env::set_var("PG_USER", "dummy");
++                env::set_var("PG_PASS", "dummy");
++            }
+ 
+             if is_serve_mode || env::var("RUST_LOG").is_ok() {
+                 crate::logging::configure_logging()?;
+@@ -490,11 +498,21 @@ fn setup_postgres_env_defaults() {
+             }
+         }
+ 
+-            if env::var("PG_PASS").is_err() {
+-                env::set_var("PG_PASS", "sam");
+-                log::debug!("Set default PG_PASS=[REDACTED]");
+-            }
++            if env::var("PG_PASS").is_err() {
++                #[cfg(debug_assertions)]
++                {
++                    env::set_var("PG_PASS", "sam");
++                    log::debug!("Using development default password. THIS IS NOT SECURE.");
++                }
++                
++                #[cfg(not(debug_assertions))]
++                {
++                    eprintln!("FATAL: PG_PASS environment variable must be set in production");
++                    eprintln!("Please set the PG_PASS environment variable with a secure password");
++                    std::process::exit(1);
++                }
++            }
+ 
+             if env::var("PG_ADDRESS").is_err() {
+                 env::set_var("PG_ADDRESS", "127.0.0.1:5432");
+@@ -582,8 +600,17 @@ fn setup_postgres_env_defaults() {
+     #[cfg(test)]
+     pub fn setup_test_database() {
+         // ONLY used in tests - safe to use development credentials
+-        std::env::set_var("PG_USER", "sam");
+-        std::env::set_var("PG_PASS", "sam");
++        #[cfg(all(test, debug_assertions))]
++        {
++            // Test credentials are only used in debug builds
++            std::env::set_var("PG_USER", "sam");
++            std::env::set_var("PG_PASS", "sam");
++        }
++        
++        #[cfg(all(test, not(debug_assertions)))]
++        compile_error!("Test configuration should not run in release builds");
+     }
+ 
+diff --git a/src/lib/db/connection_pool.rs b/src/lib/db/connection_pool.rs
+index original..fixed 100644
+--- a/src/lib/db/connection_pool.rs
++++ b/src/lib/db/connection_pool.rs
+@@ -295,12 +295,28 @@ impl QueryBuilder {
+         }
+     }
+ 
+-    pub fn add_limit(mut self, limit: i64) -> Self {
++    pub fn add_limit(mut self, limit: i64) -> Result<Self, String> {
++        // SECURITY: Validate numeric range
++        // PostgreSQL LIMIT cannot use parameterized queries, so we validate the value
++        const MAX_LIMIT: i64 = 10_000;
++        
++        if limit < 0 {
++            return Err(format!("LIMIT value cannot be negative: {}", limit));
++        }
++        if limit > MAX_LIMIT {
++            return Err(format!("LIMIT value exceeds maximum allowed ({}): {}", MAX_LIMIT, limit));
++        }
++        
+         self.query.push_str(&format!(" LIMIT {}", limit));
+-        self
++        Ok(self)
+     }
+ 
+-    pub fn add_offset(mut self, offset: i64) -> Self {
++    pub fn add_offset(mut self, offset: i64) -> Result<Self, String> {
++        const MAX_OFFSET: i64 = 1_000_000;
++        
++        if offset < 0 {
++            return Err(format!("OFFSET value cannot be negative: {}", offset));
++        }
++        if offset > MAX_OFFSET {
++            return Err(format!("OFFSET value exceeds maximum allowed ({}): {}", MAX_OFFSET, offset));
++        }
++        
+         self.query.push_str(&format!(" OFFSET {}", offset));
+-        self
++        Ok(self)
+     }
+ 
+     pub async fn execute(self) -> Result<Vec<Row>, Box<dyn std::error::Error>> {
+
+diff --git a/src/lib/memory/config/mod.rs b/src/lib/memory/config/mod.rs
+index original..fixed 100644
+--- a/src/lib/memory/config/mod.rs
++++ b/src/lib/memory/config/mod.rs
+@@ -731,9 +731,19 @@ impl Config {
+ 
+     /// Validates a SQL identifier to prevent SQL injection
++    /// 
++    /// # Security
++    /// This function enforces strict validation on SQL identifiers (table names,
++    /// column names, database names) to prevent SQL injection attacks.
++    /// 
++    /// Only alphanumeric characters and underscores are allowed, and SQL
++    /// keywords are explicitly rejected. Maximum length is 63 characters
++    /// (PostgreSQL limit).
+     fn validate_sql_identifier(identifier: &str) -> Result<()> {
+         // SQL identifiers should only contain alphanumeric characters, underscores, and be non-empty
++        // This prevents:
++        // - Comment injection (-- or /*)
++        // - Quote injection (' or ")
++        // - SQL keyword injection (DROP, DELETE, etc)
+         if identifier.is_empty() {
+             return Err(MemoryError::Other("SQL identifier cannot be empty".to_string()).into());
+         }
