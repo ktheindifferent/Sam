@@ -252,13 +252,7 @@
             
             target.classList.add('touch-active');
             
-            if (this.config.enableHapticFeedback && navigator.vibrate) {
-                try {
-                    navigator.vibrate(this.config.hapticPatterns.tap);
-                } catch (e) {
-                    console.warn('[LIFXMediaTouchV2] Haptic feedback failed:', e);
-                }
-            }
+            this.triggerHaptic('tap');
             
             this.showEnhancedTouchRipple(e, target);
             this.startTouchHoldTimer(target);
@@ -384,9 +378,7 @@
                 this.showBulbContextMenu(bulbId, e);
             }
             
-            if (this.config.enableHapticFeedback && navigator.vibrate) {
-                navigator.vibrate(this.config.hapticPatterns.longPress);
-            }
+            this.triggerHaptic('longPress');
         },
 
         handleSwipe(target, horizontal, vertical) {
@@ -395,19 +387,21 @@
             if (bulbId && horizontal === 'right') {
                 this.toggleBulbPower(bulbId, 'toggle');
                 this.showSwipeHint(horizontal);
+                this.triggerHaptic('swipeRight');
             } else if (bulbId && horizontal === 'left') {
                 this.showBrightnessSlider(bulbId);
                 this.showSwipeHint(horizontal);
+                this.triggerHaptic('swipeLeft');
             } else if (bulbId && vertical === 'up') {
                 this.showColorPicker(bulbId);
                 this.showSwipeHint(vertical);
+                this.triggerHaptic('swipeUp');
             } else if (bulbId && vertical === 'down') {
                 this.showSceneSelector(bulbId);
                 this.showSwipeHint(vertical);
-            }
-            
-            if (this.config.enableHapticFeedback && navigator.vibrate) {
-                navigator.vibrate(this.config.hapticPatterns.swipe);
+                this.triggerHaptic('swipeDown');
+            } else {
+                this.triggerHaptic('swipe');
             }
         },
 
@@ -423,6 +417,7 @@
             if (Math.abs(delta) > 0.1) {
                 this.adjustGlobalBrightness(delta > 0 ? 10 : -10);
                 this.state.gestureScale = e.scale;
+                this.triggerHaptic('ripple');
             }
         },
 
@@ -477,9 +472,7 @@
                 this.showTouchFeedback(target, 'Double Tap');
             }
             
-            if (this.config.enableHapticFeedback && navigator.vibrate) {
-                navigator.vibrate(this.config.hapticPatterns.doubleTap);
-            }
+            this.triggerHaptic('doubleTap');
         },
 
         showTouchFeedback(target, message) {
@@ -858,12 +851,14 @@
                     this.state.activeScene = sceneName;
                     this.showToast(`${preset.icon} Scene '${preset.name}' applied!`, 'success');
                     this.showSceneIndicator(sceneName);
+                    this.triggerHaptic('scene');
                 } else {
                     throw new Error(data.error || 'Unknown error');
                 }
             } catch (error) {
                 console.error('[LIFXMediaTouchV2] Error applying scene:', error);
                 this.showToast(`Failed to apply scene: ${error.message}`, 'error');
+                this.triggerHaptic('error');
             }
         },
 
@@ -919,12 +914,14 @@
                     this.state.activeEffect = effectName;
                     this.showToast(`✨ ${preset ? preset.name : effectName} effect started!`, 'success');
                     this.showEffectIndicator(effectName);
+                    this.triggerHaptic('effect');
                 } else {
                     throw new Error(data.error || 'Unknown error');
                 }
             } catch (error) {
                 console.error('[LIFXMediaTouchV2] Error applying effect:', error);
                 this.showToast(`Failed to apply effect: ${error.message}`, 'error');
+                this.triggerHaptic('error');
             }
         },
 
@@ -1226,6 +1223,7 @@
               .then(data => {
                   if (data.success) {
                       this.showToast(`Color applied to ${bulbIds.length} bulbs`, 'success');
+                      this.triggerHaptic('color');
                   }
               });
         },
@@ -1266,6 +1264,7 @@
                   if (data.success) {
                       this.showToast(`Zone ${zone} updated`, 'success');
                       this.highlightZoneSegment(zone, range.start, range.end);
+                      this.triggerHaptic('zone');
                   }
               });
         },
@@ -1367,6 +1366,7 @@
             });
             
             this.showBrightnessFeedback(this.state.brightnessLevel);
+            this.triggerHaptic('brightness', Math.abs(delta) / 20);
         },
 
         showBrightnessFeedback(level) {
@@ -1633,6 +1633,7 @@
             const data = this.state.gestureCalibrationData;
             if (data.length < 5) {
                 this.showToast('Calibration failed - not enough samples', 'error');
+                this.triggerHaptic('error');
                 this.hideCalibrationOverlay();
                 return;
             }
@@ -1657,12 +1658,9 @@
             }
             
             this.showToast(`Calibration complete! Accuracy: ${Math.round(accuracy)}%`, 'success');
+            this.triggerHaptic('success');
             this.hideCalibrationOverlay();
             this.setupGestureHints();
-            
-            if (this.config.enableHapticFeedback && navigator.vibrate) {
-                navigator.vibrate(this.config.hapticPatterns.success);
-            }
         },
 
         showCalibrationOverlay() {

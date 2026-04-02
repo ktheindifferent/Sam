@@ -209,38 +209,47 @@ class SnapControl {
                 let client = this.getClient(notification.params.id);
                 client.config.volume = notification.params.volume;
                 updateGroupVolume(this.getGroupFromClient(client.id));
-                return true;
+                updateClientVolumeSlider(client.id, notification.params.volume);
+                return false;
             case 'Client.OnLatencyChanged':
                 this.getClient(notification.params.id).config.latency = notification.params.latency;
+                updateClientLatencyDisplay(notification.params.id, notification.params.latency);
                 return false;
             case 'Client.OnNameChanged':
                 this.getClient(notification.params.id).config.name = notification.params.name;
-                return true;
+                updateClientNameDisplay(notification.params.id, notification.params.name);
+                return false;
             case 'Client.OnConnect':
             case 'Client.OnDisconnect':
                 this.getClient(notification.params.client.id).fromJson(notification.params.client);
-                return true;
+                updateClientConnectionStatus(notification.params.client.id, notification.params.client.connected);
+                return false;
             case 'Group.OnMute':
                 this.getGroup(notification.params.id).muted = Boolean(notification.params.mute);
-                return true;
+                updateGroupMuteIndicator(notification.params.id, notification.params.mute);
+                return false;
             case 'Group.OnStreamChanged':
                 this.getGroup(notification.params.id).stream_id = notification.params.stream_id;
                 this.updateProperties(notification.params.stream_id);
-                return true;
+                updateGroupStreamIndicator(notification.params.id, notification.params.stream_id);
+                return false;
             case 'Stream.OnUpdate':
                 stream = this.getStream(notification.params.id);
                 stream.fromJson(notification.params.stream);
                 this.updateProperties(stream.id);
-                return true;
+                updateStreamInfo(stream.id, stream);
+                return false;
             case 'Server.OnUpdate':
                 this.server.fromJson(notification.params.server);
                 this.updateProperties(this.getMyStreamId());
-                return true;
+                updateServerStatus(this.server);
+                return false;
             case 'Stream.OnProperties':
                 stream = this.getStream(notification.params.id);
                 stream.properties.fromJson(notification.params.properties);
                 if (this.getMyStreamId() == stream.id)
                     this.updateProperties(stream.id);
+                updateStreamProperties(stream.id, stream.properties);
                 return false;
             default:
                 return false;
@@ -539,8 +548,6 @@ class SnapControl {
             else {
                 refresh = this.onNotification(json_msg);
             }
-            // TODO: don't update everything, but only the changed, 
-            // e.g. update the values for the volume sliders
             if (refresh)
                 show();
         }
