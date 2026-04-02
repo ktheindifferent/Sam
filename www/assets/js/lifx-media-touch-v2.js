@@ -28,6 +28,8 @@
             gestureTrailDecay: 0.8,
             maxVelocityRipples: 5,
             calibrationSamples: 20,
+            beatCalibrationSamples: 30,
+            visualizationMode: 'bars',
             hapticPatterns: {
                 tap: [10],
                 doubleTap: [15, 50, 15],
@@ -80,7 +82,11 @@
             lastGestureTime: 0,
             gestureDebounce: 50,
             calibrationInProgress: false,
-            touchAccuracyScore: 100
+            touchAccuracyScore: 100,
+            beatCalibrationData: [],
+            beatCalibrationInProgress: false,
+            beatSensitivity: 0.7,
+            visualizationModeUnlocked: false
         },
 
         scenePresets: [
@@ -1053,7 +1059,7 @@
             }
         },
 
-        async applyScene(sceneName) {
+        async applyScene(sceneName, duration = 1.0) {
             const preset = this.scenePresets.find(p => p.id === sceneName);
             if (!preset) {
                 this.showToast('Unknown scene', 'error');
@@ -1067,7 +1073,7 @@
                     body: JSON.stringify({
                         selector: 'all',
                         scene: sceneName,
-                        duration: 1.0
+                        duration: duration
                     })
                 });
                 
@@ -1081,6 +1087,7 @@
                     this.showToast(`${preset.icon} Scene '${preset.name}' applied!`, 'success');
                     this.showSceneIndicator(sceneName);
                     this.triggerHaptic('scene');
+                    this.showSceneTransitionEffect(preset);
                 } else {
                     throw new Error(data.error || 'Unknown error');
                 }
@@ -1089,6 +1096,42 @@
                 this.showToast(`Failed to apply scene: ${error.message}`, 'error');
                 this.triggerHaptic('error');
             }
+        },
+        
+        showSceneTransitionEffect(preset) {
+            const effectEl = document.createElement('div');
+            effectEl.className = 'scene-transition-effect';
+            effectEl.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: radial-gradient(circle at center, 
+                    hsla(${preset.hue / 182.4}, ${preset.saturation / 655.35}%, ${preset.brightness / 655.35}%, 0.4) 0%, 
+                    transparent 70%);
+                pointer-events: none;
+                z-index: 9996;
+                animation: scene-transition-fade 1s ease-out forwards;
+            `;
+            
+            if (!document.getElementById('scene-transition-style')) {
+                const style = document.createElement('style');
+                style.id = 'scene-transition-style';
+                style.textContent = `
+                    @keyframes scene-transition-fade {
+                        0% { opacity: 0; transform: scale(0.8); }
+                        50% { opacity: 1; transform: scale(1.1); }
+                        100% { opacity: 0; transform: scale(1); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            document.body.appendChild(effectEl);
+            setTimeout(() => {
+                if (effectEl.parentNode) effectEl.parentNode.removeChild(effectEl);
+            }, 1000);
         },
 
         async applyCircadian() {
@@ -1144,6 +1187,7 @@
                     this.showToast(`✨ ${preset ? preset.name : effectName} effect started!`, 'success');
                     this.showEffectIndicator(effectName);
                     this.triggerHaptic('effect');
+                    this.showEffectParticles(preset);
                 } else {
                     throw new Error(data.error || 'Unknown error');
                 }
@@ -1151,6 +1195,67 @@
                 console.error('[LIFXMediaTouchV2] Error applying effect:', error);
                 this.showToast(`Failed to apply effect: ${error.message}`, 'error');
                 this.triggerHaptic('error');
+            }
+        },
+        
+        showEffectParticles(preset) {
+            const particleCount = 12;
+            const icons = {
+                'pulse': '💓',
+                'rainbow': '🌈',
+                'strobe': '⚡',
+                'fireplace': '🔥',
+                'aurora': '🌌',
+                'breath': '🌬️',
+                'color_cycle': '🎨'
+            };
+            const icon = icons[preset?.id] || '✨';
+            
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'effect-particle';
+                const angle = (i / particleCount) * 360;
+                const radius = 100;
+                particle.style.cssText = `
+                    position: fixed;
+                    left: 50%;
+                    top: 50%;
+                    width: 40px;
+                    height: 40px;
+                    font-size: 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    pointer-events: none;
+                    z-index: 9998;
+                    animation: effect-particle-explode 1.2s ease-out forwards;
+                    --angle: ${angle}deg;
+                    --radius: ${radius}px;
+                `;
+                particle.textContent = icon;
+                
+                if (!document.getElementById('effect-particle-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'effect-particle-style';
+                    style.textContent = `
+                        @keyframes effect-particle-explode {
+                            0% { 
+                                opacity: 1; 
+                                transform: translate(-50%, -50%) scale(0.5);
+                            }
+                            100% { 
+                                opacity: 0;
+                                transform: translate(calc(-50% + cos(var(--angle)) * var(--radius)), calc(-50% + sin(var(--angle)) * var(--radius))) scale(1.2);
+                            }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+                
+                document.body.appendChild(particle);
+                setTimeout(() => {
+                    if (particle.parentNode) particle.parentNode.removeChild(particle);
+                }, 1200);
             }
         },
 
@@ -1494,6 +1599,7 @@
                       this.showToast(`Zone ${zone} updated`, 'success');
                       this.highlightZoneSegment(zone, range.start, range.end);
                       this.triggerHaptic('zone');
+                      this.showZoneTransitionEffect(range.start, range.end, color);
                   }
               });
         },
@@ -1542,6 +1648,39 @@
                     }, 300);
                 }
             });
+        },
+        
+        showZoneTransitionEffect(start, end, color) {
+            const effectEl = document.createElement('div');
+            effectEl.className = 'zone-transition-effect';
+            effectEl.style.cssText = `
+                position: fixed;
+                bottom: 0;
+                left: ${(start / 255) * 100}%;
+                width: ${((end - start) / 255) * 100}%;
+                height: 100vh;
+                background: linear-gradient(to top, ${color}40, transparent);
+                pointer-events: none;
+                z-index: 9997;
+                animation: zone-transition-rise 1.5s ease-out forwards;
+            `;
+            
+            if (!document.getElementById('zone-transition-style')) {
+                const style = document.createElement('style');
+                style.id = 'zone-transition-style';
+                style.textContent = `
+                    @keyframes zone-transition-rise {
+                        0% { transform: scaleY(0); opacity: 0.8; }
+                        100% { transform: scaleY(1); opacity: 0; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            document.body.appendChild(effectEl);
+            setTimeout(() => {
+                if (effectEl.parentNode) effectEl.parentNode.removeChild(effectEl);
+            }, 1500);
         },
         
         setupZoneStripVisualization() {
@@ -2474,7 +2613,7 @@
                 
                 const beatThreshold = Math.max(
                     this.state.adaptiveThreshold,
-                    this.config.beatDetectionThreshold * 0.85
+                    this.config.beatDetectionThreshold * 0.85 * (1 - this.state.beatSensitivity)
                 );
                 
                 const bassRatio = bassEnergy / 255;
@@ -2484,6 +2623,18 @@
                 const energySpike = totalEnergy > (avgEnergy + stdDev * 0.8);
                 const isBeat = (bassRatio > beatThreshold && bassEnergy > 160 && bassSpike) ||
                                (bassTransient && lowMidSupport && energySpike);
+                
+                if (this.state.beatCalibrationInProgress) {
+                    this.state.beatCalibrationData.push({
+                        bassEnergy,
+                        totalEnergy,
+                        stdDev,
+                        timestamp: Date.now()
+                    });
+                    if (this.state.beatCalibrationData.length >= this.config.beatCalibrationSamples) {
+                        this.completeBeatCalibration();
+                    }
+                }
                 
                 this.state.lastBassEnergy = bassEnergy;
                 
@@ -2523,9 +2674,93 @@
                 }
                 
                 this.updateRealtimeBPM();
+                this.updateBeatCalibrationDisplay(bandAverages);
                 requestAnimationFrame(this.detectBeats.bind(this));
             } catch (error) {
                 console.error('[LIFXMediaTouchV2] Beat detection error:', error);
+            }
+        },
+
+        startBeatCalibration() {
+            this.state.beatCalibrationInProgress = true;
+            this.state.beatCalibrationData = [];
+            this.showToast('Beat detection calibration started - let it analyze for a few seconds', 'info');
+            this.triggerHaptic('calibration');
+        },
+        
+        completeBeatCalibration() {
+            this.state.beatCalibrationInProgress = false;
+            const data = this.state.beatCalibrationData;
+            
+            if (data.length < 10) {
+                this.showToast('Calibration failed - not enough data', 'error');
+                this.triggerHaptic('error');
+                return;
+            }
+            
+            const avgBassEnergy = data.reduce((sum, d) => sum + d.bassEnergy, 0) / data.length;
+            const avgStdDev = data.reduce((sum, d) => sum + d.stdDev, 0) / data.length;
+            const maxBassEnergy = Math.max(...data.map(d => d.bassEnergy));
+            const minBassEnergy = Math.min(...data.map(d => d.bassEnergy));
+            
+            const optimalThreshold = (avgBassEnergy / 255) + (avgStdDev / 255) * 0.5;
+            this.state.beatSensitivity = Math.max(0.3, Math.min(0.9, optimalThreshold));
+            
+            this.showToast(`Beat calibration complete! Sensitivity: ${Math.round(this.state.beatSensitivity * 100)}%`, 'success');
+            this.triggerHaptic('success');
+            
+            this.updateBeatCalibrationUI();
+        },
+        
+        setBeatSensitivity(level) {
+            this.state.beatSensitivity = Math.max(0.1, Math.min(1.0, level));
+            this.showToast(`Beat sensitivity: ${Math.round(level * 100)}%`, 'info');
+            this.updateBeatCalibrationUI();
+        },
+        
+        updateBeatCalibrationUI() {
+            const statsDiv = document.querySelector('.beat-detection-calibration .calibration-stats');
+            if (!statsDiv) return;
+            
+            const now = Date.now();
+            const lastBeat = this.state.lastBeatTime || 0;
+            const timeSinceBeat = now - lastBeat;
+            
+            statsDiv.innerHTML = `
+                <div class="stat-item">
+                    <span class="stat-label">Sensitivity</span>
+                    <span class="stat-value">${Math.round(this.state.beatSensitivity * 100)}%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Last Beat</span>
+                    <span class="stat-value">${timeSinceBeat < 2000 ? Math.round(timeSinceBeat) + 'ms' : '--'}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">BPM</span>
+                    <span class="stat-value">${this.state.bpmDetected || '--'}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Threshold</span>
+                    <span class="stat-value">${Math.round(this.state.adaptiveThreshold * 100)}%</span>
+                </div>
+            `;
+        },
+        
+        updateBeatCalibrationDisplay(bandAverages) {
+            if (!this.state.beatCalibrationInProgress) return;
+            
+            const progressEl = document.getElementById('beat-calibration-progress');
+            if (progressEl) {
+                const progress = (this.state.beatCalibrationData.length / this.config.beatCalibrationSamples) * 100;
+                progressEl.style.width = `${progress}%`;
+            }
+            
+            const liveDisplay = document.getElementById('beat-calibration-live');
+            if (liveDisplay) {
+                liveDisplay.innerHTML = `
+                    <div class="live-value">${Math.round(bandAverages.bass || 0)}</div>
+                    <div class="live-label">Bass Energy</div>
+                `;
             }
         },
 
