@@ -1,14 +1,14 @@
-pub mod nav_bar;
+pub mod coding_agent;
 pub mod command;
-pub mod services;
-pub mod logs;
-pub mod system_info;
 pub mod database;
 pub mod files;
 pub mod help;
-pub mod coding_agent;
-pub mod status_bar;
+pub mod logs;
+pub mod nav_bar;
 pub mod palette;
+pub mod services;
+pub mod status_bar;
+pub mod system_info;
 pub mod toasts;
 
 use ratatui::{
@@ -23,12 +23,18 @@ pub fn get_spinner_char() -> char {
     let index = (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
-        .as_millis() / 100) as usize % spinner_chars.len();
+        .as_millis()
+        / 100) as usize
+        % spinner_chars.len();
     spinner_chars[index]
 }
 
 /// Create centered rect for modals/overlays
-pub fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::layout::Rect) -> ratatui::layout::Rect {
+pub fn centered_rect(
+    percent_x: u16,
+    percent_y: u16,
+    r: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

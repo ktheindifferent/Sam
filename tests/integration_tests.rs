@@ -14,11 +14,13 @@ async fn test_binary_help_command() {
 
     // The help command should exit successfully
     assert!(output.status.success(), "Help command should succeed");
-    
+
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Basic validation that help output contains expected content
-    assert!(stdout.contains("SAM") || stdout.contains("sam") || stdout.contains("help"), 
-            "Help output should mention SAM or help");
+    assert!(
+        stdout.contains("SAM") || stdout.contains("sam") || stdout.contains("help"),
+        "Help output should mention SAM or help"
+    );
 }
 
 #[tokio::test]
@@ -26,7 +28,7 @@ async fn test_binary_version_or_status() {
     // Try various common flags to see what the binary supports
     let test_args = vec![
         vec!["--version"],
-        vec!["version"], 
+        vec!["version"],
         vec!["status"],
         vec!["help"],
     ];
@@ -36,12 +38,11 @@ async fn test_binary_version_or_status() {
     for args in test_args {
         let mut cmd_args = vec!["run", "--"];
         cmd_args.extend(args.iter().cloned());
-        
+
         let result = timeout(Duration::from_secs(10), async {
-            Command::new("cargo")
-                .args(&cmd_args)
-                .output()
-        }).await;
+            Command::new("cargo").args(&cmd_args).output()
+        })
+        .await;
 
         if let Ok(Ok(output)) = result {
             if output.status.success() {
@@ -54,10 +55,13 @@ async fn test_binary_version_or_status() {
     }
 
     // At least one basic command should work
-    assert!(found_working_command, "At least one basic command should work");
+    assert!(
+        found_working_command,
+        "At least one basic command should work"
+    );
 }
 
-#[tokio::test] 
+#[tokio::test]
 async fn test_binary_compilation() {
     // Test that the binary compiles without errors
     let output = Command::new("cargo")
@@ -100,7 +104,8 @@ async fn test_basic_binary_execution() {
             .spawn()
             .expect("Failed to start sam binary")
             .wait()
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(status)) => {

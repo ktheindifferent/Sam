@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use tokio::sync::Mutex;
 use sysinfo::System;
+use tokio::sync::Mutex;
 
 pub async fn handle_setup() {
     crate::services::config::SamUserConfig::write_defaults_if_missing();
@@ -34,15 +34,16 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match crate::services::rivescript::query(cmd) {
         Ok(reply) => {
             let mut response_text = reply.text.clone();
-            
-            // Check for embedded commands 
+
+            // Check for embedded commands
             if response_text.contains(":::::") {
                 // Simple regex to extract commands - avoiding complex HTTP API to prevent recursion
                 let re = regex::Regex::new(r":::::(.+?):::::").unwrap();
-                let commands: Vec<String> = re.captures_iter(&response_text)
+                let commands: Vec<String> = re
+                    .captures_iter(&response_text)
                     .map(|cap| cap[1].trim().to_string())
                     .collect();
-                
+
                 for command in commands {
                     // Handle special TUI commands directly
                     match command.as_str() {
@@ -53,11 +54,16 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                         }
                         _ => {
                             // For other safe commands, execute them directly (avoid recursion)
-                            if command.starts_with("ls") || command == "pwd" || command.starts_with("echo ") || command == "date" {
+                            if command.starts_with("ls")
+                                || command == "pwd"
+                                || command.starts_with("echo ")
+                                || command == "date"
+                            {
                                 let command_output = Arc::new(Mutex::new(Vec::<String>::new()));
-                                let mut current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+                                let mut current_dir =
+                                    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
                                 let mut scroll_offset = 0u16;
-                                
+
                                 let mut ctx = crate::cli::commands::CommandContext {
                                     output_lines: &command_output,
                                     current_dir: &mut current_dir,
@@ -65,18 +71,34 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                                     output_height: 25,
                                     scroll_offset: &mut scroll_offset,
                                 };
-                                
+
                                 // Execute specific safe commands to prevent recursion
                                 if command.starts_with("ls") {
-                                    crate::cli::commands::misc::handle_ls(&command_output, &current_dir).await;
+                                    crate::cli::commands::misc::handle_ls(
+                                        &command_output,
+                                        &current_dir,
+                                    )
+                                    .await;
                                 } else if command == "pwd" {
-                                    crate::cli::commands::misc::handle_pwd(&command_output, &current_dir).await;
+                                    crate::cli::commands::misc::handle_pwd(
+                                        &command_output,
+                                        &current_dir,
+                                    )
+                                    .await;
                                 } else if command.starts_with("echo ") {
-                                    crate::cli::commands::misc::handle_echo(&command, &command_output).await;
+                                    crate::cli::commands::misc::handle_echo(
+                                        &command,
+                                        &command_output,
+                                    )
+                                    .await;
                                 } else if command == "date" {
-                                    crate::cli::commands::misc::handle_date(&command, &command_output).await;
+                                    crate::cli::commands::misc::handle_date(
+                                        &command,
+                                        &command_output,
+                                    )
+                                    .await;
                                 }
-                                
+
                                 let results = command_output.lock().await;
                                 if !results.is_empty() {
                                     let mut out = output_lines.lock().await;
@@ -87,13 +109,14 @@ pub async fn handle_default(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                             }
                         }
                     }
-                    
+
                     // Remove the command marker from response text using robust pattern matching
                     use crate::http::api::io::command_parser;
-                    response_text = command_parser::remove_command_markers(&response_text, &command);
+                    response_text =
+                        command_parser::remove_command_markers(&response_text, &command);
                 }
             }
-            
+
             // Only display response if it's not empty after processing
             if !response_text.trim().is_empty() {
                 // Clean up the response text by removing extra whitespace and blank lines
@@ -144,12 +167,19 @@ pub async fn handle_uname(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     }
 
     // If no flags specified, show kernel name by default
-    if !show_all && !show_kernel && !show_nodename && !show_release && !show_version && !show_machine && !show_os {
+    if !show_all
+        && !show_kernel
+        && !show_nodename
+        && !show_release
+        && !show_version
+        && !show_machine
+        && !show_os
+    {
         show_kernel = true;
     }
 
     let mut result = Vec::new();
-    
+
     if show_all || show_kernel {
         result.push(std::env::consts::OS.to_string());
     }
@@ -182,7 +212,7 @@ pub async fn handle_whoami(output_lines: &Arc<Mutex<Vec<String>>>) {
 /// Display current date and time
 pub async fn handle_date(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     use chrono::{Local, Utc};
-    
+
     let args: Vec<&str> = cmd.split_whitespace().collect();
     let mut utc = false;
     let mut format = None;
@@ -199,7 +229,7 @@ pub async fn handle_date(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     }
 
     let mut out = output_lines.lock().await;
-    
+
     if let Some(fmt) = format {
         // Custom format
         let formatted = if utc {
@@ -222,7 +252,7 @@ pub async fn handle_date(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 /// Display disk space usage (df equivalent)
 pub async fn handle_df(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     use sysinfo::System;
-    
+
     let args: Vec<&str> = cmd.split_whitespace().collect();
     let mut human_readable = false;
     let mut show_inodes = false;
@@ -242,7 +272,7 @@ pub async fn handle_df(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     // sys.refresh_disks_list(); // Not available in current sysinfo version
 
     let mut out = output_lines.lock().await;
-    
+
     // Header
     if show_inodes {
         out.push("Filesystem      Inodes   IUsed   IFree IUse% Mounted on".to_string());
@@ -291,7 +321,7 @@ pub async fn handle_du(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     }
 
     let mut out = output_lines.lock().await;
-    
+
     for path in paths {
         match calculate_directory_size(path, max_depth.unwrap_or(usize::MAX), 0) {
             Ok(size) => {
@@ -336,16 +366,19 @@ pub async fn handle_ps(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
     let mut out = output_lines.lock().await;
-    
+
     // Header
     if show_full {
-        out.push("  PID  PPID USER     %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND".to_string());
+        out.push(
+            "  PID  PPID USER     %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND"
+                .to_string(),
+        );
     } else {
         out.push("  PID TTY          TIME CMD".to_string());
     }
 
     let processes: Vec<_> = sys.processes().iter().collect();
-    
+
     for (pid, process) in processes {
         if !show_all && process.parent().is_none() {
             continue; // Skip processes without parent unless showing all
@@ -355,15 +388,31 @@ pub async fn handle_ps(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             let cpu = process.cpu_usage();
             let memory = process.memory();
             let virtual_memory = process.virtual_memory();
-            let parent_pid = process.parent().map(|p| p.to_string()).unwrap_or_else(|| "    ".to_string());
+            let parent_pid = process
+                .parent()
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "    ".to_string());
             let user = whoami::username(); // Simplified - would need actual process owner
             let cmd = process.name();
-            
-            out.push(format!("{:5} {:5} {:<8} {:4.1} {:4.1} {:7} {:5} ?        S    00:00 {:8} {}", 
-                pid, parent_pid, user, cpu, memory as f64 / 1024.0 / 1024.0, 
-                virtual_memory / 1024, memory / 1024, "00:00", cmd.to_string_lossy()));
+
+            out.push(format!(
+                "{:5} {:5} {:<8} {:4.1} {:4.1} {:7} {:5} ?        S    00:00 {:8} {}",
+                pid,
+                parent_pid,
+                user,
+                cpu,
+                memory as f64 / 1024.0 / 1024.0,
+                virtual_memory / 1024,
+                memory / 1024,
+                "00:00",
+                cmd.to_string_lossy()
+            ));
         } else {
-            out.push(format!("{:5} pts/0    00:00:00 {}", pid, process.name().to_string_lossy()));
+            out.push(format!(
+                "{:5} pts/0    00:00:00 {}",
+                pid,
+                process.name().to_string_lossy()
+            ));
         }
     }
 }
@@ -374,22 +423,30 @@ pub async fn handle_top(output_lines: &Arc<Mutex<Vec<String>>>) {
     sys.refresh_all();
 
     let mut out = output_lines.lock().await;
-    
+
     // System summary
     out.push(format!("Tasks: {} total", sys.processes().len()));
     out.push(format!("CPU usage: {:.1}%", sys.global_cpu_usage()));
-    out.push(format!("Memory: {} MB used, {} MB total", 
-        sys.used_memory() / 1024 / 1024, 
-        sys.total_memory() / 1024 / 1024));
+    out.push(format!(
+        "Memory: {} MB used, {} MB total",
+        sys.used_memory() / 1024 / 1024,
+        sys.total_memory() / 1024 / 1024
+    ));
     out.push("".to_string());
-    
+
     // Header
-    out.push("  PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND".to_string());
-    
+    out.push(
+        "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND".to_string(),
+    );
+
     // Get processes sorted by CPU usage
     let mut processes: Vec<_> = sys.processes().iter().collect();
-    processes.sort_by(|a, b| b.1.cpu_usage().partial_cmp(&a.1.cpu_usage()).unwrap_or(std::cmp::Ordering::Equal));
-    
+    processes.sort_by(|a, b| {
+        b.1.cpu_usage()
+            .partial_cmp(&a.1.cpu_usage())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
     // Show top 20 processes
     for (pid, process) in processes.iter().take(20) {
         let cpu = process.cpu_usage();
@@ -397,12 +454,23 @@ pub async fn handle_top(output_lines: &Arc<Mutex<Vec<String>>>) {
         let virtual_memory = process.virtual_memory();
         let user = whoami::username();
         let cmd = process.name();
-        
-        out.push(format!("{:5} {:<9} {:2} {:3} {:7} {:6} {:6} S {:5.1} {:4.1} {:8} {}", 
-            pid, user, 20, 0, virtual_memory / 1024, memory / 1024, memory / 1024,
-            cpu, memory as f64 / sys.total_memory() as f64 * 100.0, "0:00.00", cmd.to_string_lossy()));
+
+        out.push(format!(
+            "{:5} {:<9} {:2} {:3} {:7} {:6} {:6} S {:5.1} {:4.1} {:8} {}",
+            pid,
+            user,
+            20,
+            0,
+            virtual_memory / 1024,
+            memory / 1024,
+            memory / 1024,
+            cpu,
+            memory as f64 / sys.total_memory() as f64 * 100.0,
+            "0:00.00",
+            cmd.to_string_lossy()
+        ));
     }
-    
+
     out.push("".to_string());
     out.push("Note: This is a snapshot. Real top command updates continuously.".to_string());
 }
@@ -410,7 +478,7 @@ pub async fn handle_top(output_lines: &Arc<Mutex<Vec<String>>>) {
 /// Send signals to processes (kill equivalent)
 pub async fn handle_kill(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     let args: Vec<&str> = cmd.split_whitespace().collect();
-    
+
     if args.len() < 2 {
         let mut out = output_lines.lock().await;
         out.push("Usage: kill [-signal] pid [pid ...]".to_string());
@@ -441,12 +509,21 @@ pub async fn handle_kill(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     }
 
     let mut out = output_lines.lock().await;
-    
+
     if list_signals {
         out.push("Available signals:".to_string());
-        out.push(" 1) SIGHUP       2) SIGINT       3) SIGQUIT      4) SIGILL       5) SIGTRAP".to_string());
-        out.push(" 6) SIGABRT      7) SIGBUS       8) SIGFPE       9) SIGKILL     10) SIGUSR1".to_string());
-        out.push("11) SIGSEGV     12) SIGUSR2     13) SIGPIPE     14) SIGALRM     15) SIGTERM".to_string());
+        out.push(
+            " 1) SIGHUP       2) SIGINT       3) SIGQUIT      4) SIGILL       5) SIGTRAP"
+                .to_string(),
+        );
+        out.push(
+            " 6) SIGABRT      7) SIGBUS       8) SIGFPE       9) SIGKILL     10) SIGUSR1"
+                .to_string(),
+        );
+        out.push(
+            "11) SIGSEGV     12) SIGUSR2     13) SIGPIPE     14) SIGALRM     15) SIGTERM"
+                .to_string(),
+        );
         return;
     }
 
@@ -462,16 +539,22 @@ pub async fn handle_kill(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         // - Windows: OpenProcess, TerminateProcess APIs
         // - Unix/Linux: kill() system call
         // - macOS: Same as Unix/Linux
-        
-        out.push(format!("kill: sending {} signal to process {}", signal, pid));
-        out.push("Note: Actual process termination requires platform-specific implementation.".to_string());
+
+        out.push(format!(
+            "kill: sending {} signal to process {}",
+            signal, pid
+        ));
+        out.push(
+            "Note: Actual process termination requires platform-specific implementation."
+                .to_string(),
+        );
     }
 }
 
 /// Manual pages command (man equivalent)
 pub async fn handle_man(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     let args: Vec<&str> = cmd.split_whitespace().collect();
-    
+
     if args.len() < 2 {
         let mut out = output_lines.lock().await;
         out.push("Usage: man command".to_string());
@@ -480,7 +563,7 @@ pub async fn handle_man(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 
     let command = args[1];
     let mut out = output_lines.lock().await;
-    
+
     let manual = get_command_manual(command);
     out.extend(manual);
 }
@@ -491,12 +574,12 @@ fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "K", "M", "G", "T"];
     let mut size = bytes as f64;
     let mut unit_index = 0;
-    
+
     while size >= 1024.0 && unit_index < UNITS.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
-    
+
     if unit_index == 0 {
         format!("{:.0}{}", size, UNITS[unit_index])
     } else {
@@ -504,7 +587,11 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-fn calculate_directory_size(path: &str, max_depth: usize, current_depth: usize) -> Result<u64, Box<dyn std::error::Error>> {
+fn calculate_directory_size(
+    path: &str,
+    max_depth: usize,
+    current_depth: usize,
+) -> Result<u64, Box<dyn std::error::Error>> {
     use std::fs;
     use std::path::Path;
 
@@ -522,7 +609,7 @@ fn calculate_directory_size(path: &str, max_depth: usize, current_depth: usize) 
     for entry in fs::read_dir(path)? {
         let entry = entry?;
         let file_type = entry.file_type()?;
-        
+
         if file_type.is_file() {
             total_size += entry.metadata()?.len();
         } else if file_type.is_dir() {
@@ -592,8 +679,10 @@ fn get_command_manual(command: &str) -> Vec<String> {
             "    top".to_string(),
             "".to_string(),
             "DESCRIPTION".to_string(),
-            "    The top program provides a dynamic real-time view of a running system.".to_string(),
-            "    It can display system summary information as well as a list of processes.".to_string(),
+            "    The top program provides a dynamic real-time view of a running system."
+                .to_string(),
+            "    It can display system summary information as well as a list of processes."
+                .to_string(),
         ],
         "kill" => vec![
             "NAME".to_string(),
@@ -655,6 +744,6 @@ fn get_command_manual(command: &str) -> Vec<String> {
             "".to_string(),
             "Available commands with manuals:".to_string(),
             "    uname, whoami, ps, top, kill, date, df, du".to_string(),
-        ]
+        ],
     }
 }

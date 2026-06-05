@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use super::constants::*;
+use crate::services::coding::agent::errors::{CodingAgentError, CodingAgentResult};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use crate::services::coding::agent::errors::{CodingAgentError, CodingAgentResult};
-use super::constants::*;
 
 /// Resource limits configuration
 #[derive(Debug, Clone)]
@@ -103,9 +103,11 @@ impl ResourceMonitor {
     pub fn truncate_output(&self, output: String) -> String {
         if output.len() > self.limits.max_output_bytes {
             let truncated = &output[..self.limits.max_output_bytes];
-            format!("{}\n... (output truncated, exceeded {} KB limit)",
-                    truncated,
-                    self.limits.max_output_bytes / 1024)
+            format!(
+                "{}\n... (output truncated, exceeded {} KB limit)",
+                truncated,
+                self.limits.max_output_bytes / 1024
+            )
         } else {
             output
         }

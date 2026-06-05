@@ -1,12 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use crate::services::orchestrator::{ServiceName, ServiceOrchestrator, ServiceConfig};
-    use crate::services::restart::{RestartManager, RestartConfig, RestartStrategy, RestartEvent, RestartNotifier};
+    use crate::services::orchestrator::{ServiceConfig, ServiceName, ServiceOrchestrator};
+    use crate::services::restart::{
+        RestartConfig, RestartEvent, RestartManager, RestartNotifier, RestartStrategy,
+    };
+    use async_trait::async_trait;
+    use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
     use std::time::{Duration, Instant};
-    use std::collections::HashMap;
     use tokio::time::sleep;
-    use async_trait::async_trait;
 
     /// Mock service for testing
     struct MockService {
@@ -27,7 +29,7 @@ mod tests {
         async fn start(&self) -> Result<(), anyhow::Error> {
             let mut count = self.fail_count.write().unwrap();
             *count += 1;
-            
+
             if *count <= self.max_failures {
                 Err(anyhow::anyhow!("Service start failed (attempt {})", count))
             } else {
@@ -52,7 +54,7 @@ mod tests {
     #[tokio::test]
     async fn test_service_restart_success() {
         let orchestrator = ServiceOrchestrator::new();
-        
+
         // Register a service that will succeed on first restart
         let config = ServiceConfig {
             name: ServiceName::Redis,
@@ -65,9 +67,11 @@ mod tests {
             dependencies: vec![],
             environment: HashMap::new(),
         };
-        
-        orchestrator.register_service(config).expect("Failed to register service");
-        
+
+        orchestrator
+            .register_service(config)
+            .expect("Failed to register service");
+
         // Verify service is registered
         let health = orchestrator.get_health(&ServiceName::Redis);
         assert!(health.is_some());
@@ -76,7 +80,7 @@ mod tests {
     #[tokio::test]
     async fn test_exponential_backoff_restart() {
         let manager = RestartManager::new();
-        
+
         let config = RestartConfig {
             strategy: RestartStrategy::ExponentialBackoff {
                 base_delay: Duration::from_millis(100),
@@ -86,14 +90,14 @@ mod tests {
             max_attempts: 5,
             ..Default::default()
         };
-        
+
         manager.register_config(ServiceName::PostgreSQL, config);
-        
+
         // Test backoff delays
         let delays: Vec<Duration> = (0..5)
             .map(|i| manager.calculate_delay(&ServiceName::PostgreSQL, i))
             .collect();
-        
+
         assert_eq!(delays[0], Duration::from_millis(100));
         assert_eq!(delays[1], Duration::from_millis(200));
         assert_eq!(delays[2], Duration::from_millis(400));
@@ -104,35 +108,35 @@ mod tests {
     #[tokio::test]
     async fn test_circuit_breaker_behavior() {
         let manager = RestartManager::new();
-        
+
         let config = RestartConfig {
             circuit_breaker_enabled: true,
             circuit_breaker_threshold: 3,
             circuit_breaker_timeout: Duration::from_millis(500),
             ..Default::default()
         };
-        
+
         manager.register_config(ServiceName::Docker, config);
-        
+
         // Initially circuit should be closed
         assert!(manager.check_circuit_breaker(&ServiceName::Docker));
-        
+
         // Simulate failures
         for _ in 0..2 {
             manager.update_circuit_breaker(&ServiceName::Docker, false);
             assert!(manager.check_circuit_breaker(&ServiceName::Docker)); // Still closed
         }
-        
+
         // Third failure should trip the breaker
         manager.update_circuit_breaker(&ServiceName::Docker, false);
         assert!(!manager.check_circuit_breaker(&ServiceName::Docker)); // Now open
-        
+
         // Wait for timeout
         sleep(Duration::from_millis(600)).await;
-        
+
         // Should be half-open now
         assert!(manager.check_circuit_breaker(&ServiceName::Docker));
-        
+
         // Success should close it
         manager.update_circuit_breaker(&ServiceName::Docker, true);
         assert!(manager.check_circuit_breaker(&ServiceName::Docker));
@@ -141,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn test_dependency_checking() {
         let orchestrator = ServiceOrchestrator::new();
-        
+
         // Register PostgreSQL as a dependency
         let pg_config = ServiceConfig {
             name: ServiceName::PostgreSQL,
@@ -154,8 +158,10 @@ mod tests {
             dependencies: vec![],
             environment: HashMap::new(),
         };
-        orchestrator.register_service(pg_config).expect("Failed to register PostgreSQL");
-        
+        orchestrator
+            .register_service(pg_config)
+            .expect("Failed to register PostgreSQL");
+
         // Register FileStorage with PostgreSQL dependency
         let fs_config = ServiceConfig {
             name: ServiceName::FileStorage,
@@ -168,8 +174,10 @@ mod tests {
             dependencies: vec![ServiceName::PostgreSQL],
             environment: HashMap::new(),
         };
-        orchestrator.register_service(fs_config).expect("Failed to register FileStorage");
-        
+        orchestrator
+            .register_service(fs_config)
+            .expect("Failed to register FileStorage");
+
         // Test that both services are registered (since get_startup_order is private)
         assert!(orchestrator.get_health(&ServiceName::PostgreSQL).is_some());
         assert!(orchestrator.get_health(&ServiceName::FileStorage).is_some());
@@ -179,33 +187,33 @@ mod tests {
     async fn test_restart_metrics_tracking() {
         let manager = RestartManager::new();
         manager.register_config(ServiceName::Crawler, RestartConfig::default());
-        
+
         // Simulate successful restart
         manager.update_metrics(&ServiceName::Crawler, true, Duration::from_secs(2));
-        
+
         let metrics = manager.get_metrics(&ServiceName::Crawler).unwrap();
         assert_eq!(metrics.total_restarts, 1);
         assert_eq!(metrics.successful_restarts, 1);
         assert_eq!(metrics.failed_restarts, 0);
         assert_eq!(metrics.average_restart_time, Duration::from_secs(2));
-        
+
         // Simulate another successful restart
         manager.update_metrics(&ServiceName::Crawler, true, Duration::from_secs(4));
-        
+
         let metrics = manager.get_metrics(&ServiceName::Crawler).unwrap();
         assert_eq!(metrics.total_restarts, 2);
         assert_eq!(metrics.successful_restarts, 2);
         assert_eq!(metrics.average_restart_time, Duration::from_secs(3)); // Average of 2 and 4
-        
+
         // Simulate failed restart
         manager.update_metrics(&ServiceName::Crawler, false, Duration::from_secs(1));
-        
+
         let metrics = manager.get_metrics(&ServiceName::Crawler).unwrap();
         assert_eq!(metrics.total_restarts, 3);
         assert_eq!(metrics.successful_restarts, 2);
         assert_eq!(metrics.failed_restarts, 1);
         assert_eq!(metrics.consecutive_failures, 1);
-        
+
         // Reset metrics
         manager.reset_metrics(&ServiceName::Crawler);
         let metrics = manager.get_metrics(&ServiceName::Crawler).unwrap();
@@ -219,12 +227,12 @@ mod tests {
         use async_trait::async_trait;
         use std::sync::Arc;
         use tokio::sync::Mutex;
-        
+
         // Custom notifier for testing
         struct TestNotifier {
             events: Arc<Mutex<Vec<RestartEvent>>>,
         }
-        
+
         #[async_trait]
         impl RestartNotifier for TestNotifier {
             async fn notify(&self, event: RestartEvent) -> anyhow::Result<()> {
@@ -232,38 +240,46 @@ mod tests {
                 Ok(())
             }
         }
-        
+
         let manager = RestartManager::new();
         let events = Arc::new(Mutex::new(Vec::new()));
         let notifier = Arc::new(TestNotifier {
             events: events.clone(),
         });
-        
+
         manager.add_notifier(notifier);
-        
+
         // Send various events
-        manager.notify(RestartEvent::RestartInitiated {
-            service: ServiceName::Redis,
-            attempt: 1,
-            reason: "Test restart".to_string(),
-        }).await;
-        
-        manager.notify(RestartEvent::RestartSucceeded {
-            service: ServiceName::Redis,
-            duration: Duration::from_secs(3),
-        }).await;
-        
-        manager.notify(RestartEvent::CircuitBreakerTripped {
-            service: ServiceName::PostgreSQL,
-            failure_count: 5,
-        }).await;
-        
+        manager
+            .notify(RestartEvent::RestartInitiated {
+                service: ServiceName::Redis,
+                attempt: 1,
+                reason: "Test restart".to_string(),
+            })
+            .await;
+
+        manager
+            .notify(RestartEvent::RestartSucceeded {
+                service: ServiceName::Redis,
+                duration: Duration::from_secs(3),
+            })
+            .await;
+
+        manager
+            .notify(RestartEvent::CircuitBreakerTripped {
+                service: ServiceName::PostgreSQL,
+                failure_count: 5,
+            })
+            .await;
+
         // Verify events were recorded
         let recorded_events = events.lock().await;
         assert_eq!(recorded_events.len(), 3);
-        
+
         match &recorded_events[0] {
-            RestartEvent::RestartInitiated { service, attempt, .. } => {
+            RestartEvent::RestartInitiated {
+                service, attempt, ..
+            } => {
                 assert_eq!(*service, ServiceName::Redis);
                 assert_eq!(*attempt, 1);
             }
@@ -274,20 +290,20 @@ mod tests {
     #[tokio::test]
     async fn test_scheduled_restart() {
         let manager = RestartManager::new();
-        
+
         let future_time = Instant::now() + Duration::from_millis(500);
         let config = RestartConfig {
             strategy: RestartStrategy::Scheduled(future_time),
             ..Default::default()
         };
-        
+
         manager.register_config(ServiceName::WebSocket, config);
-        
+
         // Calculate delay should return time until scheduled
         let delay = manager.calculate_delay(&ServiceName::WebSocket, 0);
         assert!(delay > Duration::from_millis(400));
         assert!(delay < Duration::from_millis(600));
-        
+
         // After the scheduled time passes
         sleep(Duration::from_millis(600)).await;
         let delay = manager.calculate_delay(&ServiceName::WebSocket, 0);
@@ -297,14 +313,14 @@ mod tests {
     #[tokio::test]
     async fn test_immediate_restart() {
         let manager = RestartManager::new();
-        
+
         let config = RestartConfig {
             strategy: RestartStrategy::Immediate,
             ..Default::default()
         };
-        
+
         manager.register_config(ServiceName::MDNS, config);
-        
+
         // All attempts should have zero delay
         for attempt in 0..5 {
             let delay = manager.calculate_delay(&ServiceName::MDNS, attempt);
@@ -315,15 +331,15 @@ mod tests {
     #[tokio::test]
     async fn test_delayed_restart() {
         let manager = RestartManager::new();
-        
+
         let fixed_delay = Duration::from_millis(250);
         let config = RestartConfig {
             strategy: RestartStrategy::Delayed(fixed_delay),
             ..Default::default()
         };
-        
+
         manager.register_config(ServiceName::Lifx, config);
-        
+
         // All attempts should have the same fixed delay
         for attempt in 0..5 {
             let delay = manager.calculate_delay(&ServiceName::Lifx, attempt);
@@ -334,7 +350,7 @@ mod tests {
     #[tokio::test]
     async fn test_health_check_retries() {
         let orchestrator = ServiceOrchestrator::new();
-        
+
         // Register a service
         let config = ServiceConfig {
             name: ServiceName::Voice,
@@ -347,13 +363,15 @@ mod tests {
             dependencies: vec![],
             environment: HashMap::new(),
         };
-        
-        orchestrator.register_service(config).expect("Failed to register service");
-        
+
+        orchestrator
+            .register_service(config)
+            .expect("Failed to register service");
+
         // Test that service health can be retrieved
         let health = orchestrator.get_health(&ServiceName::Voice);
         assert!(health.is_some());
-        
+
         // Verify the service is registered
         let all_health = orchestrator.get_all_health();
         assert!(all_health.contains_key(&ServiceName::Voice));
@@ -363,7 +381,7 @@ mod tests {
     async fn test_concurrent_restart_prevention() {
         let manager = RestartManager::new();
         manager.register_config(ServiceName::P2P, RestartConfig::default());
-        
+
         // Simulate multiple concurrent restart attempts
         let handles: Vec<_> = (0..5)
             .map(|i| {
@@ -373,12 +391,12 @@ mod tests {
                 })
             })
             .collect();
-        
+
         // Wait for all to complete
         for handle in handles {
             handle.await.unwrap();
         }
-        
+
         // Check that metrics are consistent
         let metrics = manager.get_metrics(&ServiceName::P2P).unwrap();
         assert_eq!(metrics.total_restarts, 5);

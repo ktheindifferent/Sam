@@ -6,7 +6,7 @@ use tokio::process::Command;
 
 // TODO - Automatically apply security settings and config
 // /etc/snapserver.conf
-pub async fn configure() {
+pub async fn configure() -> io::Result<()> {
     let cfg = "[server]
     threads = -1
     pidfile = /var/run/snapserver/pid
@@ -29,9 +29,7 @@ pub async fn configure() {
     source = pipe:///tmp/snapfifo?name=samfifo
     [logging]".to_string();
     log::info!("cfg: {:?}", cfg);
-    tokio::fs::write("/etc/snapserver.conf", &cfg)
-        .await
-        .expect("Unable to write file");
+    tokio::fs::write("/etc/snapserver.conf", &cfg).await
 }
 
 // Only one install() definition per compilation
@@ -115,11 +113,11 @@ pub async fn install() -> io::Result<()> {
     cmake_cmd.current_dir(&build_dir).arg("..");
     // #[cfg(target_os = "windows")]
     // {
-        // Include boost include directory for Windows
-        // Include vcpkg 
-        // CMakeLists.txt does not respect CMAKE_TOOLCHAIN_FILE, so we need to set CMAKE_PREFIX_PATH
-        // cmake_cmd.arg("-DCMAKE_PREFIX_PATH=C:/vcpkg/installed/x64-windows");
-        // cmake_cmd.arg("-DCMAKE_TOOLCHAIN_FILE=C:/local/vcpkg/scripts/buildsystems/vcpkg.cmake");
+    // Include boost include directory for Windows
+    // Include vcpkg
+    // CMakeLists.txt does not respect CMAKE_TOOLCHAIN_FILE, so we need to set CMAKE_PREFIX_PATH
+    // cmake_cmd.arg("-DCMAKE_PREFIX_PATH=C:/vcpkg/installed/x64-windows");
+    // cmake_cmd.arg("-DCMAKE_TOOLCHAIN_FILE=C:/local/vcpkg/scripts/buildsystems/vcpkg.cmake");
     // }
     #[cfg(target_os = "windows")]
     {
@@ -128,7 +126,10 @@ pub async fn install() -> io::Result<()> {
         cmake_cmd.env("CMAKE_PREFIX_PATH", vcpkg_prefix);
         cmake_cmd.env("CMAKE_INCLUDE_PATH", format!("{}/include", vcpkg_prefix));
         cmake_cmd.env("CMAKE_LIBRARY_PATH", format!("{}/lib", vcpkg_prefix));
-        cmake_cmd.env("CMAKE_TOOLCHAIN", "C:/vcpkg/scripts/buildsystems/vcpkg.cmake");
+        cmake_cmd.env(
+            "CMAKE_TOOLCHAIN",
+            "C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        );
         cmake_cmd.arg("-G").arg("MinGW Makefiles");
 
         // Patch wasapi_player.cpp for MinGW before building Snapcast
@@ -209,7 +210,6 @@ pub async fn install_snapcast_server(data: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-
 #[cfg(target_os = "windows")]
 pub fn patch_wasapi_player_for_mingw() -> std::io::Result<()> {
     use std::fs;
@@ -227,7 +227,7 @@ pub fn patch_wasapi_player_for_mingw() -> std::io::Result<()> {
 /// Check if snapcast server is running
 pub fn status() -> Result<bool, Box<dyn std::error::Error>> {
     use std::process::Command;
-    
+
     #[cfg(windows)]
     {
         let output = Command::new("tasklist")
@@ -237,13 +237,10 @@ pub fn status() -> Result<bool, Box<dyn std::error::Error>> {
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(stdout.contains("snapserver.exe"))
     }
-    
+
     #[cfg(unix)]
     {
-        let output = Command::new("pgrep")
-            .arg("-x")
-            .arg("snapserver")
-            .output()?;
+        let output = Command::new("pgrep").arg("-x").arg("snapserver").output()?;
         Ok(output.status.success())
     }
 }

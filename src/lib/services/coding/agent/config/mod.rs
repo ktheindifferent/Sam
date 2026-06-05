@@ -66,17 +66,31 @@ impl CodingAgentConfig {
     /// Check if a command is safe to execute
     pub fn is_safe_command(&self, command: &str) -> bool {
         // Check against safe commands list
-        if self.safe_commands.iter().any(|safe| command.starts_with(safe)) {
+        if self
+            .safe_commands
+            .iter()
+            .any(|safe| command.starts_with(safe))
+        {
             return true;
         }
 
         // Also check security config allowed commands
-        if self.security.allowed_commands.iter().any(|allowed| command.starts_with(allowed)) {
+        if self
+            .security
+            .allowed_commands
+            .iter()
+            .any(|allowed| command.starts_with(allowed))
+        {
             return true;
         }
 
         // Check if it's blocked
-        if self.security.blocked_commands.iter().any(|blocked| command.contains(blocked)) {
+        if self
+            .security
+            .blocked_commands
+            .iter()
+            .any(|blocked| command.contains(blocked))
+        {
             return false;
         }
 
@@ -126,7 +140,8 @@ When given a vague task like "debug X", interpret it as:
 1. First explore what X is (file or directory)
 2. If directory: List contents and examine relevant files
 3. If file: Read and analyze its contents
-4. Look for errors, issues, or problems to fix"#.to_string(),
+4. Look for errors, issues, or problems to fix"#
+                .to_string(),
             max_context_lines: 100,
             require_confirmation: false,
             workspace_integration: false,

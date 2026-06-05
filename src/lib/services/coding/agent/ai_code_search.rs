@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet, BinaryHeap};
+use async_trait::async_trait;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::cmp::Ordering;
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
 use tokio::fs;
-use regex::Regex;
 
 use super::errors::CodingAgentError as ServiceError;
 use super::traits::provider::LLMProvider;
@@ -55,7 +55,8 @@ pub struct SearchResult {
 
 impl Ord for SearchResult {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.relevance_score.partial_cmp(&other.relevance_score)
+        self.relevance_score
+            .partial_cmp(&other.relevance_score)
             .unwrap_or(Ordering::Equal)
             .reverse()
     }
@@ -335,21 +336,11 @@ impl AiCodeSearchEngine {
 
         // Perform search based on query type
         let results = match query.query_type {
-            QueryType::NaturalLanguage => {
-                self.natural_language_search(&query, &index).await?
-            }
-            QueryType::Regex => {
-                self.regex_search(&query, project_path).await?
-            }
-            QueryType::Symbol => {
-                self.symbol_search(&query, &index).await?
-            }
-            QueryType::Reference => {
-                self.reference_search(&query, &index).await?
-            }
-            _ => {
-                self.generic_search(&query, &index).await?
-            }
+            QueryType::NaturalLanguage => self.natural_language_search(&query, &index).await?,
+            QueryType::Regex => self.regex_search(&query, project_path).await?,
+            QueryType::Symbol => self.symbol_search(&query, &index).await?,
+            QueryType::Reference => self.reference_search(&query, &index).await?,
+            _ => self.generic_search(&query, &index).await?,
         };
 
         // Apply filters
@@ -359,9 +350,7 @@ impl AiCodeSearchEngine {
         let ranked = self.rank_results(filtered, &query).await?;
 
         // Limit results
-        let limited: Vec<SearchResult> = ranked.into_iter()
-            .take(query.max_results)
-            .collect();
+        let limited: Vec<SearchResult> = ranked.into_iter().take(query.max_results).collect();
 
         // Cache results
         self.cache.write().await.put(query, limited.clone());
@@ -413,7 +402,10 @@ impl AiCodeSearchEngine {
             query
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         // Parse response into intent
         Ok(SearchIntent {
@@ -427,9 +419,7 @@ impl AiCodeSearchEngine {
         // Generate embedding using LLM
         // This is a placeholder - in production, use a proper embedding model
         let hash = md5::compute(text.as_bytes());
-        let embedding: Vec<f32> = hash.iter()
-            .map(|&b| b as f32 / 255.0)
-            .collect();
+        let embedding: Vec<f32> = hash.iter().map(|&b| b as f32 / 255.0).collect();
 
         Ok(embedding)
     }
@@ -439,9 +429,7 @@ impl AiCodeSearchEngine {
             return 0.0;
         }
 
-        let dot_product: f32 = a.iter().zip(b.iter())
-            .map(|(x, y)| x * y)
-            .sum();
+        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
 
         let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
         let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -458,14 +446,14 @@ impl AiCodeSearchEngine {
         query: &SearchQuery,
         project_path: &Path,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        let regex = Regex::new(&query.query_text)
-            .map_err(|e| ServiceError::ValidationError {
-                field: "regex".to_string(),
-                message: e.to_string(),
-            })?;
+        let regex = Regex::new(&query.query_text).map_err(|e| ServiceError::ValidationError {
+            field: "regex".to_string(),
+            message: e.to_string(),
+        })?;
 
         let mut results = Vec::new();
-        self.search_directory(&regex, project_path, &mut results).await?;
+        self.search_directory(&regex, project_path, &mut results)
+            .await?;
 
         Ok(results)
     }
@@ -476,17 +464,19 @@ impl AiCodeSearchEngine {
         dir: &Path,
         results: &mut Vec<SearchResult>,
     ) -> Result<(), ServiceError> {
-        let mut entries = fs::read_dir(dir).await
-            .map_err(|e| ServiceError::IoError {
-                message: e.to_string(),
-                path: Some(dir.to_path_buf()),
-            })?;
+        let mut entries = fs::read_dir(dir).await.map_err(|e| ServiceError::IoError {
+            message: e.to_string(),
+            path: Some(dir.to_path_buf()),
+        })?;
 
-        while let Some(entry) = entries.next_entry().await
+        while let Some(entry) = entries
+            .next_entry()
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(dir.to_path_buf()),
-            })? {
+            })?
+        {
             let path = entry.path();
 
             if path.is_file() {
@@ -524,10 +514,9 @@ impl AiCodeSearchEngine {
                     }
                 }
             } else if path.is_dir() {
-                let dir_name = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                if !dir_name.starts_with('.') && dir_name != "node_modules" && dir_name != "target" {
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !dir_name.starts_with('.') && dir_name != "node_modules" && dir_name != "target"
+                {
                     Box::pin(self.search_directory(regex, &path, results)).await?;
                 }
             }
@@ -642,14 +631,17 @@ impl AiCodeSearchEngine {
     }
 
     async fn extract_snippet(&self, location: &CodeLocation) -> Result<CodeSnippet, ServiceError> {
-        let content = fs::read_to_string(&location.file).await
-            .map_err(|e| ServiceError::IoError {
-                message: e.to_string(),
-                path: Some(location.file.clone()),
-            })?;
+        let content =
+            fs::read_to_string(&location.file)
+                .await
+                .map_err(|e| ServiceError::IoError {
+                    message: e.to_string(),
+                    path: Some(location.file.clone()),
+                })?;
 
         let lines: Vec<&str> = content.lines().collect();
-        let snippet_lines = &lines[location.line_start.saturating_sub(1)..location.line_end.min(lines.len())];
+        let snippet_lines =
+            &lines[location.line_start.saturating_sub(1)..location.line_end.min(lines.len())];
 
         Ok(CodeSnippet {
             code: snippet_lines.join("\n"),
@@ -672,7 +664,8 @@ impl AiCodeSearchEngine {
     }
 
     async fn get_metadata(&self, location: &CodeLocation) -> Result<ResultMetadata, ServiceError> {
-        let metadata = fs::metadata(&location.file).await
+        let metadata = fs::metadata(&location.file)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(location.file.clone()),
@@ -686,12 +679,20 @@ impl AiCodeSearchEngine {
         })
     }
 
-    fn apply_filters(&self, results: Vec<SearchResult>, filters: &SearchFilters) -> Vec<SearchResult> {
-        results.into_iter()
+    fn apply_filters(
+        &self,
+        results: Vec<SearchResult>,
+        filters: &SearchFilters,
+    ) -> Vec<SearchResult> {
+        results
+            .into_iter()
             .filter(|r| {
                 // File type filter
                 if !filters.file_types.is_empty() {
-                    let ext = r.location.file.extension()
+                    let ext = r
+                        .location
+                        .file
+                        .extension()
                         .and_then(|s| s.to_str())
                         .unwrap_or("");
                     if !filters.file_types.contains(&ext.to_string()) {
@@ -732,7 +733,11 @@ impl AiCodeSearchEngine {
         }
 
         // Sort by relevance
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(results)
     }
@@ -747,13 +752,17 @@ impl AiCodeSearchEngine {
             Query: {}\n\
             Code: {}\n\
             Return only a number between 0 and 1.",
-            query.query_text,
-            result.snippet.code
+            query.query_text, result.snippet.code
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
-        response.trim().parse::<f64>()
+        response
+            .trim()
+            .parse::<f64>()
             .map_err(|_| ServiceError::ValidationError {
                 field: "relevance".to_string(),
                 message: "Invalid relevance score".to_string(),
@@ -812,7 +821,9 @@ impl AiCodeSearchEngine {
         let symbol = self.get_symbol_at_location(from, index).await?;
 
         if let Some(symbol_info) = index.symbols.get(&symbol) {
-            let destinations = symbol_info.references.iter()
+            let destinations = symbol_info
+                .references
+                .iter()
                 .map(|loc| NavigationDestination {
                     location: loc.clone(),
                     destination_type: DestinationType::Reference,
@@ -832,11 +843,13 @@ impl AiCodeSearchEngine {
         location: &CodeLocation,
         _index: &CodeIndex,
     ) -> Result<String, ServiceError> {
-        let content = fs::read_to_string(&location.file).await
-            .map_err(|e| ServiceError::IoError {
-                message: e.to_string(),
-                path: Some(location.file.clone()),
-            })?;
+        let content =
+            fs::read_to_string(&location.file)
+                .await
+                .map_err(|e| ServiceError::IoError {
+                    message: e.to_string(),
+                    path: Some(location.file.clone()),
+                })?;
 
         let lines: Vec<&str> = content.lines().collect();
         if location.line_start > 0 && location.line_start <= lines.len() {

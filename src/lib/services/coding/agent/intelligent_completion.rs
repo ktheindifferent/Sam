@@ -1,13 +1,13 @@
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, BTreeMap};
-use std::path::PathBuf;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
 
 use crate::services::coding::agent::{
-    errors::{CodingAgentError, CodingAgentResult},
     code_intelligence::{Symbol, SymbolKind},
     code_review::CodeLocation,
+    errors::{CodingAgentError, CodingAgentResult},
     gpu_offload::GpuOffloadManager,
 };
 
@@ -300,7 +300,10 @@ impl ContextAnalyzer {
         }
     }
 
-    pub async fn analyze_context(&mut self, request: &CompletionRequest) -> CodingAgentResult<AnalyzedContext> {
+    pub async fn analyze_context(
+        &mut self,
+        request: &CompletionRequest,
+    ) -> CodingAgentResult<AnalyzedContext> {
         // Parse AST if not cached
         let ast = self.get_or_parse_ast(&request.file_path).await?;
 
@@ -328,46 +331,70 @@ impl ContextAnalyzer {
         }
 
         // Parse file
-        let content = tokio::fs::read_to_string(path).await
-            .map_err(|e| CodingAgentError::IoError {
-                message: e.to_string(),
-                path: Some(path.to_path_buf())
-            })?;
+        let content =
+            tokio::fs::read_to_string(path)
+                .await
+                .map_err(|e| CodingAgentError::IoError {
+                    message: e.to_string(),
+                    path: Some(path.to_path_buf()),
+                })?;
 
         // This would use language-specific parser
         let ast = self.parse_to_ast(&content, path)?;
 
         // Cache result
-        self.ast_cache.insert(path.clone(), ASTCache {
-            ast: ast.clone(),
-            symbols: Vec::new(),
-            imports: Vec::new(),
-            last_modified: Utc::now(),
-        });
+        self.ast_cache.insert(
+            path.clone(),
+            ASTCache {
+                ast: ast.clone(),
+                symbols: Vec::new(),
+                imports: Vec::new(),
+                last_modified: Utc::now(),
+            },
+        );
 
         Ok(ast)
     }
 
-    fn parse_to_ast(&self, _content: &str, _path: &PathBuf) -> CodingAgentResult<serde_json::Value> {
+    fn parse_to_ast(
+        &self,
+        _content: &str,
+        _path: &PathBuf,
+    ) -> CodingAgentResult<serde_json::Value> {
         // Simplified - would use tree-sitter or language-specific parser
         Ok(serde_json::json!({}))
     }
 
-    fn find_current_scope(&self, _ast: &serde_json::Value, _position: &Position) -> CodingAgentResult<Scope> {
+    fn find_current_scope(
+        &self,
+        _ast: &serde_json::Value,
+        _position: &Position,
+    ) -> CodingAgentResult<Scope> {
         Ok(Scope {
             scope_type: ScopeType::Function,
             name: "current_function".to_string(),
             start: Position { line: 0, column: 0 },
-            end: Position { line: 100, column: 0 },
+            end: Position {
+                line: 100,
+                column: 0,
+            },
             symbols: Vec::new(),
         })
     }
 
-    fn extract_available_symbols(&self, _ast: &serde_json::Value, _scope: &Scope) -> CodingAgentResult<Vec<Symbol>> {
+    fn extract_available_symbols(
+        &self,
+        _ast: &serde_json::Value,
+        _scope: &Scope,
+    ) -> CodingAgentResult<Vec<Symbol>> {
         Ok(Vec::new())
     }
 
-    fn extract_type_context(&self, _ast: &serde_json::Value, _position: &Position) -> CodingAgentResult<TypeContext> {
+    fn extract_type_context(
+        &self,
+        _ast: &serde_json::Value,
+        _position: &Position,
+    ) -> CodingAgentResult<TypeContext> {
         Ok(TypeContext {
             expected_type: None,
             available_types: Vec::new(),
@@ -467,7 +494,11 @@ impl SymbolResolver {
         }
     }
 
-    pub async fn resolve(&self, name: &str, context: &AnalyzedContext) -> CodingAgentResult<Vec<ResolvedSymbol>> {
+    pub async fn resolve(
+        &self,
+        name: &str,
+        context: &AnalyzedContext,
+    ) -> CodingAgentResult<Vec<ResolvedSymbol>> {
         let mut results = Vec::new();
 
         // Check local scope
@@ -506,7 +537,11 @@ impl TypeInferenceEngine {
         }
     }
 
-    pub async fn infer_type(&self, expression: &str, context: &AnalyzedContext) -> CodingAgentResult<Option<TypeInfo>> {
+    pub async fn infer_type(
+        &self,
+        expression: &str,
+        context: &AnalyzedContext,
+    ) -> CodingAgentResult<Option<TypeInfo>> {
         // Use type rules and context to infer type
         Ok(None)
     }
@@ -594,22 +629,26 @@ impl CompletionCache {
         }
 
         let hash = self.hash_request(request);
-        self.cache.insert(hash.clone(), CachedCompletion {
-            request_hash: hash,
-            suggestions,
-            timestamp: Utc::now(),
-        });
+        self.cache.insert(
+            hash.clone(),
+            CachedCompletion {
+                request_hash: hash,
+                suggestions,
+                timestamp: Utc::now(),
+            },
+        );
     }
 
     fn hash_request(&self, request: &CompletionRequest) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(format!("{:?}", request).as_bytes());
         format!("{:x}", hasher.finalize())
     }
 
     fn find_oldest_key(&self) -> Option<String> {
-        self.cache.iter()
+        self.cache
+            .iter()
             .min_by_key(|(_, v)| v.timestamp)
             .map(|(k, _)| k.clone())
     }
@@ -628,7 +667,10 @@ impl IntelligentCompletionEngine {
         }
     }
 
-    pub async fn get_completions(&mut self, request: CompletionRequest) -> CodingAgentResult<CompletionResponse> {
+    pub async fn get_completions(
+        &mut self,
+        request: CompletionRequest,
+    ) -> CodingAgentResult<CompletionResponse> {
         let start_time = std::time::Instant::now();
 
         // Check cache
@@ -652,16 +694,22 @@ impl IntelligentCompletionEngine {
         let mut suggestions = Vec::new();
 
         // Get symbol-based completions
-        let symbol_completions = self.get_symbol_completions(&request, &analyzed_context).await?;
+        let symbol_completions = self
+            .get_symbol_completions(&request, &analyzed_context)
+            .await?;
         suggestions.extend(symbol_completions);
 
         // Get pattern-based completions
-        let pattern_completions = self.get_pattern_completions(&request, &analyzed_context).await?;
+        let pattern_completions = self
+            .get_pattern_completions(&request, &analyzed_context)
+            .await?;
         suggestions.extend(pattern_completions);
 
         // Get AI-generated completions
         if let Some(gpu_manager) = &self.gpu_manager {
-            let ai_completions = self.get_ai_completions(&request, &analyzed_context, gpu_manager).await?;
+            let ai_completions = self
+                .get_ai_completions(&request, &analyzed_context, gpu_manager)
+                .await?;
             suggestions.extend(ai_completions);
         }
 
@@ -734,12 +782,21 @@ impl IntelligentCompletionEngine {
         // Use GPU-accelerated inference if available
         let session_id = "completion";
         let completion_text = if let Ok(_) = gpu_manager.start_gpu_instance(session_id).await {
-            match gpu_manager.generate_code(session_id, &prompt, Some("deepseek-coder:33b".to_string())).await {
+            match gpu_manager
+                .generate_code(session_id, &prompt, Some("deepseek-coder:33b".to_string()))
+                .await
+            {
                 Ok(code) => code,
-                Err(_) => self.llm_provider.generate_response(&prompt, "gpt-4").await.unwrap_or_default()
+                Err(_) => self
+                    .llm_provider
+                    .generate_response(&prompt, "gpt-4")
+                    .await
+                    .unwrap_or_default(),
             }
         } else {
-            self.llm_provider.generate_response(&prompt, "gpt-4").await?
+            self.llm_provider
+                .generate_response(&prompt, "gpt-4")
+                .await?
         };
 
         // Parse AI response into suggestions
@@ -748,7 +805,11 @@ impl IntelligentCompletionEngine {
         Ok(suggestions)
     }
 
-    fn build_ai_prompt(&self, request: &CompletionRequest, _context: &AnalyzedContext) -> CodingAgentResult<String> {
+    fn build_ai_prompt(
+        &self,
+        request: &CompletionRequest,
+        _context: &AnalyzedContext,
+    ) -> CodingAgentResult<String> {
         Ok(format!(
             "Complete the following {} code:\n\n{}\n[CURSOR]\n{}\n\nProvide the completion:",
             request.context.language,
@@ -795,7 +856,11 @@ impl IntelligentCompletionEngine {
         line[prefix_start..column.min(line.len())].to_string()
     }
 
-    fn symbol_to_suggestion(&self, symbol: &Symbol, prefix: &str) -> CodingAgentResult<CompletionSuggestion> {
+    fn symbol_to_suggestion(
+        &self,
+        symbol: &Symbol,
+        prefix: &str,
+    ) -> CodingAgentResult<CompletionSuggestion> {
         Ok(CompletionSuggestion {
             text: symbol.name.clone(),
             insert_text: symbol.name[prefix.len()..].to_string(),
@@ -839,7 +904,10 @@ impl IntelligentCompletionEngine {
         }
     }
 
-    fn pattern_to_suggestion(&self, pattern_match: PatternMatch) -> CodingAgentResult<CompletionSuggestion> {
+    fn pattern_to_suggestion(
+        &self,
+        pattern_match: PatternMatch,
+    ) -> CodingAgentResult<CompletionSuggestion> {
         Ok(CompletionSuggestion {
             text: pattern_match.pattern.suggestion_template.clone(),
             insert_text: pattern_match.pattern.suggestion_template.clone(),
@@ -867,12 +935,18 @@ impl IntelligentCompletionEngine {
         })
     }
 
-    fn rank_suggestions(&self, mut suggestions: Vec<CompletionSuggestion>, context: &AnalyzedContext) -> Vec<CompletionSuggestion> {
+    fn rank_suggestions(
+        &self,
+        mut suggestions: Vec<CompletionSuggestion>,
+        context: &AnalyzedContext,
+    ) -> Vec<CompletionSuggestion> {
         // Sort by priority and confidence
         suggestions.sort_by(|a, b| {
             let a_score = a.priority * a.confidence;
             let b_score = b.priority * b.confidence;
-            b_score.partial_cmp(&a_score).unwrap_or(std::cmp::Ordering::Equal)
+            b_score
+                .partial_cmp(&a_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         suggestions

@@ -5,9 +5,7 @@
 // - Multi-turn conversations
 // - Error recovery and fallback mechanisms
 
-use libsam::services::coding::agent::{
-    CodingAgentService, CodingAgentConfig, CodingAgentExecutor
-};
+use libsam::services::coding::agent::{CodingAgentConfig, CodingAgentExecutor, CodingAgentService};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio;
@@ -30,12 +28,14 @@ async fn main() -> anyhow::Result<()> {
     println!("Demo 1: Basic Response Generation");
     println!("---------------------------------");
 
-    let response = agent.generate_response(
-        "What is the best way to handle errors in Rust?",
-        &current_dir,
-        &[],
-        None
-    ).await?;
+    let response = agent
+        .generate_response(
+            "What is the best way to handle errors in Rust?",
+            &current_dir,
+            &[],
+            None,
+        )
+        .await?;
 
     println!("Agent response: {}\n", response.response_text);
 
@@ -43,12 +43,14 @@ async fn main() -> anyhow::Result<()> {
     println!("Demo 2: Contextual Response");
     println!("---------------------------");
 
-    let response2 = agent.generate_response(
-        "Write a simple hello world function in Rust",
-        &current_dir,
-        &["This is for a beginner tutorial".to_string()],
-        None
-    ).await?;
+    let response2 = agent
+        .generate_response(
+            "Write a simple hello world function in Rust",
+            &current_dir,
+            &["This is for a beginner tutorial".to_string()],
+            None,
+        )
+        .await?;
 
     println!("Agent response: {}\n", response2.response_text);
 

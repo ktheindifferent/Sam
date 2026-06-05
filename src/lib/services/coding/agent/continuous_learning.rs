@@ -1,13 +1,13 @@
 use super::{
-    types::*,
     errors::{CodingAgentError, CodingAgentResult},
     providers::LLMProvider,
+    types::*,
 };
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
-use async_trait::async_trait;
 
 /// Continuous learning system for code patterns
 pub struct ContinuousLearningSystem {
@@ -712,19 +712,23 @@ impl ContinuousLearningSystem {
         context: Context,
     ) -> CodingAgentResult<LearningResult> {
         // Extract patterns from code
-        let patterns = self.pattern_learner.extract_patterns(code, &context).await?;
-        
+        let patterns = self
+            .pattern_learner
+            .extract_patterns(code, &context)
+            .await?;
+
         // Validate patterns
         let validated_patterns = self.pattern_learner.validate_patterns(patterns)?;
-        
+
         // Store in knowledge base
         for pattern in &validated_patterns {
             self.knowledge_base.add_pattern(pattern.clone())?;
         }
-        
+
         // Update metrics
-        self.metrics_tracker.update_learning_metrics(&validated_patterns)?;
-        
+        self.metrics_tracker
+            .update_learning_metrics(&validated_patterns)?;
+
         Ok(LearningResult {
             patterns_learned: validated_patterns.len(),
             knowledge_base_size: self.knowledge_base.size(),
@@ -734,23 +738,20 @@ impl ContinuousLearningSystem {
     }
 
     /// Process user feedback
-    pub async fn process_feedback(
-        &mut self,
-        feedback: UserFeedback,
-    ) -> CodingAgentResult<()> {
+    pub async fn process_feedback(&mut self, feedback: UserFeedback) -> CodingAgentResult<()> {
         self.feedback_processor.process(feedback).await?;
-        
+
         // Update patterns based on feedback
         let updates = self.feedback_processor.get_pattern_updates()?;
         for (pattern_id, update) in updates {
             self.knowledge_base.update_pattern(&pattern_id, update)?;
         }
-        
+
         // Retrain if necessary
         if self.should_retrain()? {
             self.model_trainer.retrain(&self.knowledge_base).await?;
         }
-        
+
         Ok(())
     }
 
@@ -761,7 +762,7 @@ impl ContinuousLearningSystem {
         context: &Context,
     ) -> CodingAgentResult<Vec<PatternRecommendation>> {
         let current_patterns = self.pattern_learner.extract_patterns(code, context).await?;
-        
+
         let mut recommendations = Vec::new();
         for pattern in &current_patterns {
             if let Some(improvement) = self.knowledge_base.find_improvement(&pattern)? {
@@ -773,23 +774,22 @@ impl ContinuousLearningSystem {
                 });
             }
         }
-        
+
         Ok(recommendations)
     }
 
     /// Adapt to new context
-    pub async fn adapt_to_context(
-        &mut self,
-        context: Context,
-    ) -> CodingAgentResult<()> {
-        self.adaptation_engine.adapt(context, &mut self.knowledge_base).await
+    pub async fn adapt_to_context(&mut self, context: Context) -> CodingAgentResult<()> {
+        self.adaptation_engine
+            .adapt(context, &mut self.knowledge_base)
+            .await
     }
 
     fn calculate_confidence(&self, patterns: &[ExtractedPattern]) -> f32 {
         if patterns.is_empty() {
             return 0.0;
         }
-        
+
         let sum: f32 = patterns.iter().map(|p| p.confidence).sum();
         sum / patterns.len() as f32
     }
@@ -869,15 +869,17 @@ impl PatternExtractor {
         context: &Context,
     ) -> CodingAgentResult<Vec<ExtractedPattern>> {
         let mut patterns = Vec::new();
-        
+
         for method in &self.extraction_methods {
             let extracted = method.extract(code).await;
             patterns.extend(extracted);
         }
-        
+
         // Filter by frequency and confidence
-        patterns.retain(|p| p.frequency >= self.min_frequency && p.confidence >= self.confidence_threshold);
-        
+        patterns.retain(|p| {
+            p.frequency >= self.min_frequency && p.confidence >= self.confidence_threshold
+        });
+
         Ok(patterns)
     }
 }
@@ -931,7 +933,7 @@ impl PatternValidator {
             .into_iter()
             .filter(|p| self.quality_checker.check_quality(p))
             .collect();
-        
+
         Ok(validated)
     }
 }
@@ -972,7 +974,7 @@ impl KnowledgeBase {
             confidence: pattern.confidence,
             tags: vec![],
         };
-        
+
         self.patterns.insert(pattern.pattern_id, learned_pattern);
         Ok(())
     }
@@ -1274,7 +1276,10 @@ impl LearningMetricsTracker {
 impl MetricsAggregator {
     pub fn new() -> Self {
         Self {
-            aggregation_methods: vec![AggregationMethod::Mean, AggregationMethod::StandardDeviation],
+            aggregation_methods: vec![
+                AggregationMethod::Mean,
+                AggregationMethod::StandardDeviation,
+            ],
         }
     }
 }

@@ -7,16 +7,16 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+use crate::services::traits::{HealthStatus, Service, ServiceConfig, ServiceError, ServiceHealth};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::collections::HashMap;
-use std::sync::RwLock;
-use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::RwLock;
+use std::time::SystemTime;
 use thiserror::Error;
-use crate::services::traits::{Service, ServiceConfig, ServiceHealth, HealthStatus, ServiceError};
 
 #[derive(Error, Debug)]
 pub enum SeaweedError {
@@ -187,15 +187,13 @@ impl SeaweedFSService {
             params.push(("rack", rack));
         }
 
-        let response = self.client.get(&assign_url)
-            .query(&params)
-            .send()
-            .await?;
+        let response = self.client.get(&assign_url).query(&params).send().await?;
 
         if !response.status().is_success() {
-            return Err(SeaweedError::Api(
-                format!("Failed to assign file key: {}", response.status())
-            ));
+            return Err(SeaweedError::Api(format!(
+                "Failed to assign file key: {}",
+                response.status()
+            )));
         }
 
         let assign_response: AssignResponse = response.json().await?;
@@ -203,7 +201,11 @@ impl SeaweedFSService {
     }
 
     pub async fn list_files(&self, path: &str, limit: Option<u32>) -> Result<Vec<SeaweedFile>> {
-        let normalized_path = if path.is_empty() || path == "/" { "/" } else { path };
+        let normalized_path = if path.is_empty() || path == "/" {
+            "/"
+        } else {
+            path
+        };
 
         let list_url = format!("{}{}", self.config.filer_url, normalized_path);
         let mut query_params = vec![("pretty", "y")];
@@ -214,15 +216,18 @@ impl SeaweedFSService {
             query_params.push(("limit", &limit_string));
         }
 
-        let response = self.client.get(&list_url)
+        let response = self
+            .client
+            .get(&list_url)
             .query(&query_params)
             .send()
             .await?;
 
         if !response.status().is_success() {
-            return Err(SeaweedError::Api(
-                format!("Failed to list files: {}", response.status())
-            ));
+            return Err(SeaweedError::Api(format!(
+                "Failed to list files: {}",
+                response.status()
+            )));
         }
 
         let dir_response: DirListResponse = response.json().await?;
@@ -262,35 +267,41 @@ impl SeaweedFSService {
         Ok(files)
     }
 
-    pub async fn upload_file(&self, local_path: &Path, remote_path: &str, content: &[u8]) -> Result<SeaweedFile> {
+    pub async fn upload_file(
+        &self,
+        local_path: &Path,
+        remote_path: &str,
+        content: &[u8],
+    ) -> Result<SeaweedFile> {
         // First, assign a file key
         let assign_response = self.assign_file_key().await?;
 
         // Upload to volume server
         let upload_url = format!("http://{}/{}", assign_response.url, assign_response.fid);
 
-        let filename = local_path.file_name()
+        let filename = local_path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unnamed");
 
-        let form = reqwest::multipart::Form::new()
-            .part("file", reqwest::multipart::Part::bytes(content.to_vec())
+        let form = reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::bytes(content.to_vec())
                 .file_name(filename.to_string())
-                .mime_str(&self.get_mime_type(filename)).unwrap_or(
+                .mime_str(&self.get_mime_type(filename))
+                .unwrap_or(
                     reqwest::multipart::Part::bytes(content.to_vec())
-                        .file_name(filename.to_string())
-                )
-            );
+                        .file_name(filename.to_string()),
+                ),
+        );
 
-        let response = self.client.post(&upload_url)
-            .multipart(form)
-            .send()
-            .await?;
+        let response = self.client.post(&upload_url).multipart(form).send().await?;
 
         if !response.status().is_success() {
-            return Err(SeaweedError::Api(
-                format!("Failed to upload file: {}", response.status())
-            ));
+            return Err(SeaweedError::Api(format!(
+                "Failed to upload file: {}",
+                response.status()
+            )));
         }
 
         let _upload_result: UploadResult = response.json().await?;
@@ -304,7 +315,9 @@ impl SeaweedFSService {
 
         let filer_url = format!("{}{}", self.config.filer_url, filer_path);
 
-        let link_response = self.client.post(&filer_url)
+        let link_response = self
+            .client
+            .post(&filer_url)
             .header("Content-Type", "application/json")
             .json(&serde_json::json!({
                 "fid": assign_response.fid,
@@ -314,9 +327,10 @@ impl SeaweedFSService {
             .await?;
 
         if !link_response.status().is_success() {
-            return Err(SeaweedError::Api(
-                format!("Failed to link file in filer: {}", link_response.status())
-            ));
+            return Err(SeaweedError::Api(format!(
+                "Failed to link file in filer: {}",
+                link_response.status()
+            )));
         }
 
         Ok(SeaweedFile {
@@ -335,14 +349,13 @@ impl SeaweedFSService {
     pub async fn download_file(&self, remote_path: &str) -> Result<Vec<u8>> {
         let download_url = format!("{}{}", self.config.filer_url, remote_path);
 
-        let response = self.client.get(&download_url)
-            .send()
-            .await?;
+        let response = self.client.get(&download_url).send().await?;
 
         if !response.status().is_success() {
-            return Err(SeaweedError::Api(
-                format!("Failed to download file: {}", response.status())
-            ));
+            return Err(SeaweedError::Api(format!(
+                "Failed to download file: {}",
+                response.status()
+            )));
         }
 
         let content = response.bytes().await?;
@@ -352,14 +365,13 @@ impl SeaweedFSService {
     pub async fn delete_file(&self, remote_path: &str) -> Result<()> {
         let delete_url = format!("{}{}", self.config.filer_url, remote_path);
 
-        let response = self.client.delete(&delete_url)
-            .send()
-            .await?;
+        let response = self.client.delete(&delete_url).send().await?;
 
         if !response.status().is_success() {
-            return Err(SeaweedError::Api(
-                format!("Failed to delete file: {}", response.status())
-            ));
+            return Err(SeaweedError::Api(format!(
+                "Failed to delete file: {}",
+                response.status()
+            )));
         }
 
         Ok(())
@@ -374,16 +386,19 @@ impl SeaweedFSService {
 
         let create_url = format!("{}{}", self.config.filer_url, folder_path);
 
-        let response = self.client.post(&create_url)
+        let response = self
+            .client
+            .post(&create_url)
             .header("Content-Type", "application/json")
             .json(&serde_json::json!({}))
             .send()
             .await?;
 
         if !response.status().is_success() {
-            return Err(SeaweedError::Api(
-                format!("Failed to create folder: {}", response.status())
-            ));
+            return Err(SeaweedError::Api(format!(
+                "Failed to create folder: {}",
+                response.status()
+            )));
         }
 
         let folder_name = Path::new(path)
@@ -408,14 +423,17 @@ impl SeaweedFSService {
     pub async fn move_file(&self, from_path: &str, to_path: &str) -> Result<SeaweedFile> {
         // SeaweedFS doesn't have native move, so we copy then delete
         let content = self.download_file(from_path).await?;
-        let moved_file = self.upload_file(Path::new(to_path), to_path, &content).await?;
+        let moved_file = self
+            .upload_file(Path::new(to_path), to_path, &content)
+            .await?;
         self.delete_file(from_path).await?;
         Ok(moved_file)
     }
 
     pub async fn copy_file(&self, from_path: &str, to_path: &str) -> Result<SeaweedFile> {
         let content = self.download_file(from_path).await?;
-        self.upload_file(Path::new(to_path), to_path, &content).await
+        self.upload_file(Path::new(to_path), to_path, &content)
+            .await
     }
 
     pub fn create_streaming_url(&self, file_path: &str) -> String {
@@ -443,7 +461,10 @@ impl SeaweedFSService {
             Some("ogg") => "audio/ogg".to_string(),
             Some("pdf") => "application/pdf".to_string(),
             Some("doc") => "application/msword".to_string(),
-            Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document".to_string(),
+            Some("docx") => {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    .to_string()
+            }
             Some("txt") => "text/plain".to_string(),
             Some("json") => "application/json".to_string(),
             Some("xml") => "application/xml".to_string(),

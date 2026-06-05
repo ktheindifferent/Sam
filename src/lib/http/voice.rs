@@ -169,7 +169,10 @@ fn handle_synthesize(request: &Request) -> Result<Response, crate::http::Error> 
     let audio_filename = format!("tts_{}.wav", timestamp);
     let audio_path = PathBuf::from(format!("/opt/sam/www/audio/{}", audio_filename));
     
-    std::fs::create_dir_all(audio_path.parent().unwrap()).ok();
+    let audio_dir = audio_path
+        .parent()
+        .ok_or_else(|| crate::http::Error::from("Unable to resolve audio output directory"))?;
+    std::fs::create_dir_all(audio_dir)?;
     
     let mut file = File::create(&audio_path)?;
     file.write_all(&result.audio_data)?;

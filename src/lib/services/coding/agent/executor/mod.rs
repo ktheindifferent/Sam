@@ -1,27 +1,27 @@
 //! Improved executor module with modern async patterns
 
-use std::sync::Arc;
-use std::path::{Path, PathBuf};
-use anyhow::{Result, Context};
-use tokio::sync::{RwLock, mpsc, oneshot, Semaphore};
-use tokio::time::{timeout, Duration};
-use tokio::select;
+use anyhow::{Context, Result};
 use futures::stream::{Stream, StreamExt};
 use log::{info, warn};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::select;
+use tokio::sync::{mpsc, oneshot, RwLock, Semaphore};
+use tokio::time::{timeout, Duration};
 
 pub mod base;
 pub mod command;
-pub mod task;
-pub mod stream;
 pub mod compat;
+pub mod stream;
+pub mod task;
 
 pub use base::*;
 pub use command::CommandExecutor;
-pub use task::TaskExecutor;
 pub use stream::StreamingExecutor;
+pub use task::TaskExecutor;
 
 // Re-export compatibility types
-pub use compat::{CodingAgentExecutor, UserMessage, EnhancedContext};
+pub use compat::{CodingAgentExecutor, EnhancedContext, UserMessage};
 
 /// Modern async executor with improved patterns
 pub struct AsyncExecutor {
@@ -239,10 +239,7 @@ impl AsyncExecutor {
     }
 
     /// Execute multiple commands concurrently
-    pub async fn execute_batch(
-        &self,
-        commands: Vec<(&str, &Path)>,
-    ) -> Vec<Result<String>> {
+    pub async fn execute_batch(&self, commands: Vec<(&str, &Path)>) -> Vec<Result<String>> {
         let futures = commands
             .into_iter()
             .map(|(cmd, dir)| self.execute(cmd, dir))
@@ -266,7 +263,10 @@ impl AsyncExecutor {
                 Ok(output) => return Ok(output),
                 Err(e) if attempts < max_retries => {
                     attempts += 1;
-                    warn!("Command failed (attempt {}/{}): {}", attempts, max_retries, e);
+                    warn!(
+                        "Command failed (attempt {}/{}): {}",
+                        attempts, max_retries, e
+                    );
                     tokio::time::sleep(delay).await;
                     delay *= 2; // Exponential backoff
                 }
@@ -287,7 +287,9 @@ impl AsyncExecutor {
             .await
             .context("Failed to send cancel command")?;
 
-        response_rx.await.context("Failed to receive cancel response")?
+        response_rx
+            .await
+            .context("Failed to receive cancel response")?
     }
 
     /// Get executor status
@@ -295,7 +297,9 @@ impl AsyncExecutor {
         let (response_tx, response_rx) = oneshot::channel();
 
         self.command_tx
-            .send(ExecutorCommand::GetStatus { response: response_tx })
+            .send(ExecutorCommand::GetStatus {
+                response: response_tx,
+            })
             .await
             .context("Failed to send status command")?;
 
@@ -335,10 +339,13 @@ impl AsyncExecutor {
                 working_dir,
                 response,
             } => {
-                let task_id = format!("task_{}", std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis());
+                let task_id = format!(
+                    "task_{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                );
 
                 let limiter_clone = limiter.clone();
                 tokio::spawn(async move {
@@ -346,7 +353,12 @@ impl AsyncExecutor {
                     let result = Self::run_command(&command, &working_dir).await;
                     drop(permit);
 
-                    let _ = response.send(result.as_ref().map(|s| s.clone()).map_err(|e| anyhow::anyhow!(e.to_string())));
+                    let _ = response.send(
+                        result
+                            .as_ref()
+                            .map(|s| s.clone())
+                            .map_err(|e| anyhow::anyhow!(e.to_string())),
+                    );
                     let _ = result_tx
                         .send(match result {
                             Ok(output) => ExecutorResult::Success {

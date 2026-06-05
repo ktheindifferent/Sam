@@ -46,11 +46,7 @@ pub extern "C" fn handle_suspend(_sig: i32) {
 #[cfg(unix)]
 pub extern "C" fn handle_continue(_sig: i32) {
     let _ = enable_raw_mode();
-    let _ = execute!(
-        io::stdout(),
-        EnterAlternateScreen,
-        crossterm::cursor::Hide
-    );
+    let _ = execute!(io::stdout(), EnterAlternateScreen, crossterm::cursor::Hide);
     TERMINAL_NEEDS_RESTORE.store(true, Ordering::SeqCst);
 }
 
@@ -66,7 +62,9 @@ pub fn check_terminal_corruption() -> bool {
 }
 
 /// Force terminal refresh/restore
-pub fn force_terminal_refresh(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn force_terminal_refresh(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if check_terminal_corruption() {
         log::warn!("Terminal corruption detected, attempting refresh");
         restore_terminal_state();

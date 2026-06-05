@@ -1,16 +1,16 @@
 use super::{
-    types::*,
+    code_intelligence::{CodeIntelligence, CodeMetrics as IntelligenceMetrics},
     errors::{CodingAgentError, CodingAgentResult},
     providers::LLMProvider,
-    code_intelligence::{CodeIntelligence, CodeMetrics as IntelligenceMetrics},
+    types::*,
 };
-use std::collections::{HashMap, HashSet, BTreeMap};
+use async_trait::async_trait;
+use chrono::{DateTime, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
-use serde::{Serialize, Deserialize};
 use tokio::fs;
-use async_trait::async_trait;
-use chrono::{DateTime, Utc, NaiveDate};
 
 /// Code metrics and analytics dashboard
 pub struct CodeMetricsDashboard {
@@ -736,28 +736,40 @@ impl CodeMetricsDashboard {
     }
 
     /// Collect metrics for a project
-    pub async fn collect_metrics(&mut self, project_path: &Path) -> CodingAgentResult<CollectedMetrics> {
+    pub async fn collect_metrics(
+        &mut self,
+        project_path: &Path,
+    ) -> CodingAgentResult<CollectedMetrics> {
         let metrics = self.metrics_collector.collect(project_path).await?;
-        
+
         // Store in historical data
         self.historical_data.store(&metrics).await?;
-        
+
         // Check for alerts
         self.real_time_monitor.check_alerts(&metrics).await?;
-        
+
         Ok(metrics)
     }
 
     /// Analyze trends
-    pub async fn analyze_trends(&self, metric: &str, period: Duration) -> CodingAgentResult<TrendAnalysis> {
+    pub async fn analyze_trends(
+        &self,
+        metric: &str,
+        period: Duration,
+    ) -> CodingAgentResult<TrendAnalysis> {
         let historical = self.historical_data.fetch_range(metric, period).await?;
         self.analytics_engine.analyze_trend(&historical).await
     }
 
     /// Detect anomalies
     pub async fn detect_anomalies(&self) -> CodingAgentResult<Vec<Anomaly>> {
-        let recent_metrics = self.historical_data.fetch_recent(Duration::from_secs(86400)).await?;
-        self.analytics_engine.detect_anomalies(&recent_metrics).await
+        let recent_metrics = self
+            .historical_data
+            .fetch_recent(Duration::from_secs(86400))
+            .await?;
+        self.analytics_engine
+            .detect_anomalies(&recent_metrics)
+            .await
     }
 
     /// Generate visualization
@@ -766,7 +778,9 @@ impl CodeMetricsDashboard {
         chart_type: ChartType,
         data: ChartData,
     ) -> CodingAgentResult<Chart> {
-        self.visualization_generator.generate(chart_type, data).await
+        self.visualization_generator
+            .generate(chart_type, data)
+            .await
     }
 
     /// Generate report
@@ -774,16 +788,16 @@ impl CodeMetricsDashboard {
         &self,
         report_type: ReportType,
     ) -> CodingAgentResult<GeneratedReport> {
-        let metrics = self.historical_data.fetch_recent(Duration::from_secs(86400 * 30)).await?;
+        let metrics = self
+            .historical_data
+            .fetch_recent(Duration::from_secs(86400 * 30))
+            .await?;
         let trends = self.analytics_engine.analyze_all_trends(&metrics).await?;
         let anomalies = self.analytics_engine.detect_anomalies(&metrics).await?;
-        
-        self.report_builder.build_report(
-            report_type,
-            &metrics,
-            &trends,
-            &anomalies,
-        ).await
+
+        self.report_builder
+            .build_report(report_type, &metrics, &trends, &anomalies)
+            .await
     }
 
     /// Start real-time monitoring
@@ -821,7 +835,7 @@ impl MetricsCollector {
         let file_metrics = self.collect_file_metrics(project_path).await?;
         let module_metrics = self.collect_module_metrics(project_path).await?;
         let quality_metrics = self.calculate_quality_metrics(&project_metrics, &file_metrics)?;
-        
+
         Ok(CollectedMetrics {
             timestamp: Utc::now(),
             project_metrics,
@@ -832,7 +846,10 @@ impl MetricsCollector {
         })
     }
 
-    async fn collect_project_metrics(&self, project_path: &Path) -> CodingAgentResult<ProjectMetrics> {
+    async fn collect_project_metrics(
+        &self,
+        project_path: &Path,
+    ) -> CodingAgentResult<ProjectMetrics> {
         // Implementation would analyze the entire project
         Ok(ProjectMetrics {
             total_lines: 10000,
@@ -848,12 +865,18 @@ impl MetricsCollector {
         })
     }
 
-    async fn collect_file_metrics(&self, project_path: &Path) -> CodingAgentResult<HashMap<PathBuf, FileMetrics>> {
+    async fn collect_file_metrics(
+        &self,
+        project_path: &Path,
+    ) -> CodingAgentResult<HashMap<PathBuf, FileMetrics>> {
         // Implementation would analyze individual files
         Ok(HashMap::new())
     }
 
-    async fn collect_module_metrics(&self, project_path: &Path) -> CodingAgentResult<HashMap<String, ModuleMetrics>> {
+    async fn collect_module_metrics(
+        &self,
+        project_path: &Path,
+    ) -> CodingAgentResult<HashMap<String, ModuleMetrics>> {
         // Implementation would analyze module dependencies
         Ok(HashMap::new())
     }
@@ -866,7 +889,7 @@ impl MetricsCollector {
         let health_score = (project.test_coverage / 100.0) * 0.3
             + (1.0 - project.duplication_ratio / 100.0) * 0.3
             + (1.0 - project.technical_debt_hours / 1000.0).max(0.0) * 0.4;
-        
+
         Ok(QualityMetrics {
             maintainability_rating: self.calculate_rating(project.average_complexity),
             reliability_rating: QualityRating::B,
@@ -924,15 +947,24 @@ impl AnalyticsEngine {
         }
     }
 
-    pub async fn analyze_trend(&self, data: &[(DateTime<Utc>, f64)]) -> CodingAgentResult<TrendAnalysis> {
+    pub async fn analyze_trend(
+        &self,
+        data: &[(DateTime<Utc>, f64)],
+    ) -> CodingAgentResult<TrendAnalysis> {
         self.trend_analyzer.analyze(data).await
     }
 
-    pub async fn detect_anomalies(&self, metrics: &[CollectedMetrics]) -> CodingAgentResult<Vec<Anomaly>> {
+    pub async fn detect_anomalies(
+        &self,
+        metrics: &[CollectedMetrics],
+    ) -> CodingAgentResult<Vec<Anomaly>> {
         self.anomaly_detector.detect(metrics).await
     }
 
-    pub async fn analyze_all_trends(&self, metrics: &[CollectedMetrics]) -> CodingAgentResult<Vec<TrendAnalysis>> {
+    pub async fn analyze_all_trends(
+        &self,
+        metrics: &[CollectedMetrics],
+    ) -> CodingAgentResult<Vec<TrendAnalysis>> {
         // Implementation would analyze trends for all metrics
         Ok(Vec::new())
     }
@@ -995,7 +1027,11 @@ impl VisualizationGenerator {
         }
     }
 
-    pub async fn generate(&self, chart_type: ChartType, data: ChartData) -> CodingAgentResult<Chart> {
+    pub async fn generate(
+        &self,
+        chart_type: ChartType,
+        data: ChartData,
+    ) -> CodingAgentResult<Chart> {
         // Implementation would generate charts
         Ok(Chart {
             chart_type,
@@ -1031,10 +1067,10 @@ impl ReportBuilder {
             },
             metrics.first()
         );
-        
+
         // Generate AI insights (would need proper LLMProvider method)
         let ai_insights = "AI-generated insights based on metrics analysis".to_string();
-        
+
         Ok(GeneratedReport {
             report_type,
             title: "Code Metrics Report".to_string(),
@@ -1066,7 +1102,11 @@ impl HistoricalDataStore {
         Ok(())
     }
 
-    pub async fn fetch_range(&self, metric: &str, period: Duration) -> CodingAgentResult<Vec<(DateTime<Utc>, f64)>> {
+    pub async fn fetch_range(
+        &self,
+        metric: &str,
+        period: Duration,
+    ) -> CodingAgentResult<Vec<(DateTime<Utc>, f64)>> {
         // Implementation would fetch historical data
         Ok(Vec::new())
     }

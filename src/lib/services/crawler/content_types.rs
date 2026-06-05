@@ -1,12 +1,12 @@
 //! Content type handling for various file formats
-//! 
+//!
 //! This module provides extraction and processing capabilities for different
 //! content types including PDFs, images, documents, and more.
 
 use anyhow::Result;
-use std::collections::HashMap;
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Supported content types and their metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,16 +75,18 @@ impl ContentType {
     /// Detect content type from MIME type string
     pub fn from_mime(mime: &str) -> Self {
         let mime_lower = mime.to_lowercase();
-        
+
         match mime_lower.as_str() {
             "text/html" | "application/xhtml+xml" => ContentType::Html,
             "application/pdf" => ContentType::Pdf,
             "application/json" => ContentType::Json,
             "application/xml" | "text/xml" => ContentType::Xml,
             "text/plain" => ContentType::Text,
-            "text/javascript" | "application/javascript" | "application/x-javascript" => ContentType::JavaScript,
+            "text/javascript" | "application/javascript" | "application/x-javascript" => {
+                ContentType::JavaScript
+            }
             "text/css" => ContentType::Css,
-            
+
             // Images
             "image/jpeg" | "image/jpg" => ContentType::Image(ImageType::Jpeg),
             "image/png" => ContentType::Image(ImageType::Png),
@@ -93,29 +95,39 @@ impl ContentType {
             "image/svg+xml" => ContentType::Image(ImageType::Svg),
             "image/bmp" => ContentType::Image(ImageType::Bmp),
             "image/x-icon" | "image/vnd.microsoft.icon" => ContentType::Image(ImageType::Ico),
-            mime if mime.starts_with("image/") => ContentType::Image(ImageType::Other(mime.to_string())),
-            
+            mime if mime.starts_with("image/") => {
+                ContentType::Image(ImageType::Other(mime.to_string()))
+            }
+
             // Documents
-            "application/msword" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => 
-                ContentType::Document(DocumentType::Word),
-            "application/vnd.ms-excel" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => 
-                ContentType::Document(DocumentType::Excel),
-            "application/vnd.ms-powerpoint" | "application/vnd.openxmlformats-officedocument.presentationml.presentation" => 
-                ContentType::Document(DocumentType::PowerPoint),
-            "application/vnd.oasis.opendocument.text" => ContentType::Document(DocumentType::OpenDocument),
+            "application/msword"
+            | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+                ContentType::Document(DocumentType::Word)
+            }
+            "application/vnd.ms-excel"
+            | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
+                ContentType::Document(DocumentType::Excel)
+            }
+            "application/vnd.ms-powerpoint"
+            | "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
+                ContentType::Document(DocumentType::PowerPoint)
+            }
+            "application/vnd.oasis.opendocument.text" => {
+                ContentType::Document(DocumentType::OpenDocument)
+            }
             "application/rtf" => ContentType::Document(DocumentType::Rtf),
             "text/markdown" => ContentType::Document(DocumentType::Markdown),
-            
+
             // Archives
             "application/zip" => ContentType::Archive(ArchiveType::Zip),
             "application/x-tar" | "application/gzip" => ContentType::Archive(ArchiveType::TarGz),
             "application/x-rar-compressed" => ContentType::Archive(ArchiveType::Rar),
             "application/x-7z-compressed" => ContentType::Archive(ArchiveType::SevenZip),
-            
+
             // Media
             mime if mime.starts_with("video/") => ContentType::Video,
             mime if mime.starts_with("audio/") => ContentType::Audio,
-            
+
             // Default
             _ => {
                 if mime.starts_with("text/") {
@@ -128,11 +140,11 @@ impl ContentType {
             }
         }
     }
-    
+
     /// Detect content type from file extension
     pub fn from_extension(ext: &str) -> Self {
         let ext_lower = ext.to_lowercase();
-        
+
         match ext_lower.as_str() {
             "html" | "htm" | "xhtml" => ContentType::Html,
             "pdf" => ContentType::Pdf,
@@ -141,7 +153,7 @@ impl ContentType {
             "txt" | "text" => ContentType::Text,
             "js" | "mjs" | "cjs" => ContentType::JavaScript,
             "css" => ContentType::Css,
-            
+
             // Images
             "jpg" | "jpeg" => ContentType::Image(ImageType::Jpeg),
             "png" => ContentType::Image(ImageType::Png),
@@ -150,7 +162,7 @@ impl ContentType {
             "svg" => ContentType::Image(ImageType::Svg),
             "bmp" => ContentType::Image(ImageType::Bmp),
             "ico" => ContentType::Image(ImageType::Ico),
-            
+
             // Documents
             "doc" | "docx" => ContentType::Document(DocumentType::Word),
             "xls" | "xlsx" => ContentType::Document(DocumentType::Excel),
@@ -158,57 +170,56 @@ impl ContentType {
             "odt" => ContentType::Document(DocumentType::OpenDocument),
             "rtf" => ContentType::Document(DocumentType::Rtf),
             "md" | "markdown" => ContentType::Document(DocumentType::Markdown),
-            
+
             // Archives
             "zip" => ContentType::Archive(ArchiveType::Zip),
             "tar" | "gz" | "tgz" => ContentType::Archive(ArchiveType::TarGz),
             "rar" => ContentType::Archive(ArchiveType::Rar),
             "7z" => ContentType::Archive(ArchiveType::SevenZip),
-            
+
             // Media
             "mp4" | "avi" | "mov" | "wmv" | "flv" | "webm" => ContentType::Video,
             "mp3" | "wav" | "flac" | "aac" | "ogg" => ContentType::Audio,
-            
+
             _ => ContentType::Unknown(ext.to_string()),
         }
     }
-    
+
     /// Check if this content type should be crawled for links
     pub fn should_extract_links(&self) -> bool {
-        matches!(self, 
-            ContentType::Html | 
-            ContentType::Xml | 
-            ContentType::Json |
-            ContentType::Document(_) |
-            ContentType::Pdf
+        matches!(
+            self,
+            ContentType::Html
+                | ContentType::Xml
+                | ContentType::Json
+                | ContentType::Document(_)
+                | ContentType::Pdf
         )
     }
-    
+
     /// Check if this content type should have text extracted
     pub fn should_extract_text(&self) -> bool {
-        matches!(self,
-            ContentType::Html |
-            ContentType::Pdf |
-            ContentType::Document(_) |
-            ContentType::Json |
-            ContentType::Xml |
-            ContentType::Text
+        matches!(
+            self,
+            ContentType::Html
+                | ContentType::Pdf
+                | ContentType::Document(_)
+                | ContentType::Json
+                | ContentType::Xml
+                | ContentType::Text
         )
     }
-    
+
     /// Get the appropriate storage strategy for this content type
     pub fn storage_strategy(&self) -> StorageStrategy {
         match self {
-            ContentType::Html | ContentType::Text | ContentType::Json | ContentType::Xml => 
-                StorageStrategy::FullText,
-            ContentType::Pdf | ContentType::Document(_) => 
-                StorageStrategy::ExtractedText,
-            ContentType::Image(_) => 
-                StorageStrategy::Metadata,
-            ContentType::Archive(_) => 
-                StorageStrategy::Index,
-            ContentType::Video | ContentType::Audio => 
-                StorageStrategy::Metadata,
+            ContentType::Html | ContentType::Text | ContentType::Json | ContentType::Xml => {
+                StorageStrategy::FullText
+            }
+            ContentType::Pdf | ContentType::Document(_) => StorageStrategy::ExtractedText,
+            ContentType::Image(_) => StorageStrategy::Metadata,
+            ContentType::Archive(_) => StorageStrategy::Index,
+            ContentType::Video | ContentType::Audio => StorageStrategy::Metadata,
             _ => StorageStrategy::Skip,
         }
     }
@@ -235,11 +246,11 @@ impl ContentProcessor {
         url: &str,
     ) -> Result<ExtractedContent> {
         // Calculate hash
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(content);
         let hash = format!("{:x}", hasher.finalize());
-        
+
         let mut extracted = ExtractedContent {
             content_type: content_type.clone(),
             text: None,
@@ -249,26 +260,26 @@ impl ContentProcessor {
             hash,
             thumbnail: None,
         };
-        
+
         // Add URL to metadata
-        extracted.metadata.insert("url".to_string(), url.to_string());
-        
+        extracted
+            .metadata
+            .insert("url".to_string(), url.to_string());
+
         match content_type {
             ContentType::Html => {
                 extracted.text = Some(String::from_utf8_lossy(content).to_string());
                 extracted.links = Self::extract_html_links(content);
             }
-            ContentType::Pdf => {
-                match Self::extract_pdf_text(content).await {
-                    Ok((text, metadata)) => {
-                        extracted.text = Some(text);
-                        extracted.metadata.extend(metadata);
-                    }
-                    Err(e) => {
-                        warn!("Failed to extract PDF text from {}: {}", url, e);
-                    }
+            ContentType::Pdf => match Self::extract_pdf_text(content).await {
+                Ok((text, metadata)) => {
+                    extracted.text = Some(text);
+                    extracted.metadata.extend(metadata);
                 }
-            }
+                Err(e) => {
+                    warn!("Failed to extract PDF text from {}: {}", url, e);
+                }
+            },
             ContentType::Image(img_type) => {
                 match Self::extract_image_metadata(content, img_type).await {
                     Ok(metadata) => {
@@ -309,15 +320,15 @@ impl ContentProcessor {
                 debug!("Skipping content extraction for type {:?}", content_type);
             }
         }
-        
+
         Ok(extracted)
     }
-    
+
     /// Extract links from HTML content
     fn extract_html_links(content: &[u8]) -> Vec<String> {
         let html = String::from_utf8_lossy(content);
         let mut links = Vec::new();
-        
+
         // Simple regex-based extraction (in production, use proper HTML parser)
         let href_regex = regex::Regex::new(r#"href\s*=\s*["']([^"']+)["']"#).unwrap();
         for cap in href_regex.captures_iter(&html) {
@@ -325,19 +336,19 @@ impl ContentProcessor {
                 links.push(url.as_str().to_string());
             }
         }
-        
+
         let src_regex = regex::Regex::new(r#"src\s*=\s*["']([^"']+)["']"#).unwrap();
         for cap in src_regex.captures_iter(&html) {
             if let Some(url) = cap.get(1) {
                 links.push(url.as_str().to_string());
             }
         }
-        
+
         links.sort();
         links.dedup();
         links
     }
-    
+
     /// Extract text from PDF content
     async fn extract_pdf_text(content: &[u8]) -> Result<(String, HashMap<String, String>)> {
         // TODO: Implement actual PDF extraction using a library like pdf-extract or lopdf
@@ -346,21 +357,21 @@ impl ContentProcessor {
         let text = format!("[PDF content - {} bytes]", content.len());
         Ok((text, metadata))
     }
-    
+
     /// Extract metadata from images
     async fn extract_image_metadata(
         content: &[u8],
         _img_type: &ImageType,
     ) -> Result<HashMap<String, String>> {
         let mut metadata = HashMap::new();
-        
+
         // TODO: Implement actual image metadata extraction using image crate
         // For now, just add basic info
         metadata.insert("size_bytes".to_string(), content.len().to_string());
-        
+
         Ok(metadata)
     }
-    
+
     /// Extract URLs from JSON content
     fn extract_json_urls(value: &serde_json::Value) -> Vec<String> {
         let mut urls = Vec::new();
@@ -369,7 +380,7 @@ impl ContentProcessor {
         urls.dedup();
         urls
     }
-    
+
     fn extract_json_urls_recursive(value: &serde_json::Value, urls: &mut Vec<String>) {
         match value {
             serde_json::Value::String(s) => {
@@ -390,12 +401,12 @@ impl ContentProcessor {
             _ => {}
         }
     }
-    
+
     /// Extract links from XML content
     fn extract_xml_links(content: &[u8]) -> Vec<String> {
         let xml = String::from_utf8_lossy(content);
         let mut links = Vec::new();
-        
+
         // Simple extraction of common URL patterns in XML
         let url_regex = regex::Regex::new(r"<(?:url|link|href|src)>([^<]+)</").unwrap();
         for cap in url_regex.captures_iter(&xml) {
@@ -403,7 +414,7 @@ impl ContentProcessor {
                 links.push(url.as_str().to_string());
             }
         }
-        
+
         // Also check attributes
         let attr_regex = regex::Regex::new(r#"(?:href|src|url)\s*=\s*["']([^"']+)["']"#).unwrap();
         for cap in attr_regex.captures_iter(&xml) {
@@ -411,12 +422,12 @@ impl ContentProcessor {
                 links.push(url.as_str().to_string());
             }
         }
-        
+
         links.sort();
         links.dedup();
         links
     }
-    
+
     /// Extract text from document formats
     async fn extract_document_text(
         content: &[u8],
@@ -461,17 +472,24 @@ impl Default for ContentTypeConfig {
 /// Check if a content type is allowed by configuration
 pub fn is_content_type_allowed(content_type: &str, config: &ContentTypeConfig) -> bool {
     // Check blocked types first
-    if config.blocked_types.iter().any(|t| content_type.contains(t)) {
+    if config
+        .blocked_types
+        .iter()
+        .any(|t| content_type.contains(t))
+    {
         return false;
     }
-    
+
     // If allowed_types is empty, allow all non-blocked types
     if config.allowed_types.is_empty() {
         return true;
     }
-    
+
     // Check if explicitly allowed
-    config.allowed_types.iter().any(|t| content_type.contains(t))
+    config
+        .allowed_types
+        .iter()
+        .any(|t| content_type.contains(t))
 }
 
 /// Get size limit for a content type

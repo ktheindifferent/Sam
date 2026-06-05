@@ -14,7 +14,11 @@ enum WindowsPackageManager {
 /// Detects which Windows package manager is available (winget preferred)
 async fn detect_package_manager() -> Result<WindowsPackageManager> {
     // Try winget first
-    let winget_available = Command::new("winget").arg("--version").output().await.is_ok();
+    let winget_available = Command::new("winget")
+        .arg("--version")
+        .output()
+        .await
+        .is_ok();
     if winget_available {
         return Ok(WindowsPackageManager::Winget);
     }
@@ -24,13 +28,17 @@ async fn detect_package_manager() -> Result<WindowsPackageManager> {
     if choco_available {
         return Ok(WindowsPackageManager::Chocolatey);
     }
-    Err(anyhow::anyhow!("No supported Windows package manager found (winget or chocolatey)"))
+    Err(anyhow::anyhow!(
+        "No supported Windows package manager found (winget or chocolatey)"
+    ))
 }
 
 /// Installs a single package using the detected package manager.
 pub async fn install_package(package: &str) -> Result<()> {
     match detect_package_manager().await? {
-        WindowsPackageManager::Winget => winget::install_package(&convert_choco_to_winget(package)).await,
+        WindowsPackageManager::Winget => {
+            winget::install_package(&convert_choco_to_winget(package)).await
+        }
         WindowsPackageManager::Chocolatey => chocolatey::install_package(package).await,
     }
 }
@@ -39,9 +47,12 @@ pub async fn install_package(package: &str) -> Result<()> {
 pub async fn install_packages(packages: Vec<&str>) -> Result<()> {
     match detect_package_manager().await? {
         WindowsPackageManager::Winget => {
-            let winget_packages: Vec<String> = packages.iter().map(|&pkg| convert_choco_to_winget(pkg)).collect();
+            let winget_packages: Vec<String> = packages
+                .iter()
+                .map(|&pkg| convert_choco_to_winget(pkg))
+                .collect();
             winget::install_packages(winget_packages.iter().map(|s| s.as_str()).collect()).await
-        },
+        }
         WindowsPackageManager::Chocolatey => chocolatey::install_packages(packages).await,
     }
 }

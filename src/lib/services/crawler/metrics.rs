@@ -10,13 +10,13 @@
 //! - Resource usage monitoring
 //! - Progress reporting
 
+use log::{debug, info};
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::RwLock;
-use log::{debug, info};
-use serde::{Serialize, Deserialize};
-use once_cell::sync::Lazy;
 
 /// Comprehensive metrics for the crawler
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,10 +227,13 @@ impl MetricsCollector {
         metrics.successful_crawls += 1;
         metrics.total_bytes_downloaded += bytes;
         metrics.last_update = SystemTime::now();
-        
+
         // Update status code distribution
-        *metrics.status_code_distribution.entry(status_code).or_insert(0) += 1;
-        
+        *metrics
+            .status_code_distribution
+            .entry(status_code)
+            .or_insert(0) += 1;
+
         // Update content type distribution
         if let Some(ct) = content_type {
             *metrics.content_type_distribution.entry(ct).or_insert(0) += 1;
@@ -239,48 +242,60 @@ impl MetricsCollector {
         // Update domain metrics
         let domain_name = domain.to_string();
         {
-            let domain_metric = metrics.domain_metrics.entry(domain_name.clone()).or_default();
+            let domain_metric = metrics
+                .domain_metrics
+                .entry(domain_name.clone())
+                .or_default();
             domain_metric.urls_crawled += 1;
             domain_metric.successes += 1;
             domain_metric.bytes_downloaded += bytes;
             domain_metric.last_crawl = SystemTime::now();
         }
-        
+
         // Update performance metrics
         performance.add_response_time(response_time);
         performance.urls_since_last_calc += 1;
-        
+
         // Update average response times
         let avg_response = performance.get_avg_response_time();
         metrics.avg_response_time_ms = avg_response.as_millis() as f64;
-        
+
         // Update domain average response time separately
-        let domain_metric = metrics.domain_metrics.get_mut(&domain_name).unwrap();
-        domain_metric.avg_response_time_ms = 
-            (domain_metric.avg_response_time_ms * (domain_metric.urls_crawled - 1) as f64 
-             + response_time.as_millis() as f64) / domain_metric.urls_crawled as f64;
-        
+        let domain_metric = metrics.domain_metrics.entry(domain_name).or_default();
+        domain_metric.avg_response_time_ms = (domain_metric.avg_response_time_ms
+            * (domain_metric.urls_crawled - 1) as f64
+            + response_time.as_millis() as f64)
+            / domain_metric.urls_crawled as f64;
+
         // Update crawl rate
         if performance.last_rate_calc.elapsed() > Duration::from_secs(5) {
             metrics.current_crawl_rate = performance.calculate_rate();
         }
-        
-        debug!("Recorded successful crawl of {} ({}ms, {} bytes)", url, response_time.as_millis(), bytes);
+
+        debug!(
+            "Recorded successful crawl of {} ({}ms, {} bytes)",
+            url,
+            response_time.as_millis(),
+            bytes
+        );
     }
 
     /// Record a failed crawl
     pub async fn record_failure(&self, domain: &str, url: &str, error: &str) {
         let mut metrics = self.metrics.write().await;
-        
+
         metrics.total_urls_crawled += 1;
         metrics.failed_crawls += 1;
         metrics.last_update = SystemTime::now();
-        
-        let domain_metric = metrics.domain_metrics.entry(domain.to_string()).or_default();
+
+        let domain_metric = metrics
+            .domain_metrics
+            .entry(domain.to_string())
+            .or_default();
         domain_metric.urls_crawled += 1;
         domain_metric.failures += 1;
         domain_metric.last_crawl = SystemTime::now();
-        
+
         debug!("Recorded failed crawl of {}: {}", url, error);
     }
 
@@ -288,10 +303,13 @@ impl MetricsCollector {
     pub async fn record_robots_block(&self, domain: &str, url: &str) {
         let mut metrics = self.metrics.write().await;
         metrics.robots_blocked += 1;
-        
-        let domain_metric = metrics.domain_metrics.entry(domain.to_string()).or_default();
+
+        let domain_metric = metrics
+            .domain_metrics
+            .entry(domain.to_string())
+            .or_default();
         domain_metric.robots_compliant = true;
-        
+
         debug!("Recorded robots.txt block for {}", url);
     }
 
@@ -299,7 +317,7 @@ impl MetricsCollector {
     pub async fn record_circuit_breaker_block(&self, domain: &str) {
         let mut metrics = self.metrics.write().await;
         metrics.circuit_breaker_blocked += 1;
-        
+
         debug!("Recorded circuit breaker block for {}", domain);
     }
 
@@ -307,17 +325,23 @@ impl MetricsCollector {
     pub async fn record_urls_discovered(&self, domain: &str, count: u64) {
         let mut metrics = self.metrics.write().await;
         metrics.total_urls_discovered += count;
-        
-        let domain_metric = metrics.domain_metrics.entry(domain.to_string()).or_default();
+
+        let domain_metric = metrics
+            .domain_metrics
+            .entry(domain.to_string())
+            .or_default();
         domain_metric.urls_discovered += count;
     }
 
     /// Record sitemap discovery
     pub async fn record_sitemap_found(&self, domain: &str) {
         let mut metrics = self.metrics.write().await;
-        let domain_metric = metrics.domain_metrics.entry(domain.to_string()).or_default();
+        let domain_metric = metrics
+            .domain_metrics
+            .entry(domain.to_string())
+            .or_default();
         domain_metric.sitemap_found = true;
-        
+
         info!("Sitemap found for domain: {}", domain);
     }
 
@@ -332,13 +356,13 @@ impl MetricsCollector {
         status: String,
     ) {
         let mut progress_map = self.progress.write().await;
-        
+
         let progress_percentage = if total_urls > 0 {
             (completed_urls as f64 / total_urls as f64) * 100.0
         } else {
             0.0
         };
-        
+
         // Estimate time remaining based on current rate
         let estimated_time = if completed_urls > 0 {
             let metrics = self.metrics.read().await;
@@ -351,7 +375,7 @@ impl MetricsCollector {
         } else {
             None
         };
-        
+
         let progress = CrawlProgress {
             job_id: job_id.clone(),
             total_urls,
@@ -362,7 +386,7 @@ impl MetricsCollector {
             progress_percentage,
             status,
         };
-        
+
         progress_map.insert(job_id, progress);
     }
 
@@ -398,11 +422,12 @@ impl MetricsCollector {
     /// Get top domains by crawled URLs
     pub async fn get_top_domains(&self, limit: usize) -> Vec<(String, u64)> {
         let metrics = self.metrics.read().await;
-        let mut domains: Vec<_> = metrics.domain_metrics
+        let mut domains: Vec<_> = metrics
+            .domain_metrics
             .iter()
             .map(|(domain, m)| (domain.clone(), m.urls_crawled))
             .collect();
-        
+
         domains.sort_by(|a, b| b.1.cmp(&a.1));
         domains.truncate(limit);
         domains
@@ -415,7 +440,7 @@ impl MetricsCollector {
         let elapsed = SystemTime::now()
             .duration_since(metrics.start_time)
             .unwrap_or_default();
-        
+
         format!(
             "=== Crawler Metrics Report ===\n\
              Runtime: {:.2} hours\n\
@@ -446,19 +471,17 @@ impl MetricsCollector {
         let mut metrics = self.metrics.write().await;
         let mut performance = self.performance.write().await;
         let mut progress = self.progress.write().await;
-        
+
         *metrics = CrawlerMetrics::default();
         *performance = PerformanceMetrics::new(100);
         progress.clear();
-        
+
         info!("Crawler metrics reset");
     }
 }
 
 /// Global metrics collector instance
-static GLOBAL_METRICS: Lazy<MetricsCollector> = Lazy::new(|| {
-    MetricsCollector::new()
-});
+static GLOBAL_METRICS: Lazy<MetricsCollector> = Lazy::new(|| MetricsCollector::new());
 
 /// Record a successful crawl using the global metrics collector
 pub async fn record_crawl_success(
@@ -469,7 +492,9 @@ pub async fn record_crawl_success(
     status_code: u16,
     content_type: Option<String>,
 ) {
-    GLOBAL_METRICS.record_success(domain, url, bytes, response_time, status_code, content_type).await;
+    GLOBAL_METRICS
+        .record_success(domain, url, bytes, response_time, status_code, content_type)
+        .await;
 }
 
 /// Record a failed crawl using the global metrics collector
@@ -504,39 +529,45 @@ mod tests {
     #[tokio::test]
     async fn test_metrics_collection() {
         let collector = MetricsCollector::new();
-        
+
         // Record some successful crawls
-        collector.record_success(
-            "example.com",
-            "http://example.com/page1",
-            1024,
-            Duration::from_millis(100),
-            200,
-            Some("text/html".to_string()),
-        ).await;
-        
-        collector.record_success(
-            "example.com",
-            "http://example.com/page2",
-            2048,
-            Duration::from_millis(150),
-            200,
-            Some("text/html".to_string()),
-        ).await;
-        
+        collector
+            .record_success(
+                "example.com",
+                "http://example.com/page1",
+                1024,
+                Duration::from_millis(100),
+                200,
+                Some("text/html".to_string()),
+            )
+            .await;
+
+        collector
+            .record_success(
+                "example.com",
+                "http://example.com/page2",
+                2048,
+                Duration::from_millis(150),
+                200,
+                Some("text/html".to_string()),
+            )
+            .await;
+
         // Record a failure
-        collector.record_failure(
-            "example.com",
-            "http://example.com/page3",
-            "Connection timeout",
-        ).await;
-        
+        collector
+            .record_failure(
+                "example.com",
+                "http://example.com/page3",
+                "Connection timeout",
+            )
+            .await;
+
         let metrics = collector.get_metrics().await;
         assert_eq!(metrics.total_urls_crawled, 3);
         assert_eq!(metrics.successful_crawls, 2);
         assert_eq!(metrics.failed_crawls, 1);
         assert_eq!(metrics.total_bytes_downloaded, 3072);
-        
+
         let success_rate = collector.get_success_rate().await;
         assert!((success_rate - 0.666).abs() < 0.01);
     }
@@ -544,16 +575,11 @@ mod tests {
     #[tokio::test]
     async fn test_progress_tracking() {
         let collector = MetricsCollector::new();
-        
-        collector.update_progress(
-            "job1".to_string(),
-            100,
-            25,
-            2,
-            5,
-            "running".to_string(),
-        ).await;
-        
+
+        collector
+            .update_progress("job1".to_string(), 100, 25, 2, 5, "running".to_string())
+            .await;
+
         let progress = collector.get_progress("job1").await.unwrap();
         assert_eq!(progress.completed_urls, 25);
         assert_eq!(progress.progress_percentage, 25.0);

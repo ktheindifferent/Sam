@@ -4,11 +4,11 @@
 // Licensed under GPLv3....see LICENSE file.
 
 use super::ExecutedAction;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
-use chrono::{DateTime, Utc};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserContext {
@@ -120,20 +120,18 @@ impl Default for SystemState {
 /// Load user context from storage
 pub async fn load_user_context(user_id: &str) -> UserContext {
     let context_path = get_context_file_path(user_id);
-    
+
     match fs::read_to_string(&context_path).await {
-        Ok(content) => {
-            match serde_json::from_str::<UserContext>(&content) {
-                Ok(mut context) => {
-                    context.updated_at = Utc::now();
-                    context
-                }
-                Err(e) => {
-                    log::warn!("Failed to parse user context for {}: {}", user_id, e);
-                    create_default_context(user_id)
-                }
+        Ok(content) => match serde_json::from_str::<UserContext>(&content) {
+            Ok(mut context) => {
+                context.updated_at = Utc::now();
+                context
             }
-        }
+            Err(e) => {
+                log::warn!("Failed to parse user context for {}: {}", user_id, e);
+                create_default_context(user_id)
+            }
+        },
         Err(_) => {
             // Context file doesn't exist, create default
             create_default_context(user_id)
@@ -144,7 +142,7 @@ pub async fn load_user_context(user_id: &str) -> UserContext {
 /// Save user context to storage
 pub async fn save_user_context(user_id: &str, context: &UserContext) {
     let context_path = get_context_file_path(user_id);
-    
+
     // Ensure the context directory exists
     if let Some(parent) = context_path.parent() {
         if let Err(e) = fs::create_dir_all(parent).await {
@@ -152,10 +150,10 @@ pub async fn save_user_context(user_id: &str, context: &UserContext) {
             return;
         }
     }
-    
+
     let mut updated_context = context.clone();
     updated_context.updated_at = Utc::now();
-    
+
     match serde_json::to_string_pretty(&updated_context) {
         Ok(json) => {
             if let Err(e) = fs::write(&context_path, json).await {
@@ -170,10 +168,10 @@ pub async fn save_user_context(user_id: &str, context: &UserContext) {
 
 /// Update context based on conversation and executed actions
 pub fn update_context(
-    context: &mut UserContext, 
-    user_input: &str, 
-    sam_response: &str, 
-    executed_actions: &[ExecutedAction]
+    context: &mut UserContext,
+    user_input: &str,
+    sam_response: &str,
+    executed_actions: &[ExecutedAction],
 ) {
     // Add to conversation history
     let conversation_entry = ConversationEntry {
@@ -183,14 +181,16 @@ pub fn update_context(
         executed_actions: executed_actions.to_vec(),
         sentiment: analyze_sentiment(user_input), // Optional sentiment analysis
     };
-    
+
     context.conversation_history.push(conversation_entry);
-    
+
     // Limit conversation history to last 100 entries
     if context.conversation_history.len() > 100 {
-        context.conversation_history.drain(0..context.conversation_history.len() - 100);
+        context
+            .conversation_history
+            .drain(0..context.conversation_history.len() - 100);
     }
-    
+
     // Update command history
     for action in executed_actions {
         let command_entry = CommandHistory {
@@ -202,15 +202,17 @@ pub fn update_context(
         };
         context.recent_commands.push(command_entry);
     }
-    
+
     // Limit command history to last 50 commands
     if context.recent_commands.len() > 50 {
-        context.recent_commands.drain(0..context.recent_commands.len() - 50);
+        context
+            .recent_commands
+            .drain(0..context.recent_commands.len() - 50);
     }
-    
+
     // Update system state based on executed commands
     update_system_state(context, executed_actions);
-    
+
     // Update current directory if cd command was executed
     for action in executed_actions {
         if action.command.starts_with("cd ") && action.success {
@@ -219,7 +221,7 @@ pub fn update_context(
             }
         }
     }
-    
+
     context.updated_at = Utc::now();
 }
 
@@ -227,7 +229,9 @@ pub fn update_context(
 pub fn serialize_context(context: &UserContext) -> String {
     let summary = ContextSummary {
         current_directory: context.current_directory.clone(),
-        recent_commands: context.recent_commands.iter()
+        recent_commands: context
+            .recent_commands
+            .iter()
             .take(5)
             .map(|cmd| cmd.command.clone())
             .collect(),
@@ -235,7 +239,7 @@ pub fn serialize_context(context: &UserContext) -> String {
         running_services: context.system_state.running_services.clone(),
         conversation_context: extract_conversation_context(&context.conversation_history),
     };
-    
+
     serde_json::to_string(&summary).unwrap_or_default()
 }
 
@@ -263,14 +267,30 @@ fn get_context_file_path(user_id: &str) -> PathBuf {
 
 fn analyze_sentiment(text: &str) -> Option<String> {
     // Simple sentiment analysis based on keywords
-    let positive_words = ["thanks", "thank you", "great", "awesome", "good", "excellent", "perfect"];
-    let negative_words = ["error", "problem", "issue", "wrong", "bad", "terrible", "awful"];
-    
+    let positive_words = [
+        "thanks",
+        "thank you",
+        "great",
+        "awesome",
+        "good",
+        "excellent",
+        "perfect",
+    ];
+    let negative_words = [
+        "error", "problem", "issue", "wrong", "bad", "terrible", "awful",
+    ];
+
     let text_lower = text.to_lowercase();
-    
-    let positive_count = positive_words.iter().filter(|word| text_lower.contains(*word)).count();
-    let negative_count = negative_words.iter().filter(|word| text_lower.contains(*word)).count();
-    
+
+    let positive_count = positive_words
+        .iter()
+        .filter(|word| text_lower.contains(*word))
+        .count();
+    let negative_count = negative_words
+        .iter()
+        .filter(|word| text_lower.contains(*word))
+        .count();
+
     if positive_count > negative_count {
         Some("positive".to_string())
     } else if negative_count > positive_count {
@@ -286,26 +306,34 @@ fn update_system_state(context: &mut UserContext, executed_actions: &[ExecutedAc
         if action.command.contains("start") && action.success {
             let service = extract_service_name(&action.command);
             if let Some(service_name) = service {
-                if !context.system_state.running_services.contains(&service_name) {
+                if !context
+                    .system_state
+                    .running_services
+                    .contains(&service_name)
+                {
                     context.system_state.running_services.push(service_name);
                 }
             }
         }
-        
+
         if action.command.contains("stop") && action.success {
             let service = extract_service_name(&action.command);
             if let Some(service_name) = service {
-                context.system_state.running_services.retain(|s| s != &service_name);
+                context
+                    .system_state
+                    .running_services
+                    .retain(|s| s != &service_name);
             }
         }
-        
+
         // Track file access
-        if action.command.starts_with("cat ") || 
-           action.command.starts_with("less ") || 
-           action.command.starts_with("nano ") {
+        if action.command.starts_with("cat ")
+            || action.command.starts_with("less ")
+            || action.command.starts_with("nano ")
+        {
             if let Some(filename) = extract_filename(&action.command) {
                 context.system_state.recent_files_accessed.push(filename);
-                
+
                 // Limit to last 20 files
                 if context.system_state.recent_files_accessed.len() > 20 {
                     context.system_state.recent_files_accessed.remove(0);
@@ -316,7 +344,9 @@ fn update_system_state(context: &mut UserContext, executed_actions: &[ExecutedAc
 }
 
 fn extract_service_name(command: &str) -> Option<String> {
-    let services = ["redis", "spotify", "lifx", "docker", "crawler", "postgres", "pg"];
+    let services = [
+        "redis", "spotify", "lifx", "docker", "crawler", "postgres", "pg",
+    ];
     for service in services {
         if command.contains(service) {
             return Some(service.to_string());
@@ -345,7 +375,8 @@ fn extract_cd_target(command: &str) -> Option<String> {
 
 fn extract_conversation_context(history: &[ConversationEntry]) -> String {
     // Extract the last few relevant conversation points
-    history.iter()
+    history
+        .iter()
         .rev()
         .take(3)
         .map(|entry| format!("User: {} | Sam: {}", entry.user_input, entry.sam_response))
@@ -356,25 +387,40 @@ fn extract_conversation_context(history: &[ConversationEntry]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_default_context() {
         let context = UserContext::default();
         assert_eq!(context.user_id, "localuser");
         assert!(!context.current_directory.is_empty());
     }
-    
+
     #[test]
     fn test_analyze_sentiment() {
-        assert_eq!(analyze_sentiment("Thanks for the help!"), Some("positive".to_string()));
-        assert_eq!(analyze_sentiment("This is an error"), Some("negative".to_string()));
-        assert_eq!(analyze_sentiment("Hello world"), Some("neutral".to_string()));
+        assert_eq!(
+            analyze_sentiment("Thanks for the help!"),
+            Some("positive".to_string())
+        );
+        assert_eq!(
+            analyze_sentiment("This is an error"),
+            Some("negative".to_string())
+        );
+        assert_eq!(
+            analyze_sentiment("Hello world"),
+            Some("neutral".to_string())
+        );
     }
-    
+
     #[test]
     fn test_extract_service_name() {
-        assert_eq!(extract_service_name("redis start"), Some("redis".to_string()));
-        assert_eq!(extract_service_name("spotify pause"), Some("spotify".to_string()));
+        assert_eq!(
+            extract_service_name("redis start"),
+            Some("redis".to_string())
+        );
+        assert_eq!(
+            extract_service_name("spotify pause"),
+            Some("spotify".to_string())
+        );
         assert_eq!(extract_service_name("unknown command"), None);
     }
 }

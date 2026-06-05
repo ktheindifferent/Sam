@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use std::process::Stdio;
 use anyhow::{Context, Result};
+use log::{debug, info};
 use reqwest;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::process::Stdio;
 use tokio::process::Command as AsyncCommand;
-use log::{info, debug};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaModel {
@@ -71,7 +71,7 @@ pub struct OllamaConfig {
     pub host: String,
     pub port: u16,
     pub timeout_seconds: u64,
-    pub custom_endpoint: Option<String>,  // Full URL endpoint (e.g., "http://172.16.0.125:11434")
+    pub custom_endpoint: Option<String>, // Full URL endpoint (e.g., "http://172.16.0.125:11434")
 }
 
 impl Default for OllamaConfig {
@@ -89,8 +89,8 @@ impl OllamaConfig {
     /// Create config from endpoint URL
     pub fn from_endpoint(endpoint: &str, timeout_seconds: u64) -> Self {
         Self {
-            host: "127.0.0.1".to_string(),  // Not used when custom_endpoint is set
-            port: 11434,                     // Not used when custom_endpoint is set
+            host: "127.0.0.1".to_string(), // Not used when custom_endpoint is set
+            port: 11434,                   // Not used when custom_endpoint is set
             timeout_seconds,
             custom_endpoint: Some(endpoint.to_string()),
         }
@@ -144,21 +144,26 @@ impl OllamaService {
     /// Install Ollama automatically based on the operating system
     pub async fn install(&self) -> Result<String> {
         info!("Installing Ollama...");
-        
+
         let os = std::env::consts::OS;
         match os {
             "macos" => self.install_macos().await,
             "linux" => self.install_linux().await,
             "windows" => self.install_windows().await,
-            _ => Err(anyhow::anyhow!("Unsupported operating system: {}", os))
+            _ => Err(anyhow::anyhow!("Unsupported operating system: {}", os)),
         }
     }
 
     async fn install_macos(&self) -> Result<String> {
         info!("Installing Ollama on macOS...");
-        
+
         // Check if Homebrew is available
-        if AsyncCommand::new("brew").arg("--version").output().await.is_ok() {
+        if AsyncCommand::new("brew")
+            .arg("--version")
+            .output()
+            .await
+            .is_ok()
+        {
             info!("Using Homebrew to install Ollama...");
             let output = AsyncCommand::new("brew")
                 .arg("install")
@@ -186,11 +191,14 @@ impl OllamaService {
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(anyhow::anyhow!("Failed to download install script: {}", stderr));
+                return Err(anyhow::anyhow!(
+                    "Failed to download install script: {}",
+                    stderr
+                ));
             }
 
             let install_script = String::from_utf8_lossy(&output.stdout);
-            
+
             // Execute the install script
             let mut child = AsyncCommand::new("sh")
                 .arg("-c")
@@ -200,10 +208,16 @@ impl OllamaService {
                 .spawn()
                 .context("Failed to execute install script")?;
 
-            let status = child.wait().await.context("Failed to wait for install script")?;
-            
+            let status = child
+                .wait()
+                .await
+                .context("Failed to wait for install script")?;
+
             if !status.success() {
-                return Err(anyhow::anyhow!("Install script failed with status: {}", status));
+                return Err(anyhow::anyhow!(
+                    "Install script failed with status: {}",
+                    status
+                ));
             }
 
             Ok("Ollama installed successfully via install script".to_string())
@@ -212,7 +226,7 @@ impl OllamaService {
 
     async fn install_linux(&self) -> Result<String> {
         info!("Installing Ollama on Linux...");
-        
+
         let output = AsyncCommand::new("curl")
             .arg("-fsSL")
             .arg("https://ollama.ai/install.sh")
@@ -223,11 +237,14 @@ impl OllamaService {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow::anyhow!("Failed to download install script: {}", stderr));
+            return Err(anyhow::anyhow!(
+                "Failed to download install script: {}",
+                stderr
+            ));
         }
 
         let install_script = String::from_utf8_lossy(&output.stdout);
-        
+
         // Execute the install script
         let mut child = AsyncCommand::new("sh")
             .arg("-c")
@@ -237,10 +254,16 @@ impl OllamaService {
             .spawn()
             .context("Failed to execute install script")?;
 
-        let status = child.wait().await.context("Failed to wait for install script")?;
-        
+        let status = child
+            .wait()
+            .await
+            .context("Failed to wait for install script")?;
+
         if !status.success() {
-            return Err(anyhow::anyhow!("Install script failed with status: {}", status));
+            return Err(anyhow::anyhow!(
+                "Install script failed with status: {}",
+                status
+            ));
         }
 
         Ok("Ollama installed successfully on Linux".to_string())
@@ -248,20 +271,24 @@ impl OllamaService {
 
     async fn install_windows(&self) -> Result<String> {
         info!("Installing Ollama on Windows...");
-        
+
         // Download the Windows installer
         let installer_url = "https://ollama.ai/download/OllamaSetup.exe";
         let installer_path = std::env::temp_dir().join("OllamaSetup.exe");
-        
+
         info!("Downloading Ollama installer...");
-        let response = self.client
+        let response = self
+            .client
             .get(installer_url)
             .send()
             .await
             .context("Failed to download Ollama installer")?;
 
-        let bytes = response.bytes().await.context("Failed to read installer bytes")?;
-        
+        let bytes = response
+            .bytes()
+            .await
+            .context("Failed to read installer bytes")?;
+
         tokio::fs::write(&installer_path, &bytes)
             .await
             .context("Failed to save installer")?;
@@ -287,7 +314,7 @@ impl OllamaService {
     /// Start the Ollama service
     pub async fn start_service(&self) -> Result<String> {
         info!("Starting Ollama service...");
-        
+
         if self.is_running().await {
             return Ok("Ollama service is already running".to_string());
         }
@@ -313,7 +340,7 @@ impl OllamaService {
     /// Stop the Ollama service (platform specific)
     pub async fn stop_service(&self) -> Result<String> {
         info!("Stopping Ollama service...");
-        
+
         #[cfg(unix)]
         {
             let output = AsyncCommand::new("pkill")
@@ -321,15 +348,15 @@ impl OllamaService {
                 .arg("ollama")
                 .output()
                 .await;
-            
+
             match output {
                 Ok(output) if output.status.success() => {
                     Ok("Ollama service stopped successfully".to_string())
-                },
-                _ => Err(anyhow::anyhow!("Failed to stop Ollama service"))
+                }
+                _ => Err(anyhow::anyhow!("Failed to stop Ollama service")),
             }
         }
-        
+
         #[cfg(windows)]
         {
             let output = AsyncCommand::new("taskkill")
@@ -338,12 +365,12 @@ impl OllamaService {
                 .arg("ollama.exe")
                 .output()
                 .await;
-            
+
             match output {
                 Ok(output) if output.status.success() => {
                     Ok("Ollama service stopped successfully".to_string())
-                },
-                _ => Err(anyhow::anyhow!("Failed to stop Ollama service"))
+                }
+                _ => Err(anyhow::anyhow!("Failed to stop Ollama service")),
             }
         }
     }
@@ -365,18 +392,25 @@ impl OllamaService {
     /// Get Ollama version information
     pub async fn get_version(&self) -> Result<String> {
         let url = format!("{}/api/version", self.base_url());
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
             .context("Failed to get version from Ollama API")?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("API request failed with status: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "API request failed with status: {}",
+                response.status()
+            ));
         }
 
-        let version_info = response.text().await.context("Failed to read version response")?;
+        let version_info = response
+            .text()
+            .await
+            .context("Failed to read version response")?;
         Ok(version_info)
     }
 
@@ -384,14 +418,18 @@ impl OllamaService {
     pub async fn list_models(&self) -> Result<OllamaListResponse> {
         let url = format!("{}/api/tags", self.base_url());
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
             .context("Failed to list models")?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Failed to list models: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "Failed to list models: {}",
+                response.status()
+            ));
         }
 
         let models = response
@@ -417,14 +455,15 @@ impl OllamaService {
     /// Pull/download a model
     pub async fn pull_model(&self, model_name: &str) -> Result<String> {
         info!("Pulling model: {}", model_name);
-        
+
         let url = format!("{}/api/pull", self.base_url());
         let request = OllamaPullRequest {
             name: model_name.to_string(),
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request)
             .send()
@@ -432,7 +471,10 @@ impl OllamaService {
             .context("Failed to pull model")?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Failed to pull model: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "Failed to pull model: {}",
+                response.status()
+            ));
         }
 
         let pull_response = response
@@ -440,19 +482,23 @@ impl OllamaService {
             .await
             .context("Failed to parse pull response")?;
 
-        Ok(format!("Model {} pulled successfully: {}", model_name, pull_response.status))
+        Ok(format!(
+            "Model {} pulled successfully: {}",
+            model_name, pull_response.status
+        ))
     }
 
     /// Remove a model
     pub async fn remove_model(&self, model_name: &str) -> Result<String> {
         info!("Removing model: {}", model_name);
-        
+
         let url = format!("{}/api/delete", self.base_url());
         let request = serde_json::json!({
             "name": model_name
         });
 
-        let response = self.client
+        let response = self
+            .client
             .delete(&url)
             .json(&request)
             .send()
@@ -460,16 +506,24 @@ impl OllamaService {
             .context("Failed to remove model")?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Failed to remove model: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "Failed to remove model: {}",
+                response.status()
+            ));
         }
 
         Ok(format!("Model {} removed successfully", model_name))
     }
 
     /// Generate text using a model
-    pub async fn generate(&self, model: &str, prompt: &str, options: Option<HashMap<String, serde_json::Value>>) -> Result<OllamaGenerateResponse> {
+    pub async fn generate(
+        &self,
+        model: &str,
+        prompt: &str,
+        options: Option<HashMap<String, serde_json::Value>>,
+    ) -> Result<OllamaGenerateResponse> {
         debug!("Generating text with model: {}, prompt: {}", model, prompt);
-        
+
         let url = format!("{}/api/generate", self.base_url());
         let request = OllamaGenerateRequest {
             model: model.to_string(),
@@ -478,7 +532,8 @@ impl OllamaService {
             options,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request)
             .send()
@@ -486,7 +541,10 @@ impl OllamaService {
             .context("Failed to generate text")?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(anyhow::anyhow!("Generation failed: {}", error_text));
         }
 
@@ -499,7 +557,12 @@ impl OllamaService {
     }
 
     /// Generate text with streaming response
-    pub async fn generate_stream(&self, model: &str, prompt: &str, options: Option<HashMap<String, serde_json::Value>>) -> Result<impl futures::Stream<Item = Result<OllamaGenerateResponse>>> {
+    pub async fn generate_stream(
+        &self,
+        model: &str,
+        prompt: &str,
+        options: Option<HashMap<String, serde_json::Value>>,
+    ) -> Result<impl futures::Stream<Item = Result<OllamaGenerateResponse>>> {
         let url = format!("{}/api/generate", self.base_url());
         let request = OllamaGenerateRequest {
             model: model.to_string(),
@@ -508,7 +571,8 @@ impl OllamaService {
             options,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request)
             .send()
@@ -516,30 +580,37 @@ impl OllamaService {
             .context("Failed to start streaming generation")?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Streaming request failed: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "Streaming request failed: {}",
+                response.status()
+            ));
         }
 
         use futures_util::StreamExt;
-        
-        let stream = response.bytes_stream()
-            .map(|chunk| {
-                match chunk {
-                    Ok(bytes) => {
-                        let text = String::from_utf8_lossy(&bytes);
-                        // Parse each line as JSON
-                        for line in text.lines() {
-                            if !line.trim().is_empty() {
-                                match serde_json::from_str::<OllamaGenerateResponse>(line) {
-                                    Ok(response) => return Ok(response),
-                                    Err(e) => return Err(anyhow::anyhow!("Failed to parse streaming response: {}", e)),
+
+        let stream = response.bytes_stream().map(|chunk| {
+            match chunk {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    // Parse each line as JSON
+                    for line in text.lines() {
+                        if !line.trim().is_empty() {
+                            match serde_json::from_str::<OllamaGenerateResponse>(line) {
+                                Ok(response) => return Ok(response),
+                                Err(e) => {
+                                    return Err(anyhow::anyhow!(
+                                        "Failed to parse streaming response: {}",
+                                        e
+                                    ))
                                 }
                             }
                         }
-                        Err(anyhow::anyhow!("No valid JSON in chunk"))
-                    },
-                    Err(e) => Err(anyhow::anyhow!("Stream error: {}", e))
+                    }
+                    Err(anyhow::anyhow!("No valid JSON in chunk"))
                 }
-            });
+                Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
+            }
+        });
 
         Ok(stream)
     }
@@ -562,7 +633,6 @@ impl OllamaService {
             "llama2:7b".to_string(),
             "llama2:13b".to_string(),
             "llama2:70b".to_string(),
-
             // Code models
             "codellama:latest".to_string(),
             "codellama:7b".to_string(),
@@ -572,7 +642,6 @@ impl OllamaService {
             "codegemma:latest".to_string(),
             "codegemma:2b".to_string(),
             "codegemma:7b".to_string(),
-
             // Mistral models
             "mistral:latest".to_string(),
             "mistral:7b".to_string(),
@@ -581,7 +650,6 @@ impl OllamaService {
             "mixtral:8x7b".to_string(),
             "mixtral:8x22b".to_string(),
             "mistrallite:latest".to_string(),
-
             // Gemma models
             "gemma:latest".to_string(),
             "gemma:2b".to_string(),
@@ -593,7 +661,6 @@ impl OllamaService {
             "gemma3:latest".to_string(),
             "gemma3:1b".to_string(),
             "gemma3:27b".to_string(),
-
             // Specialized models
             "qwen2:latest".to_string(),
             "qwen2:0.5b".to_string(),
@@ -614,7 +681,6 @@ impl OllamaService {
             "deepseek-r1:14b".to_string(),
             "deepseek-r1:32b".to_string(),
             "deepseek-r1:70b".to_string(),
-
             // Chat and assistant models
             "openchat:latest".to_string(),
             "orca-mini:latest".to_string(),
@@ -629,22 +695,18 @@ impl OllamaService {
             "yi:latest".to_string(),
             "yi:6b".to_string(),
             "yi:34b".to_string(),
-
             // Function calling models
             "llama3-groq-tool-use:latest".to_string(),
             "mistral-nemo:12b".to_string(),
-
             // Embedding models
             "nomic-embed-text:latest".to_string(),
             "all-minilm:latest".to_string(),
-
             // Vision models
             "llava:latest".to_string(),
             "llava:7b".to_string(),
             "llava:13b".to_string(),
             "llava:34b".to_string(),
             "bakllava:latest".to_string(),
-
             // Math and reasoning
             "mathstral:latest".to_string(),
             "wizardmath:latest".to_string(),
@@ -652,7 +714,9 @@ impl OllamaService {
 
         let filtered_models: Vec<String> = available_models
             .into_iter()
-            .filter(|model| query.is_empty() || model.to_lowercase().contains(&query.to_lowercase()))
+            .filter(|model| {
+                query.is_empty() || model.to_lowercase().contains(&query.to_lowercase())
+            })
             .collect();
 
         Ok(filtered_models)
@@ -665,7 +729,8 @@ impl OllamaService {
             "name": model_name
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request)
             .send()
@@ -673,7 +738,10 @@ impl OllamaService {
             .context("Failed to get model info")?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Failed to get model info: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "Failed to get model info: {}",
+                response.status()
+            ));
         }
 
         let model_info = response
@@ -725,7 +793,7 @@ impl OllamaService {
             "codellama:latest",
             "mistral:latest",
             "gemma2:2b",
-            "phi3:mini"
+            "phi3:mini",
         ];
 
         let mut results = Vec::new();

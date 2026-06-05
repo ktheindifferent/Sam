@@ -1,9 +1,6 @@
 use argon2::{
-    password_hash::{
-        rand_core::OsRng,
-        PasswordHash, PasswordHasher, PasswordVerifier, SaltString
-    },
-    Argon2
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
 };
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -22,15 +19,16 @@ impl Auth {
     pub fn hash_password(password: &str) -> Result<String, Box<dyn std::error::Error>> {
         let salt = SaltString::generate(&mut OsRng);
         let argon2 = Argon2::default();
-        let password_hash = argon2.hash_password(password.as_bytes(), &salt)
+        let password_hash = argon2
+            .hash_password(password.as_bytes(), &salt)
             .map_err(|e| format!("Password hashing failed: {}", e))?;
         Ok(password_hash.to_string())
     }
 
     /// Verify a password against a hash
     pub fn verify_password(password: &str, hash: &str) -> Result<bool, Box<dyn std::error::Error>> {
-        let parsed_hash = PasswordHash::new(hash)
-            .map_err(|e| format!("Invalid password hash: {}", e))?;
+        let parsed_hash =
+            PasswordHash::new(hash).map_err(|e| format!("Invalid password hash: {}", e))?;
         let argon2 = Argon2::default();
         match argon2.verify_password(password.as_bytes(), &parsed_hash) {
             Ok(_) => Ok(true),
@@ -55,24 +53,29 @@ impl Auth {
                 std::time::Duration::from_secs(0)
             })
             .as_secs() as i64;
-        
-        let attempts = limiter.entry(identifier.to_string()).or_insert_with(Vec::new);
-        
+
+        let attempts = limiter
+            .entry(identifier.to_string())
+            .or_insert_with(Vec::new);
+
         // Clean up old attempts (older than 15 minutes)
         attempts.retain(|&time| current_time - time < 900);
-        
+
         // Progressive rate limiting based on number of attempts
         let (max_attempts, window_seconds) = match attempts.len() {
-            0..=2 => (3, 60),    // 3 attempts per minute for first tries
-            3..=5 => (2, 300),   // 2 attempts per 5 minutes after 3 failed attempts
-            6..=9 => (1, 900),   // 1 attempt per 15 minutes after 6 failed attempts
-            _ => (1, 3600),      // 1 attempt per hour after 10 failed attempts
+            0..=2 => (3, 60),  // 3 attempts per minute for first tries
+            3..=5 => (2, 300), // 2 attempts per 5 minutes after 3 failed attempts
+            6..=9 => (1, 900), // 1 attempt per 15 minutes after 6 failed attempts
+            _ => (1, 3600),    // 1 attempt per hour after 10 failed attempts
         };
-        
+
         // Count attempts in the current window
         let window_start = current_time - window_seconds;
-        let recent_attempts = attempts.iter().filter(|&&time| time >= window_start).count();
-        
+        let recent_attempts = attempts
+            .iter()
+            .filter(|&&time| time >= window_start)
+            .count();
+
         if recent_attempts >= max_attempts {
             false // Rate limit exceeded
         } else {
@@ -192,13 +195,13 @@ mod tests {
     fn test_password_hashing() {
         let password = "SecurePassword123!";
         let hash = Auth::hash_password(password).unwrap();
-        
+
         // Hash should not be the same as the password
         assert_ne!(hash, password);
-        
+
         // Should be able to verify the password
         assert!(Auth::verify_password(password, &hash).unwrap());
-        
+
         // Wrong password should fail
         assert!(!Auth::verify_password("WrongPassword", &hash).unwrap());
     }
@@ -206,21 +209,21 @@ mod tests {
     #[test]
     fn test_rate_limiting() {
         let identifier = "test_user@example.com";
-        
+
         // Clear any existing attempts
         Auth::clear_auth_rate_limit(identifier);
-        
+
         // First 3 attempts should be allowed
         for _ in 0..3 {
             assert!(Auth::check_auth_rate_limit(identifier));
         }
-        
+
         // 4th attempt within a minute should be blocked
         assert!(!Auth::check_auth_rate_limit(identifier));
-        
+
         // Check that we have 4 attempts recorded (3 successful checks + 1 failed)
         assert_eq!(Auth::get_failed_attempts(identifier), 4);
-        
+
         // Clear rate limit
         Auth::clear_auth_rate_limit(identifier);
         assert_eq!(Auth::get_failed_attempts(identifier), 0);
@@ -229,15 +232,15 @@ mod tests {
     #[test]
     fn test_cors_config() {
         let cors = CorsConfig::default();
-        
+
         // Allowed origins
         assert!(cors.is_origin_allowed("http://localhost:3000"));
         assert!(cors.is_origin_allowed("http://127.0.0.1:8080"));
-        
+
         // Disallowed origins
         assert!(!cors.is_origin_allowed("http://evil.com"));
         assert!(!cors.is_origin_allowed("https://localhost:3000")); // Different scheme
-        
+
         // Get CORS header
         assert_eq!(
             cors.get_cors_header(Some("http://localhost:3000")),

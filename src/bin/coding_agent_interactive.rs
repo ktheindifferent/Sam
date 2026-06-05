@@ -4,11 +4,7 @@ use std::sync::Arc;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use libsam::services::coding::agent::{
-    CodingAgentService,
-    CodingAgentExecutor,
-    UserMessage,
-};
+use libsam::services::coding::agent::{CodingAgentExecutor, CodingAgentService, UserMessage};
 
 // Simple CLI args structure without clap
 struct Cli {
@@ -51,15 +47,16 @@ impl Cli {
                 "-v" | "--verbose" => cli.verbose = true,
                 "execute" => {
                     if let Some(task) = args.get(i + 1) {
-                        cli.command = Some(Commands::Execute {
-                            task: task.clone(),
-                        });
+                        cli.command = Some(Commands::Execute { task: task.clone() });
                     }
                 }
                 "session" | "interactive" => cli.command = Some(Commands::Interactive),
                 _ => {
                     // If not a flag and not the program name, treat as task
-                    if i > 0 && !arg.starts_with('-') && args.get(i - 1).map(|a| !a.starts_with('-')).unwrap_or(true) {
+                    if i > 0
+                        && !arg.starts_with('-')
+                        && args.get(i - 1).map(|a| !a.starts_with('-')).unwrap_or(true)
+                    {
                         cli.task = Some(arg.clone());
                     }
                 }
@@ -101,7 +98,14 @@ async fn main() -> Result<()> {
     };
 
     if let Some(task_desc) = task {
-        execute_task(task_desc, cli.dir, cli.max_corrections, cli.interactive, cli.verbose).await?;
+        execute_task(
+            task_desc,
+            cli.dir,
+            cli.max_corrections,
+            cli.interactive,
+            cli.verbose,
+        )
+        .await?;
     } else if matches!(cli.command, Some(Commands::Interactive)) {
         run_interactive_session(cli.dir, cli.max_corrections, cli.verbose).await?;
     } else {
@@ -172,11 +176,14 @@ async fn execute_task(
         executor.enable_verification().await;
     }
 
-    match executor.execute_incremental_task_with_verification(
-        &task,
-        &working_dir,
-        &[]  // session context
-    ).await {
+    match executor
+        .execute_incremental_task_with_verification(
+            &task,
+            &working_dir,
+            &[], // session context
+        )
+        .await
+    {
         Ok(_) => {
             println!("\n✅ Task completed successfully!");
 
@@ -286,11 +293,14 @@ async fn run_interactive_session(
                     executor.enable_verification().await;
                 }
 
-                match executor.execute_incremental_task_with_verification(
-                    task,
-                    &working_dir,
-                    &session_context
-                ).await {
+                match executor
+                    .execute_incremental_task_with_verification(
+                        task,
+                        &working_dir,
+                        &session_context,
+                    )
+                    .await
+                {
                     Ok(_) => {
                         println!("✅ Task completed!");
                     }

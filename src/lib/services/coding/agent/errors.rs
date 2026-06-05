@@ -3,9 +3,9 @@
 //! This module provides comprehensive error types with severity levels,
 //! retry logic, and user-friendly error messages.
 
-use thiserror::Error;
-use std::path::PathBuf;
 use std::fmt;
+use std::path::PathBuf;
+use thiserror::Error;
 
 /// Comprehensive error types for the coding agent
 #[derive(Debug, Error)]
@@ -17,9 +17,7 @@ pub enum CodingAgentError {
     },
 
     #[error("Provider not found: {provider}")]
-    ProviderNotFound {
-        provider: String
-    },
+    ProviderNotFound { provider: String },
 
     #[error("No provider configured")]
     NoProviderConfigured,
@@ -32,16 +30,10 @@ pub enum CodingAgentError {
     },
 
     #[error("Command not allowed: {command} (reason: {reason})")]
-    CommandNotAllowed {
-        command: String,
-        reason: String,
-    },
+    CommandNotAllowed { command: String, reason: String },
 
     #[error("Working directory error: {path:?}")]
-    WorkingDirectoryError {
-        path: PathBuf,
-        reason: String,
-    },
+    WorkingDirectoryError { path: PathBuf, reason: String },
 
     #[error("Parse error: {message}")]
     ParseError {
@@ -50,26 +42,16 @@ pub enum CodingAgentError {
     },
 
     #[error("Context error: {message}")]
-    ContextError {
-        message: String
-    },
+    ContextError { message: String },
 
     #[error("Template error: {template}")]
-    TemplateError {
-        template: String,
-        reason: String,
-    },
+    TemplateError { template: String, reason: String },
 
     #[error("Project analysis error: {message}")]
-    ProjectAnalysisError {
-        message: String
-    },
+    ProjectAnalysisError { message: String },
 
     #[error("Git operation failed: {operation}")]
-    GitError {
-        operation: String,
-        reason: String,
-    },
+    GitError { operation: String, reason: String },
 
     #[error("Resource limit exceeded: {resource}")]
     ResourceLimitExceeded {
@@ -85,15 +67,10 @@ pub enum CodingAgentError {
     },
 
     #[error("Model error: {model}")]
-    ModelError {
-        model: String,
-        reason: String,
-    },
+    ModelError { model: String, reason: String },
 
     #[error("Configuration error: {message}")]
-    ConfigError {
-        message: String
-    },
+    ConfigError { message: String },
 
     #[error("IO error: {message}")]
     IoError {
@@ -108,9 +85,7 @@ pub enum CodingAgentError {
     },
 
     #[error("Serialization error: {message}")]
-    SerializationError {
-        message: String
-    },
+    SerializationError { message: String },
 
     #[error("Circuit breaker open for provider: {provider}")]
     CircuitBreakerOpen {
@@ -119,31 +94,19 @@ pub enum CodingAgentError {
     },
 
     #[error("Retry limit exceeded after {attempts} attempts")]
-    RetryLimitExceeded {
-        attempts: u32,
-        last_error: String,
-    },
+    RetryLimitExceeded { attempts: u32, last_error: String },
 
     #[error("Invalid state transition: from {from} to {to}")]
-    InvalidStateTransition {
-        from: String,
-        to: String,
-    },
+    InvalidStateTransition { from: String, to: String },
 
     #[error("Execution error: {0}")]
     ExecutionError(String),
 
     #[error("Not found: {resource} with id {id}")]
-    NotFound {
-        resource: String,
-        id: String,
-    },
+    NotFound { resource: String, id: String },
 
     #[error("Validation error: {field} - {message}")]
-    ValidationError {
-        field: String,
-        message: String,
-    },
+    ValidationError { field: String, message: String },
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -153,7 +116,9 @@ pub enum CodingAgentError {
 pub type CodingAgentResult<T> = Result<T, CodingAgentError>;
 
 /// Error severity levels for better error handling decisions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum ErrorSeverity {
     /// Can be safely ignored or logged
     Info = 0,
@@ -224,7 +189,10 @@ impl CodingAgentError {
     /// Get suggested retry delay in seconds with exponential backoff support
     pub fn retry_delay_seconds(&self, attempt: u32) -> Option<u64> {
         let base_delay = match self {
-            Self::CircuitBreakerOpen { retry_after_seconds, .. } => return *retry_after_seconds,
+            Self::CircuitBreakerOpen {
+                retry_after_seconds,
+                ..
+            } => return *retry_after_seconds,
             Self::ProviderUnavailable { .. } => 5,
             Self::NetworkError { .. } => 2,
             Self::Timeout { .. } => 10,
@@ -240,15 +208,23 @@ impl CodingAgentError {
     pub fn user_message(&self) -> String {
         match self {
             Self::ProviderUnavailable { provider, .. } => {
-                format!("The {} AI provider is currently unavailable. Trying alternatives...", provider)
+                format!(
+                    "The {} AI provider is currently unavailable. Trying alternatives...",
+                    provider
+                )
             }
             Self::CommandNotAllowed { command, .. } => {
                 format!("Command '{}' is not allowed for safety reasons", command)
             }
-            Self::ResourceLimitExceeded { resource, limit, .. } => {
+            Self::ResourceLimitExceeded {
+                resource, limit, ..
+            } => {
                 format!("{} limit exceeded (max: {})", resource, limit)
             }
-            Self::Timeout { operation, timeout_seconds } => {
+            Self::Timeout {
+                operation,
+                timeout_seconds,
+            } => {
                 format!("{} timed out after {} seconds", operation, timeout_seconds)
             }
             _ => self.to_string(),

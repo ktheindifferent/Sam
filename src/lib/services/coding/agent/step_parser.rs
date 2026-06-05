@@ -15,7 +15,11 @@ impl StepParser {
     }
 
     /// Parse AI response into executable steps
-    pub async fn parse_execution_steps(&self, response: &str, task_description: &str) -> Vec<ExecutionStep> {
+    pub async fn parse_execution_steps(
+        &self,
+        response: &str,
+        task_description: &str,
+    ) -> Vec<ExecutionStep> {
         let mut steps = Vec::new();
         let timestamp = utils::unix_timestamp();
 
@@ -39,7 +43,11 @@ impl StepParser {
                         }
 
                         // Check for heredoc pattern first (before is_command_like check)
-                        if line.contains("<<") && (line.contains("'EOF'") || line.contains("\"EOF\"") || line.contains("EOF")) {
+                        if line.contains("<<")
+                            && (line.contains("'EOF'")
+                                || line.contains("\"EOF\"")
+                                || line.contains("EOF"))
+                        {
                             // This is a heredoc command, collect all lines until EOF
                             let mut full_command = String::from(line);
                             i += 1;
@@ -84,9 +92,12 @@ impl StepParser {
                         // Only accept short, command-like strings
                         if command.len() <= 100 && self.is_command_like(command) {
                             if command.contains("&&") || command.contains(";") {
-                                let compound_steps = self.split_compound_command(command, timestamp);
+                                let compound_steps =
+                                    self.split_compound_command(command, timestamp);
                                 steps.extend(compound_steps);
-                            } else if let Some(step) = self.create_execution_step(command, timestamp) {
+                            } else if let Some(step) =
+                                self.create_execution_step(command, timestamp)
+                            {
                                 steps.push(step);
                             }
                         }
@@ -131,7 +142,8 @@ impl StepParser {
         steps.retain(|step| {
             let is_valid = self.is_valid_execution_step(step);
             if !is_valid {
-                warn!("Removing invalid step: {} (command: {}...)",
+                warn!(
+                    "Removing invalid step: {} (command: {}...)",
                     step.description,
                     &step.command.chars().take(50).collect::<String>()
                 );
@@ -140,7 +152,8 @@ impl StepParser {
         });
 
         if pre_validation_count != steps.len() {
-            warn!("Validation removed {} steps ({} -> {})",
+            warn!(
+                "Validation removed {} steps ({} -> {})",
                 pre_validation_count - steps.len(),
                 pre_validation_count,
                 steps.len()
@@ -154,7 +167,12 @@ impl StepParser {
 
         info!("Parsed {} steps from AI response", steps.len());
         for (i, step) in steps.iter().enumerate() {
-            info!("  Step {}: {} (command length: {} chars)", i + 1, step.description, step.command.len());
+            info!(
+                "  Step {}: {} (command length: {} chars)",
+                i + 1,
+                step.description,
+                step.command.len()
+            );
         }
 
         steps
@@ -190,14 +208,34 @@ impl StepParser {
     /// Check if line contains explanatory text patterns
     fn contains_explanatory_text(&self, line: &str) -> bool {
         const SKIP_PATTERNS: &[&str] = &[
-            "need to", "you can", "additionally", "also", "furthermore", "however",
-            "let me", "i will", "we need", "first", "next", "then", "finally",
-            "to add", "to include", "to modify", "to create", "to install",
-            "file before", "file to include", "code.", "dependency",
+            "need to",
+            "you can",
+            "additionally",
+            "also",
+            "furthermore",
+            "however",
+            "let me",
+            "i will",
+            "we need",
+            "first",
+            "next",
+            "then",
+            "finally",
+            "to add",
+            "to include",
+            "to modify",
+            "to create",
+            "to install",
+            "file before",
+            "file to include",
+            "code.",
+            "dependency",
         ];
 
         let line_lower = line.to_lowercase();
-        SKIP_PATTERNS.iter().any(|pattern| line_lower.contains(pattern))
+        SKIP_PATTERNS
+            .iter()
+            .any(|pattern| line_lower.contains(pattern))
     }
 
     /// Check if word is in safe commands list
@@ -208,7 +246,7 @@ impl StepParser {
     /// Check if line matches command patterns
     fn matches_command_pattern(&self, line: &str, first_word: &str) -> bool {
         const COMMAND_PATTERNS: &[&str] = &[
-            r"^\w+\s+",           // word followed by space (basic command pattern)
+            r"^\w+\s+",                   // word followed by space (basic command pattern)
             r"^[a-zA-Z_][a-zA-Z0-9_]*\s", // valid command name pattern
         ];
 
@@ -229,8 +267,10 @@ impl StepParser {
         }
 
         // Special handling for heredoc commands - they can be longer
-        let is_heredoc = command.contains("<<") &&
-            (command.contains("'EOF'") || command.contains("\"EOF\"") || command.contains("EOF"));
+        let is_heredoc = command.contains("<<")
+            && (command.contains("'EOF'")
+                || command.contains("\"EOF\"")
+                || command.contains("EOF"));
 
         // Check if command looks like explanatory text
         // Heredoc commands can be longer than 200 chars
@@ -265,7 +305,8 @@ impl StepParser {
 
         let cmd_parts: Vec<&str> = command.split_whitespace().collect();
         if !cmd_parts.is_empty() && self.is_valid_command(&cmd_parts[0]) {
-            Some(ExecutionStep { step_number: 0,
+            Some(ExecutionStep {
+                step_number: 0,
                 description: self.get_command_description(command),
                 command: command.to_string(),
                 output: None,
@@ -291,7 +332,8 @@ impl StepParser {
         // Check if the first command (usually 'cat') is valid
         if !cmd_parts.is_empty() && self.is_valid_command(&cmd_parts[0]) {
             let description = self.get_heredoc_description(first_line);
-            Some(ExecutionStep { step_number: 0,
+            Some(ExecutionStep {
+                step_number: 0,
                 description,
                 command: command.to_string(),
                 output: None,
@@ -332,9 +374,9 @@ impl StepParser {
         let mut steps = Vec::new();
 
         // Pattern: "make a new directory called X and in it create a rust project called Y"
-        if (lower_task.contains("directory") || lower_task.contains("folder")) &&
-           (lower_task.contains("rust project") || lower_task.contains("rust")) {
-
+        if (lower_task.contains("directory") || lower_task.contains("folder"))
+            && (lower_task.contains("rust project") || lower_task.contains("rust"))
+        {
             // Try multiple regex patterns to be more flexible
             let patterns = [
                 r"directory called (\w+).*(?:rust project called|rust project named|project called|project named) (\w+)",
@@ -347,9 +389,11 @@ impl StepParser {
                 if let Ok(regex) = regex::Regex::new(pattern) {
                     if let Some(captures) = regex.captures(&lower_task) {
                         let dir_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_dir");
-                        let project_name = captures.get(2).map(|m| m.as_str()).unwrap_or("new_project");
+                        let project_name =
+                            captures.get(2).map(|m| m.as_str()).unwrap_or("new_project");
 
-                        steps.push(ExecutionStep { step_number: 0,
+                        steps.push(ExecutionStep {
+                            step_number: 0,
                             description: format!("Creating directory {}", dir_name),
                             command: format!("mkdir {}", dir_name),
                             output: None,
@@ -357,7 +401,8 @@ impl StepParser {
                             timestamp,
                         });
 
-                        steps.push(ExecutionStep { step_number: 0,
+                        steps.push(ExecutionStep {
+                            step_number: 0,
                             description: format!("Changing to directory {}", dir_name),
                             command: format!("cd {}", dir_name),
                             output: None,
@@ -365,7 +410,8 @@ impl StepParser {
                             timestamp,
                         });
 
-                        steps.push(ExecutionStep { step_number: 0,
+                        steps.push(ExecutionStep {
+                            step_number: 0,
                             description: format!("Creating Rust project {}", project_name),
                             command: format!("cargo new {}", project_name),
                             output: None,
@@ -385,7 +431,8 @@ impl StepParser {
                 if let Some(captures) = regex.captures(&lower_task) {
                     let project_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_project");
 
-                    steps.push(ExecutionStep { step_number: 0,
+                    steps.push(ExecutionStep {
+                        step_number: 0,
                         description: format!("Creating Rust project {}", project_name),
                         command: format!("cargo new {}", project_name),
                         output: None,
@@ -404,7 +451,8 @@ impl StepParser {
                 if let Some(captures) = regex.captures(&lower_task) {
                     let dir_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_dir");
 
-                    steps.push(ExecutionStep { step_number: 0,
+                    steps.push(ExecutionStep {
+                        step_number: 0,
                         description: format!("Creating directory {}", dir_name),
                         command: format!("mkdir {}", dir_name),
                         output: None,
@@ -421,9 +469,13 @@ impl StepParser {
         if lower_task.contains("create") && lower_task.contains("file") {
             if let Ok(regex) = regex::Regex::new(r"file (?:called |named )?(\w+\.?\w*)") {
                 if let Some(captures) = regex.captures(&lower_task) {
-                    let file_name = captures.get(1).map(|m| m.as_str()).unwrap_or("new_file.txt");
+                    let file_name = captures
+                        .get(1)
+                        .map(|m| m.as_str())
+                        .unwrap_or("new_file.txt");
 
-                    steps.push(ExecutionStep { step_number: 0,
+                    steps.push(ExecutionStep {
+                        step_number: 0,
                         description: format!("Creating file {}", file_name),
                         command: format!("touch {}", file_name),
                         output: None,
@@ -440,7 +492,8 @@ impl StepParser {
         if lower_task.contains("build") || lower_task.contains("compile") {
             // Determine build command based on project context
             if lower_task.contains("rust") || lower_task.contains("cargo") {
-                steps.push(ExecutionStep { step_number: 0,
+                steps.push(ExecutionStep {
+                    step_number: 0,
                     description: "Building Rust project".into(),
                     command: "cargo build".into(),
                     output: None,
@@ -448,7 +501,8 @@ impl StepParser {
                     timestamp,
                 });
             } else if lower_task.contains("npm") || lower_task.contains("node") {
-                steps.push(ExecutionStep { step_number: 0,
+                steps.push(ExecutionStep {
+                    step_number: 0,
                     description: "Building Node.js project".into(),
                     command: "npm run build".into(),
                     output: None,
@@ -456,7 +510,8 @@ impl StepParser {
                     timestamp,
                 });
             } else {
-                steps.push(ExecutionStep { step_number: 0,
+                steps.push(ExecutionStep {
+                    step_number: 0,
                     description: "Building project".into(),
                     command: "make".into(),
                     output: None,
@@ -470,7 +525,8 @@ impl StepParser {
         // Pattern: git operations
         if lower_task.contains("git") {
             if lower_task.contains("status") {
-                steps.push(ExecutionStep { step_number: 0,
+                steps.push(ExecutionStep {
+                    step_number: 0,
                     description: "Checking git status".into(),
                     command: "git status".into(),
                     output: None,
@@ -478,14 +534,16 @@ impl StepParser {
                     timestamp,
                 });
             } else if lower_task.contains("commit") {
-                steps.push(ExecutionStep { step_number: 0,
+                steps.push(ExecutionStep {
+                    step_number: 0,
                     description: "Adding files to git".into(),
                     command: "git add .".into(),
                     output: None,
                     success: false,
                     timestamp,
                 });
-                steps.push(ExecutionStep { step_number: 0,
+                steps.push(ExecutionStep {
+                    step_number: 0,
                     description: "Committing changes".into(),
                     command: "git commit -m \"Update\"".into(),
                     output: None,
@@ -493,7 +551,8 @@ impl StepParser {
                     timestamp,
                 });
             } else if lower_task.contains("init") {
-                steps.push(ExecutionStep { step_number: 0,
+                steps.push(ExecutionStep {
+                    step_number: 0,
                     description: "Initializing git repository".into(),
                     command: "git init".into(),
                     output: None,
@@ -505,7 +564,8 @@ impl StepParser {
         }
 
         // Final fallback
-        steps.push(ExecutionStep { step_number: 0,
+        steps.push(ExecutionStep {
+            step_number: 0,
             description: format!("Execute task: {}", task_description),
             command: "echo 'Task needs manual implementation'".into(),
             output: None,
@@ -542,8 +602,11 @@ impl StepParser {
             "mkdir" => format!("Creating directory {}", parts.get(1).unwrap_or(&"<name>")),
             "cd" => format!("Changing to directory {}", parts.get(1).unwrap_or(&"<dir>")),
             "cargo" if parts.get(1) == Some(&"new") => {
-                format!("Creating new Rust project {}", parts.get(2).unwrap_or(&"<name>"))
-            },
+                format!(
+                    "Creating new Rust project {}",
+                    parts.get(2).unwrap_or(&"<name>")
+                )
+            }
             "cargo" if parts.get(1) == Some(&"build") => "Building Rust project".into(),
             "cargo" if parts.get(1) == Some(&"run") => "Running Rust project".into(),
             "cargo" if parts.get(1) == Some(&"test") => "Running Rust tests".into(),
@@ -553,13 +616,17 @@ impl StepParser {
             "mv" => "Moving/renaming files".into(),
             "grep" => {
                 if parts.len() > 2 {
-                    format!("Searching for '{}' in {}", parts.get(1).unwrap_or(&"pattern"), parts[2..].join(" "))
+                    format!(
+                        "Searching for '{}' in {}",
+                        parts.get(1).unwrap_or(&"pattern"),
+                        parts[2..].join(" ")
+                    )
                 } else if parts.len() > 1 {
                     format!("Searching for '{}'", parts.get(1).unwrap_or(&"pattern"))
                 } else {
                     "Searching for pattern".into()
                 }
-            },
+            }
             "ls" => {
                 // Check if listing a specific directory or file
                 if parts.len() > 1 {
@@ -567,7 +634,7 @@ impl StepParser {
                 } else {
                     "Listing current directory".into()
                 }
-            },
+            }
             "cat" => {
                 // Check if this is a heredoc command
                 if command.contains("<<") {
@@ -577,7 +644,7 @@ impl StepParser {
                 } else {
                     "Displaying file contents".into()
                 }
-            },
+            }
             "git" => match parts.get(1) {
                 Some(&"status") => "Checking git status".into(),
                 Some(&"add") => "Adding files to git".into(),
@@ -590,7 +657,10 @@ impl StepParser {
             },
             "npm" => match parts.get(1) {
                 Some(&"install") => "Installing npm dependencies".into(),
-                Some(&"run") => format!("Running npm script: {}", parts.get(2).unwrap_or(&"<script>")),
+                Some(&"run") => format!(
+                    "Running npm script: {}",
+                    parts.get(2).unwrap_or(&"<script>")
+                ),
                 Some(&"build") => "Building npm project".into(),
                 Some(&"test") => "Running npm tests".into(),
                 _ => format!("NPM operation: {}", command),
@@ -635,7 +705,8 @@ impl StepParser {
             vec![compound_command]
         };
 
-        commands.into_iter()
+        commands
+            .into_iter()
             .map(|cmd| cmd.trim().to_string())
             .filter(|cmd| !cmd.is_empty())
             .collect()
@@ -658,7 +729,9 @@ cargo build
 cargo run
 ```"#;
 
-        let steps = self.parse_execution_steps(&test_response, "test task").await;
+        let steps = self
+            .parse_execution_steps(&test_response, "test task")
+            .await;
         let step_commands: Vec<String> = steps.iter().map(|s| s.command.clone()).collect();
 
         info!("Test parsed {} steps:", steps.len());
@@ -667,30 +740,67 @@ cargo run
         }
 
         // Should have 5 steps: cargo new, cargo add, heredoc, cargo build, cargo run
-        steps.len() == 5 && step_commands.iter().any(|cmd| cmd.contains("<<") && cmd.contains("EOF"))
+        steps.len() == 5
+            && step_commands
+                .iter()
+                .any(|cmd| cmd.contains("<<") && cmd.contains("EOF"))
     }
 }
 
 impl Default for StepParser {
     fn default() -> Self {
         Self::new(vec![
-            "ls".to_string(), "cat".to_string(), "pwd".to_string(),
-            "echo".to_string(), "mkdir".to_string(), "touch".to_string(),
-            "cp".to_string(), "mv".to_string(), "grep".to_string(),
-            "find".to_string(), "head".to_string(), "tail".to_string(),
-            "wc".to_string(), "sort".to_string(), "uniq".to_string(),
-            "cargo".to_string(), "git".to_string(), "tree".to_string(),
-            "file".to_string(), "stat".to_string(), "which".to_string(),
-            "basename".to_string(), "dirname".to_string(), "clear".to_string(),
-            "date".to_string(), "whoami".to_string(), "id".to_string(),
-            "uname".to_string(), "rustc".to_string(), "rustfmt".to_string(),
-            "sed".to_string(), "awk".to_string(), "curl".to_string(),
-            "wget".to_string(), "python".to_string(), "python3".to_string(),
-            "npm".to_string(), "node".to_string(), "yarn".to_string(),
-            "pip".to_string(), "pip3".to_string(), "make".to_string(),
-            "cmake".to_string(), "gcc".to_string(), "clang".to_string(),
-            "java".to_string(), "javac".to_string(), "go".to_string(),
-            "docker".to_string(), "kubectl".to_string(), "ssh".to_string(),
+            "ls".to_string(),
+            "cat".to_string(),
+            "pwd".to_string(),
+            "echo".to_string(),
+            "mkdir".to_string(),
+            "touch".to_string(),
+            "cp".to_string(),
+            "mv".to_string(),
+            "grep".to_string(),
+            "find".to_string(),
+            "head".to_string(),
+            "tail".to_string(),
+            "wc".to_string(),
+            "sort".to_string(),
+            "uniq".to_string(),
+            "cargo".to_string(),
+            "git".to_string(),
+            "tree".to_string(),
+            "file".to_string(),
+            "stat".to_string(),
+            "which".to_string(),
+            "basename".to_string(),
+            "dirname".to_string(),
+            "clear".to_string(),
+            "date".to_string(),
+            "whoami".to_string(),
+            "id".to_string(),
+            "uname".to_string(),
+            "rustc".to_string(),
+            "rustfmt".to_string(),
+            "sed".to_string(),
+            "awk".to_string(),
+            "curl".to_string(),
+            "wget".to_string(),
+            "python".to_string(),
+            "python3".to_string(),
+            "npm".to_string(),
+            "node".to_string(),
+            "yarn".to_string(),
+            "pip".to_string(),
+            "pip3".to_string(),
+            "make".to_string(),
+            "cmake".to_string(),
+            "gcc".to_string(),
+            "clang".to_string(),
+            "java".to_string(),
+            "javac".to_string(),
+            "go".to_string(),
+            "docker".to_string(),
+            "kubectl".to_string(),
+            "ssh".to_string(),
         ])
     }
 }

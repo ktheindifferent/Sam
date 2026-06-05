@@ -1,11 +1,11 @@
 //! Error reporting and telemetry
 
-use std::fmt;
-use std::collections::HashMap;
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use log::{error, warn, info, debug};
+use std::collections::HashMap;
+use std::fmt;
 
-use super::{AgentError, ErrorKind, ErrorContext};
+use super::{AgentError, ErrorContext, ErrorKind};
 
 /// Error reporter for telemetry and monitoring
 pub struct ErrorReporter {
@@ -98,10 +98,7 @@ impl Default for EnvironmentInfo {
 impl ErrorReporter {
     pub fn new() -> Self {
         Self {
-            handlers: vec![
-                Box::new(LogHandler::new()),
-                Box::new(MetricsHandler::new()),
-            ],
+            handlers: vec![Box::new(LogHandler::new()), Box::new(MetricsHandler::new())],
             filters: vec![Box::new(DefaultFilter::new())],
             enrichers: vec![Box::new(DefaultEnricher::new())],
         }
@@ -221,10 +218,7 @@ impl ErrorHandler for LogHandler {
     fn handle(&self, report: &ErrorReport) {
         let log_message = format!(
             "[{}] {} - {} ({})",
-            report.severity,
-            report.kind,
-            report.message,
-            report.id
+            report.severity, report.kind, report.message, report.id
         );
 
         match report.severity {
@@ -266,7 +260,7 @@ impl ErrorHandler for MetricsHandler {
     fn handle(&self, report: &ErrorReport) {
         let metrics = self.metrics.clone();
         let error_key = format!("{}:{}", report.kind, report.message);
-        let timestamp = report.timestamp;  // Copy timestamp before moving into async block
+        let timestamp = report.timestamp; // Copy timestamp before moving into async block
 
         tokio::spawn(async move {
             let mut metrics_map = metrics.write().await;
@@ -321,27 +315,23 @@ impl DefaultEnricher {
 impl ErrorEnricher for DefaultEnricher {
     fn enrich(&self, report: &mut ErrorReport) {
         // Add default tags
-        report.tags.insert(
-            "service".to_string(),
-            "coding-agent".to_string(),
-        );
-        report.tags.insert(
-            "version".to_string(),
-            env!("CARGO_PKG_VERSION").to_string(),
-        );
+        report
+            .tags
+            .insert("service".to_string(), "coding-agent".to_string());
+        report
+            .tags
+            .insert("version".to_string(), env!("CARGO_PKG_VERSION").to_string());
 
         // Add system info
         // TODO: Add system metrics using sysinfo crate
         // For now, just add placeholder values
-        report.tags.insert(
-            "load_avg".to_string(),
-            "0.0".to_string(),
-        );
+        report
+            .tags
+            .insert("load_avg".to_string(), "0.0".to_string());
 
-        report.tags.insert(
-            "memory_usage".to_string(),
-            "0%".to_string(),
-        );
+        report
+            .tags
+            .insert("memory_usage".to_string(), "0%".to_string());
     }
 
     fn name(&self) -> &str {

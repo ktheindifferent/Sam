@@ -25,8 +25,7 @@ pub async fn handle_plugin(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             {
                 lines.push("  WASM plugin runtime: enabled".to_string());
                 let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-                let plugins_dir =
-                    std::path::PathBuf::from(&home).join(".sam").join("plugins");
+                let plugins_dir = std::path::PathBuf::from(&home).join(".sam").join("plugins");
                 if plugins_dir.exists() {
                     match std::fs::read_dir(&plugins_dir) {
                         Ok(entries) => {
@@ -63,10 +62,7 @@ pub async fn handle_plugin(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                             }
                         }
                         Err(e) => {
-                            lines.push(format!(
-                                "  Error reading plugins dir: {}",
-                                e
-                            ));
+                            lines.push(format!("  Error reading plugins dir: {}", e));
                         }
                     }
                 } else {
@@ -80,7 +76,9 @@ pub async fn handle_plugin(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 
             #[cfg(not(feature = "plugins"))]
             {
-                lines.push("  WASM plugin runtime: disabled (compile with --features plugins)".to_string());
+                lines.push(
+                    "  WASM plugin runtime: disabled (compile with --features plugins)".to_string(),
+                );
                 lines.push("  Compiled-in plugins only.".to_string());
             }
         }

@@ -1,10 +1,10 @@
+use deadpool_redis::redis::AsyncCommands;
+use deadpool_redis::Pool;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use deadpool_redis::{Pool};
-use deadpool_redis::redis::AsyncCommands;
 
 /// Rate limiting configuration
 #[derive(Debug, Clone)]
@@ -64,8 +64,10 @@ impl Default for DosProtectionConfig {
 #[derive(Debug, Clone)]
 struct RequestInfo {
     count: u32,
+    requests_this_second: u32,
     first_request: Instant,
     last_request: Instant,
+    current_second_start: Instant,
     blocked_until: Option<Instant>,
 }
 
@@ -92,41 +94,44 @@ impl HttpSecurityMiddleware {
             local_cache: Arc::new(RwLock::new(HashMap::new())),
             connection_count: Arc::new(RwLock::new(HashMap::new())),
         };
-        
+
         // Start cleanup task
         middleware.start_cleanup_task();
-        
+
         middleware
     }
-    
+
     /// Check rate limit for an IP address
     pub async fn check_rate_limit(&self, ip: IpAddr) -> Result<bool, String> {
         // First check if IP is blocked
         if self.is_ip_blocked(ip).await? {
             return Ok(false);
         }
-        
+
         if self.rate_limit_config.use_redis && self.redis_pool.is_some() {
             self.check_rate_limit_redis(ip).await
         } else {
             self.check_rate_limit_local(ip).await
         }
     }
-    
+
     /// Check rate limit using Redis (distributed)
     async fn check_rate_limit_redis(&self, ip: IpAddr) -> Result<bool, String> {
         let pool = self.redis_pool.as_ref().ok_or("Redis pool not available")?;
-        let mut conn = pool.get().await.map_err(|e| format!("Redis connection error: {}", e))?;
-        
+        let mut conn = pool
+            .get()
+            .await
+            .map_err(|e| format!("Redis connection error: {}", e))?;
+
         let key = format!("rate_limit:{}", ip);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .map_err(|e| format!("System clock error: {}", e))?
             .as_secs();
-        
+
         // Use Redis sliding window algorithm
         let window_start = now - self.rate_limit_config.window_seconds;
-        
+
         // Remove old entries
         let _: Result<(), _> = deadpool_redis::redis::cmd("ZREMRANGEBYSCORE")
             .arg(&key)
@@ -134,7 +139,7 @@ impl HttpSecurityMiddleware {
             .arg(window_start as f64)
             .query_async::<()>(&mut conn)
             .await;
-        
+
         // Count current requests in window
         let count: u32 = deadpool_redis::redis::cmd("ZCOUNT")
             .arg(&key)
@@ -143,7 +148,7 @@ impl HttpSecurityMiddleware {
             .query_async::<u32>(&mut conn)
             .await
             .map_err(|e| format!("Redis error: {}", e))?;
-        
+
         // Check if limit exceeded
         if count >= self.rate_limit_config.max_requests {
             // Check burst allowance
@@ -153,33 +158,39 @@ impl HttpSecurityMiddleware {
                 return Ok(false);
             }
         }
-        
-        // Add current request
+
+        // Add current request. Use a unique member so multiple requests in the
+        // same second are counted independently by the sorted set.
+        let member = format!("{}:{}", now, uuid::Uuid::new_v4());
         let _: Result<i32, _> = deadpool_redis::redis::cmd("ZADD")
             .arg(&key)
             .arg(now as f64)
-            .arg(now)
+            .arg(member)
             .query_async::<i32>(&mut conn)
             .await;
-        
+
         // Set expiration
-        let _: Result<(), _> = conn.expire(&key, self.rate_limit_config.window_seconds as i64).await;
-        
+        let _: Result<(), _> = conn
+            .expire(&key, self.rate_limit_config.window_seconds as i64)
+            .await;
+
         Ok(true)
     }
-    
+
     /// Check rate limit using local cache
     async fn check_rate_limit_local(&self, ip: IpAddr) -> Result<bool, String> {
         let mut cache = self.local_cache.write().await;
         let now = Instant::now();
-        
+
         let info = cache.entry(ip).or_insert(RequestInfo {
             count: 0,
+            requests_this_second: 0,
             first_request: now,
             last_request: now,
+            current_second_start: now,
             blocked_until: None,
         });
-        
+
         // Check if blocked
         if let Some(blocked_until) = info.blocked_until {
             if now < blocked_until {
@@ -188,44 +199,57 @@ impl HttpSecurityMiddleware {
                 info.blocked_until = None;
             }
         }
-        
+
         // Reset counter if window expired
-        if now.duration_since(info.first_request) > Duration::from_secs(self.rate_limit_config.window_seconds) {
+        if now.duration_since(info.first_request)
+            > Duration::from_secs(self.rate_limit_config.window_seconds)
+        {
             info.count = 0;
             info.first_request = now;
         }
-        
+
+        if now.duration_since(info.current_second_start) >= Duration::from_secs(1) {
+            info.requests_this_second = 0;
+            info.current_second_start = now;
+        }
+
         // Check rate limit
         if info.count >= self.rate_limit_config.max_requests {
             // Check burst allowance
-            if info.count >= self.rate_limit_config.max_requests + self.rate_limit_config.burst_size {
-                info.blocked_until = Some(now + Duration::from_secs(self.rate_limit_config.block_duration));
+            if info.count >= self.rate_limit_config.max_requests + self.rate_limit_config.burst_size
+            {
+                info.blocked_until =
+                    Some(now + Duration::from_secs(self.rate_limit_config.block_duration));
                 return Ok(false);
             }
         }
-        
+
         // Check requests per second
-        if now.duration_since(info.last_request) < Duration::from_secs(1) {
-            let requests_per_second = info.count;
-            if requests_per_second > self.dos_config.max_requests_per_second {
-                info.blocked_until = Some(now + Duration::from_secs(self.rate_limit_config.block_duration));
-                return Ok(false);
-            }
+        if info.requests_this_second >= self.dos_config.max_requests_per_second {
+            info.blocked_until =
+                Some(now + Duration::from_secs(self.rate_limit_config.block_duration));
+            return Ok(false);
         }
-        
+
         info.count += 1;
+        info.requests_this_second += 1;
         info.last_request = now;
-        
+
         Ok(true)
     }
-    
+
     /// Check if IP is blocked
     async fn is_ip_blocked(&self, ip: IpAddr) -> Result<bool, String> {
-        if self.redis_pool.is_some() {
-            let pool = self.redis_pool.as_ref().unwrap();
-            let mut conn = pool.get().await.map_err(|e| format!("Redis error: {}", e))?;
+        if let Some(pool) = self.redis_pool.as_ref() {
+            let mut conn = pool
+                .get()
+                .await
+                .map_err(|e| format!("Redis error: {}", e))?;
             let key = format!("blocked:{}", ip);
-            let is_blocked: bool = conn.exists(&key).await.map_err(|e| format!("Redis error: {}", e))?;
+            let is_blocked: bool = conn
+                .exists(&key)
+                .await
+                .map_err(|e| format!("Redis error: {}", e))?;
             Ok(is_blocked)
         } else {
             let cache = self.local_cache.read().await;
@@ -240,38 +264,47 @@ impl HttpSecurityMiddleware {
             }
         }
     }
-    
+
     /// Block an IP address
     async fn block_ip(&self, ip: IpAddr) -> Result<(), String> {
-        if self.redis_pool.is_some() {
-            let pool = self.redis_pool.as_ref().unwrap();
-            let mut conn = pool.get().await.map_err(|e| format!("Redis error: {}", e))?;
+        if let Some(pool) = self.redis_pool.as_ref() {
+            let mut conn = pool
+                .get()
+                .await
+                .map_err(|e| format!("Redis error: {}", e))?;
             let key = format!("blocked:{}", ip);
             conn.set_ex::<_, _, ()>(key, "1", self.rate_limit_config.block_duration)
                 .await
                 .map_err(|e| format!("Redis error: {}", e))?;
         }
-        
-        log::warn!("Blocked IP {} for {} seconds due to rate limit violation", 
-                   ip, self.rate_limit_config.block_duration);
-        
+
+        log::warn!(
+            "Blocked IP {} for {} seconds due to rate limit violation",
+            ip,
+            self.rate_limit_config.block_duration
+        );
+
         Ok(())
     }
-    
+
     /// Check connection limit for an IP
     pub async fn check_connection_limit(&self, ip: IpAddr) -> Result<bool, String> {
         let mut connections = self.connection_count.write().await;
         let count = connections.entry(ip).or_insert(0);
-        
+
         if *count >= self.dos_config.max_connections_per_ip {
-            log::warn!("Connection limit exceeded for IP {}: {} connections", ip, count);
+            log::warn!(
+                "Connection limit exceeded for IP {}: {} connections",
+                ip,
+                count
+            );
             return Ok(false);
         }
-        
+
         *count += 1;
         Ok(true)
     }
-    
+
     /// Decrement connection count
     pub async fn decrement_connection(&self, ip: IpAddr) {
         let mut connections = self.connection_count.write().await;
@@ -284,31 +317,31 @@ impl HttpSecurityMiddleware {
             }
         }
     }
-    
+
     /// Validate request body size
     pub fn validate_body_size(&self, size: usize) -> bool {
         size <= self.dos_config.max_body_size
     }
-    
+
     /// Get request timeout duration
     pub fn get_timeout(&self) -> Duration {
         Duration::from_secs(self.dos_config.request_timeout)
     }
-    
+
     /// Start cleanup task for local cache
     fn start_cleanup_task(&self) {
         let cache = self.local_cache.clone();
         let window_seconds = self.rate_limit_config.window_seconds;
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let mut cache = cache.write().await;
                 let now = Instant::now();
-                
+
                 // Remove old entries
                 cache.retain(|_, info| {
                     // Keep if within window or blocked
@@ -323,7 +356,7 @@ impl HttpSecurityMiddleware {
 /// Helper functions for HTTP headers
 pub mod headers {
     use std::net::IpAddr;
-    
+
     /// Extract client IP from headers (considering proxies)
     pub fn extract_client_ip(
         remote_addr: Option<IpAddr>,
@@ -338,18 +371,18 @@ pub mod headers {
                 }
             }
         }
-        
+
         // Try X-Real-IP
         if let Some(real_ip) = x_real_ip {
             if let Ok(ip) = real_ip.parse::<IpAddr>() {
                 return Some(ip);
             }
         }
-        
+
         // Fall back to remote address
         remote_addr
     }
-    
+
     /// Add security headers to response with nonce support
     pub fn add_security_headers_with_nonce(nonce: Option<String>) -> Vec<(String, String)> {
         let csp = if let Some(nonce_value) = nonce {
@@ -382,10 +415,10 @@ pub mod headers {
                 base-uri 'self'; \
                 form-action 'self'; \
                 frame-ancestors 'none'; \
-                upgrade-insecure-requests;"
+                upgrade-insecure-requests;",
             )
         };
-        
+
         vec![
             ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
             ("X-Frame-Options".to_string(), "DENY".to_string()),
@@ -399,7 +432,7 @@ pub mod headers {
             ("Cross-Origin-Embedder-Policy".to_string(), "require-corp".to_string()),
         ]
     }
-    
+
     /// Add security headers to response (backward compatibility)
     pub fn add_security_headers() -> Vec<(&'static str, &'static str)> {
         vec![
@@ -412,12 +445,12 @@ pub mod headers {
             ("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"),
         ]
     }
-    
+
     /// Generate a secure nonce for CSP
     pub fn generate_csp_nonce() -> String {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
         use rand::Rng;
-        
+
         let mut rng = rand::thread_rng();
         let random_bytes: [u8; 16] = rng.gen();
         general_purpose::STANDARD.encode(random_bytes)
@@ -428,7 +461,7 @@ pub mod headers {
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
-    
+
     #[tokio::test]
     async fn test_rate_limit_local() {
         let config = RateLimitConfig {
@@ -438,50 +471,47 @@ mod tests {
             burst_size: 2,
             block_duration: 5,
         };
-        
-        let middleware = HttpSecurityMiddleware::new(
-            config,
-            DosProtectionConfig::default(),
-            None,
-        ).await;
-        
+
+        let middleware =
+            HttpSecurityMiddleware::new(config, DosProtectionConfig::default(), None).await;
+
         let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
-        
+
         // Should allow first 5 requests
         for _ in 0..5 {
             assert!(middleware.check_rate_limit(ip).await.unwrap());
         }
-        
+
         // Should allow burst (2 more)
         for _ in 0..2 {
             assert!(middleware.check_rate_limit(ip).await.unwrap());
         }
-        
+
         // Should block after burst exceeded
         assert!(!middleware.check_rate_limit(ip).await.unwrap());
     }
-    
+
     #[test]
     fn test_extract_client_ip() {
         use headers::extract_client_ip;
-        
+
         let remote = Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)));
         let forwarded = Some("192.168.1.1, 10.0.0.1");
         let real_ip = Some("172.16.0.1");
-        
+
         // Should prefer X-Forwarded-For
         let ip = extract_client_ip(remote, forwarded, real_ip);
         assert_eq!(ip, Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))));
-        
+
         // Should use X-Real-IP if no X-Forwarded-For
         let ip = extract_client_ip(remote, None, real_ip);
         assert_eq!(ip, Some(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1))));
-        
+
         // Should fall back to remote address
         let ip = extract_client_ip(remote, None, None);
         assert_eq!(ip, remote);
     }
-    
+
     #[tokio::test]
     async fn test_connection_limit() {
         let middleware = HttpSecurityMiddleware::new(
@@ -491,19 +521,45 @@ mod tests {
                 ..Default::default()
             },
             None,
-        ).await;
-        
+        )
+        .await;
+
         let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
-        
+
         // Should allow first 2 connections
         assert!(middleware.check_connection_limit(ip).await.unwrap());
         assert!(middleware.check_connection_limit(ip).await.unwrap());
-        
+
         // Should block 3rd connection
         assert!(!middleware.check_connection_limit(ip).await.unwrap());
-        
+
         // Should allow after decrement
         middleware.decrement_connection(ip).await;
         assert!(middleware.check_connection_limit(ip).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_local_rate_limit_tracks_per_second_separately_from_window() {
+        let middleware = HttpSecurityMiddleware::new(
+            RateLimitConfig {
+                max_requests: 100,
+                window_seconds: 60,
+                use_redis: false,
+                burst_size: 0,
+                block_duration: 5,
+            },
+            DosProtectionConfig {
+                max_requests_per_second: 2,
+                ..Default::default()
+            },
+            None,
+        )
+        .await;
+
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2));
+
+        assert!(middleware.check_rate_limit(ip).await.unwrap());
+        assert!(middleware.check_rate_limit(ip).await.unwrap());
+        assert!(!middleware.check_rate_limit(ip).await.unwrap());
     }
 }

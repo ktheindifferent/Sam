@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use anyhow::{Context, Result};
 use std::path::Path;
-use std::process::Stdio;
-use tokio::{fs, process::Command};
-use tokio::io::AsyncBufReadExt;
 use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::Arc;
+use tokio::io::AsyncBufReadExt;
+use tokio::sync::Mutex;
+use tokio::{fs, process::Command};
 
 // use crate::cli::helpers::{run_command_stream_lines, append_line, append_and_tts};
 
@@ -77,40 +77,51 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         }
         _ if cmd.starts_with("llama ") => {
             let rest = cmd["llama ".len()..].trim().to_string();
-            
+
             if rest.is_empty() {
                 let mut out = output_lines.lock().await;
-                out.push("Usage: llama <model_path> <prompt> or llama <prompt> (with default model)".to_string());
+                out.push(
+                    "Usage: llama <model_path> <prompt> or llama <prompt> (with default model)"
+                        .to_string(),
+                );
                 return;
             }
-            
+
             // Check if the input might be just a prompt (no model path specified)
-            let default_model_path = PathBuf::from("/opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf");
-            
+            let default_model_path =
+                PathBuf::from("/opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf");
+
             // Check if the first part looks like a file path (contains /, ends with .gguf, etc.)
             // If not, assume the entire input is a prompt and use the default model
-            let (model_path_str, prompt_str) = if rest.contains('/') || rest.ends_with(".gguf") || rest.ends_with(".bin") {
-                // Looks like a model path was provided, split on the first space
-                let mut split = rest.splitn(2, ' ');
-                let first_part = split.next().unwrap_or("").to_string();
-                let second_part = split.next().unwrap_or("").to_string();
-                
-                if second_part.is_empty() {
+            let (model_path_str, prompt_str) =
+                if rest.contains('/') || rest.ends_with(".gguf") || rest.ends_with(".bin") {
+                    // Looks like a model path was provided, split on the first space
+                    let mut split = rest.splitn(2, ' ');
+                    let first_part = split.next().unwrap_or("").to_string();
+                    let second_part = split.next().unwrap_or("").to_string();
+
+                    if second_part.is_empty() {
+                        let mut out = output_lines.lock().await;
+                        out.push("Usage: llama <model_path> <prompt>".to_string());
+                        return;
+                    }
+                    (first_part, second_part)
+                } else if default_model_path.exists() {
+                    // Treat entire input as prompt and use default model
+                    (default_model_path.to_string_lossy().to_string(), rest)
+                } else {
+                    // No default model exists, show usage
                     let mut out = output_lines.lock().await;
-                    out.push("Usage: llama <model_path> <prompt>".to_string());
+                    out.push(
+                    "Default model not found at /opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf"
+                        .to_string(),
+                );
+                    out.push(
+                        "Usage: llama <model_path> <prompt> or llama <prompt> (with default model)"
+                            .to_string(),
+                    );
                     return;
-                }
-                (first_part, second_part)
-            } else if default_model_path.exists() {
-                // Treat entire input as prompt and use default model
-                (default_model_path.to_string_lossy().to_string(), rest)
-            } else {
-                // No default model exists, show usage
-                let mut out = output_lines.lock().await;
-                out.push("Default model not found at /opt/sam/models/tinyllama-1.1b-chat-v1.0.Q4_0.gguf".to_string());
-                out.push("Usage: llama <model_path> <prompt> or llama <prompt> (with default model)".to_string());
-                return;
-            };
+                };
 
             crate::cli::spinner::run_with_spinner(
                 output_lines,
@@ -135,7 +146,11 @@ pub async fn handle_llama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 }
 
 // Helper: Run a command and stream output lines
-async fn run_command_stream_lines(mut cmd: Command, output_lines: Option<&Arc<Mutex<Vec<String>>>>, prefix: &str) -> Result<()> {
+async fn run_command_stream_lines(
+    mut cmd: Command,
+    output_lines: Option<&Arc<Mutex<Vec<String>>>>,
+    prefix: &str,
+) -> Result<()> {
     let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -202,11 +217,18 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(
 
     // Build with CMake
     let mut cmake_cmd = Command::new("cmake");
-    cmake_cmd.arg("-DLLAMA_CURL=OFF").arg("-DGGML_CCACHE=OFF").arg(".").current_dir(&llama_repo_dir);
+    cmake_cmd
+        .arg("-DLLAMA_CURL=OFF")
+        .arg("-DGGML_CCACHE=OFF")
+        .arg(".")
+        .current_dir(&llama_repo_dir);
     run_command_stream_lines(cmake_cmd, output_lines, "cmake").await?;
 
     let mut build_cmd = Command::new("cmake");
-    build_cmd.arg("--build").arg(".").current_dir(&llama_repo_dir);
+    build_cmd
+        .arg("--build")
+        .arg(".")
+        .current_dir(&llama_repo_dir);
     run_command_stream_lines(build_cmd, output_lines, "cmake-build").await?;
 
     // Ensure /opt/sam/bin exists
@@ -231,7 +253,11 @@ pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(
                     fs::copy(&path, &dest)
                         .await
                         .with_context(|| format!("Failed to copy {:?} to {:?}", path, dest))?;
-                    crate::println(output_lines, format!("Installed {} to {}", fname, dest.display())).await;
+                    crate::println(
+                        output_lines,
+                        format!("Installed {} to {}", fname, dest.display()),
+                    )
+                    .await;
                 }
             }
         }

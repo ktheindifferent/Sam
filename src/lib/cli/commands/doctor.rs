@@ -18,7 +18,9 @@ pub async fn run_doctor() {
         match tokio::time::timeout(
             std::time::Duration::from_secs(3),
             crate::services::pg::health_check(),
-        ).await {
+        )
+        .await
+        {
             Ok(Ok(_)) => println!("✅ Connected"),
             Ok(Err(e)) => println!("❌ {}", e),
             Err(_) => println!("⏰ Timeout"),
@@ -32,7 +34,9 @@ pub async fn run_doctor() {
     match tokio::time::timeout(
         std::time::Duration::from_secs(3),
         crate::services::redis::status(),
-    ).await {
+    )
+    .await
+    {
         Ok(status) => {
             if status == "running" || status == "connected" {
                 println!("✅ {}", status);
@@ -48,7 +52,9 @@ pub async fn run_doctor() {
     match tokio::time::timeout(
         std::time::Duration::from_secs(3),
         crate::services::docker::is_running_async(),
-    ).await {
+    )
+    .await
+    {
         Ok(Ok(true)) => println!("✅ Running"),
         Ok(Ok(false)) => println!("❌ Stopped"),
         Ok(Err(e)) => println!("❌ {}", e),
@@ -57,17 +63,20 @@ pub async fn run_doctor() {
 
     // Check Ollama
     print!("  Ollama ............... ");
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(3),
-        async {
-            let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
-            if service.is_installed().await {
-                if service.is_running().await { "running" } else { "stopped" }
+    match tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
+        if service.is_installed().await {
+            if service.is_running().await {
+                "running"
             } else {
-                "not installed"
+                "stopped"
             }
-        },
-    ).await {
+        } else {
+            "not installed"
+        }
+    })
+    .await
+    {
         Ok("running") => println!("✅ Running"),
         Ok("stopped") => println!("⚠️  Stopped (installed)"),
         Ok("not installed") => println!("❌ Not installed"),
@@ -112,11 +121,20 @@ pub async fn run_doctor() {
             let avail_gb = available as f64 / (1024.0 * 1024.0 * 1024.0);
             let mount = disk.mount_point().display();
             if used_pct > 90.0 {
-                println!("    {} ...... ❌ {:.1}% used ({:.1} GB free)", mount, used_pct, avail_gb);
+                println!(
+                    "    {} ...... ❌ {:.1}% used ({:.1} GB free)",
+                    mount, used_pct, avail_gb
+                );
             } else if used_pct > 80.0 {
-                println!("    {} ...... ⚠️  {:.1}% used ({:.1} GB free)", mount, used_pct, avail_gb);
+                println!(
+                    "    {} ...... ⚠️  {:.1}% used ({:.1} GB free)",
+                    mount, used_pct, avail_gb
+                );
             } else {
-                println!("    {} ...... ✅ {:.1}% used ({:.1} GB free)", mount, used_pct, avail_gb);
+                println!(
+                    "    {} ...... ✅ {:.1}% used ({:.1} GB free)",
+                    mount, used_pct, avail_gb
+                );
             }
         }
     }

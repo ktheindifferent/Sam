@@ -1,10 +1,10 @@
+use async_trait::async_trait;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
 use tokio::fs;
-use regex::Regex;
 
 use super::errors::CodingAgentError as ServiceError;
 use super::traits::provider::LLMProvider;
@@ -448,20 +448,33 @@ impl DocumentationGenerator {
     }
 
     fn register_analyzers(&mut self) {
-        self.analyzers.insert("rust".to_string(), Box::new(RustAnalyzer::new()));
-        self.analyzers.insert("javascript".to_string(), Box::new(JsAnalyzer::new()));
-        self.analyzers.insert("typescript".to_string(), Box::new(TsAnalyzer::new()));
-        self.analyzers.insert("python".to_string(), Box::new(PythonAnalyzer::new()));
-        self.analyzers.insert("go".to_string(), Box::new(GoAnalyzer::new()));
+        self.analyzers
+            .insert("rust".to_string(), Box::new(RustAnalyzer::new()));
+        self.analyzers
+            .insert("javascript".to_string(), Box::new(JsAnalyzer::new()));
+        self.analyzers
+            .insert("typescript".to_string(), Box::new(TsAnalyzer::new()));
+        self.analyzers
+            .insert("python".to_string(), Box::new(PythonAnalyzer::new()));
+        self.analyzers
+            .insert("go".to_string(), Box::new(GoAnalyzer::new()));
     }
 
     fn register_formatters(&mut self) {
-        self.formatters.insert(OutputFormat::Markdown, Box::new(MarkdownFormatter::new()));
-        self.formatters.insert(OutputFormat::Html, Box::new(HtmlFormatter::new()));
-        self.formatters.insert(OutputFormat::Pdf, Box::new(PdfFormatter::new()));
-        self.formatters.insert(OutputFormat::Json, Box::new(JsonFormatter::new()));
-        self.formatters.insert(OutputFormat::Docusaurus, Box::new(DocusaurusFormatter::new()));
-        self.formatters.insert(OutputFormat::Swagger, Box::new(SwaggerFormatter::new()));
+        self.formatters
+            .insert(OutputFormat::Markdown, Box::new(MarkdownFormatter::new()));
+        self.formatters
+            .insert(OutputFormat::Html, Box::new(HtmlFormatter::new()));
+        self.formatters
+            .insert(OutputFormat::Pdf, Box::new(PdfFormatter::new()));
+        self.formatters
+            .insert(OutputFormat::Json, Box::new(JsonFormatter::new()));
+        self.formatters.insert(
+            OutputFormat::Docusaurus,
+            Box::new(DocusaurusFormatter::new()),
+        );
+        self.formatters
+            .insert(OutputFormat::Swagger, Box::new(SwaggerFormatter::new()));
     }
 
     pub async fn generate(
@@ -473,7 +486,9 @@ impl DocumentationGenerator {
         let project_info = self.analyze_project(project_path).await?;
 
         // Extract code documentation
-        let modules = self.extract_module_docs(project_path, &project_info).await?;
+        let modules = self
+            .extract_module_docs(project_path, &project_info)
+            .await?;
 
         // Generate API documentation
         let api_reference = if config.include_api {
@@ -509,21 +524,23 @@ impl DocumentationGenerator {
         let output_format = config.output_format;
 
         // Format documentation
-        let formatted = self.format_documentation(
-            Documentation {
-                project_name: project_info.name,
-                version: project_info.version,
-                description: project_info.description,
-                modules,
-                api_reference: api_reference.unwrap_or_default(),
-                tutorials,
-                examples,
-                architecture: architecture.unwrap_or_else(|| self.default_architecture()),
-                deployment_guide,
-                troubleshooting,
-            },
-            output_format.clone(),
-        ).await?;
+        let formatted = self
+            .format_documentation(
+                Documentation {
+                    project_name: project_info.name,
+                    version: project_info.version,
+                    description: project_info.description,
+                    modules,
+                    api_reference: api_reference.unwrap_or_default(),
+                    tutorials,
+                    examples,
+                    architecture: architecture.unwrap_or_else(|| self.default_architecture()),
+                    deployment_guide,
+                    troubleshooting,
+                },
+                output_format.clone(),
+            )
+            .await?;
 
         Ok(GeneratedDocumentation {
             content: formatted,
@@ -547,7 +564,8 @@ impl DocumentationGenerator {
         if let Ok(cargo_toml) = fs::read_to_string(project_path.join("Cargo.toml")).await {
             project_info = self.parse_cargo_toml(&cargo_toml)?;
             project_info.language = "rust".to_string();
-        } else if let Ok(package_json) = fs::read_to_string(project_path.join("package.json")).await {
+        } else if let Ok(package_json) = fs::read_to_string(project_path.join("package.json")).await
+        {
             project_info = self.parse_package_json(&package_json)?;
             project_info.language = "javascript".to_string();
         } else if let Ok(go_mod) = fs::read_to_string(project_path.join("go.mod")).await {
@@ -566,17 +584,23 @@ impl DocumentationGenerator {
 
         for line in content.lines() {
             if line.starts_with("name =") {
-                info.name = line.split('=').nth(1)
+                info.name = line
+                    .split('=')
+                    .nth(1)
                     .map(|s| s.trim().trim_matches('"'))
                     .unwrap_or_default()
                     .to_string();
             } else if line.starts_with("version =") {
-                info.version = line.split('=').nth(1)
+                info.version = line
+                    .split('=')
+                    .nth(1)
                     .map(|s| s.trim().trim_matches('"'))
                     .unwrap_or_default()
                     .to_string();
             } else if line.starts_with("description =") {
-                info.description = line.split('=').nth(1)
+                info.description = line
+                    .split('=')
+                    .nth(1)
                     .map(|s| s.trim().trim_matches('"'))
                     .unwrap_or_default()
                     .to_string();
@@ -616,17 +640,21 @@ impl DocumentationGenerator {
 
     async fn count_source_files(&self, path: &Path) -> Result<usize, ServiceError> {
         let mut count = 0;
-        let mut entries = fs::read_dir(path).await
+        let mut entries = fs::read_dir(path)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(path.to_path_buf()),
             })?;
 
-        while let Some(entry) = entries.next_entry().await
+        while let Some(entry) = entries
+            .next_entry()
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(path.to_path_buf()),
-            })? {
+            })?
+        {
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension() {
@@ -635,10 +663,9 @@ impl DocumentationGenerator {
                     }
                 }
             } else if path.is_dir() {
-                let dir_name = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                if !dir_name.starts_with('.') && dir_name != "node_modules" && dir_name != "target" {
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !dir_name.starts_with('.') && dir_name != "node_modules" && dir_name != "target"
+                {
                     count += Box::pin(self.count_source_files(&path)).await?;
                 }
             }
@@ -652,11 +679,13 @@ impl DocumentationGenerator {
         project_path: &Path,
         project_info: &ProjectInfo,
     ) -> Result<Vec<ModuleDocumentation>, ServiceError> {
-        let analyzer = self.analyzers.get(&project_info.language)
-            .ok_or_else(|| ServiceError::NotFound {
-                resource: "analyzer".to_string(),
-                id: project_info.language.clone(),
-            })?;
+        let analyzer =
+            self.analyzers
+                .get(&project_info.language)
+                .ok_or_else(|| ServiceError::NotFound {
+                    resource: "analyzer".to_string(),
+                    id: project_info.language.clone(),
+                })?;
 
         analyzer.extract_modules(project_path).await
     }
@@ -697,52 +726,61 @@ impl DocumentationGenerator {
             2. Basic usage\n\
             3. Common patterns\n\
             4. Best practices",
-            project_info.language,
-            project_info.name,
-            project_info.description
+            project_info.language, project_info.name, project_info.description
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
         self.parse_tutorials(&response)
     }
 
     fn parse_tutorials(&self, _response: &str) -> Result<Vec<Tutorial>, ServiceError> {
-        Ok(vec![
-            Tutorial {
-                title: "Getting Started".to_string(),
-                description: "Learn the basics".to_string(),
-                difficulty: DifficultyLevel::Beginner,
-                estimated_time: "15 minutes".to_string(),
-                prerequisites: Vec::new(),
-                steps: Vec::new(),
-                summary: "You've learned the basics!".to_string(),
-                next_steps: vec!["Explore advanced features".to_string()],
-            }
-        ])
+        Ok(vec![Tutorial {
+            title: "Getting Started".to_string(),
+            description: "Learn the basics".to_string(),
+            difficulty: DifficultyLevel::Beginner,
+            estimated_time: "15 minutes".to_string(),
+            prerequisites: Vec::new(),
+            steps: Vec::new(),
+            summary: "You've learned the basics!".to_string(),
+            next_steps: vec!["Explore advanced features".to_string()],
+        }])
     }
 
-    async fn extract_examples(&self, project_path: &Path) -> Result<Vec<CodeExample>, ServiceError> {
+    async fn extract_examples(
+        &self,
+        project_path: &Path,
+    ) -> Result<Vec<CodeExample>, ServiceError> {
         let examples_dir = project_path.join("examples");
         let mut examples = Vec::new();
 
         if examples_dir.exists() {
-            let mut entries = fs::read_dir(&examples_dir).await
-                .map_err(|e| ServiceError::IoError {
-                    message: e.to_string(),
-                    path: Some(examples_dir.clone()),
-                })?;
+            let mut entries =
+                fs::read_dir(&examples_dir)
+                    .await
+                    .map_err(|e| ServiceError::IoError {
+                        message: e.to_string(),
+                        path: Some(examples_dir.clone()),
+                    })?;
 
-            while let Some(entry) = entries.next_entry().await
-                .map_err(|e| ServiceError::IoError {
-                    message: e.to_string(),
-                    path: Some(examples_dir.clone()),
-                })? {
+            while let Some(entry) =
+                entries
+                    .next_entry()
+                    .await
+                    .map_err(|e| ServiceError::IoError {
+                        message: e.to_string(),
+                        path: Some(examples_dir.clone()),
+                    })?
+            {
                 if entry.path().is_file() {
-                    let content = fs::read_to_string(entry.path()).await
-                        .map_err(|e| ServiceError::IoError {
+                    let content = fs::read_to_string(entry.path()).await.map_err(|e| {
+                        ServiceError::IoError {
                             message: e.to_string(),
                             path: Some(entry.path()),
-                        })?;
+                        }
+                    })?;
 
                     examples.push(CodeExample {
                         title: entry.file_name().to_string_lossy().to_string(),
@@ -770,7 +808,10 @@ impl DocumentationGenerator {
             project_info.language, project_info.name
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(ArchitectureDocumentation {
             overview: response,
@@ -795,7 +836,10 @@ impl DocumentationGenerator {
         }
     }
 
-    async fn generate_deployment_guide(&self, _project_info: &ProjectInfo) -> Result<DeploymentGuide, ServiceError> {
+    async fn generate_deployment_guide(
+        &self,
+        _project_info: &ProjectInfo,
+    ) -> Result<DeploymentGuide, ServiceError> {
         Ok(DeploymentGuide {
             environments: Vec::new(),
             requirements: SystemRequirements {
@@ -847,7 +891,9 @@ impl DocumentationGenerator {
         doc: Documentation,
         format: OutputFormat,
     ) -> Result<String, ServiceError> {
-        let formatter = self.formatters.get(&format)
+        let formatter = self
+            .formatters
+            .get(&format)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "formatter".to_string(),
                 id: format.to_string(),
@@ -932,7 +978,10 @@ struct ProjectInfo {
 
 #[async_trait]
 trait CodeAnalyzer: Send + Sync {
-    async fn extract_modules(&self, project_path: &Path) -> Result<Vec<ModuleDocumentation>, ServiceError>;
+    async fn extract_modules(
+        &self,
+        project_path: &Path,
+    ) -> Result<Vec<ModuleDocumentation>, ServiceError>;
 }
 
 // Language-specific analyzers
@@ -947,7 +996,10 @@ impl RustAnalyzer {
 
 #[async_trait]
 impl CodeAnalyzer for RustAnalyzer {
-    async fn extract_modules(&self, _project_path: &Path) -> Result<Vec<ModuleDocumentation>, ServiceError> {
+    async fn extract_modules(
+        &self,
+        _project_path: &Path,
+    ) -> Result<Vec<ModuleDocumentation>, ServiceError> {
         Ok(Vec::new())
     }
 }
@@ -962,7 +1014,10 @@ impl JsAnalyzer {
 
 #[async_trait]
 impl CodeAnalyzer for JsAnalyzer {
-    async fn extract_modules(&self, _project_path: &Path) -> Result<Vec<ModuleDocumentation>, ServiceError> {
+    async fn extract_modules(
+        &self,
+        _project_path: &Path,
+    ) -> Result<Vec<ModuleDocumentation>, ServiceError> {
         Ok(Vec::new())
     }
 }
@@ -977,7 +1032,10 @@ impl TsAnalyzer {
 
 #[async_trait]
 impl CodeAnalyzer for TsAnalyzer {
-    async fn extract_modules(&self, _project_path: &Path) -> Result<Vec<ModuleDocumentation>, ServiceError> {
+    async fn extract_modules(
+        &self,
+        _project_path: &Path,
+    ) -> Result<Vec<ModuleDocumentation>, ServiceError> {
         Ok(Vec::new())
     }
 }
@@ -992,7 +1050,10 @@ impl PythonAnalyzer {
 
 #[async_trait]
 impl CodeAnalyzer for PythonAnalyzer {
-    async fn extract_modules(&self, _project_path: &Path) -> Result<Vec<ModuleDocumentation>, ServiceError> {
+    async fn extract_modules(
+        &self,
+        _project_path: &Path,
+    ) -> Result<Vec<ModuleDocumentation>, ServiceError> {
         Ok(Vec::new())
     }
 }
@@ -1007,7 +1068,10 @@ impl GoAnalyzer {
 
 #[async_trait]
 impl CodeAnalyzer for GoAnalyzer {
-    async fn extract_modules(&self, _project_path: &Path) -> Result<Vec<ModuleDocumentation>, ServiceError> {
+    async fn extract_modules(
+        &self,
+        _project_path: &Path,
+    ) -> Result<Vec<ModuleDocumentation>, ServiceError> {
         Ok(Vec::new())
     }
 }
@@ -1100,10 +1164,9 @@ impl JsonFormatter {
 #[async_trait]
 impl DocumentationFormatter for JsonFormatter {
     async fn format(&self, doc: &Documentation) -> Result<String, ServiceError> {
-        serde_json::to_string_pretty(doc)
-            .map_err(|e| ServiceError::SerializationError {
-                message: e.to_string(),
-            })
+        serde_json::to_string_pretty(doc).map_err(|e| ServiceError::SerializationError {
+            message: e.to_string(),
+        })
     }
 }
 
@@ -1147,10 +1210,9 @@ impl DocumentationFormatter for SwaggerFormatter {
             "paths": {}
         });
 
-        serde_json::to_string_pretty(&swagger)
-            .map_err(|e| ServiceError::SerializationError {
-                message: e.to_string(),
-            })
+        serde_json::to_string_pretty(&swagger).map_err(|e| ServiceError::SerializationError {
+            message: e.to_string(),
+        })
     }
 }
 

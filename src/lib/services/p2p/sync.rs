@@ -7,12 +7,12 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+use log::{debug, error, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use log::{warn, error, debug};
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
@@ -164,10 +164,14 @@ impl SyncManager {
         });
     }
 
-    pub async fn sync_with_peer(&self, peer_id: String, sync_type: String) -> Result<SyncResponse, Box<dyn std::error::Error>> {
+    pub async fn sync_with_peer(
+        &self,
+        peer_id: String,
+        sync_type: String,
+    ) -> Result<SyncResponse, Box<dyn std::error::Error>> {
         let local_states = self.local_states.read().await;
         let local_state = local_states.get(&sync_type);
-        
+
         let request = SyncRequest {
             sync_type: sync_type.clone(),
             last_sync: self.get_last_sync_time(&peer_id, &sync_type).await,
@@ -177,21 +181,24 @@ impl SyncManager {
 
         // Send sync request to peer (implementation depends on P2P layer)
         let response = self.send_sync_request(&peer_id, request).await?;
-        
+
         // Process response
-        self.process_sync_response(&peer_id, response.clone()).await?;
-        
+        self.process_sync_response(&peer_id, response.clone())
+            .await?;
+
         Ok(response)
     }
 
-    pub async fn handle_sync_request(&self, peer_id: String, request: SyncRequest) -> Result<SyncResponse, Box<dyn std::error::Error>> {
+    pub async fn handle_sync_request(
+        &self,
+        peer_id: String,
+        request: SyncRequest,
+    ) -> Result<SyncResponse, Box<dyn std::error::Error>> {
         let local_states = self.local_states.read().await;
-        
+
         if let Some(local_state) = local_states.get(&request.sync_type) {
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_secs();
-            
+            let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+
             if request.full_sync || request.state_hash != Some(local_state.hash.clone()) {
                 // Send full state
                 Ok(SyncResponse {
@@ -226,9 +233,13 @@ impl SyncManager {
         }
     }
 
-    async fn process_sync_response(&self, peer_id: &str, response: SyncResponse) -> Result<(), Box<dyn std::error::Error>> {
+    async fn process_sync_response(
+        &self,
+        peer_id: &str,
+        response: SyncResponse,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut local_states = self.local_states.write().await;
-        
+
         if let Some(full_state) = response.full_state {
             // Apply full state
             local_states.insert(response.sync_type.clone(), full_state);
@@ -236,22 +247,33 @@ impl SyncManager {
             // Apply delta
             self.apply_delta(&response.sync_type, delta).await?;
         }
-        
+
         // Handle conflicts
         let conflicts_count = response.conflicts.len();
         if !response.conflicts.is_empty() {
             self.handle_conflicts(response.conflicts).await?;
         }
-        
+
         // Record sync event
-        self.record_sync_event(peer_id.to_string(), response.sync_type, true, 0, conflicts_count).await;
-        
+        self.record_sync_event(
+            peer_id.to_string(),
+            response.sync_type,
+            true,
+            0,
+            conflicts_count,
+        )
+        .await;
+
         Ok(())
     }
 
-    async fn apply_delta(&self, sync_type: &str, delta: SyncDelta) -> Result<(), Box<dyn std::error::Error>> {
+    async fn apply_delta(
+        &self,
+        sync_type: &str,
+        delta: SyncDelta,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut local_states = self.local_states.write().await;
-        
+
         if let Some(state) = local_states.get_mut(sync_type) {
             for operation in delta.operations {
                 match operation {
@@ -259,7 +281,11 @@ impl SyncManager {
                         // Apply insert operation
                         debug!("Applying insert: {}", key);
                     }
-                    SyncOperation::Update { key, old_value, new_value } => {
+                    SyncOperation::Update {
+                        key,
+                        old_value,
+                        new_value,
+                    } => {
                         // Apply update operation
                         debug!("Applying update: {}", key);
                     }
@@ -274,17 +300,21 @@ impl SyncManager {
                 }
             }
         }
-        
+
         Ok(())
     }
 
-    async fn handle_conflicts(&self, conflicts: Vec<SyncConflict>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn handle_conflicts(
+        &self,
+        conflicts: Vec<SyncConflict>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match self.config.conflict_resolution {
             ConflictResolution::LatestWins => {
                 for conflict in conflicts {
                     if conflict.remote_timestamp > conflict.local_timestamp {
                         // Use remote value
-                        self.apply_conflict_resolution(&conflict.key, conflict.remote_value).await?;
+                        self.apply_conflict_resolution(&conflict.key, conflict.remote_value)
+                            .await?;
                     }
                     // Otherwise keep local value
                 }
@@ -293,7 +323,8 @@ impl SyncManager {
                 for conflict in conflicts {
                     if conflict.remote_timestamp < conflict.local_timestamp {
                         // Use remote value
-                        self.apply_conflict_resolution(&conflict.key, conflict.remote_value).await?;
+                        self.apply_conflict_resolution(&conflict.key, conflict.remote_value)
+                            .await?;
                     }
                     // Otherwise keep local value
                 }
@@ -311,11 +342,14 @@ impl SyncManager {
                 }
             }
         }
-        
+
         Ok(())
     }
 
-    async fn merge_conflict(&self, conflict: SyncConflict) -> Result<(String, Vec<u8>), Box<dyn std::error::Error>> {
+    async fn merge_conflict(
+        &self,
+        conflict: SyncConflict,
+    ) -> Result<(String, Vec<u8>), Box<dyn std::error::Error>> {
         // Simple merge strategy - combine both values
         // In practice, this would be more sophisticated
         let mut merged = conflict.local_value.clone();
@@ -323,31 +357,39 @@ impl SyncManager {
         Ok((conflict.key, merged))
     }
 
-    async fn apply_conflict_resolution(&self, key: &str, value: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+    async fn apply_conflict_resolution(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         debug!("Applying conflict resolution for key: {}", key);
         // Apply the resolved value
         Ok(())
     }
 
-    async fn generate_delta(&self, sync_type: &str, since: u64) -> Result<SyncDelta, Box<dyn std::error::Error>> {
+    async fn generate_delta(
+        &self,
+        sync_type: &str,
+        since: u64,
+    ) -> Result<SyncDelta, Box<dyn std::error::Error>> {
         // Generate delta based on changes since timestamp
         Ok(SyncDelta {
             from_version: since,
-            to_version: SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_secs(),
+            to_version: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
             operations: Vec::new(),
         })
     }
 
-    async fn send_sync_request(&self, peer_id: &str, request: SyncRequest) -> Result<SyncResponse, Box<dyn std::error::Error>> {
+    async fn send_sync_request(
+        &self,
+        peer_id: &str,
+        request: SyncRequest,
+    ) -> Result<SyncResponse, Box<dyn std::error::Error>> {
         // Send request to peer via P2P network
         // This is a placeholder - actual implementation would use P2P layer
         Ok(SyncResponse {
             sync_type: request.sync_type,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_secs(),
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
             delta: None,
             full_state: None,
             conflicts: Vec::new(),
@@ -356,32 +398,43 @@ impl SyncManager {
 
     async fn sync_all_peers(&self) -> Result<(), Box<dyn std::error::Error>> {
         let peers = self.sync_peers.read().await;
-        
+
         for (peer_id, peer_info) in peers.iter() {
             for sync_type in &peer_info.sync_types {
                 if self.config.sync_types.contains(sync_type) {
-                    if let Err(e) = self.sync_with_peer(peer_id.clone(), sync_type.clone()).await {
+                    if let Err(e) = self
+                        .sync_with_peer(peer_id.clone(), sync_type.clone())
+                        .await
+                    {
                         warn!("Failed to sync {} with peer {}: {}", sync_type, peer_id, e);
                     }
                 }
             }
         }
-        
+
         Ok(())
     }
 
     async fn get_last_sync_time(&self, peer_id: &str, sync_type: &str) -> Option<u64> {
         let history = self.sync_history.read().await;
-        
-        history.iter()
+
+        history
+            .iter()
             .filter(|e| e.peer_id == peer_id && e.sync_type == sync_type && e.success)
             .map(|e| e.timestamp)
             .max()
     }
 
-    async fn record_sync_event(&self, peer_id: String, sync_type: String, success: bool, changes: usize, conflicts: usize) {
+    async fn record_sync_event(
+        &self,
+        peer_id: String,
+        sync_type: String,
+        success: bool,
+        changes: usize,
+        conflicts: usize,
+    ) {
         let mut history = self.sync_history.write().await;
-        
+
         history.push(SyncEvent {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -393,7 +446,7 @@ impl SyncManager {
             changes,
             conflicts,
         });
-        
+
         // Keep only last 1000 events
         if history.len() > 1000 {
             history.drain(0..100);
@@ -402,13 +455,16 @@ impl SyncManager {
 
     pub async fn add_sync_peer(&self, peer_id: String, sync_types: HashSet<String>) {
         let mut peers = self.sync_peers.write().await;
-        
-        peers.insert(peer_id.clone(), PeerSyncInfo {
-            peer_id,
-            last_sync: 0,
-            sync_types,
-            reliability_score: 1.0,
-        });
+
+        peers.insert(
+            peer_id.clone(),
+            PeerSyncInfo {
+                peer_id,
+                last_sync: 0,
+                sync_types,
+                reliability_score: 1.0,
+            },
+        );
     }
 
     pub async fn remove_sync_peer(&self, peer_id: &str) {
@@ -419,13 +475,14 @@ impl SyncManager {
     pub async fn get_sync_status(&self) -> HashMap<String, Vec<SyncEvent>> {
         let history = self.sync_history.read().await;
         let mut status = HashMap::new();
-        
+
         for event in history.iter() {
-            status.entry(event.sync_type.clone())
+            status
+                .entry(event.sync_type.clone())
                 .or_insert_with(Vec::new)
                 .push(event.clone());
         }
-        
+
         status
     }
 
@@ -434,18 +491,23 @@ impl SyncManager {
         conflicts.clone()
     }
 
-    pub async fn resolve_conflict(&self, key: String, use_local: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn resolve_conflict(
+        &self,
+        key: String,
+        use_local: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut conflicts = self.pending_conflicts.write().await;
-        
+
         if let Some(pos) = conflicts.iter().position(|c| c.key == key) {
             let conflict = conflicts.remove(pos);
-            
+
             if !use_local {
-                self.apply_conflict_resolution(&key, conflict.remote_value).await?;
+                self.apply_conflict_resolution(&key, conflict.remote_value)
+                    .await?;
             }
             // If use_local is true, we keep the local value (do nothing)
         }
-        
+
         Ok(())
     }
 

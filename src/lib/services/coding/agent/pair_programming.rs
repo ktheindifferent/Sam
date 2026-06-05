@@ -1,9 +1,9 @@
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use tokio::sync::{RwLock, mpsc, broadcast};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::time::{interval, Duration};
 
 use super::errors::CodingAgentError as ServiceError;
@@ -73,13 +73,13 @@ pub struct SessionContext {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InteractionStyle {
-    Navigator,      // AI guides, user implements
-    Driver,         // User leads, AI assists
-    PingPong,       // Take turns writing code
-    Reviewer,       // AI reviews user's code
-    Teacher,        // AI teaches concepts
-    Debugger,       // AI helps debug issues
-    Architect,      // AI helps with design
+    Navigator, // AI guides, user implements
+    Driver,    // User leads, AI assists
+    PingPong,  // Take turns writing code
+    Reviewer,  // AI reviews user's code
+    Teacher,   // AI teaches concepts
+    Debugger,  // AI helps debug issues
+    Architect, // AI helps with design
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,13 +100,30 @@ pub enum Speaker {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
-    WriteCode { file: PathBuf, content: String },
-    ModifyCode { file: PathBuf, changes: Vec<TextEdit> },
-    RunCommand { command: String, output: String },
-    Explain { topic: String },
-    Suggest { suggestions: Vec<String> },
-    AskQuestion { question: String },
-    ProvideExample { example: String },
+    WriteCode {
+        file: PathBuf,
+        content: String,
+    },
+    ModifyCode {
+        file: PathBuf,
+        changes: Vec<TextEdit>,
+    },
+    RunCommand {
+        command: String,
+        output: String,
+    },
+    Explain {
+        topic: String,
+    },
+    Suggest {
+        suggestions: Vec<String>,
+    },
+    AskQuestion {
+        question: String,
+    },
+    ProvideExample {
+        example: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,7 +248,8 @@ impl PairProgrammingEngine {
         input: &str,
     ) -> Result<AiResponse, ServiceError> {
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(session_id)
+        let session = sessions
+            .get_mut(session_id)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "session".to_string(),
                 id: session_id.to_string(),
@@ -251,13 +269,17 @@ impl PairProgrammingEngine {
 
         // Generate appropriate response based on interaction style
         let response = match session.interaction_style {
-            InteractionStyle::Navigator => self.generate_navigator_response(session, &intent).await?,
+            InteractionStyle::Navigator => {
+                self.generate_navigator_response(session, &intent).await?
+            }
             InteractionStyle::Driver => self.generate_driver_response(session, &intent).await?,
             InteractionStyle::PingPong => self.generate_pingpong_response(session, &intent).await?,
             InteractionStyle::Reviewer => self.generate_reviewer_response(session, &intent).await?,
             InteractionStyle::Teacher => self.generate_teacher_response(session, &intent).await?,
             InteractionStyle::Debugger => self.generate_debugger_response(session, &intent).await?,
-            InteractionStyle::Architect => self.generate_architect_response(session, &intent).await?,
+            InteractionStyle::Architect => {
+                self.generate_architect_response(session, &intent).await?
+            }
         };
 
         // Add AI response to conversation history
@@ -284,7 +306,10 @@ impl PairProgrammingEngine {
             input, context
         );
 
-        let analysis = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let analysis = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         // Parse the analysis to determine intent
         self.parse_intent_analysis(&analysis)
@@ -328,7 +353,10 @@ impl PairProgrammingEngine {
     ) -> Result<AiResponse, ServiceError> {
         // AI takes the lead, guiding the user step by step
         let prompt = self.build_navigator_prompt(session, intent);
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(AiResponse {
             message: response,
@@ -347,7 +375,10 @@ impl PairProgrammingEngine {
     ) -> Result<AiResponse, ServiceError> {
         // User leads, AI provides support
         let prompt = self.build_support_prompt(session, intent);
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(AiResponse {
             message: response,
@@ -371,7 +402,10 @@ impl PairProgrammingEngine {
                 message: "Here's my contribution to the code:".to_string(),
                 code_snippet: Some(code.clone()),
                 action: Some(Action::WriteCode {
-                    file: session.active_file.clone().unwrap_or_else(|| PathBuf::from("main.rs")),
+                    file: session
+                        .active_file
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("main.rs")),
                     content: code,
                 }),
                 confidence: 0.75,
@@ -418,7 +452,10 @@ impl PairProgrammingEngine {
         intent: &UserIntent,
     ) -> Result<AiResponse, ServiceError> {
         // Teaching mode - explain concepts
-        let explanation = self.teaching_assistant.explain_concept(session, intent).await?;
+        let explanation = self
+            .teaching_assistant
+            .explain_concept(session, intent)
+            .await?;
 
         Ok(AiResponse {
             message: explanation.explanation,
@@ -467,18 +504,30 @@ impl PairProgrammingEngine {
         })
     }
 
-    fn build_navigator_prompt(&self, session: &PairProgrammingSession, intent: &UserIntent) -> String {
+    fn build_navigator_prompt(
+        &self,
+        session: &PairProgrammingSession,
+        intent: &UserIntent,
+    ) -> String {
         format!(
             "As a {} AI pair programmer named {}, guide the user through implementing {}. \
             User's intent: {:?}. Be encouraging and provide clear next steps.",
             session.ai_persona.experience_level.to_string(),
             session.ai_persona.name,
-            session.context.current_task.as_ref().unwrap_or(&"the task".to_string()),
+            session
+                .context
+                .current_task
+                .as_ref()
+                .unwrap_or(&"the task".to_string()),
             intent
         )
     }
 
-    fn build_support_prompt(&self, session: &PairProgrammingSession, intent: &UserIntent) -> String {
+    fn build_support_prompt(
+        &self,
+        session: &PairProgrammingSession,
+        intent: &UserIntent,
+    ) -> String {
         format!(
             "As a supportive AI assistant, help the user with their request. \
             Context: {:?}, Intent: {:?}. Provide helpful suggestions without taking over.",
@@ -486,23 +535,39 @@ impl PairProgrammingEngine {
         )
     }
 
-    async fn generate_code_continuation(&self, session: &PairProgrammingSession) -> Result<String, ServiceError> {
+    async fn generate_code_continuation(
+        &self,
+        session: &PairProgrammingSession,
+    ) -> Result<String, ServiceError> {
         let context = self.gather_code_context(session).await?;
         let prompt = format!(
             "Continue this code implementation:\n{}\n\nAdd the next logical piece of functionality.",
             context
         );
 
-        self.llm_provider.generate_response(&prompt, "gpt-4").await
+        self.llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await
             .map_err(|e| ServiceError::ExecutionError(e.to_string()))
     }
 
-    async fn gather_code_context(&self, session: &PairProgrammingSession) -> Result<String, ServiceError> {
+    async fn gather_code_context(
+        &self,
+        session: &PairProgrammingSession,
+    ) -> Result<String, ServiceError> {
         // Gather relevant code context from recent changes
-        let recent_code = session.code_changes.iter()
+        let recent_code = session
+            .code_changes
+            .iter()
             .rev()
             .take(3)
-            .map(|change| format!("// {}\n// File: {}", change.description, change.file.display()))
+            .map(|change| {
+                format!(
+                    "// {}\n// File: {}",
+                    change.description,
+                    change.file.display()
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -510,7 +575,8 @@ impl PairProgrammingEngine {
     }
 
     async fn review_code(&self, file: &Path) -> Result<String, ServiceError> {
-        let content = tokio::fs::read_to_string(file).await
+        let content = tokio::fs::read_to_string(file)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(file.to_path_buf()),
@@ -527,18 +593,28 @@ impl PairProgrammingEngine {
             content
         );
 
-        self.llm_provider.generate_response(&prompt, "gpt-4").await
+        self.llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await
             .map_err(|e| ServiceError::ExecutionError(e.to_string()))
     }
 
     fn extract_suggestions(&self, review: &str) -> Vec<String> {
-        review.lines()
+        review
+            .lines()
             .filter(|line| line.starts_with("- ") || line.starts_with("• "))
-            .map(|line| line.trim_start_matches("- ").trim_start_matches("• ").to_string())
+            .map(|line| {
+                line.trim_start_matches("- ")
+                    .trim_start_matches("• ")
+                    .to_string()
+            })
             .collect()
     }
 
-    async fn analyze_debugging_context(&self, session: &PairProgrammingSession) -> Result<String, ServiceError> {
+    async fn analyze_debugging_context(
+        &self,
+        session: &PairProgrammingSession,
+    ) -> Result<String, ServiceError> {
         let context = format!(
             "Debugging context:\n\
             - Current task: {:?}\n\
@@ -554,11 +630,16 @@ impl PairProgrammingEngine {
             context
         );
 
-        self.llm_provider.generate_response(&prompt, "gpt-4").await
+        self.llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await
             .map_err(|e| ServiceError::ExecutionError(e.to_string()))
     }
 
-    async fn suggest_architecture(&self, session: &PairProgrammingSession) -> Result<String, ServiceError> {
+    async fn suggest_architecture(
+        &self,
+        session: &PairProgrammingSession,
+    ) -> Result<String, ServiceError> {
         let prompt = format!(
             "Suggest a software architecture for:\n\
             - Project type: {}\n\
@@ -571,23 +652,28 @@ impl PairProgrammingEngine {
             session.context.goals
         );
 
-        self.llm_provider.generate_response(&prompt, "gpt-4").await
+        self.llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await
             .map_err(|e| ServiceError::ExecutionError(e.to_string()))
     }
 
     async fn generate_architecture_code(&self, design: &str) -> Result<String, ServiceError> {
-        let prompt = format!(
-            "Generate starter code for this architecture:\n{}",
-            design
-        );
+        let prompt = format!("Generate starter code for this architecture:\n{}", design);
 
-        self.llm_provider.generate_response(&prompt, "gpt-4").await
+        self.llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await
             .map_err(|e| ServiceError::ExecutionError(e.to_string()))
     }
 
-    pub async fn get_session(&self, session_id: &str) -> Result<PairProgrammingSession, ServiceError> {
+    pub async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Result<PairProgrammingSession, ServiceError> {
         let sessions = self.sessions.read().await;
-        sessions.get(session_id)
+        sessions
+            .get(session_id)
             .cloned()
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "session".to_string(),
@@ -601,7 +687,8 @@ impl PairProgrammingEngine {
         profile: LearningProfile,
     ) -> Result<(), ServiceError> {
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(session_id)
+        let session = sessions
+            .get_mut(session_id)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "session".to_string(),
                 id: session_id.to_string(),
@@ -617,7 +704,8 @@ impl PairProgrammingEngine {
         new_style: InteractionStyle,
     ) -> Result<(), ServiceError> {
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(session_id)
+        let session = sessions
+            .get_mut(session_id)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "session".to_string(),
                 id: session_id.to_string(),
@@ -690,7 +778,10 @@ impl SuggestionEngine {
             context
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
         Ok(response.lines().map(|s| s.to_string()).collect())
     }
 }
@@ -714,7 +805,11 @@ impl TeachingAssistant {
             Intent: {:?}\n\
             Languages: {:?}\n\
             Learning style: {:?}",
-            session.learning_profile.skill_level.values().next()
+            session
+                .learning_profile
+                .skill_level
+                .values()
+                .next()
                 .map(|s| format!("{:?}", s))
                 .unwrap_or_else(|| "intermediate".to_string()),
             intent,
@@ -722,7 +817,10 @@ impl TeachingAssistant {
             session.learning_profile.learning_style
         );
 
-        let explanation = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let explanation = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(Explanation {
             explanation,
@@ -821,7 +919,8 @@ impl CollaborativeSession {
 
     pub async fn add_participant(&mut self, participant: Participant) -> Result<(), ServiceError> {
         self.participants.push(participant.clone());
-        self.event_stream.send(CollaborationEvent::ParticipantJoined(participant))
+        self.event_stream
+            .send(CollaborationEvent::ParticipantJoined(participant))
             .map_err(|e| ServiceError::NetworkError {
                 message: e.to_string(),
                 url: None,
@@ -859,12 +958,18 @@ impl AiBehaviorEngine {
     pub fn new() -> Self {
         let mut behaviors = HashMap::new();
 
-        behaviors.insert("proactive_helper".to_string(),
-            Box::new(ProactiveHelper) as Box<dyn AiBehavior>);
-        behaviors.insert("pattern_recognizer".to_string(),
-            Box::new(PatternRecognizer) as Box<dyn AiBehavior>);
-        behaviors.insert("performance_coach".to_string(),
-            Box::new(PerformanceCoach) as Box<dyn AiBehavior>);
+        behaviors.insert(
+            "proactive_helper".to_string(),
+            Box::new(ProactiveHelper) as Box<dyn AiBehavior>,
+        );
+        behaviors.insert(
+            "pattern_recognizer".to_string(),
+            Box::new(PatternRecognizer) as Box<dyn AiBehavior>,
+        );
+        behaviors.insert(
+            "performance_coach".to_string(),
+            Box::new(PerformanceCoach) as Box<dyn AiBehavior>,
+        );
 
         Self { behaviors }
     }
@@ -890,7 +995,8 @@ struct ProactiveHelper;
 impl AiBehavior for ProactiveHelper {
     async fn execute(&self, _context: &SessionContext) -> Result<BehaviorAction, ServiceError> {
         Ok(BehaviorAction::Suggest(
-            "I noticed you might benefit from extracting this logic into a separate function.".to_string()
+            "I noticed you might benefit from extracting this logic into a separate function."
+                .to_string(),
         ))
     }
 
@@ -906,7 +1012,7 @@ struct PatternRecognizer;
 impl AiBehavior for PatternRecognizer {
     async fn execute(&self, _context: &SessionContext) -> Result<BehaviorAction, ServiceError> {
         Ok(BehaviorAction::TeachMoment(
-            "This looks like a good use case for the Strategy pattern.".to_string()
+            "This looks like a good use case for the Strategy pattern.".to_string(),
         ))
     }
 
@@ -922,7 +1028,7 @@ struct PerformanceCoach;
 impl AiBehavior for PerformanceCoach {
     async fn execute(&self, _context: &SessionContext) -> Result<BehaviorAction, ServiceError> {
         Ok(BehaviorAction::Encourage(
-            "Great progress! You've completed 3 functions in the last 10 minutes.".to_string()
+            "Great progress! You've completed 3 functions in the last 10 minutes.".to_string(),
         ))
     }
 

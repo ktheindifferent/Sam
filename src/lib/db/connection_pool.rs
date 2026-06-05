@@ -1,15 +1,13 @@
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
-use tokio_postgres::{NoTls, Row};
-use std::time::Duration;
-use std::sync::Arc;
+use log::{error, info};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use log::{info, error};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio_postgres::{NoTls, Row};
 
 /// Global database connection pool
-static DB_POOL: Lazy<Arc<DbPool>> = Lazy::new(|| {
-    Arc::new(DbPool::new())
-});
+static DB_POOL: Lazy<Arc<DbPool>> = Lazy::new(|| Arc::new(DbPool::new()));
 
 /// Database connection pool configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -40,7 +38,7 @@ impl Default for PoolConfig {
             max_connections: 32,
             min_connections: 2,
             connection_timeout_sec: 30,
-            idle_timeout_sec: 600, // 10 minutes
+            idle_timeout_sec: 600,  // 10 minutes
             max_lifetime_sec: 1800, // 30 minutes
         }
     }
@@ -71,7 +69,7 @@ impl DbPool {
     pub async fn init_with_config(config: PoolConfig) -> Result<(), Box<dyn std::error::Error>> {
         let pool = DB_POOL.clone();
         let pool_mut = pool.as_ref();
-        
+
         // Create deadpool configuration
         let mut cfg = Config::new();
         cfg.host = Some(config.host.clone());
@@ -79,7 +77,7 @@ impl DbPool {
         cfg.dbname = Some(config.database.clone());
         cfg.user = Some(config.username.clone());
         cfg.password = Some(config.password.clone());
-        
+
         // Set pool size
         cfg.pool = Some(deadpool_postgres::PoolConfig {
             max_size: config.max_connections,
@@ -90,24 +88,24 @@ impl DbPool {
             },
             queue_mode: deadpool::managed::QueueMode::Fifo,
         });
-        
+
         // Create manager configuration
         let mgr_config = ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         };
-        
+
         // Create the pool
         let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls)?;
-        
+
         // Test the connection
         let client = pool.get().await?;
         let _ = client.query_one("SELECT 1", &[]).await?;
-        
+
         info!(
             "Database connection pool initialized with {} connections",
             config.max_connections
         );
-        
+
         Ok(())
     }
 
@@ -166,11 +164,13 @@ impl DbPool {
     /// Execute multiple statements in a transaction
     pub async fn transaction<F, R>(f: F) -> Result<R, Box<dyn std::error::Error>>
     where
-        F: FnOnce(deadpool_postgres::Transaction<'_>) -> futures::future::BoxFuture<'_, Result<R, Box<dyn std::error::Error>>>,
+        F: FnOnce(
+            deadpool_postgres::Transaction<'_>,
+        ) -> futures::future::BoxFuture<'_, Result<R, Box<dyn std::error::Error>>>,
     {
         let mut client = Self::get_connection().await?;
         let tx = client.transaction().await?;
-        
+
         match f(tx).await {
             Ok(result) => {
                 // Transaction will be committed when it goes out of scope
@@ -187,7 +187,7 @@ impl DbPool {
     pub async fn get_stats() -> Result<PoolStats, Box<dyn std::error::Error>> {
         let pool = get_pool().await?;
         let status = pool.status();
-        
+
         Ok(PoolStats {
             size: status.size,
             available: status.available,
@@ -306,11 +306,14 @@ impl QueryBuilder {
     }
 
     pub async fn execute(self) -> Result<Vec<Row>, Box<dyn std::error::Error>> {
-        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            self.params.iter().map(|p| {
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = self
+            .params
+            .iter()
+            .map(|p| {
                 let r: &(dyn tokio_postgres::types::ToSql + Sync) = p.as_ref();
                 r
-            }).collect();
+            })
+            .collect();
         DbPool::query(&self.query, &params).await
     }
 }
@@ -366,7 +369,7 @@ mod tests {
             waiting: 0,
             max_size: 20,
         };
-        
+
         let utilization = stats.utilization_percent();
         assert_eq!(utilization, 35.0); // (10-3)/20 * 100
     }
@@ -378,7 +381,7 @@ mod tests {
             .add_where_clause("age > 18")
             .add_order_by("created_at", true)
             .add_limit(10);
-        
+
         let expected = "SELECT * FROM users WHERE active = true AND age > 18 ORDER BY created_at DESC LIMIT 10";
         assert_eq!(builder.query, expected);
     }
@@ -397,7 +400,7 @@ mod tests {
             idle_timeout_sec: 300,
             max_lifetime_sec: 900,
         };
-        
+
         // This will fail if no database is available, which is expected in tests
         let result = DbPool::init_with_config(config).await;
         assert!(result.is_err() || result.is_ok());

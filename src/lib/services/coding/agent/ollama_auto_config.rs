@@ -1,8 +1,8 @@
 use anyhow::Result;
 use log::{info, warn};
-use std::time::Duration;
 use reqwest::Client;
 use serde_json::Value;
+use std::time::Duration;
 
 /// Auto-configuration for Ollama servers and model selection
 pub struct OllamaAutoConfig {
@@ -33,7 +33,11 @@ impl OllamaAutoConfig {
 
         for (name, endpoint) in endpoints {
             if let Ok(models) = self.check_server(endpoint).await {
-                info!("Found Ollama server at {} with {} models", endpoint, models.len());
+                info!(
+                    "Found Ollama server at {} with {} models",
+                    endpoint,
+                    models.len()
+                );
                 servers.push((name.to_string(), models));
             }
         }
@@ -45,10 +49,7 @@ impl OllamaAutoConfig {
     async fn check_server(&self, endpoint: &str) -> Result<Vec<String>> {
         let url = format!("{}/api/tags", endpoint);
 
-        let response = self.client
-            .get(&url)
-            .send()
-            .await?;
+        let response = self.client.get(&url).send().await?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!("Server returned error status"));
@@ -121,7 +122,8 @@ impl OllamaAutoConfig {
             }
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/generate", endpoint))
             .json(&request)
             .send()

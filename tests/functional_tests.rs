@@ -29,17 +29,14 @@ mod libsam_tests {
     #[test]
     fn test_core_functionality_compiles() {
         // Test specific module compilation
-        let modules_to_test = [
-            ("--bin", "sam"),
-            ("--lib", ""),
-        ];
+        let modules_to_test = [("--bin", "sam"), ("--lib", "")];
 
         for (flag, name) in &modules_to_test {
             let mut args = vec!["build", flag];
             if !name.is_empty() {
                 args.push(name);
             }
-            
+
             let output = Command::new("cargo")
                 .args(&args)
                 .output()
@@ -61,35 +58,44 @@ mod performance_tests {
     #[test]
     fn test_quick_compilation() {
         let start = Instant::now();
-        
+
         let output = Command::new("cargo")
             .args(["check", "--lib"])
             .output()
             .expect("Failed to check lib");
 
         let duration = start.elapsed();
-        
-        assert!(output.status.success(), "Library should compile successfully");
+
+        assert!(
+            output.status.success(),
+            "Library should compile successfully"
+        );
         println!("Library compilation took: {:?}", duration);
-        
+
         // Reasonable compilation time expectation
-        assert!(duration < Duration::from_secs(120), "Library should compile in under 2 minutes");
+        assert!(
+            duration < Duration::from_secs(120),
+            "Library should compile in under 2 minutes"
+        );
     }
 
-    #[test]  
+    #[test]
     fn test_binary_compilation_time() {
         let start = Instant::now();
-        
+
         let output = Command::new("cargo")
             .args(["build", "--bin", "sam"])
             .output()
             .expect("Failed to build binary");
 
         let duration = start.elapsed();
-        
+
         if output.status.success() {
             println!("Binary compilation took: {:?}", duration);
-            assert!(duration < Duration::from_secs(300), "Binary should compile in under 5 minutes");
+            assert!(
+                duration < Duration::from_secs(300),
+                "Binary should compile in under 5 minutes"
+            );
         } else {
             // If it fails, at least we know it attempted to compile
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -110,7 +116,10 @@ mod system_tests {
             .output()
             .expect("Failed to fetch dependencies");
 
-        assert!(output.status.success(), "Dependencies should fetch successfully");
+        assert!(
+            output.status.success(),
+            "Dependencies should fetch successfully"
+        );
     }
 
     #[test]
@@ -124,7 +133,10 @@ mod system_tests {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             // Look for common conflict indicators
-            assert!(!stdout.contains("conflict"), "Should not have dependency conflicts");
+            assert!(
+                !stdout.contains("conflict"),
+                "Should not have dependency conflicts"
+            );
         }
     }
 
@@ -154,9 +166,7 @@ mod system_tests {
     #[test]
     fn test_format_check() {
         // Check if code is formatted
-        let output = Command::new("cargo")
-            .args(["fmt", "--check"])
-            .output();
+        let output = Command::new("cargo").args(["fmt", "--check"]).output();
 
         match output {
             Ok(result) => {
@@ -184,7 +194,7 @@ fn test_overall_project_health() {
         .args(["build", "--lib"])
         .output()
         .expect("Failed to test lib compilation");
-    
+
     if lib_result.status.success() {
         health_score += 1;
         println!("✅ Library compiles successfully");
@@ -198,7 +208,7 @@ fn test_overall_project_health() {
         .args(["build", "--bin", "sam"])
         .output()
         .expect("Failed to test binary compilation");
-    
+
     if bin_result.status.success() {
         health_score += 1;
         println!("✅ Binary compiles successfully");
@@ -212,7 +222,7 @@ fn test_overall_project_health() {
         .args(["doc", "--no-deps", "--lib"])
         .output()
         .expect("Failed to test doc generation");
-        
+
     if doc_result.status.success() {
         health_score += 1;
         println!("✅ Documentation generates successfully");
@@ -221,7 +231,10 @@ fn test_overall_project_health() {
     }
 
     println!("Project health score: {}/{}", health_score, max_score);
-    
+
     // We expect at least the library to compile
-    assert!(health_score >= 1, "Project should have at least basic compilation working");
+    assert!(
+        health_score >= 1,
+        "Project should have at least basic compilation working"
+    );
 }

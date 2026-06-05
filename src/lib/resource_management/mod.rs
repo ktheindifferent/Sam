@@ -1,28 +1,27 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::{RwLock, Semaphore};
 use tokio::fs;
+use tokio::sync::{RwLock, Semaphore};
 // use tokio::io::{AsyncWriteExt};
-use tokio::time::{interval};
+use anyhow::Result;
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
-use log::{info, error, warn};
-use anyhow::{Result};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use tokio::time::interval;
 pub mod cleanup;
 pub mod limits;
-pub mod pool;
 pub mod monitoring;
+pub mod pool;
 
-pub use cleanup::{TempFile, ResourceCleanup, CleanupGuard};
+pub use cleanup::{CleanupGuard, ResourceCleanup, TempFile};
 pub use limits::ResourceLimits;
+pub use monitoring::{ResourceMetrics, ResourceMonitor};
 pub use pool::{ConnectionPool, PooledConnection};
-pub use monitoring::{ResourceMonitor, ResourceMetrics};
 
 /// Resource management configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ResourceConfig {
     /// File upload limits
     pub file_limits: FileLimits,
@@ -35,7 +34,6 @@ pub struct ResourceConfig {
     /// Memory limits
     pub memory_limits: MemoryLimits,
 }
-
 
 /// File upload limits configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -77,7 +75,7 @@ impl Default for FileLimits {
             ],
             enable_virus_scan: true,
             temp_cleanup_interval: 3600, // 1 hour
-            temp_max_age: 86400, // 24 hours
+            temp_max_age: 86400,         // 24 hours
         }
     }
 }
@@ -101,7 +99,7 @@ impl Default for RequestLimits {
     fn default() -> Self {
         RequestLimits {
             max_body_size: 10 * 1024 * 1024, // 10MB
-            max_processing_time: 300, // 5 minutes
+            max_processing_time: 300,        // 5 minutes
             max_concurrent_per_ip: 100,
             max_header_size: 8192, // 8KB
             enable_cancellation: true,
@@ -167,7 +165,7 @@ impl Default for CleanupConfig {
             cleanup_interval: 3600, // 1 hour
             temp_dir: PathBuf::from("/opt/sam/tmp"),
             max_temp_size: 10 * 1024 * 1024 * 1024, // 10GB
-            orphan_age_threshold: 86400, // 24 hours
+            orphan_age_threshold: 86400,            // 24 hours
         }
     }
 }
@@ -191,7 +189,7 @@ impl Default for MemoryLimits {
     fn default() -> Self {
         MemoryLimits {
             max_memory_per_request: 512 * 1024 * 1024, // 512MB
-            max_buffer_size: 64 * 1024, // 64KB
+            max_buffer_size: 64 * 1024,                // 64KB
             enable_monitoring: true,
             warning_threshold: 0.8,
             critical_threshold: 0.95,
@@ -213,7 +211,7 @@ impl ResourceManager {
     pub fn new(config: ResourceConfig) -> Self {
         let config = Arc::new(config);
         let monitor = Arc::new(ResourceMonitor::new());
-        
+
         ResourceManager {
             config,
             upload_semaphores: Arc::new(RwLock::new(HashMap::new())),
@@ -222,22 +220,23 @@ impl ResourceManager {
             monitor,
         }
     }
-    
+
     /// Start background cleanup tasks
     pub async fn start_cleanup(&mut self) {
         if !self.config.cleanup_config.enable_auto_cleanup {
             return;
         }
-        
+
         let config = self.config.clone();
         let monitor = self.monitor.clone();
-        
+
         let handle = tokio::spawn(async move {
-            let mut interval = interval(Duration::from_secs(config.cleanup_config.cleanup_interval));
-            
+            let mut interval =
+                interval(Duration::from_secs(config.cleanup_config.cleanup_interval));
+
             loop {
                 interval.tick().await;
-                
+
                 if let Err(e) = cleanup_temp_files(&config.cleanup_config).await {
                     error!("Cleanup task failed: {}", e);
                     monitor.record_cleanup_failure();
@@ -246,11 +245,11 @@ impl ResourceManager {
                 }
             }
         });
-        
+
         self.cleanup_handle = Some(handle);
         info!("Started resource cleanup background task");
     }
-    
+
     /// Check if file upload is allowed
     pub async fn check_upload_allowed(
         &self,
@@ -267,26 +266,39 @@ impl ResourceManager {
                 ),
             });
         }
-        
+
         // Check file extension
-        if !self.config.file_limits.allowed_extensions.is_empty() && !self.config.file_limits.allowed_extensions.contains(&file_extension.to_string()) {
+        if !self.config.file_limits.allowed_extensions.is_empty()
+            && !self
+                .config
+                .file_limits
+                .allowed_extensions
+                .contains(&file_extension.to_string())
+        {
             return Ok(UploadPermission::Denied {
                 reason: format!("File extension {} is not allowed", file_extension),
             });
         }
-        
-        if self.config.file_limits.blocked_extensions.contains(&file_extension.to_string()) {
+
+        if self
+            .config
+            .file_limits
+            .blocked_extensions
+            .contains(&file_extension.to_string())
+        {
             return Ok(UploadPermission::Denied {
                 reason: format!("File extension {} is blocked", file_extension),
             });
         }
-        
+
         // Get or create user semaphore
         let semaphore = self.get_or_create_upload_semaphore(user_id).await;
-        
+
         // Try to acquire permit
         match semaphore.try_acquire_owned() {
-            Ok(permit) => Ok(UploadPermission::Allowed { permit: Some(permit) }),
+            Ok(permit) => Ok(UploadPermission::Allowed {
+                permit: Some(permit),
+            }),
             Err(_) => Ok(UploadPermission::Denied {
                 reason: format!(
                     "Maximum concurrent uploads ({}) reached for user",
@@ -295,19 +307,21 @@ impl ResourceManager {
             }),
         }
     }
-    
+
     /// Get or create upload semaphore for user
     async fn get_or_create_upload_semaphore(&self, user_id: &str) -> Arc<Semaphore> {
         let mut semaphores = self.upload_semaphores.write().await;
-        
+
         semaphores
             .entry(user_id.to_string())
             .or_insert_with(|| {
-                Arc::new(Semaphore::new(self.config.file_limits.max_concurrent_uploads))
+                Arc::new(Semaphore::new(
+                    self.config.file_limits.max_concurrent_uploads,
+                ))
             })
             .clone()
     }
-    
+
     /// Process file upload with virus scanning
     pub async fn process_upload(
         &self,
@@ -317,10 +331,10 @@ impl ResourceManager {
     ) -> Result<ProcessedFile> {
         // Create temp file with automatic cleanup
         let temp_file = TempFile::new(&self.config.cleanup_config.temp_dir)?;
-        
+
         // Write data to temp file
         temp_file.write(&file_data).await?;
-        
+
         // Virus scan if enabled
         if self.config.file_limits.enable_virus_scan {
             if let Err(e) = scan_file(temp_file.path()).await {
@@ -328,14 +342,14 @@ impl ResourceManager {
                 return Err(anyhow::anyhow!("File failed virus scan"));
             }
         }
-        
+
         // Calculate checksum
         let checksum = calculate_checksum(&file_data);
-        
+
         // Move to permanent storage
         let permanent_path = self.get_permanent_path(user_id, file_name, &checksum)?;
         temp_file.move_to(&permanent_path).await?;
-        
+
         Ok(ProcessedFile {
             path: permanent_path,
             checksum,
@@ -343,30 +357,36 @@ impl ResourceManager {
             mime_type: detect_mime_type(file_name),
         })
     }
-    
+
     /// Get permanent storage path for file
-    fn get_permanent_path(&self, user_id: &str, file_name: &str, checksum: &str) -> Result<PathBuf> {
+    fn get_permanent_path(
+        &self,
+        user_id: &str,
+        file_name: &str,
+        checksum: &str,
+    ) -> Result<PathBuf> {
         let base_path = PathBuf::from("/opt/sam/storage");
         let user_path = base_path.join(user_id);
-        
+
         // Create user directory if it doesn't exist
         std::fs::create_dir_all(&user_path)?;
-        
+
         // Generate unique filename with checksum
         let extension = Path::new(file_name)
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("");
-        
-        let unique_name = format!("{}_{}.{}", 
+
+        let unique_name = format!(
+            "{}_{}.{}",
             file_name.trim_end_matches(&format!(".{}", extension)),
             &checksum[..8],
             extension
         );
-        
+
         Ok(user_path.join(unique_name))
     }
-    
+
     /// Get resource metrics
     pub async fn get_metrics(&self) -> ResourceMetrics {
         self.monitor.get_metrics().await
@@ -398,16 +418,16 @@ async fn cleanup_temp_files(config: &CleanupConfig) -> Result<()> {
     let mut total_size = 0usize;
     let mut deleted_count = 0u32;
     let now = SystemTime::now();
-    
+
     // Read temp directory
     let mut entries = fs::read_dir(&config.temp_dir).await?;
-    
+
     while let Some(entry) = entries.next_entry().await? {
         let metadata = entry.metadata().await?;
-        
+
         if metadata.is_file() {
             let age = now.duration_since(metadata.modified()?)?;
-            
+
             // Delete if older than threshold
             if age.as_secs() > config.orphan_age_threshold {
                 let size = metadata.len() as usize;
@@ -420,11 +440,14 @@ async fn cleanup_temp_files(config: &CleanupConfig) -> Result<()> {
             }
         }
     }
-    
+
     if deleted_count > 0 {
-        info!("Cleaned up {} temp files, freed {} bytes", deleted_count, total_size);
+        info!(
+            "Cleaned up {} temp files, freed {} bytes",
+            deleted_count, total_size
+        );
     }
-    
+
     Ok(())
 }
 
@@ -432,21 +455,21 @@ async fn cleanup_temp_files(config: &CleanupConfig) -> Result<()> {
 async fn scan_file(path: &Path) -> Result<()> {
     // TODO: Integrate with ClamAV
     // For now, just check for suspicious patterns
-    
+
     let content = fs::read(path).await?;
-    
+
     // Check for common malware signatures (very basic)
     let suspicious_patterns: &[&[u8]] = &[
-        b"EICAR",  // EICAR test virus
-        b"X5O!P%@AP",  // Another EICAR pattern
+        b"EICAR",     // EICAR test virus
+        b"X5O!P%@AP", // Another EICAR pattern
     ];
-    
+
     for pattern in suspicious_patterns {
         if content.windows(pattern.len()).any(|w| w == *pattern) {
             return Err(anyhow::anyhow!("Suspicious pattern detected"));
         }
     }
-    
+
     Ok(())
 }
 
@@ -463,7 +486,7 @@ fn detect_mime_type(filename: &str) -> String {
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
-    
+
     match extension.to_lowercase().as_str() {
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
@@ -477,7 +500,8 @@ fn detect_mime_type(filename: &str) -> String {
         "mp3" => "audio/mp3",
         "mp4" => "video/mp4",
         _ => "application/octet-stream",
-    }.to_string()
+    }
+    .to_string()
 }
 
 #[cfg(test)]

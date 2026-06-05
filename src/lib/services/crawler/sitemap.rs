@@ -10,11 +10,11 @@
 //! - Handle compressed sitemaps (gzip)
 //! - Recursive sitemap discovery
 
-use std::collections::HashSet;
-use std::time::Duration;
+use log::{debug, warn};
 use reqwest::Url;
 use scraper::{Html, Selector};
-use log::{debug, warn};
+use std::collections::HashSet;
+use std::time::Duration;
 
 use super::robots::DEFAULT_USER_AGENT;
 
@@ -43,35 +43,36 @@ const MAX_SITEMAP_DEPTH: usize = 3;
 /// Fetch and parse a sitemap from a URL
 pub async fn fetch_sitemap(url: &str) -> Result<Vec<SitemapEntry>, Box<dyn std::error::Error>> {
     debug!("Fetching sitemap from: {}", url);
-    
+
     let client = reqwest::Client::builder()
         .user_agent(DEFAULT_USER_AGENT)
         .timeout(Duration::from_secs(30))
         .danger_accept_invalid_certs(false)
         .build()?;
-    
+
     let response = client.get(url).send().await?;
-    
+
     let status = response.status();
     if !status.is_success() {
         return Err(format!("Failed to fetch sitemap: HTTP {}", status).into());
     }
-    
-    let content_type = response.headers()
+
+    let content_type = response
+        .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    
+
     let bytes = response.bytes().await?;
-    
+
     // Handle gzip compressed sitemaps
     let content = if url.ends_with(".gz") || content_type.contains("gzip") {
         decompress_gzip(&bytes)?
     } else {
         String::from_utf8_lossy(&bytes).to_string()
     };
-    
+
     // Check if this is a sitemap index
     if content.contains("<sitemapindex") {
         parse_sitemap_index(&content).await
@@ -92,43 +93,45 @@ fn decompress_gzip(bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
 /// Parse a standard sitemap.xml
 fn parse_sitemap(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn std::error::Error>> {
     let mut entries = Vec::new();
-    
+
     // Try to parse as XML
     let doc = Html::parse_document(content);
-    
+
     // Create selectors for sitemap elements
     let url_selector = Selector::parse("url").expect("Failed to parse 'url' selector");
     let loc_selector = Selector::parse("loc").expect("Failed to parse 'loc' selector");
     let lastmod_selector = Selector::parse("lastmod").expect("Failed to parse 'lastmod' selector");
-    let changefreq_selector = Selector::parse("changefreq").expect("Failed to parse 'changefreq' selector");
-    let priority_selector = Selector::parse("priority").expect("Failed to parse 'priority' selector");
-    
+    let changefreq_selector =
+        Selector::parse("changefreq").expect("Failed to parse 'changefreq' selector");
+    let priority_selector =
+        Selector::parse("priority").expect("Failed to parse 'priority' selector");
+
     for url_element in doc.select(&url_selector).take(MAX_URLS_PER_SITEMAP) {
         let loc = url_element
             .select(&loc_selector)
             .next()
             .map(|e| e.text().collect::<String>().trim().to_string());
-        
+
         if let Some(url) = loc {
             if url.is_empty() {
                 continue;
             }
-            
+
             let lastmod = url_element
                 .select(&lastmod_selector)
                 .next()
                 .map(|e| e.text().collect::<String>().trim().to_string());
-            
+
             let changefreq = url_element
                 .select(&changefreq_selector)
                 .next()
                 .map(|e| e.text().collect::<String>().trim().to_string());
-            
+
             let priority = url_element
                 .select(&priority_selector)
                 .next()
                 .and_then(|e| e.text().collect::<String>().trim().parse::<f64>().ok());
-            
+
             entries.push(SitemapEntry {
                 url,
                 lastmod,
@@ -137,12 +140,12 @@ fn parse_sitemap(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn std::error:
             });
         }
     }
-    
+
     // Fallback to regex parsing if XML parsing fails or returns empty
     if entries.is_empty() {
         entries = parse_sitemap_regex(content);
     }
-    
+
     debug!("Parsed {} URLs from sitemap", entries.len());
     Ok(entries)
 }
@@ -150,8 +153,9 @@ fn parse_sitemap(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn std::error:
 /// Parse sitemap using regex as fallback
 fn parse_sitemap_regex(content: &str) -> Vec<SitemapEntry> {
     let mut entries = Vec::new();
-    let url_regex = regex::Regex::new(r"<loc>\s*([^<]+)\s*</loc>").expect("Failed to compile sitemap URL regex");
-    
+    let url_regex = regex::Regex::new(r"<loc>\s*([^<]+)\s*</loc>")
+        .expect("Failed to compile sitemap URL regex");
+
     for cap in url_regex.captures_iter(content).take(MAX_URLS_PER_SITEMAP) {
         if let Some(url) = cap.get(1) {
             let url_str = url.as_str().trim();
@@ -165,20 +169,22 @@ fn parse_sitemap_regex(content: &str) -> Vec<SitemapEntry> {
             }
         }
     }
-    
+
     entries
 }
 
 /// Parse a sitemap index file and recursively fetch referenced sitemaps
-async fn parse_sitemap_index(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn std::error::Error>> {
+async fn parse_sitemap_index(
+    content: &str,
+) -> Result<Vec<SitemapEntry>, Box<dyn std::error::Error>> {
     let mut all_entries = Vec::new();
     let mut sitemap_urls = Vec::new();
-    
+
     // Parse sitemap index
     let doc = Html::parse_document(content);
     let sitemap_selector = Selector::parse("sitemap").expect("Failed to parse 'sitemap' selector");
     let loc_selector = Selector::parse("loc").expect("Failed to parse 'loc' selector");
-    
+
     for sitemap_element in doc.select(&sitemap_selector) {
         if let Some(loc) = sitemap_element
             .select(&loc_selector)
@@ -190,47 +196,60 @@ async fn parse_sitemap_index(content: &str) -> Result<Vec<SitemapEntry>, Box<dyn
             }
         }
     }
-    
+
     // Fallback to regex if XML parsing fails
     if sitemap_urls.is_empty() {
-        let sitemap_regex = regex::Regex::new(r"<sitemap>.*?<loc>\s*([^<]+)\s*</loc>.*?</sitemap>").expect("Failed to compile sitemap index regex");
+        let sitemap_regex = regex::Regex::new(r"<sitemap>.*?<loc>\s*([^<]+)\s*</loc>.*?</sitemap>")
+            .expect("Failed to compile sitemap index regex");
         for cap in sitemap_regex.captures_iter(content) {
             if let Some(url) = cap.get(1) {
                 sitemap_urls.push(url.as_str().trim().to_string());
             }
         }
     }
-    
+
     debug!("Found {} sitemaps in index", sitemap_urls.len());
-    
+
     // Fetch each sitemap (with concurrency limit)
     let futures: Vec<_> = sitemap_urls
         .into_iter()
         .take(10) // Limit to 10 sitemaps to avoid overwhelming
         .map(|url| fetch_sitemap_recursive(url, 1))
         .collect();
-    
+
     for future in futures {
         match future.await {
             Ok(entries) => all_entries.extend(entries),
             Err(e) => warn!("Failed to fetch sitemap: {}", e),
         }
     }
-    
+
     Ok(all_entries)
 }
 
 /// Recursively fetch sitemaps with depth limit
-fn fetch_sitemap_recursive(url: String, depth: usize) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<SitemapEntry>, Box<dyn std::error::Error + Send + Sync>>> + Send>> {
+fn fetch_sitemap_recursive(
+    url: String,
+    depth: usize,
+) -> std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<Vec<SitemapEntry>, Box<dyn std::error::Error + Send + Sync>>,
+            > + Send,
+    >,
+> {
     Box::pin(fetch_sitemap_recursive_impl(url, depth))
 }
 
 /// Implementation for recursive sitemap fetching
-async fn fetch_sitemap_recursive_impl(url: String, depth: usize) -> Result<Vec<SitemapEntry>, Box<dyn std::error::Error + Send + Sync>> {
+async fn fetch_sitemap_recursive_impl(
+    url: String,
+    depth: usize,
+) -> Result<Vec<SitemapEntry>, Box<dyn std::error::Error + Send + Sync>> {
     if depth > MAX_SITEMAP_DEPTH {
         return Ok(vec![]);
     }
-    
+
     // TODO: Implement actual sitemap fetching when Send issues are resolved
     Ok(vec![])
 }
@@ -238,7 +257,7 @@ async fn fetch_sitemap_recursive_impl(url: String, depth: usize) -> Result<Vec<S
 /// Discover sitemap URLs for a domain
 pub async fn discover_sitemaps(domain: &str) -> Vec<String> {
     let mut sitemap_urls = Vec::new();
-    
+
     // Common sitemap locations
     let common_paths = vec![
         "/sitemap.xml",
@@ -252,21 +271,21 @@ pub async fn discover_sitemaps(domain: &str) -> Vec<String> {
         "/product-sitemap.xml",
         "/category-sitemap.xml",
     ];
-    
+
     let base_url = if domain.starts_with("http") {
         domain.to_string()
     } else {
         format!("https://{}", domain)
     };
-    
+
     for path in common_paths {
         sitemap_urls.push(format!("{}{}", base_url, path));
     }
-    
+
     // Also check robots.txt for sitemap references
     let robots_sitemaps = super::robots::get_sitemaps(domain).await;
     sitemap_urls.extend(robots_sitemaps);
-    
+
     sitemap_urls
 }
 
@@ -274,7 +293,7 @@ pub async fn discover_sitemaps(domain: &str) -> Vec<String> {
 pub async fn extract_urls_from_sitemaps(domain: &str) -> HashSet<String> {
     let mut all_urls = HashSet::new();
     let sitemap_urls = discover_sitemaps(domain).await;
-    
+
     for sitemap_url in sitemap_urls {
         match fetch_sitemap(&sitemap_url).await {
             Ok(entries) => {
@@ -290,21 +309,30 @@ pub async fn extract_urls_from_sitemaps(domain: &str) -> HashSet<String> {
             }
         }
     }
-    
-    debug!("Extracted {} URLs from sitemaps for {}", all_urls.len(), domain);
+
+    debug!(
+        "Extracted {} URLs from sitemaps for {}",
+        all_urls.len(),
+        domain
+    );
     all_urls
 }
 
 /// Filter URLs by priority
 pub fn filter_by_priority(entries: Vec<SitemapEntry>, min_priority: f64) -> Vec<SitemapEntry> {
-    entries.into_iter()
+    entries
+        .into_iter()
         .filter(|entry| entry.priority.unwrap_or(0.5) >= min_priority)
         .collect()
 }
 
 /// Filter URLs by change frequency
-pub fn filter_by_changefreq(entries: Vec<SitemapEntry>, allowed_freqs: &[&str]) -> Vec<SitemapEntry> {
-    entries.into_iter()
+pub fn filter_by_changefreq(
+    entries: Vec<SitemapEntry>,
+    allowed_freqs: &[&str],
+) -> Vec<SitemapEntry> {
+    entries
+        .into_iter()
         .filter(|entry| {
             if let Some(ref freq) = entry.changefreq {
                 allowed_freqs.iter().any(|&f| freq.eq_ignore_ascii_case(f))

@@ -1,7 +1,7 @@
 //! Analyzer traits
 
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 use std::path::Path;
 
 use crate::services::coding::agent::models::*;

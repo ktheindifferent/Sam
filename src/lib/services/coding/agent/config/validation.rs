@@ -179,7 +179,9 @@ impl ConfigValidator {
 
         let rate_limit = &performance.rate_limiting;
         if rate_limit.requests_per_minute == 0 {
-            return Err(anyhow::anyhow!("Rate limit cannot be 0 requests per minute"));
+            return Err(anyhow::anyhow!(
+                "Rate limit cannot be 0 requests per minute"
+            ));
         }
 
         if rate_limit.requests_per_minute > 10000 {
@@ -298,7 +300,10 @@ mod tests {
     fn test_dangerous_commands_in_sandbox() {
         let mut config = CodingAgentConfig::default();
         config.security.sandbox_mode = true;
-        config.security.allowed_commands.push("sudo rm -rf /".to_string());
+        config
+            .security
+            .allowed_commands
+            .push("sudo rm -rf /".to_string());
         assert!(ConfigValidator::validate(&config).is_err());
     }
 

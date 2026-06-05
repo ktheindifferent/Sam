@@ -39,10 +39,10 @@ pub fn query(input: &str) -> anyhow::Result<IOReply> {
         "/opt/sam/scripts/rivescript/brain.py",
         "/Users/calebsmith/Documents/ktheindifferent/Sam/scripts/rivescript/brain.py",
     ];
-    
+
     let mut rivescript_reply = String::new();
     let mut success = false;
-    
+
     for brain_path in brain_paths {
         match crate::tools::safe_cmd("python3", &[brain_path, input]) {
             Ok(reply) => {
@@ -53,7 +53,7 @@ pub fn query(input: &str) -> anyhow::Result<IOReply> {
             Err(_) => continue,
         }
     }
-    
+
     if !success {
         return Err(anyhow::anyhow!("Brain script not found in any location"));
     }

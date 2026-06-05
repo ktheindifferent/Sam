@@ -28,7 +28,7 @@ impl Job {
     pub fn new(job_type: String, payload: serde_json::Value) -> Self {
         let id = nanoid::nanoid!();
         let now = Utc::now();
-        
+
         Self {
             id,
             job_type,
@@ -49,51 +49,51 @@ impl Job {
             metadata: HashMap::new(),
         }
     }
-    
+
     pub fn with_priority(mut self, priority: Priority) -> Self {
         self.priority = priority;
         self
     }
-    
+
     pub fn with_max_retries(mut self, max_retries: u32) -> Self {
         self.max_retries = max_retries;
         self
     }
-    
+
     pub fn with_retry_delay(mut self, retry_delay_secs: u64) -> Self {
         self.retry_delay_secs = retry_delay_secs;
         self
     }
-    
+
     pub fn with_timeout(mut self, timeout_secs: u64) -> Self {
         self.timeout_secs = Some(timeout_secs);
         self
     }
-    
+
     pub fn with_schedule(mut self, scheduled_at: DateTime<Utc>) -> Self {
         self.scheduled_at = Some(scheduled_at);
         self
     }
-    
+
     pub fn with_metadata(mut self, key: String, value: String) -> Self {
         self.metadata.insert(key, value);
         self
     }
-    
+
     pub fn should_retry(&self) -> bool {
         self.retry_count < self.max_retries
     }
-    
+
     pub fn calculate_retry_delay(&self) -> std::time::Duration {
         // Exponential backoff with jitter
         let base_delay = self.retry_delay_secs as f64;
         let exponential_delay = base_delay * 2_f64.powi(self.retry_count as i32);
         let jitter = rand::random::<f64>() * 10.0; // Add 0-10 seconds of jitter
         let total_delay = exponential_delay + jitter;
-        
+
         // Cap at 1 hour
         let capped_delay = total_delay.min(3600.0);
-        
+
         std::time::Duration::from_secs_f64(capped_delay)
     }
 }
@@ -190,25 +190,25 @@ impl fmt::Display for JobType {
 pub enum JobError {
     #[error("Job execution failed: {0}")]
     ExecutionFailed(String),
-    
+
     #[error("Job timeout after {0} seconds")]
     Timeout(u64),
-    
+
     #[error("Job handler not found for type: {0}")]
     HandlerNotFound(String),
-    
+
     #[error("Job serialization error: {0}")]
     SerializationError(String),
-    
+
     #[error("Redis error: {0}")]
     RedisError(String),
-    
+
     #[error("Job cancelled")]
     Cancelled,
-    
+
     #[error("Invalid job state: {0}")]
     InvalidState(String),
-    
+
     #[error("Other error: {0}")]
     Other(String),
 }

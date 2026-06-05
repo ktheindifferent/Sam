@@ -63,8 +63,7 @@ pub struct TtsRequest {
     pub format: AudioFormat,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum AudioFormat {
     #[default]
     Wav,
@@ -72,7 +71,6 @@ pub enum AudioFormat {
     Ogg,
     Flac,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TtsResult {
@@ -109,7 +107,7 @@ impl TtsCache {
         if let Some(entry) = self.entries.get_mut(key) {
             entry.access_count += 1;
             entry.last_accessed = std::time::Instant::now();
-            
+
             if let Ok(mut file) = File::open(&entry.file_path) {
                 let mut data = Vec::new();
                 if file.read_to_end(&mut data).is_ok() {
@@ -122,31 +120,32 @@ impl TtsCache {
 
     fn put(&mut self, key: String, data: &[u8], path: PathBuf) -> Result<(), std::io::Error> {
         let size = data.len();
-        
+
         while self.current_size + size > self.max_size && !self.entries.is_empty() {
             self.evict_lru();
         }
-        
+
         let entry = CacheEntry {
             file_path: path.clone(),
             access_count: 0,
             last_accessed: std::time::Instant::now(),
             size,
         };
-        
+
         if let Some(old_entry) = self.entries.insert(key, entry) {
             self.current_size -= old_entry.size;
         }
         self.current_size += size;
-        
+
         let mut file = File::create(path)?;
         file.write_all(data)?;
-        
+
         Ok(())
     }
 
     fn evict_lru(&mut self) {
-        if let Some((key, _)) = self.entries
+        if let Some((key, _)) = self
+            .entries
             .iter()
             .min_by_key(|(_, entry)| entry.last_accessed)
             .map(|(k, e)| (k.clone(), e.clone()))
@@ -171,17 +170,17 @@ impl TtsService {
                 crate::services::Error::from(format!("Failed to create cache dir: {}", e))
             })?;
         }
-        
+
         let cache = Arc::new(Mutex::new(TtsCache::new(100 * 1024 * 1024))); // 100MB cache
-        
+
         Ok(Self { config, cache })
     }
 
     pub fn synthesize(&self, request: TtsRequest) -> Result<TtsResult, crate::services::Error> {
         let start_time = std::time::Instant::now();
-        
+
         let cache_key = self.generate_cache_key(&request);
-        
+
         if self.config.cache_enabled {
             if let Ok(mut cache) = self.cache.lock() {
                 if let Some(cached_data) = cache.get(&cache_key) {
@@ -194,21 +193,21 @@ impl TtsService {
                 }
             }
         }
-        
+
         let audio_data = match &self.config.engine {
             TtsEngine::System => self.synthesize_system(&request)?,
             TtsEngine::MozillaTts => self.synthesize_mozilla(&request)?,
             TtsEngine::External(url) => self.synthesize_external(&request, url)?,
             TtsEngine::Coqui => self.synthesize_coqui(&request)?,
         };
-        
+
         if self.config.cache_enabled {
             let cache_path = self.config.cache_dir.join(format!("{}.audio", cache_key));
             if let Ok(mut cache) = self.cache.lock() {
                 let _ = cache.put(cache_key, &audio_data, cache_path);
             }
         }
-        
+
         Ok(TtsResult {
             audio_data,
             format: request.format,
@@ -220,7 +219,7 @@ impl TtsService {
     fn generate_cache_key(&self, request: &TtsRequest) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         request.text.hash(&mut hasher);
         request.voice.hash(&mut hasher);
@@ -228,7 +227,7 @@ impl TtsService {
         request.speed.map(|s| (s * 100.0) as i32).hash(&mut hasher);
         request.pitch.map(|p| (p * 100.0) as i32).hash(&mut hasher);
         request.volume.map(|v| (v * 100.0) as i32).hash(&mut hasher);
-        
+
         format!("{:x}", hasher.finish())
     }
 
@@ -251,17 +250,17 @@ impl TtsService {
     fn synthesize_windows(&self, request: &TtsRequest) -> Result<Vec<u8>, crate::services::Error> {
         use rand::{distributions::Alphanumeric, Rng};
         use std::process::Command;
-        
+
         let rand_name: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(16)
             .map(char::from)
             .collect();
         let tmp_path = self.config.cache_dir.join(format!("{}.wav", rand_name));
-        
+
         let rate = ((request.speed.unwrap_or(1.0) - 1.0) * 10.0) as i32;
         let volume = (request.volume.unwrap_or(1.0) * 100.0) as i32;
-        
+
         let script = format!(
             r#"
             Add-Type -AssemblyName System.speech
@@ -276,23 +275,23 @@ impl TtsService {
             tmp_path.display(),
             request.text.replace("'", "''")
         );
-        
+
         let output = Command::new("powershell")
             .args(&["-Command", &script])
             .output()
             .map_err(|e| crate::services::Error::from(format!("PowerShell error: {}", e)))?;
-        
+
         if !output.status.success() {
             return Err(crate::services::Error::from("Windows TTS failed"));
         }
-        
+
         let mut file = File::open(&tmp_path).map_err(|e| {
             crate::services::Error::from(format!("Failed to read TTS output: {}", e))
         })?;
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
         fs::remove_file(&tmp_path).ok();
-        
+
         Ok(data)
     }
 
@@ -300,50 +299,51 @@ impl TtsService {
     fn synthesize_macos(&self, request: &TtsRequest) -> Result<Vec<u8>, crate::services::Error> {
         use rand::{distributions::Alphanumeric, Rng};
         use std::process::Command;
-        
+
         let rand_name: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(16)
             .map(char::from)
             .collect();
         let tmp_path = self.config.cache_dir.join(format!("{}.wav", rand_name));
-        
+
         let mut args = vec![
             "-o".to_string(),
-            tmp_path.to_str()
+            tmp_path
+                .to_str()
                 .ok_or_else(|| crate::services::Error::from("Invalid path"))?
                 .to_string(),
             "--data-format=LEF32@22050".to_string(),
         ];
-        
+
         if let Some(voice) = &request.voice {
             args.push("-v".to_string());
             args.push(voice.clone());
         }
-        
+
         if let Some(rate) = request.speed {
             args.push("-r".to_string());
             args.push((rate * 200.0).to_string());
         }
-        
+
         args.push(request.text.clone());
-        
+
         let output = Command::new("say")
             .args(&args)
             .output()
             .map_err(|e| crate::services::Error::from(format!("macOS say error: {}", e)))?;
-        
+
         if !output.status.success() {
             return Err(crate::services::Error::from("macOS TTS failed"));
         }
-        
+
         let mut file = File::open(&tmp_path).map_err(|e| {
             crate::services::Error::from(format!("Failed to read TTS output: {}", e))
         })?;
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
         fs::remove_file(&tmp_path).ok();
-        
+
         Ok(data)
     }
 
@@ -351,31 +351,42 @@ impl TtsService {
     fn synthesize_linux(&self, request: &TtsRequest) -> Result<Vec<u8>, crate::services::Error> {
         use rand::{distributions::Alphanumeric, Rng};
         use std::process::Command;
-        
+
         let rand_name: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(16)
             .map(char::from)
             .collect();
         let tmp_path = self.config.cache_dir.join(format!("{}.wav", rand_name));
-        
-        let speed = ((request.speed.unwrap_or(1.0) * 175.0) as i32).max(80).min(450);
-        let pitch = ((request.pitch.unwrap_or(1.0) * 50.0) as i32).max(0).min(99);
-        let volume = ((request.volume.unwrap_or(1.0) * 200.0) as i32).max(0).min(200);
-        
-        let path_str = tmp_path.to_str()
+
+        let speed = ((request.speed.unwrap_or(1.0) * 175.0) as i32)
+            .max(80)
+            .min(450);
+        let pitch = ((request.pitch.unwrap_or(1.0) * 50.0) as i32)
+            .max(0)
+            .min(99);
+        let volume = ((request.volume.unwrap_or(1.0) * 200.0) as i32)
+            .max(0)
+            .min(200);
+
+        let path_str = tmp_path
+            .to_str()
             .ok_or_else(|| crate::services::Error::from("Invalid path"))?;
-        
+
         let output = Command::new("espeak")
             .args(&[
-                "-w", path_str,
-                "-s", &speed.to_string(),
-                "-p", &pitch.to_string(),
-                "-a", &volume.to_string(),
+                "-w",
+                path_str,
+                "-s",
+                &speed.to_string(),
+                "-p",
+                &pitch.to_string(),
+                "-a",
+                &volume.to_string(),
                 &request.text,
             ])
             .output();
-        
+
         match output {
             Ok(result) if result.status.success() => {
                 let mut file = File::open(&tmp_path)?;
@@ -386,15 +397,17 @@ impl TtsService {
             }
             _ => {}
         }
-        
+
         let output = Command::new("pico2wave")
             .args(&[
-                "-w", path_str,
-                "-l", request.language.as_ref().unwrap_or(&"en-US".to_string()),
+                "-w",
+                path_str,
+                "-l",
+                request.language.as_ref().unwrap_or(&"en-US".to_string()),
                 &request.text,
             ])
             .output();
-        
+
         match output {
             Ok(result) if result.status.success() => {
                 let mut file = File::open(&tmp_path)?;
@@ -405,9 +418,9 @@ impl TtsService {
             }
             _ => {}
         }
-        
+
         Err(crate::services::Error::from(
-            "No TTS engine available on Linux (espeak or pico2wave required)"
+            "No TTS engine available on Linux (espeak or pico2wave required)",
         ))
     }
 
@@ -415,7 +428,7 @@ impl TtsService {
         let client = reqwest::blocking::Client::builder()
             .timeout(self.config.timeout)
             .build()?;
-        
+
         let response = client
             .get(format!(
                 "http://localhost:5002/api/tts?text={}&speaker_id={}&style_wav=",
@@ -424,20 +437,24 @@ impl TtsService {
             ))
             .send()
             .map_err(|e| crate::services::Error::from(format!("Mozilla TTS error: {}", e)))?;
-        
+
         if !response.status().is_success() {
             return Err(crate::services::Error::from("Mozilla TTS request failed"));
         }
-        
+
         let bytes = response.bytes()?;
         Ok(bytes.to_vec())
     }
 
-    fn synthesize_external(&self, request: &TtsRequest, url: &str) -> Result<Vec<u8>, crate::services::Error> {
+    fn synthesize_external(
+        &self,
+        request: &TtsRequest,
+        url: &str,
+    ) -> Result<Vec<u8>, crate::services::Error> {
         let client = reqwest::blocking::Client::builder()
             .timeout(self.config.timeout)
             .build()?;
-        
+
         let mut params = HashMap::new();
         params.insert("text", request.text.clone());
         if let Some(voice) = &request.voice {
@@ -446,24 +463,24 @@ impl TtsService {
         if let Some(lang) = &request.language {
             params.insert("language", lang.clone());
         }
-        
+
         let response = client
             .post(url)
             .json(&params)
             .send()
             .map_err(|e| crate::services::Error::from(format!("External TTS error: {}", e)))?;
-        
+
         if !response.status().is_success() {
             return Err(crate::services::Error::from("External TTS request failed"));
         }
-        
+
         let bytes = response.bytes()?;
         Ok(bytes.to_vec())
     }
 
     fn synthesize_coqui(&self, request: &TtsRequest) -> Result<Vec<u8>, crate::services::Error> {
         Err(crate::services::Error::from(
-            "Coqui TTS integration not yet implemented"
+            "Coqui TTS integration not yet implemented",
         ))
     }
 
@@ -476,8 +493,10 @@ impl TtsService {
                     let output = Command::new("say")
                         .args(["-v", "?"])
                         .output()
-                        .map_err(|e| crate::services::Error::from(format!("Failed to list voices: {}", e)))?;
-                    
+                        .map_err(|e| {
+                            crate::services::Error::from(format!("Failed to list voices: {}", e))
+                        })?;
+
                     let text = String::from_utf8_lossy(&output.stdout);
                     let voices: Vec<String> = text
                         .lines()
@@ -518,7 +537,7 @@ mod tests {
                 return;
             }
         };
-        
+
         let request1 = TtsRequest {
             text: "Hello world".to_string(),
             voice: Some("default".to_string()),
@@ -528,7 +547,7 @@ mod tests {
             volume: Some(1.0),
             format: AudioFormat::Wav,
         };
-        
+
         let request2 = TtsRequest {
             text: "Hello world".to_string(),
             voice: Some("default".to_string()),
@@ -538,10 +557,10 @@ mod tests {
             volume: Some(1.0),
             format: AudioFormat::Wav,
         };
-        
+
         let key1 = service.generate_cache_key(&request1);
         let key2 = service.generate_cache_key(&request2);
-        
+
         assert_eq!(key1, key2);
     }
 }

@@ -1,23 +1,23 @@
+use anyhow::Result;
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use anyhow::Result;
 use tokio::sync::{Mutex, RwLock};
-use log::{info, debug, warn, error};
-use serde::{Serialize, Deserialize};
 
+use super::code_intelligence::{CodeIssue, IssueCategory, IssueSeverity};
 use super::config::CodingAgentConfig;
 use super::constants::*;
-use super::types::{CodingAgentResponse, CommandHistoryEntry, CodeExecutionRequest, RiskLevel};
-use super::providers::{ProviderManager, OllamaProvider};
-use super::utils;
-use crate::services::llms::ollama::{OllamaService, OllamaConfig};
 use super::context::ContextManager;
-use super::templates::TemplateManager;
 use super::metrics::MetricsManager;
-use super::code_intelligence::{CodeIssue, IssueSeverity, IssueCategory};
-use super::workspace_analyzer::{WorkspaceAnalyzer, WorkspaceAnalysis};
 use super::ollama_config_manager::OllamaConfigManager;
+use super::providers::{OllamaProvider, ProviderManager};
+use super::templates::TemplateManager;
+use super::types::{CodeExecutionRequest, CodingAgentResponse, CommandHistoryEntry, RiskLevel};
+use super::utils;
+use super::workspace_analyzer::{WorkspaceAnalysis, WorkspaceAnalyzer};
+use crate::services::llms::ollama::{OllamaConfig, OllamaService};
 
 /// Conversation message for multi-turn support
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +46,7 @@ pub struct CodingAgentService {
     command_history: Arc<Mutex<Vec<CommandHistoryEntry>>>,
     conversation_memory: Arc<Mutex<ConversationMemory>>,
     streaming_enabled: Arc<RwLock<bool>>,
-    configured_model: String,  // Store the model from Ollama config
+    configured_model: String, // Store the model from Ollama config
 }
 
 // Manual Debug implementation since we can't derive it with trait objects
@@ -64,29 +64,45 @@ impl CodingAgentService {
         let mut provider_manager = ProviderManager::new();
 
         // Try to load Ollama configuration from file
-        let (ollama_config, configured_model) = if let Ok(config_manager) = OllamaConfigManager::new().await {
-            let model = config_manager.get_selected_model().unwrap_or_else(|| DEFAULT_OLLAMA_MODEL).to_string();
-            if let Some(endpoint) = config_manager.get_current_endpoint() {
-                info!("Using Ollama server from config: {} with model: {}", endpoint, model);
-                (OllamaConfig::from_endpoint(&endpoint, config.ollama_timeout_seconds), model)
+        let (ollama_config, configured_model) =
+            if let Ok(config_manager) = OllamaConfigManager::new().await {
+                let model = config_manager
+                    .get_selected_model()
+                    .unwrap_or_else(|| DEFAULT_OLLAMA_MODEL)
+                    .to_string();
+                if let Some(endpoint) = config_manager.get_current_endpoint() {
+                    info!(
+                        "Using Ollama server from config: {} with model: {}",
+                        endpoint, model
+                    );
+                    (
+                        OllamaConfig::from_endpoint(&endpoint, config.ollama_timeout_seconds),
+                        model,
+                    )
+                } else {
+                    info!("No Ollama server configured, using defaults");
+                    (
+                        OllamaConfig {
+                            host: DEFAULT_LOCALHOST.to_string(),
+                            port: DEFAULT_OLLAMA_PORT,
+                            timeout_seconds: config.ollama_timeout_seconds,
+                            custom_endpoint: None,
+                        },
+                        config.default_model.clone(),
+                    )
+                }
             } else {
-                info!("No Ollama server configured, using defaults");
-                (OllamaConfig {
-                    host: DEFAULT_LOCALHOST.to_string(),
-                    port: DEFAULT_OLLAMA_PORT,
-                    timeout_seconds: config.ollama_timeout_seconds,
-                    custom_endpoint: None,
-                }, config.default_model.clone())
-            }
-        } else {
-            info!("Could not load Ollama config, using defaults");
-            (OllamaConfig {
-                host: DEFAULT_LOCALHOST.to_string(),
-                port: DEFAULT_OLLAMA_PORT,
-                timeout_seconds: config.ollama_timeout_seconds,
-                custom_endpoint: None,
-            }, config.default_model.clone())
-        };
+                info!("Could not load Ollama config, using defaults");
+                (
+                    OllamaConfig {
+                        host: DEFAULT_LOCALHOST.to_string(),
+                        port: DEFAULT_OLLAMA_PORT,
+                        timeout_seconds: config.ollama_timeout_seconds,
+                        custom_endpoint: None,
+                    },
+                    config.default_model.clone(),
+                )
+            };
         let ollama_service = Arc::new(OllamaService::new(ollama_config));
         let ollama_provider = OllamaProvider::new(ollama_service);
         provider_manager.add_provider(PROVIDER_OLLAMA.to_string(), Box::new(ollama_provider));
@@ -131,16 +147,21 @@ impl CodingAgentService {
         session_context: &[String],
         model_override: Option<&str>,
     ) -> Result<CodingAgentResponse> {
-        info!("generate_response called with input length: {}", user_input.len());
+        info!(
+            "generate_response called with input length: {}",
+            user_input.len()
+        );
 
         // Check for direct command execution in user input
         let (processed_input, direct_commands) = self.preprocess_user_input(user_input);
-        
+
         if !direct_commands.is_empty() {
             debug!("Direct commands detected: {:?}", direct_commands);
             return Ok(CodingAgentResponse {
-                response_text: format!("I'll execute the following commands:\n{}", 
-                    direct_commands.iter()
+                response_text: format!(
+                    "I'll execute the following commands:\n{}",
+                    direct_commands
+                        .iter()
                         .map(|cmd| format!("- {}", cmd.command))
                         .collect::<Vec<_>>()
                         .join("\n")
@@ -153,21 +174,32 @@ impl CodingAgentService {
 
         // Check for file modification requests first
         info!("Checking for file modification patterns");
-        if let Some(response) = self.detect_and_handle_file_modification(user_input, current_dir, session_context).await? {
+        if let Some(response) = self
+            .detect_and_handle_file_modification(user_input, current_dir, session_context)
+            .await?
+        {
             info!("File modification pattern detected, returning early response");
             return Ok(response);
         }
 
         // Generate enhanced response using AI
         info!("No file modification pattern, calling generate_enhanced_response_internal");
-        self.generate_enhanced_response_internal(user_input, current_dir, session_context, model_override).await
+        self.generate_enhanced_response_internal(
+            user_input,
+            current_dir,
+            session_context,
+            model_override,
+        )
+        .await
     }
 
     /// Update context manager with current directory
     async fn update_context(&self, current_dir: &PathBuf) -> Result<()> {
         info!("Updating context manager");
         let mut context_manager = self.context_manager.write().await;
-        context_manager.update_workspace_context(current_dir).await?;
+        context_manager
+            .update_workspace_context(current_dir)
+            .await?;
         info!("Context updated");
         Ok(())
     }
@@ -182,23 +214,32 @@ impl CodingAgentService {
         let start_time = std::time::Instant::now();
         let mut providers = self.providers.lock().await;
 
-        info!("Requesting LLM response with model: {} (timeout: {}s)",
-            model, self.config.ollama_timeout_seconds);
+        info!(
+            "Requesting LLM response with model: {} (timeout: {}s)",
+            model, self.config.ollama_timeout_seconds
+        );
 
         let timeout_duration = std::time::Duration::from_secs(self.config.ollama_timeout_seconds);
         let response_text = match tokio::time::timeout(
             timeout_duration,
-            providers.generate_response(prompt, model)
-        ).await {
+            providers.generate_response(prompt, model),
+        )
+        .await
+        {
             Ok(Ok(response)) => response,
             Ok(Err(e)) => {
                 error!("LLM provider error: {}", e);
                 return Err(anyhow::anyhow!("LLM provider error: {}", e));
             }
             Err(_) => {
-                error!("LLM request timed out after {}s", self.config.ollama_timeout_seconds);
-                return Err(anyhow::anyhow!("LLM request timed out after {} seconds",
-                    self.config.ollama_timeout_seconds));
+                error!(
+                    "LLM request timed out after {}s",
+                    self.config.ollama_timeout_seconds
+                );
+                return Err(anyhow::anyhow!(
+                    "LLM request timed out after {} seconds",
+                    self.config.ollama_timeout_seconds
+                ));
             }
         };
 
@@ -208,13 +249,18 @@ impl CodingAgentService {
     }
 
     /// Record AI generation metrics
-    async fn record_generation_metrics(&self, model: &str, success: bool, duration: std::time::Duration) {
+    async fn record_generation_metrics(
+        &self,
+        model: &str,
+        success: bool,
+        duration: std::time::Duration,
+    ) {
         let mut metrics = self.metrics_manager.write().await;
         metrics.record_command_execution(
             &format!("generate_response_{}", model),
             success,
             duration,
-            "ai_generation"
+            "ai_generation",
         );
     }
 
@@ -232,7 +278,9 @@ impl CodingAgentService {
         self.update_context(current_dir).await?;
 
         // Build system prompt with enhanced context
-        let system_prompt = self.build_system_prompt(current_dir, session_context).await?;
+        let system_prompt = self
+            .build_system_prompt(current_dir, session_context)
+            .await?;
 
         // Prepare the full prompt
         let full_prompt = format!("{}\n\nUser Request: {}", system_prompt, user_input);
@@ -241,19 +289,22 @@ impl CodingAgentService {
         let model_to_use = model_override.unwrap_or(&self.configured_model);
 
         // Generate response using current provider with timeout
-        let (response_text, response_time) = self.call_llm_with_timeout(
-            &full_prompt,
-            model_to_use,
-            Some(PROVIDER_OLLAMA)
-        ).await?;
+        let (response_text, response_time) = self
+            .call_llm_with_timeout(&full_prompt, model_to_use, Some(PROVIDER_OLLAMA))
+            .await?;
 
-        info!("LLM response received in {:?} (length: {} chars)", response_time, response_text.len());
+        info!(
+            "LLM response received in {:?} (length: {} chars)",
+            response_time,
+            response_text.len()
+        );
 
         // Parse commands from response
         let suggested_commands = self.parse_commands_from_response(&response_text);
 
         // Record metrics
-        self.record_generation_metrics(model_to_use, true, response_time).await;
+        self.record_generation_metrics(model_to_use, true, response_time)
+            .await;
 
         Ok(CodingAgentResponse {
             response_text,
@@ -267,24 +318,31 @@ impl CodingAgentService {
     async fn build_system_prompt(
         &self,
         current_dir: &PathBuf,
-        session_lines: &[String]
+        session_lines: &[String],
     ) -> Result<String> {
         let context_manager = self.context_manager.read().await;
-        let enhanced_context = context_manager.get_enhanced_context(current_dir, session_lines).await?;
-        
+        let enhanced_context = context_manager
+            .get_enhanced_context(current_dir, session_lines)
+            .await?;
+
         let available_models = {
             let providers = self.providers.lock().await;
             providers.list_available_models().await.unwrap_or_default()
         };
 
         let session_context = self.build_context(session_lines);
-        
+
         // Replace placeholders in template
-        let prompt = self.config.system_prompt_template
+        let prompt = self
+            .config
+            .system_prompt_template
             .replace("{current_dir}", &current_dir.display().to_string())
             .replace("{system_info}", &enhanced_context)
             .replace("{available_models}", &available_models.join(", "))
-            .replace("{context_lines}", &self.config.max_context_lines.to_string())
+            .replace(
+                "{context_lines}",
+                &self.config.max_context_lines.to_string(),
+            )
             .replace("{session_context}", &session_context)
             .replace("{safe_commands}", &self.config.safe_commands.join(", "));
 
@@ -308,7 +366,10 @@ impl CodingAgentService {
         let input_lower = input.to_lowercase();
 
         // Check for direct command patterns
-        if input_lower.starts_with("run ") || input_lower.starts_with("execute ") || input_lower.starts_with("exec ") {
+        if input_lower.starts_with("run ")
+            || input_lower.starts_with("execute ")
+            || input_lower.starts_with("exec ")
+        {
             let command = if input_lower.starts_with("run ") {
                 input[4..].trim()
             } else if input_lower.starts_with("execute ") {
@@ -322,7 +383,7 @@ impl CodingAgentService {
                     command.to_string(),
                     format!("Execute: {}", command),
                     self.assess_command_risk(command),
-                    Some(30)
+                    Some(30),
                 ));
             }
         }
@@ -337,7 +398,7 @@ impl CodingAgentService {
                             command.to_string(),
                             format!("Execute: {}", command),
                             self.assess_command_risk(command),
-                            Some(30)
+                            Some(30),
                         ));
                     }
                 }
@@ -361,7 +422,7 @@ impl CodingAgentService {
                             command.to_string(),
                             format!("Suggested: {}", command),
                             self.assess_command_risk(command),
-                            None
+                            None,
                         ));
                     }
                 }
@@ -374,12 +435,15 @@ impl CodingAgentService {
                 if let Some(code_block) = captures.get(1) {
                     for line in code_block.as_str().lines() {
                         let command = line.trim();
-                        if !command.is_empty() && !command.starts_with('#') && self.is_recognizable_command(command) {
+                        if !command.is_empty()
+                            && !command.starts_with('#')
+                            && self.is_recognizable_command(command)
+                        {
                             commands.push(self.create_execution_request(
                                 command.to_string(),
                                 format!("Code block: {}", command),
                                 self.assess_command_risk(command),
-                                None
+                                None,
                             ));
                         }
                     }
@@ -393,18 +457,16 @@ impl CodingAgentService {
     /// Check if a command is recognizable (not just safe)
     fn is_recognizable_command(&self, command: &str) -> bool {
         let base_cmd = command.split_whitespace().next().unwrap_or("");
-        
+
         // List of recognizable commands (broader than safe commands)
         let recognizable_commands = [
-            "ls", "cat", "pwd", "echo", "mkdir", "touch", "cp", "mv", "rm",
-            "grep", "find", "head", "tail", "wc", "sort", "uniq", "cargo",
-            "git", "tree", "file", "stat", "which", "basename", "dirname",
-            "clear", "date", "whoami", "id", "uname", "rustc", "rustfmt",
-            "sed", "awk", "curl", "wget", "python", "python3", "npm", "node",
-            "yarn", "pip", "pip3", "make", "cmake", "gcc", "clang", "java",
-            "javac", "go", "docker", "kubectl", "ssh", "cd", "vim", "nano",
-            "code", "open", "chmod", "chown", "ps", "top", "kill", "tar",
-            "zip", "unzip", "diff", "patch", "less", "more",
+            "ls", "cat", "pwd", "echo", "mkdir", "touch", "cp", "mv", "rm", "grep", "find", "head",
+            "tail", "wc", "sort", "uniq", "cargo", "git", "tree", "file", "stat", "which",
+            "basename", "dirname", "clear", "date", "whoami", "id", "uname", "rustc", "rustfmt",
+            "sed", "awk", "curl", "wget", "python", "python3", "npm", "node", "yarn", "pip",
+            "pip3", "make", "cmake", "gcc", "clang", "java", "javac", "go", "docker", "kubectl",
+            "ssh", "cd", "vim", "nano", "code", "open", "chmod", "chown", "ps", "top", "kill",
+            "tar", "zip", "unzip", "diff", "patch", "less", "more",
         ];
 
         recognizable_commands.contains(&base_cmd)
@@ -421,11 +483,20 @@ impl CodingAgentService {
 
         // Check for file modification keywords
         let modification_keywords = [
-            "edit", "modify", "change", "update", "add to", "append to",
-            "insert into", "replace in", "delete from", "remove from"
+            "edit",
+            "modify",
+            "change",
+            "update",
+            "add to",
+            "append to",
+            "insert into",
+            "replace in",
+            "delete from",
+            "remove from",
         ];
 
-        let has_modification_keyword = modification_keywords.iter()
+        let has_modification_keyword = modification_keywords
+            .iter()
             .any(|keyword| input_lower.contains(keyword));
 
         if !has_modification_keyword {
@@ -440,7 +511,10 @@ impl CodingAgentService {
             debug!("Target file detected: {}", target_file);
             // Read the file first
             if let Ok(file_content) = tokio::fs::read_to_string(&target_file).await {
-                debug!("File content read successfully, length: {}", file_content.len());
+                debug!(
+                    "File content read successfully, length: {}",
+                    file_content.len()
+                );
                 let enhanced_prompt = format!(
                     "File modification request for: {}\n\nCurrent file content:\n```\n{}\n```\n\nUser request: {}\n\nProvide specific commands to make these changes:",
                     target_file,
@@ -448,12 +522,15 @@ impl CodingAgentService {
                     user_input
                 );
 
-                return Ok(Some(self.generate_enhanced_response_internal(
-                    &enhanced_prompt,
-                    current_dir,
-                    session_lines,
-                    None
-                ).await?));
+                return Ok(Some(
+                    self.generate_enhanced_response_internal(
+                        &enhanced_prompt,
+                        current_dir,
+                        session_lines,
+                        None,
+                    )
+                    .await?,
+                ));
             }
         }
 
@@ -463,8 +540,10 @@ impl CodingAgentService {
     /// Detect target file from user input
     fn detect_target_file(&self, user_input: &str, current_dir: &PathBuf) -> Option<String> {
         // Common file extensions to look for
-        let file_extensions = [".rs", ".py", ".js", ".ts", ".json", ".toml", ".yaml", ".yml", ".md", ".txt"];
-        
+        let file_extensions = [
+            ".rs", ".py", ".js", ".ts", ".json", ".toml", ".yaml", ".yml", ".md", ".txt",
+        ];
+
         for ext in &file_extensions {
             if let Ok(regex) = regex::Regex::new(&format!(r"(\w+{})", regex::escape(ext))) {
                 if let Some(captures) = regex.captures(user_input) {
@@ -477,22 +556,35 @@ impl CodingAgentService {
                 }
             }
         }
-        
+
         None
     }
 
     /// Execute a command safely
-    pub async fn execute_command(&self, command: &str, require_confirmation: bool) -> Result<String> {
+    pub async fn execute_command(
+        &self,
+        command: &str,
+        require_confirmation: bool,
+    ) -> Result<String> {
         // Use the current working directory from environment
         let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        self.execute_command_in_dir(command, &current_dir, require_confirmation).await
+        self.execute_command_in_dir(command, &current_dir, require_confirmation)
+            .await
     }
 
     /// Execute a command in a specific directory
-    pub async fn execute_command_in_dir(&self, command: &str, working_dir: &std::path::PathBuf, require_confirmation: bool) -> Result<String> {
+    pub async fn execute_command_in_dir(
+        &self,
+        command: &str,
+        working_dir: &std::path::PathBuf,
+        require_confirmation: bool,
+    ) -> Result<String> {
         // Validate command
         if !self.config.is_safe_command(command) {
-            return Err(anyhow::anyhow!("Command '{}' is not in the safe command list", command));
+            return Err(anyhow::anyhow!(
+                "Command '{}' is not in the safe command list",
+                command
+            ));
         }
 
         // Record command in history
@@ -523,7 +615,11 @@ impl CodingAgentService {
                     } else if !stderr.is_empty() && !stdout.is_empty() {
                         format!("{}\n{}", stdout, stderr)
                     } else {
-                        format!("Command '{}' failed with exit code: {}", command, result.status.code().unwrap_or(-1))
+                        format!(
+                            "Command '{}' failed with exit code: {}",
+                            command,
+                            result.status.code().unwrap_or(-1)
+                        )
                     }
                 }
             }
@@ -568,34 +664,46 @@ impl CodingAgentService {
             let available_providers = providers.list_providers().await;
             let provider_status = match current_provider.as_ref() {
                 Some(name) => providers.get_provider_status(name).await.unwrap_or(false),
-                None => false
+                None => false,
             };
-            status.insert("providers".to_string(), serde_json::json!({
-                "current": current_provider,
-                "available": available_providers,
-                "status": provider_status
-            }));
+            status.insert(
+                "providers".to_string(),
+                serde_json::json!({
+                    "current": current_provider,
+                    "available": available_providers,
+                    "status": provider_status
+                }),
+            );
         }
 
         // Metrics
         {
             let metrics = self.metrics_manager.read().await;
-            status.insert("metrics".to_string(), serde_json::json!(metrics.get_performance_metrics()));
+            status.insert(
+                "metrics".to_string(),
+                serde_json::json!(metrics.get_performance_metrics()),
+            );
         }
 
         // Command history count
         {
             let history = self.command_history.lock().await;
-            status.insert("command_history_count".to_string(), serde_json::Value::Number(history.len().into()));
+            status.insert(
+                "command_history_count".to_string(),
+                serde_json::Value::Number(history.len().into()),
+            );
         }
 
         // Configuration
-        status.insert("config".to_string(), serde_json::json!({
-            "default_model": self.config.default_model,
-            "safe_commands_count": self.config.safe_commands.len(),
-            "require_confirmation": self.config.require_confirmation,
-            "workspace_integration": self.config.workspace_integration
-        }));
+        status.insert(
+            "config".to_string(),
+            serde_json::json!({
+                "default_model": self.config.default_model,
+                "safe_commands_count": self.config.safe_commands.len(),
+                "require_confirmation": self.config.require_confirmation,
+                "workspace_integration": self.config.workspace_integration
+            }),
+        );
 
         status
     }
@@ -645,7 +753,8 @@ impl CodingAgentService {
     ) -> CodeExecutionRequest {
         CodeExecutionRequest {
             command: command.clone(),
-            require_confirmation: self.config.require_confirmation || matches!(risk_level, RiskLevel::High | RiskLevel::Critical),
+            require_confirmation: self.config.require_confirmation
+                || matches!(risk_level, RiskLevel::High | RiskLevel::Critical),
             explanation,
             risk_level,
             estimated_duration,
@@ -658,7 +767,7 @@ impl CodingAgentService {
     fn analyze_command_prerequisites(&self, command: &str) -> Vec<String> {
         let mut prerequisites = Vec::new();
         let cmd_parts: Vec<&str> = command.split_whitespace().collect();
-        
+
         if cmd_parts.is_empty() {
             return prerequisites;
         }
@@ -695,7 +804,7 @@ impl CodingAgentService {
     fn predict_command_outputs(&self, command: &str) -> Vec<String> {
         let mut outputs = Vec::new();
         let cmd_parts: Vec<&str> = command.split_whitespace().collect();
-        
+
         if cmd_parts.is_empty() {
             return outputs;
         }
@@ -704,21 +813,17 @@ impl CodingAgentService {
             "ls" => outputs.push("Directory listing".to_string()),
             "cat" => outputs.push("File contents".to_string()),
             "mkdir" => outputs.push("Directory created".to_string()),
-            "cargo" => {
-                match cmd_parts.get(1) {
-                    Some(&"build") => outputs.push("Compilation results".to_string()),
-                    Some(&"run") => outputs.push("Program output".to_string()),
-                    Some(&"test") => outputs.push("Test results".to_string()),
-                    _ => outputs.push("Cargo command output".to_string()),
-                }
-            }
-            "git" => {
-                match cmd_parts.get(1) {
-                    Some(&"status") => outputs.push("Repository status".to_string()),
-                    Some(&"log") => outputs.push("Commit history".to_string()),
-                    _ => outputs.push("Git command output".to_string()),
-                }
-            }
+            "cargo" => match cmd_parts.get(1) {
+                Some(&"build") => outputs.push("Compilation results".to_string()),
+                Some(&"run") => outputs.push("Program output".to_string()),
+                Some(&"test") => outputs.push("Test results".to_string()),
+                _ => outputs.push("Cargo command output".to_string()),
+            },
+            "git" => match cmd_parts.get(1) {
+                Some(&"status") => outputs.push("Repository status".to_string()),
+                Some(&"log") => outputs.push("Commit history".to_string()),
+                _ => outputs.push("Git command output".to_string()),
+            },
             _ => outputs.push("Command output".to_string()),
         }
 
@@ -728,7 +833,7 @@ impl CodingAgentService {
     /// Assess command risk level
     fn assess_command_risk(&self, command: &str) -> RiskLevel {
         let cmd_parts: Vec<&str> = command.split_whitespace().collect();
-        
+
         if cmd_parts.is_empty() {
             return RiskLevel::Safe;
         }
@@ -749,26 +854,20 @@ impl CodingAgentService {
                     RiskLevel::Low
                 }
             }
-            "cargo" => {
-                match cmd_parts.get(1) {
-                    Some(&"install") => RiskLevel::Medium,
-                    Some(&"build") | Some(&"run") | Some(&"test") => RiskLevel::Low,
-                    _ => RiskLevel::Safe,
-                }
-            }
-            "npm" | "yarn" => {
-                match cmd_parts.get(1) {
-                    Some(&"install") => RiskLevel::Medium,
-                    _ => RiskLevel::Low,
-                }
-            }
-            "git" => {
-                match cmd_parts.get(1) {
-                    Some(&"push") | Some(&"pull") => RiskLevel::Medium,
-                    Some(&"reset") | Some(&"rebase") => RiskLevel::High,
-                    _ => RiskLevel::Low,
-                }
-            }
+            "cargo" => match cmd_parts.get(1) {
+                Some(&"install") => RiskLevel::Medium,
+                Some(&"build") | Some(&"run") | Some(&"test") => RiskLevel::Low,
+                _ => RiskLevel::Safe,
+            },
+            "npm" | "yarn" => match cmd_parts.get(1) {
+                Some(&"install") => RiskLevel::Medium,
+                _ => RiskLevel::Low,
+            },
+            "git" => match cmd_parts.get(1) {
+                Some(&"push") | Some(&"pull") => RiskLevel::Medium,
+                Some(&"reset") | Some(&"rebase") => RiskLevel::High,
+                _ => RiskLevel::Low,
+            },
             "ls" | "cat" | "pwd" | "echo" | "grep" | "find" => RiskLevel::Safe,
             _ => RiskLevel::Low,
         }
@@ -795,9 +894,7 @@ impl CodingAgentService {
         }
 
         // Estimate tokens (rough approximation: 1 token ≈ 4 chars)
-        memory.total_tokens = memory.messages.iter()
-            .map(|m| m.content.len() / 4)
-            .sum();
+        memory.total_tokens = memory.messages.iter().map(|m| m.content.len() / 4).sum();
     }
 
     /// Get conversation history for context
@@ -843,15 +940,13 @@ impl CodingAgentService {
         }
 
         // Generate response
-        let response = self.generate_response(
-            user_input,
-            current_dir,
-            &context_lines,
-            model_override
-        ).await?;
+        let response = self
+            .generate_response(user_input, current_dir, &context_lines, model_override)
+            .await?;
 
         // Add assistant response to conversation
-        self.add_to_conversation("assistant", &response.response_text).await;
+        self.add_to_conversation("assistant", &response.response_text)
+            .await;
 
         Ok(response)
     }
@@ -937,9 +1032,7 @@ impl CodingAgentService {
                 memory.messages = new_messages;
 
                 // Recalculate tokens
-                memory.total_tokens = memory.messages.iter()
-                    .map(|m| m.content.len() / 4)
-                    .sum();
+                memory.total_tokens = memory.messages.iter().map(|m| m.content.len() / 4).sum();
             }
         }
     }
@@ -971,12 +1064,10 @@ impl CodingAgentService {
         for model in &models_to_try {
             info!("Attempting to generate response with model: {}", model);
 
-            match self.generate_response(
-                user_input,
-                current_dir,
-                session_context,
-                Some(model)
-            ).await {
+            match self
+                .generate_response(user_input, current_dir, session_context, Some(model))
+                .await
+            {
                 Ok(response) => {
                     info!("Successfully generated response with model: {}", model);
                     return Ok(response);
@@ -989,8 +1080,9 @@ impl CodingAgentService {
                     if let Ok(providers) = self.providers.try_lock() {
                         if let Some(provider) = providers.get_provider("ollama") {
                             // Check if we can access the Ollama service
-                            if let Some(ollama_provider) = provider.as_any()
-                                .downcast_ref::<OllamaProvider>() {
+                            if let Some(ollama_provider) =
+                                provider.as_any().downcast_ref::<OllamaProvider>()
+                            {
                                 let ollama_service = ollama_provider.get_service();
 
                                 // Try to pull the model
@@ -1024,16 +1116,17 @@ impl CodingAgentService {
         let mut backoff_ms = 100;
 
         loop {
-            match self.generate_response(
-                user_input,
-                current_dir,
-                session_context,
-                model_override
-            ).await {
+            match self
+                .generate_response(user_input, current_dir, session_context, model_override)
+                .await
+            {
                 Ok(response) => return Ok(response),
                 Err(e) if retry_count < max_retries => {
                     retry_count += 1;
-                    warn!("Attempt {} failed: {}. Retrying in {}ms...", retry_count, e, backoff_ms);
+                    warn!(
+                        "Attempt {} failed: {}. Retrying in {}ms...",
+                        retry_count, e, backoff_ms
+                    );
 
                     tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
                     backoff_ms *= 2; // Exponential backoff
@@ -1055,8 +1148,9 @@ impl CodingAgentService {
             // Try to start Ollama service
             if let Ok(providers) = self.providers.try_lock() {
                 if let Some(provider) = providers.get_provider("ollama") {
-                    if let Some(ollama_provider) = provider.as_any()
-                        .downcast_ref::<OllamaProvider>() {
+                    if let Some(ollama_provider) =
+                        provider.as_any().downcast_ref::<OllamaProvider>()
+                    {
                         let ollama_service = ollama_provider.get_service();
                         // Check if Ollama is installed
                         if !ollama_service.is_installed().await {
@@ -1076,7 +1170,9 @@ impl CodingAgentService {
 
             // Verify service is now available
             if !self.is_available().await {
-                return Err(anyhow::anyhow!("Service still not available after recovery attempt"));
+                return Err(anyhow::anyhow!(
+                    "Service still not available after recovery attempt"
+                ));
             }
         }
 
@@ -1098,13 +1194,15 @@ impl CodingAgentService {
         self.compress_conversation_if_needed().await;
 
         // Try with fallback and retry
-        let result = self.generate_response_with_retry(
-            user_input,
-            current_dir,
-            session_context,
-            model_override,
-            3 // Max retries
-        ).await;
+        let result = self
+            .generate_response_with_retry(
+                user_input,
+                current_dir,
+                session_context,
+                model_override,
+                3, // Max retries
+            )
+            .await;
 
         match result {
             Ok(response) => Ok(response),
@@ -1114,8 +1212,9 @@ impl CodingAgentService {
                     user_input,
                     current_dir,
                     session_context,
-                    model_override
-                ).await
+                    model_override,
+                )
+                .await
             }
         }
     }
@@ -1130,7 +1229,9 @@ impl CodingAgentService {
         current_dir: &PathBuf,
         session_context: &[String],
     ) -> Result<String> {
-        let response = self.generate_response(question, current_dir, session_context, None).await?;
+        let response = self
+            .generate_response(question, current_dir, session_context, None)
+            .await?;
         Ok(response.response_text)
     }
 
@@ -1144,7 +1245,8 @@ impl CodingAgentService {
     ) -> Result<CodeAnalysisReport> {
         // Read the file content
         let content = tokio::fs::read_to_string(file_path).await?;
-        let file_name = file_path.file_name()
+        let file_name = file_path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
 
@@ -1158,7 +1260,9 @@ impl CodingAgentService {
         let issues = self.detect_code_issues(&content, &language);
 
         // Generate improvement suggestions
-        let suggestions = self.generate_improvement_suggestions(&content, &language, &issues).await?;
+        let suggestions = self
+            .generate_improvement_suggestions(&content, &language, &issues)
+            .await?;
 
         // Calculate metrics
         let metrics = self.calculate_code_metrics(&content);
@@ -1175,9 +1279,7 @@ impl CodingAgentService {
 
     /// Detect programming language from file extension
     fn detect_language(&self, path: &PathBuf) -> String {
-        let extension = path.extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("");
+        let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
 
         match extension {
             "rs" => "rust",
@@ -1202,7 +1304,8 @@ impl CodingAgentService {
             "toml" => "toml",
             "md" | "markdown" => "markdown",
             _ => "unknown",
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// Analyze code structure
@@ -1241,7 +1344,10 @@ impl CodingAgentService {
             _ => "//",
         };
 
-        lines.iter().filter(|l| l.trim().starts_with(single_line_comment)).count()
+        lines
+            .iter()
+            .filter(|l| l.trim().starts_with(single_line_comment))
+            .count()
     }
 
     /// Find function definitions
@@ -1251,9 +1357,13 @@ impl CodingAgentService {
         let pattern = match language {
             "rust" => r"(?:pub\s+)?(?:async\s+)?fn\s+(\w+)",
             "python" => r"def\s+(\w+)\s*\(",
-            "javascript" | "typescript" => r"(?:function\s+(\w+)|const\s+(\w+)\s*=\s*(?:async\s*)?\()",
+            "javascript" | "typescript" => {
+                r"(?:function\s+(\w+)|const\s+(\w+)\s*=\s*(?:async\s*)?\()"
+            }
             "go" => r"func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\(",
-            "java" | "cpp" | "c" => r"(?:public|private|protected)?\s*(?:static)?\s*\w+\s+(\w+)\s*\(",
+            "java" | "cpp" | "c" => {
+                r"(?:public|private|protected)?\s*(?:static)?\s*\w+\s+(\w+)\s*\("
+            }
             _ => return functions,
         };
 
@@ -1365,7 +1475,9 @@ impl CodingAgentService {
                             file: PathBuf::new(),
                             line: i + 1,
                             column: line.find(".unwrap()").unwrap_or_default(),
-                            suggestion: Some("Consider using ? operator or proper error handling".to_string()),
+                            suggestion: Some(
+                                "Consider using ? operator or proper error handling".to_string(),
+                            ),
                             auto_fixable: true,
                         });
                     }
@@ -1400,7 +1512,9 @@ impl CodingAgentService {
         let total_lines = lines.len();
 
         // Simple cyclomatic complexity (count decision points)
-        let decision_keywords = ["if", "else", "match", "while", "for", "loop", "?", "&&", "||"];
+        let decision_keywords = [
+            "if", "else", "match", "while", "for", "loop", "?", "&&", "||",
+        ];
         let mut complexity = 1;
         for keyword in &decision_keywords {
             complexity += content.matches(keyword).count() as u32;
@@ -1441,17 +1555,21 @@ impl CodingAgentService {
         language: &str,
         issues: &[CodeIssue],
     ) -> Result<Vec<String>> {
-        let issue_summary = issues.iter()
-            .map(|i| format!("- {} (line {}): {}",
-                match i.severity {
-                    IssueSeverity::Error => "ERROR",
-                    IssueSeverity::Warning => "WARNING",
-                    IssueSeverity::Info => "INFO",
-                    IssueSeverity::Hint => "HINT",
-                },
-                i.line,
-                i.message
-            ))
+        let issue_summary = issues
+            .iter()
+            .map(|i| {
+                format!(
+                    "- {} (line {}): {}",
+                    match i.severity {
+                        IssueSeverity::Error => "ERROR",
+                        IssueSeverity::Warning => "WARNING",
+                        IssueSeverity::Info => "INFO",
+                        IssueSeverity::Hint => "HINT",
+                    },
+                    i.line,
+                    i.message
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -1466,7 +1584,8 @@ impl CodingAgentService {
         let response = self.ask_question(&prompt, &PathBuf::new(), &[]).await?;
 
         // Parse suggestions from response
-        Ok(response.lines()
+        Ok(response
+            .lines()
             .filter(|l| l.starts_with("- ") || l.starts_with("* ") || l.starts_with("• "))
             .map(|l| l.trim_start_matches(&['-', '*', '•', ' '][..]).to_string())
             .collect())
@@ -1526,7 +1645,10 @@ impl CodingAgentService {
     /// Extract code block from markdown response
     fn extract_code_block(&self, text: &str) -> String {
         if let Some(start) = text.find("```") {
-            let code_start = text[start + 3..].find('\n').map(|i| start + 3 + i + 1).unwrap_or(start + 3);
+            let code_start = text[start + 3..]
+                .find('\n')
+                .map(|i| start + 3 + i + 1)
+                .unwrap_or(start + 3);
             if let Some(end) = text[code_start..].find("```") {
                 return text[code_start..code_start + end].trim().to_string();
             }
@@ -1586,10 +1708,21 @@ impl CodingAgentService {
             .filter(|l| {
                 let line_lower = l.to_lowercase();
                 let keyword_lower = keyword.to_lowercase();
-                (l.starts_with("- ") || l.starts_with("* ") || l.starts_with("• ") || l.starts_with(char::is_numeric))
+                (l.starts_with("- ")
+                    || l.starts_with("* ")
+                    || l.starts_with("• ")
+                    || l.starts_with(char::is_numeric))
                     && line_lower.contains(&keyword_lower)
             })
-            .map(|l| l.trim_start_matches(&['-', '*', '•', ' ', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '.', ' '][..]).to_string())
+            .map(|l| {
+                l.trim_start_matches(
+                    &[
+                        '-', '*', '•', ' ', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '.',
+                        ' ',
+                    ][..],
+                )
+                .to_string()
+            })
             .collect()
     }
 
@@ -1637,9 +1770,13 @@ impl CodingAgentService {
 
         for line in text.lines() {
             if line.contains("issue") || line.contains("problem") || line.contains("concern") {
-                let severity = if line.to_lowercase().contains("critical") || line.to_lowercase().contains("error") {
+                let severity = if line.to_lowercase().contains("critical")
+                    || line.to_lowercase().contains("error")
+                {
                     "high"
-                } else if line.to_lowercase().contains("warning") || line.to_lowercase().contains("moderate") {
+                } else if line.to_lowercase().contains("warning")
+                    || line.to_lowercase().contains("moderate")
+                {
                     "medium"
                 } else {
                     "low"
@@ -1647,7 +1784,9 @@ impl CodingAgentService {
 
                 issues.push(ReviewIssue {
                     severity: severity.to_string(),
-                    description: line.trim_start_matches(&['-', '*', '•', ' '][..]).to_string(),
+                    description: line
+                        .trim_start_matches(&['-', '*', '•', ' '][..])
+                        .to_string(),
                     line_number: None, // Could be extracted if present
                     suggestion: None,
                 });
@@ -1768,7 +1907,10 @@ impl CodingAgentService {
             issue.category,
             issue.line,
             problem_line,
-            issue.suggestion.as_ref().unwrap_or(&"Apply best practices".to_string())
+            issue
+                .suggestion
+                .as_ref()
+                .unwrap_or(&"Apply best practices".to_string())
         );
 
         let fixed_line = self.ask_question(&prompt, &PathBuf::new(), &[]).await?;
@@ -1799,7 +1941,9 @@ impl CodingAgentService {
         doc_type: DocumentationType,
     ) -> Result<String> {
         let doc_style = match doc_type {
-            DocumentationType::Api => "API documentation with parameter descriptions and return values",
+            DocumentationType::Api => {
+                "API documentation with parameter descriptions and return values"
+            }
             DocumentationType::Tutorial => "tutorial-style documentation with examples",
             DocumentationType::Reference => "reference documentation with detailed specifications",
             DocumentationType::Comments => "inline code comments",
@@ -1815,7 +1959,10 @@ impl CodingAgentService {
     }
 
     /// Visualize code complexity
-    pub async fn visualize_complexity(&self, file_path: &PathBuf) -> Result<ComplexityVisualization> {
+    pub async fn visualize_complexity(
+        &self,
+        file_path: &PathBuf,
+    ) -> Result<ComplexityVisualization> {
         let content = tokio::fs::read_to_string(file_path).await?;
         let language = self.detect_language(file_path);
 
@@ -1843,7 +1990,10 @@ impl CodingAgentService {
 
         Ok(ComplexityVisualization {
             file: file_path.clone(),
-            total_complexity: function_complexities.iter().map(|f| f.cyclomatic_complexity).sum(),
+            total_complexity: function_complexities
+                .iter()
+                .map(|f| f.cyclomatic_complexity)
+                .sum(),
             functions: function_complexities,
             hotspots,
         })
@@ -1886,8 +2036,8 @@ impl CodingAgentService {
     /// Calculate complexity of code
     fn calculate_complexity(&self, code: &str) -> u32 {
         let decision_points = [
-            "if ", "else", "match", "while", "for", "loop",
-            "?", "&&", "||", "case", "when", "catch", "except"
+            "if ", "else", "match", "while", "for", "loop", "?", "&&", "||", "case", "when",
+            "catch", "except",
         ];
 
         let mut complexity = 1; // Base complexity
@@ -1922,7 +2072,8 @@ impl CodingAgentService {
 
     /// Identify complexity hotspots
     fn identify_complexity_hotspots(&self, functions: &[FunctionComplexity]) -> Vec<String> {
-        functions.iter()
+        functions
+            .iter()
             .filter(|f| f.cyclomatic_complexity > 10)
             .map(|f| format!("{} (complexity: {})", f.name, f.cyclomatic_complexity))
             .collect()
@@ -1949,7 +2100,11 @@ impl CodingAgentService {
             ("innerHTML\\s*=", "XSS vulnerability risk", "High"),
             ("disable.*ssl.*verif", "SSL verification disabled", "High"),
             ("md5\\(", "Weak cryptographic hash", "Medium"),
-            ("Math\\.random\\(", "Weak random number generation", "Medium"),
+            (
+                "Math\\.random\\(",
+                "Weak random number generation",
+                "Medium",
+            ),
         ];
 
         for (pattern, description, severity) in security_patterns {
@@ -1970,7 +2125,9 @@ impl CodingAgentService {
         }
 
         // Get AI-powered security analysis
-        let ai_analysis = self.ai_security_analysis(&content, &language, &vulnerabilities).await?;
+        let ai_analysis = self
+            .ai_security_analysis(&content, &language, &vulnerabilities)
+            .await?;
         let risk_score = self.calculate_risk_score(&vulnerabilities);
 
         Ok(SecurityScanReport {
@@ -1989,12 +2146,17 @@ impl CodingAgentService {
             "Use of eval() function" => "Parse and validate input instead of using eval()",
             "Command injection risk" => "Use parameterized commands or subprocess with shell=False",
             "Potential SQL injection" => "Use parameterized queries or prepared statements",
-            "XSS vulnerability risk" => "Sanitize user input and use textContent instead of innerHTML",
+            "XSS vulnerability risk" => {
+                "Sanitize user input and use textContent instead of innerHTML"
+            }
             "SSL verification disabled" => "Enable SSL certificate verification for production",
             "Weak cryptographic hash" => "Use SHA-256 or stronger hashing algorithms",
-            "Weak random number generation" => "Use cryptographically secure random number generators",
+            "Weak random number generation" => {
+                "Use cryptographically secure random number generators"
+            }
             _ => "Review and apply security best practices",
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// Calculate risk score from vulnerabilities
@@ -2021,7 +2183,8 @@ impl CodingAgentService {
         language: &str,
         found_vulnerabilities: &[SecurityVulnerability],
     ) -> Result<String> {
-        let vuln_summary = found_vulnerabilities.iter()
+        let vuln_summary = found_vulnerabilities
+            .iter()
             .map(|v| format!("- {} ({}): {}", v.severity, v.line, v.description))
             .collect::<Vec<_>>()
             .join("\n");
@@ -2036,7 +2199,11 @@ impl CodingAgentService {
             3. Security best practices for this code\n\
             4. Recommended security tools and libraries",
             language,
-            if vuln_summary.is_empty() { "None detected automatically" } else { &vuln_summary },
+            if vuln_summary.is_empty() {
+                "None detected automatically"
+            } else {
+                &vuln_summary
+            },
             language,
             content.lines().take(100).collect::<Vec<_>>().join("\n")
         );

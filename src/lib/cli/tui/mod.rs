@@ -1,8 +1,8 @@
-pub mod state;
-pub mod terminal;
-pub mod status_updater;
 pub mod events;
 pub mod render;
+pub mod state;
+pub mod status_updater;
+pub mod terminal;
 
 #[cfg(unix)]
 pub use terminal::tui_takeover_ssh_session;
@@ -19,13 +19,13 @@ use ratatui::{
 };
 use std::io;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tui_logger::TuiLoggerLevelOutput;
 
 use state::{ServiceStatus, TuiMode, TuiState};
-use terminal::{TERMINAL_NEEDS_RESTORE, TerminalRestoreGuard};
+use terminal::{TerminalRestoreGuard, TERMINAL_NEEDS_RESTORE};
 
 use super::helpers;
 
@@ -38,11 +38,12 @@ fn load_command_history() -> Vec<String> {
 
     match std::fs::read_to_string(&history_path) {
         Ok(content) => {
-            let lines: Vec<String> = content
-                .lines()
-                .map(|l| l.to_string())
-                .collect();
-            log::debug!("Loaded {} history entries from {:?}", lines.len(), history_path);
+            let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+            log::debug!(
+                "Loaded {} history entries from {:?}",
+                lines.len(),
+                history_path
+            );
             lines
         }
         Err(_) => Vec::new(),
@@ -70,7 +71,11 @@ fn save_command_history(history: &[String]) {
     if let Err(e) = std::fs::write(&history_path, content) {
         log::warn!("Failed to write command history: {}", e);
     } else {
-        log::debug!("Saved {} history entries to {:?}", history.len().min(MAX_HISTORY_LINES), history_path);
+        log::debug!(
+            "Saved {} history entries to {:?}",
+            history.len().min(MAX_HISTORY_LINES),
+            history_path
+        );
     }
 }
 
@@ -98,9 +103,15 @@ pub async fn start_prompt() {
                 .output_file(true)
                 .output_separator(':');
             tui_logger::set_log_file(file_options);
-            log::info!("TUI Logger initialized - file logging active to: {:?}", log_file_path);
+            log::info!(
+                "TUI Logger initialized - file logging active to: {:?}",
+                log_file_path
+            );
         } else {
-            log::warn!("Cannot write to log file {:?}. TUI logging will be memory-only.", log_file_path);
+            log::warn!(
+                "Cannot write to log file {:?}. TUI logging will be memory-only.",
+                log_file_path
+            );
         }
     } else {
         log::warn!("No valid log file path available. TUI logging will be memory-only.");
@@ -133,7 +144,11 @@ fn resolve_log_file_path() -> std::path::PathBuf {
             preferred_path
         }
         Err(e) => {
-            log::warn!("Cannot write to preferred log file {:?}: {}, trying fallbacks", preferred_path, e);
+            log::warn!(
+                "Cannot write to preferred log file {:?}: {}, trying fallbacks",
+                preferred_path,
+                e
+            );
             find_fallback_log_path()
         }
     }
@@ -142,7 +157,13 @@ fn resolve_log_file_path() -> std::path::PathBuf {
 fn find_fallback_log_path() -> std::path::PathBuf {
     if let Ok(temp_dir) = std::env::var("TMPDIR") {
         let tmpdir_path = std::path::PathBuf::from(temp_dir).join("sam_output.log");
-        if std::fs::OpenOptions::new().create(true).write(true).append(true).open(&tmpdir_path).is_ok() {
+        if std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(&tmpdir_path)
+            .is_ok()
+        {
             return tmpdir_path;
         }
     }
@@ -175,6 +196,8 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         tts: "unknown".to_string(),
         stt: "unknown".to_string(),
         ssh_server: "unknown".to_string(),
+        media: "unknown".to_string(),
+        snapcast: "unknown".to_string(),
         memory_usage: "0 MB".to_string(),
         cpu_usage: "0%".to_string(),
         disk_usage: "0%".to_string(),
@@ -193,6 +216,7 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         help_scroll: 0,
         file_browser_path: std::env::current_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        selected_file: 0,
         db_table_list: Vec::new(),
         selected_table: 0,
         coding_agent_input: String::new(),
@@ -239,9 +263,18 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     {
         unsafe {
-            libc::signal(libc::SIGTSTP, terminal::handle_suspend as libc::sighandler_t);
-            libc::signal(libc::SIGCONT, terminal::handle_continue as libc::sighandler_t);
-            libc::signal(libc::SIGWINCH, terminal::handle_resize as libc::sighandler_t);
+            libc::signal(
+                libc::SIGTSTP,
+                terminal::handle_suspend as libc::sighandler_t,
+            );
+            libc::signal(
+                libc::SIGCONT,
+                terminal::handle_continue as libc::sighandler_t,
+            );
+            libc::signal(
+                libc::SIGWINCH,
+                terminal::handle_resize as libc::sighandler_t,
+            );
         }
     }
 
@@ -272,23 +305,23 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     let mut last_known_tui_state = TuiState::default();
 
     loop {
-        let (status, current_tui_state) = match tokio::time::timeout(
-            std::time::Duration::from_millis(50),
-            async {
+        let (status, current_tui_state) =
+            match tokio::time::timeout(std::time::Duration::from_millis(50), async {
                 let guard = service_status.lock().await;
                 let state_guard = tui_state.lock().await;
                 (guard.clone(), state_guard.clone())
-            }
-        ).await {
-            Ok(result) => {
-                last_known_tui_state = result.1.clone();
-                result
-            },
-            Err(_) => {
-                log::debug!("Timeout fetching status for display, using defaults");
-                (ServiceStatus::default(), last_known_tui_state.clone())
-            }
-        };
+            })
+            .await
+            {
+                Ok(result) => {
+                    last_known_tui_state = result.1.clone();
+                    result
+                }
+                Err(_) => {
+                    log::debug!("Timeout fetching status for display, using defaults");
+                    (ServiceStatus::default(), last_known_tui_state.clone())
+                }
+            };
 
         let output_lines_snapshot = {
             let lines = output_lines.lock().await;
@@ -309,9 +342,9 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     .direction(Direction::Vertical)
                     .margin(1)
                     .constraints([
-                        Constraint::Length(3),  // Navigation bar
-                        Constraint::Min(0),     // Main content
-                        Constraint::Length(3),  // Status bar with sparklines
+                        Constraint::Length(3), // Navigation bar
+                        Constraint::Min(0),    // Main content
+                        Constraint::Length(3), // Status bar with sparklines
                     ])
                     .split(size);
 
@@ -322,29 +355,53 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
 
                 match tui_state_local.mode {
                     TuiMode::Command => render::command::render_command_mode(
-                        f, main_chunks[1], &status, input_ref, show_cursor,
-                        output_lines_guard, scroll_offset, &mut local_output_height,
+                        f,
+                        main_chunks[1],
+                        &status,
+                        input_ref,
+                        show_cursor,
+                        output_lines_guard,
+                        scroll_offset,
+                        &mut local_output_height,
                     ),
                     TuiMode::Services => render::services::render_services_mode(
-                        f, main_chunks[1], &status, tui_state_local.selected_service,
+                        f,
+                        main_chunks[1],
+                        &status,
+                        tui_state_local.selected_service,
                     ),
                     TuiMode::Logs => render::logs::render_logs_mode(
-                        f, main_chunks[1], tui_state_local, show_cursor,
+                        f,
+                        main_chunks[1],
+                        tui_state_local,
+                        show_cursor,
                     ),
-                    TuiMode::SystemInfo => render::system_info::render_system_info_mode(
-                        f, main_chunks[1], &status,
-                    ),
+                    TuiMode::SystemInfo => {
+                        render::system_info::render_system_info_mode(f, main_chunks[1], &status)
+                    }
                     TuiMode::Database => render::database::render_database_mode(
-                        f, main_chunks[1], &tui_state_local.db_table_list, tui_state_local.selected_table,
+                        f,
+                        main_chunks[1],
+                        &tui_state_local.db_table_list,
+                        tui_state_local.selected_table,
                     ),
                     TuiMode::Files => render::files::render_files_mode(
-                        f, main_chunks[1], &tui_state_local.file_browser_path,
+                        f,
+                        main_chunks[1],
+                        &tui_state_local.file_browser_path,
+                        tui_state_local.selected_file,
                     ),
                     TuiMode::Help => render::help::render_help_mode(
-                        f, main_chunks[1], tui_state_local.help_scroll,
+                        f,
+                        main_chunks[1],
+                        tui_state_local.help_scroll,
                     ),
                     TuiMode::CodingAgent => render::coding_agent::render_coding_agent_mode(
-                        f, main_chunks[1], tui_state_local, show_cursor, output_lines_guard,
+                        f,
+                        main_chunks[1],
+                        tui_state_local,
+                        show_cursor,
+                        output_lines_guard,
                     ),
                 }
 
@@ -403,40 +460,96 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 // Expire old notifications
                 {
                     let mut state = tui_state.lock().await;
-                    state.notifications.retain(|n| n.created_at.elapsed() < n.duration);
+                    state
+                        .notifications
+                        .retain(|n| n.created_at.elapsed() < n.duration);
                 }
 
                 match key.code {
-                    KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                    KeyCode::Char('c')
+                        if key
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
                         break
                     }
                     // Command palette toggle
-                    KeyCode::Char('p') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                    KeyCode::Char('p')
+                        if key
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
                         let mut state = tui_state.lock().await;
                         state.command_palette.visible = !state.command_palette.visible;
                         if state.command_palette.visible {
                             state.command_palette.query.clear();
                             state.command_palette.selected = 0;
                             state.command_palette.actions = vec![
-                                state::PaletteAction { label: "Command".into(), description: "Switch to command mode (F1)".into(), mode: Some(TuiMode::Command) },
-                                state::PaletteAction { label: "Services".into(), description: "Service management (F2)".into(), mode: Some(TuiMode::Services) },
-                                state::PaletteAction { label: "Logs".into(), description: "View system logs (F3)".into(), mode: Some(TuiMode::Logs) },
-                                state::PaletteAction { label: "System".into(), description: "System information (F4)".into(), mode: Some(TuiMode::SystemInfo) },
-                                state::PaletteAction { label: "Database".into(), description: "Database management (F5)".into(), mode: Some(TuiMode::Database) },
-                                state::PaletteAction { label: "Files".into(), description: "File browser (F6)".into(), mode: Some(TuiMode::Files) },
-                                state::PaletteAction { label: "Help".into(), description: "Help screen (F7)".into(), mode: Some(TuiMode::Help) },
-                                state::PaletteAction { label: "AI Code".into(), description: "AI coding agent (F8)".into(), mode: Some(TuiMode::CodingAgent) },
+                                state::PaletteAction {
+                                    label: "Command".into(),
+                                    description: "Switch to command mode (F1)".into(),
+                                    mode: Some(TuiMode::Command),
+                                },
+                                state::PaletteAction {
+                                    label: "Services".into(),
+                                    description: "Service management (F2)".into(),
+                                    mode: Some(TuiMode::Services),
+                                },
+                                state::PaletteAction {
+                                    label: "Logs".into(),
+                                    description: "View system logs (F3)".into(),
+                                    mode: Some(TuiMode::Logs),
+                                },
+                                state::PaletteAction {
+                                    label: "System".into(),
+                                    description: "System information (F4)".into(),
+                                    mode: Some(TuiMode::SystemInfo),
+                                },
+                                state::PaletteAction {
+                                    label: "Database".into(),
+                                    description: "Database management (F5)".into(),
+                                    mode: Some(TuiMode::Database),
+                                },
+                                state::PaletteAction {
+                                    label: "Files".into(),
+                                    description: "File browser (F6)".into(),
+                                    mode: Some(TuiMode::Files),
+                                },
+                                state::PaletteAction {
+                                    label: "Help".into(),
+                                    description: "Help screen (F7)".into(),
+                                    mode: Some(TuiMode::Help),
+                                },
+                                state::PaletteAction {
+                                    label: "AI Code".into(),
+                                    description: "AI coding agent (F8)".into(),
+                                    mode: Some(TuiMode::CodingAgent),
+                                },
                             ];
                         }
                     }
                     // Function keys for mode switching
-                    KeyCode::F(1) => { tui_state.lock().await.mode = TuiMode::Command; }
-                    KeyCode::F(2) => { tui_state.lock().await.mode = TuiMode::Services; }
-                    KeyCode::F(3) => { tui_state.lock().await.mode = TuiMode::Logs; }
-                    KeyCode::F(4) => { tui_state.lock().await.mode = TuiMode::SystemInfo; }
-                    KeyCode::F(5) => { tui_state.lock().await.mode = TuiMode::Database; }
-                    KeyCode::F(6) => { tui_state.lock().await.mode = TuiMode::Files; }
-                    KeyCode::F(7) => { tui_state.lock().await.mode = TuiMode::Help; }
+                    KeyCode::F(1) => {
+                        tui_state.lock().await.mode = TuiMode::Command;
+                    }
+                    KeyCode::F(2) => {
+                        tui_state.lock().await.mode = TuiMode::Services;
+                    }
+                    KeyCode::F(3) => {
+                        tui_state.lock().await.mode = TuiMode::Logs;
+                    }
+                    KeyCode::F(4) => {
+                        tui_state.lock().await.mode = TuiMode::SystemInfo;
+                    }
+                    KeyCode::F(5) => {
+                        tui_state.lock().await.mode = TuiMode::Database;
+                    }
+                    KeyCode::F(6) => {
+                        tui_state.lock().await.mode = TuiMode::Files;
+                    }
+                    KeyCode::F(7) => {
+                        tui_state.lock().await.mode = TuiMode::Help;
+                    }
                     KeyCode::F(8) => {
                         let mut state = tui_state.lock().await;
                         state.mode = TuiMode::CodingAgent;
@@ -451,16 +564,28 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                         };
                         if palette_visible {
                             match key.code {
-                                KeyCode::Esc => { tui_state.lock().await.command_palette.visible = false; }
+                                KeyCode::Esc => {
+                                    tui_state.lock().await.command_palette.visible = false;
+                                }
                                 KeyCode::Enter => {
                                     let mut state = tui_state.lock().await;
                                     let query_lower = state.command_palette.query.to_lowercase();
-                                    let filtered: Vec<state::PaletteAction> = state.command_palette.actions
+                                    let filtered: Vec<state::PaletteAction> = state
+                                        .command_palette
+                                        .actions
                                         .iter()
-                                        .filter(|a| query_lower.is_empty() || a.label.to_lowercase().contains(&query_lower) || a.description.to_lowercase().contains(&query_lower))
+                                        .filter(|a| {
+                                            query_lower.is_empty()
+                                                || a.label.to_lowercase().contains(&query_lower)
+                                                || a.description
+                                                    .to_lowercase()
+                                                    .contains(&query_lower)
+                                        })
                                         .cloned()
                                         .collect();
-                                    if let Some(action) = filtered.get(state.command_palette.selected) {
+                                    if let Some(action) =
+                                        filtered.get(state.command_palette.selected)
+                                    {
                                         if let Some(mode) = &action.mode {
                                             state.mode = mode.clone();
                                         }
@@ -469,14 +594,20 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 KeyCode::Up => {
                                     let mut state = tui_state.lock().await;
-                                    state.command_palette.selected = state.command_palette.selected.saturating_sub(1);
+                                    state.command_palette.selected =
+                                        state.command_palette.selected.saturating_sub(1);
                                 }
                                 KeyCode::Down => {
                                     let mut state = tui_state.lock().await;
-                                    state.command_palette.selected = state.command_palette.selected.saturating_add(1);
+                                    state.command_palette.selected =
+                                        state.command_palette.selected.saturating_add(1);
                                 }
-                                KeyCode::Char(c) => { tui_state.lock().await.command_palette.query.push(c); }
-                                KeyCode::Backspace => { tui_state.lock().await.command_palette.query.pop(); }
+                                KeyCode::Char(c) => {
+                                    tui_state.lock().await.command_palette.query.push(c);
+                                }
+                                KeyCode::Backspace => {
+                                    tui_state.lock().await.command_palette.query.pop();
+                                }
                                 _ => {}
                             }
                             continue;
@@ -490,9 +621,17 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                         match current_mode {
                             TuiMode::Command => {
                                 if let events::EventResult::Break = events::handle_command_mode(
-                                    key, &mut input, &output_lines, &mut current_dir,
-                                    &human_name, output_height, &mut scroll_offset, &mut terminal,
-                                ).await {
+                                    key,
+                                    &mut input,
+                                    &output_lines,
+                                    &mut current_dir,
+                                    &human_name,
+                                    output_height,
+                                    &mut scroll_offset,
+                                    &mut terminal,
+                                )
+                                .await
+                                {
                                     break;
                                 }
                             }
@@ -502,14 +641,19 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                             TuiMode::Logs => {
                                 events::handle_logs_mode(key, &tui_state).await;
                             }
+                            TuiMode::SystemInfo => {}
                             TuiMode::Help => {
                                 events::handle_help_mode(key, &tui_state).await;
                             }
-                            TuiMode::CodingAgent => {
-                                events::handle_coding_agent_mode(key, &tui_state, &output_lines).await;
+                            TuiMode::Database => {
+                                events::handle_database_mode(key, &tui_state).await;
                             }
-                            _ => {
-                                // Other modes - basic navigation placeholder
+                            TuiMode::Files => {
+                                events::handle_files_mode(key, &tui_state).await;
+                            }
+                            TuiMode::CodingAgent => {
+                                events::handle_coding_agent_mode(key, &tui_state, &output_lines)
+                                    .await;
                             }
                         }
                     }

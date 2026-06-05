@@ -1,10 +1,19 @@
 //! Error recovery strategies
 
-use std::time::Duration;
 use async_trait::async_trait;
-use log::{info, warn, error};
+use log::{error, info, warn};
+use std::time::Duration;
 
 use super::AgentError;
+
+fn missing_recovery_error(operation_id: &str) -> AgentError {
+    AgentError::Execution(super::ExecutionError::InvalidState {
+        message: format!(
+            "Recovery action for operation {} did not include an error",
+            operation_id
+        ),
+    })
+}
 
 /// Recovery strategy for handling errors
 #[async_trait]
@@ -23,26 +32,17 @@ pub trait RecoveryStrategy: Send + Sync {
 #[derive(Debug, Clone)]
 pub enum RecoveryAction {
     /// Retry the operation
-    Retry {
-        delay: Duration,
-        max_attempts: u32,
-    },
+    Retry { delay: Duration, max_attempts: u32 },
     /// Fallback to alternative
-    Fallback {
-        alternative: String,
-    },
+    Fallback { alternative: String },
     /// Skip and continue
     Skip,
     /// Abort execution
     Abort,
     /// Manual intervention required
-    Manual {
-        instructions: String,
-    },
+    Manual { instructions: String },
     /// Circuit breaker open
-    CircuitBreak {
-        duration: Duration,
-    },
+    CircuitBreak { duration: Duration },
 }
 
 #[derive(Debug, Clone)]
@@ -275,7 +275,9 @@ impl RetryExecutor {
                             max_attempts,
                         } => {
                             if recovery.attempt >= max_attempts {
-                                return Err(recovery.error.unwrap());
+                                return Err(recovery
+                                    .error
+                                    .unwrap_or_else(|| missing_recovery_error(operation_id)));
                             }
 
                             warn!(
@@ -288,16 +290,25 @@ impl RetryExecutor {
                         }
                         RecoveryAction::Skip => {
                             warn!("Skipping operation {} due to error", operation_id);
-                            return Err(recovery.error.unwrap());
+                            return Err(recovery
+                                .error
+                                .unwrap_or_else(|| missing_recovery_error(operation_id)));
                         }
                         RecoveryAction::Abort => {
-                            error!("Aborting operation {} due to unrecoverable error", operation_id);
-                            return Err(recovery.error.unwrap());
+                            error!(
+                                "Aborting operation {} due to unrecoverable error",
+                                operation_id
+                            );
+                            return Err(recovery
+                                .error
+                                .unwrap_or_else(|| missing_recovery_error(operation_id)));
                         }
                         RecoveryAction::Fallback { alternative } => {
                             warn!("Falling back to alternative: {}", alternative);
                             // In real implementation, would execute fallback
-                            return Err(recovery.error.unwrap());
+                            return Err(recovery
+                                .error
+                                .unwrap_or_else(|| missing_recovery_error(operation_id)));
                         }
                         RecoveryAction::CircuitBreak { duration } => {
                             error!(
@@ -305,14 +316,18 @@ impl RetryExecutor {
                                 operation_id, duration
                             );
                             tokio::time::sleep(duration).await;
-                            return Err(recovery.error.unwrap());
+                            return Err(recovery
+                                .error
+                                .unwrap_or_else(|| missing_recovery_error(operation_id)));
                         }
                         RecoveryAction::Manual { instructions } => {
                             error!(
                                 "Manual intervention required for operation {}: {}",
                                 operation_id, instructions
                             );
-                            return Err(recovery.error.unwrap());
+                            return Err(recovery
+                                .error
+                                .unwrap_or_else(|| missing_recovery_error(operation_id)));
                         }
                     }
                 }

@@ -11,7 +11,9 @@ pub mod enhanced;
 pub mod external;
 pub mod legacy;
 
-pub use enhanced::{TtsConfig, TtsService, TtsRequest, TtsResult, AudioFormat};
+pub use enhanced::{AudioFormat, TtsConfig, TtsRequest, TtsResult, TtsService};
 
 // Re-export legacy functions for backward compatibility
-pub use legacy::{handle, init, get, fetch_online, fetch_local, tts_cross_platform, tts_cross_platform_wav};
+pub use legacy::{
+    fetch_local, fetch_online, get, handle, init, tts_cross_platform, tts_cross_platform_wav,
+};

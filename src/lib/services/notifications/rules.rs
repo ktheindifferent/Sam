@@ -96,7 +96,13 @@ impl RuleEngine {
             }
             if let Some(notification) = self.check_rule(rule, event) {
                 // Cooldown check
-                let mut state = self.cooldown.lock().unwrap();
+                let mut state = match self.cooldown.lock() {
+                    Ok(state) => state,
+                    Err(e) => {
+                        log::error!("Failed to lock notification cooldown state: {}", e);
+                        return None;
+                    }
+                };
                 if let Some(last) = state.last_fired.get(&rule.id) {
                     if last.elapsed().as_secs() < self.cooldown_secs {
                         continue;
@@ -114,9 +120,7 @@ impl RuleEngine {
             // CPU threshold from metrics update
             (
                 AlertCondition::CpuThreshold { percent, .. },
-                ServiceEvent::MetricsUpdate {
-                    metric, value, ..
-                },
+                ServiceEvent::MetricsUpdate { metric, value, .. },
             ) if metric == "cpu_usage" && *value > *percent => Some(self.build_notification(
                 rule,
                 format!("CPU usage at {:.1}% (threshold: {:.1}%)", value, percent),
@@ -126,24 +130,17 @@ impl RuleEngine {
             // Memory threshold from metrics update
             (
                 AlertCondition::MemoryThreshold { percent, .. },
-                ServiceEvent::MetricsUpdate {
-                    metric, value, ..
-                },
+                ServiceEvent::MetricsUpdate { metric, value, .. },
             ) if metric == "memory_usage" && *value > *percent => Some(self.build_notification(
                 rule,
-                format!(
-                    "Memory usage at {:.1}% (threshold: {:.1}%)",
-                    value, percent
-                ),
+                format!("Memory usage at {:.1}% (threshold: {:.1}%)", value, percent),
                 None,
             )),
 
             // Disk threshold
             (
                 AlertCondition::DiskThreshold { percent },
-                ServiceEvent::MetricsUpdate {
-                    metric, value, ..
-                },
+                ServiceEvent::MetricsUpdate { metric, value, .. },
             ) if metric == "disk_usage" && *value > *percent => Some(self.build_notification(
                 rule,
                 format!("Disk usage at {:.1}% (threshold: {:.1}%)", value, percent),
@@ -193,13 +190,18 @@ impl RuleEngine {
                 },
                 ServiceEvent::Error { service, .. },
             ) if service == target_svc => {
-                let mut counts = self.error_counts.lock().unwrap();
+                let mut counts = match self.error_counts.lock() {
+                    Ok(counts) => counts,
+                    Err(e) => {
+                        log::error!("Failed to lock notification error counts: {}", e);
+                        return None;
+                    }
+                };
                 let entries = counts.entry(service.clone()).or_default();
                 entries.push(Instant::now());
 
                 // Prune old entries outside the window
-                let cutoff = Instant::now()
-                    - std::time::Duration::from_secs(*window_seconds);
+                let cutoff = Instant::now() - std::time::Duration::from_secs(*window_seconds);
                 entries.retain(|t| *t > cutoff);
 
                 if entries.len() >= *threshold as usize {

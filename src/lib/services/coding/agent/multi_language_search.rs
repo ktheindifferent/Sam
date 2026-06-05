@@ -1,18 +1,13 @@
 use super::{
-    types::*,
     errors::{CodingAgentError, CodingAgentResult},
     providers::LLMProvider,
+    types::*,
 };
-use std::collections::{HashMap, HashSet, BTreeMap};
-use std::path::{Path, PathBuf};
-use serde::{Serialize, Deserialize};
 use async_trait::async_trait;
-use tantivy::{
-    schema::*,
-    Index,
-    IndexWriter,
-    Document as TantivyDoc,
-};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use tantivy::{schema::*, Document as TantivyDoc, Index, IndexWriter};
 
 /// Multi-language code search and indexing engine
 pub struct MultiLanguageSearchEngine {
@@ -789,14 +784,14 @@ impl MultiLanguageSearchEngine {
     pub async fn index_files(&mut self, paths: Vec<PathBuf>) -> CodingAgentResult<IndexingResult> {
         let mut indexed_count = 0;
         let mut errors = Vec::new();
-        
+
         for path in paths {
             match self.index_file(&path).await {
                 Ok(_) => indexed_count += 1,
                 Err(e) => errors.push((path, e.to_string())),
             }
         }
-        
+
         Ok(IndexingResult {
             indexed_count,
             total_symbols: self.index_manager.get_symbol_count(),
@@ -807,18 +802,18 @@ impl MultiLanguageSearchEngine {
     async fn index_file(&mut self, path: &Path) -> CodingAgentResult<()> {
         let content = tokio::fs::read_to_string(path).await?;
         let language = self.detect_language(path)?;
-        
+
         // Parse the file
-        let parse_result = self.syntax_analyzer.parse(&content, language.clone()).await?;
+        let parse_result = self
+            .syntax_analyzer
+            .parse(&content, language.clone())
+            .await?;
 
         // Index in language-specific index
-        self.index_manager.index_document(
-            path,
-            &content,
-            language,
-            &parse_result,
-        ).await?;
-        
+        self.index_manager
+            .index_document(path, &content, language, &parse_result)
+            .await?;
+
         Ok(())
     }
 
@@ -836,7 +831,7 @@ impl MultiLanguageSearchEngine {
             Some("swift") => Ok(Language::Swift),
             Some("kt") => Ok(Language::Kotlin),
             _ => Err(CodingAgentError::ConfigError {
-                message: format!("Unsupported file extension: {:?}", path.extension())
+                message: format!("Unsupported file extension: {:?}", path.extension()),
             }),
         }
     }
@@ -847,29 +842,31 @@ impl MultiLanguageSearchEngine {
         if let Some(cached) = self.cache_manager.get(&query) {
             return Ok(cached);
         }
-        
+
         // Process query
         let processed_query = self.query_processor.process(&query).await?;
-        
+
         // Execute search
         let mut results = if query.text.contains("semantic:") {
             self.semantic_search.search(&processed_query).await?
         } else {
             self.index_manager.search(&processed_query).await?
         };
-        
+
         // Rank results
         results.results = self.ranking_engine.rank(results.results, &query).await?;
-        
+
         // Cache results
         self.cache_manager.put(&query, &results);
-        
+
         Ok(results)
     }
 
     /// Find symbol definition
     pub async fn find_definition(&self, symbol_name: &str) -> CodingAgentResult<Vec<Symbol>> {
-        self.index_manager.find_symbols(symbol_name, SymbolType::Function).await
+        self.index_manager
+            .find_symbols(symbol_name, SymbolType::Function)
+            .await
     }
 
     /// Find symbol references
@@ -885,10 +882,13 @@ impl MultiLanguageSearchEngine {
     ) -> CodingAgentResult<Vec<Completion>> {
         let language = self.detect_language(file)?;
         let context = self.get_context_at_position(file, position).await?;
-        
+
         // Get semantic completions
-        let completions = self.semantic_search.get_completions(&context, language).await?;
-        
+        let completions = self
+            .semantic_search
+            .get_completions(&context, language)
+            .await?;
+
         Ok(completions)
     }
 
@@ -899,7 +899,7 @@ impl MultiLanguageSearchEngine {
     ) -> CodingAgentResult<String> {
         let content = tokio::fs::read_to_string(file).await?;
         let lines: Vec<&str> = content.lines().collect();
-        
+
         if position.0 < lines.len() {
             Ok(lines[position.0].to_string())
         } else {
@@ -973,7 +973,11 @@ impl IndexManager {
         })
     }
 
-    pub async fn find_symbols(&self, name: &str, symbol_type: SymbolType) -> CodingAgentResult<Vec<Symbol>> {
+    pub async fn find_symbols(
+        &self,
+        name: &str,
+        symbol_type: SymbolType,
+    ) -> CodingAgentResult<Vec<Symbol>> {
         Ok(vec![])
     }
 
@@ -1171,9 +1175,7 @@ impl ExecutionEngine {
 
 impl ExecutorPool {
     pub fn new() -> Self {
-        Self {
-            executors: vec![],
-        }
+        Self { executors: vec![] }
     }
 }
 
@@ -1319,9 +1321,7 @@ impl ASTAnalyzer {
 
 impl PatternMatcher {
     pub fn new() -> Self {
-        Self {
-            patterns: vec![],
-        }
+        Self { patterns: vec![] }
     }
 }
 
@@ -1342,9 +1342,17 @@ impl RankingEngine {
         }
     }
 
-    pub async fn rank(&self, mut results: Vec<SearchResult>, query: &Query) -> CodingAgentResult<Vec<SearchResult>> {
+    pub async fn rank(
+        &self,
+        mut results: Vec<SearchResult>,
+        query: &Query,
+    ) -> CodingAgentResult<Vec<SearchResult>> {
         // Sort by score
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         Ok(results)
     }
 }

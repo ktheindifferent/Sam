@@ -108,14 +108,14 @@ impl MDns {
     }
 
     /// Broadcasts the mDNS service in a loop.
-    pub async fn broadcast_loop(&self) {
+    pub async fn broadcast_loop(&self) -> Result<(), anyhow::Error> {
         log::info!(
             "[mDNS] Starting broadcast for service: {} (mdns-sd)",
             SERVICE_TYPE
         );
-        let mdns = ServiceDaemon::new().expect("Failed to create mDNS daemon");
+        let mdns = ServiceDaemon::new()?;
         let instance_name = "hive".to_string(); // TODO: Use a more meaningful instance name
-        let host_ipv4: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+        let host_ipv4 = std::net::IpAddr::from([127, 0, 0, 1]);
         let ip_list: &[std::net::IpAddr] = &[host_ipv4];
         let txt_records: &[(&str, &str)] = &[
             ("id", self.instance_id.as_str()),
@@ -129,9 +129,9 @@ impl MDns {
             SERVICE_PORT,
             txt_records,
         )
-        .expect("Valid service info");
+        .map_err(|e| anyhow::anyhow!(e))?;
         mdns.register(service_info)
-            .expect("Failed to register mDNS service");
+            .map_err(|e| anyhow::anyhow!(e))?;
         log::info!("[mDNS] Broadcast registered for {}", instance_name);
         loop {
             sleep(Duration::from_secs(60)).await;
@@ -140,13 +140,13 @@ impl MDns {
 
     pub async fn init() -> Result<(), anyhow::Error> {
         println!("[mDNS] Initializing mDNS broadcast (mdns-sd)");
-        let mdns = ServiceDaemon::new().expect("Failed to create mDNS daemon");
+        let mdns = ServiceDaemon::new()?;
         println!("[mDNS] mDNS daemon created successfully");
         let instance_id = generate_secret_key();
         println!("[mDNS] Generated instance ID: {}", instance_id);
         let instance_name = format!("opensam-{}", instance_id);
         println!("[mDNS] Instance name: {}", instance_name);
-        let host_ipv4: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+        let host_ipv4 = std::net::IpAddr::from([127, 0, 0, 1]);
         println!("[mDNS] Host IPv4 address: {}", host_ipv4);
         let ip_list: &[std::net::IpAddr] = &[host_ipv4];
         println!("[mDNS] IP list: {:?}", ip_list);
@@ -155,12 +155,12 @@ impl MDns {
         let service_info = ServiceInfo::new(
             SERVICE_NAME,
             &instance_name,
-            "localhost", // host name
+            "localhost.local.", // host name
             ip_list,
             SERVICE_PORT,
             txt_records,
         )
-        .expect("Valid service info");
+        .map_err(|e| anyhow::anyhow!(e))?;
         println!(
             "[mDNS] Service info created successfully: {:?}",
             service_info
@@ -224,7 +224,9 @@ pub async fn start_broadcast() {
     }
     let broadcast_handle = tokio::spawn(async move {
         let mdns = MDns::new();
-        let _ = mdns.broadcast_loop().await;
+        if let Err(e) = mdns.broadcast_loop().await {
+            log::error!("[mDNS] Broadcast error: {}", e);
+        }
     });
     *BROADCAST_HANDLE.lock().await = Some(broadcast_handle);
 }

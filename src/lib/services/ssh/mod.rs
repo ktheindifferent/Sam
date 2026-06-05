@@ -1,9 +1,9 @@
 //! SSH module containing both client and server functionality
-//! 
+//!
 //! This module provides comprehensive SSH capabilities for the SAM system:
 //! - SSH client for connecting to and managing remote systems
 //! - SSH server for providing remote access to SAM
-//! 
+//!
 //! ## Client Module
 //! The client module (`ssh::client`) provides:
 //! - SSH connection management with multiple authentication methods
@@ -12,7 +12,7 @@
 //! - Directory listing and file operations
 //! - SSH tunneling support
 //! - Connection pooling and cleanup
-//! 
+//!
 //! ## Server Module
 //! The server module (`ssh::server`) provides:
 //! - Simple SSH-like server for remote access to SAM
@@ -26,11 +26,10 @@ pub mod server;
 
 // Re-export commonly used types for convenience
 pub use client::{
-    SshManager, SshConfig, AuthMethod, CommandResult, TransferResult,
-    FileInfo, ConnectionInfo, SshCommandBuilder, SshSession
+    AuthMethod, CommandResult, ConnectionInfo, FileInfo, SshCommandBuilder, SshConfig, SshManager,
+    SshSession, TransferResult,
 };
 
 pub use server::{
-    RemoteAccessServer, start_ssh_server, is_ssh_server_running, 
-    get_ssh_server_status, TuiHandle
+    get_ssh_server_status, is_ssh_server_running, start_ssh_server, RemoteAccessServer, TuiHandle,
 };

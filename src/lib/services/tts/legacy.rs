@@ -61,14 +61,12 @@ pub fn handle(
     request: &Request,
 ) -> Result<Response, crate::http::Error> {
     if request.url() == "/api/services/tts" {
-        let input = request.get_param("text")
-            .ok_or_else(|| crate::http::Error::BadRequest("Missing 'text' parameter".to_string()))?;
+        let input = request.get_param("text").ok_or_else(|| {
+            crate::http::Error::BadRequest("Missing 'text' parameter".to_string())
+        })?;
         let audio_data = crate::services::tts::get(input)
             .map_err(|e| crate::http::Error::InternalServerError(format!("TTS failed: {}", e)))?;
-        return Ok(Response::from_data(
-            "audio/wav",
-            audio_data,
-        ));
+        return Ok(Response::from_data("audio/wav", audio_data));
     }
     Ok(Response::empty_404())
 }
@@ -77,7 +75,10 @@ pub fn init() {
     let tts_thead = thread::Builder::new()
         .name("mozillatts".to_string())
         .spawn(move || {
-            crate::tools::safe_uinx_cmd("docker", &["run", "-p", "5002:5002", "synesthesiam/mozillatts"]);
+            crate::tools::safe_uinx_cmd(
+                "docker",
+                &["run", "-p", "5002:5002", "synesthesiam/mozillatts"],
+            );
         });
     match tts_thead {
         Ok(_) => {
@@ -221,9 +222,9 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
         Command::new("say")
             .args([
                 "-o",
-                tmp_path.to_str().ok_or_else(|| {
-                    Box::<dyn std::error::Error>::from("Invalid path")
-                })?,
+                tmp_path
+                    .to_str()
+                    .ok_or_else(|| Box::<dyn std::error::Error>::from("Invalid path"))?,
                 "--data-format=LEF32@22050",
                 text,
             ])
@@ -243,9 +244,9 @@ pub fn tts_cross_platform_wav(text: &str) -> Result<Vec<u8>, Box<dyn std::error:
             .collect();
         let tmp_path = Path::new(TTS_TMP_DIR).join(format!("{}.wav", rand_name));
         // Try espeak first
-        let path_str = tmp_path.to_str().ok_or_else(|| {
-            Box::<dyn std::error::Error>::from("Invalid path")
-        })?;
+        let path_str = tmp_path
+            .to_str()
+            .ok_or_else(|| Box::<dyn std::error::Error>::from("Invalid path"))?;
         let espeak_output = Command::new("espeak")
             .args(&["-w", path_str, text])
             .output();

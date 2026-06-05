@@ -2,22 +2,17 @@ use serde::{Deserialize, Serialize};
 // use serde_valid::Validate; // Not using serde_valid due to compatibility issues
 // use validator::{Validate as ValidatorValidate, ValidationError};
 use ammonia::clean;
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use std::collections::HashMap;
 
 // Enhanced validation patterns
-static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
-});
+static EMAIL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap());
 
-static USERNAME_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-zA-Z0-9_-]{3,32}$").unwrap()
-});
+static USERNAME_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_-]{3,32}$").unwrap());
 
-static PHONE_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^\+?[1-9]\d{1,14}$").unwrap()
-});
+static PHONE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\+?[1-9]\d{1,14}$").unwrap());
 
 static UUID_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$").unwrap()
@@ -63,13 +58,13 @@ impl ValidationErrors {
 pub struct UserRegistrationInput {
     // Email validation handled in validate_and_sanitize method
     pub email: String,
-    
+
     // Username validation handled in validate_and_sanitize method
     pub username: String,
-    
+
     // Password validation handled in validate_and_sanitize method
     pub password: String,
-    
+
     // Name validation handled in validate_and_sanitize method
     pub name: Option<String>,
 }
@@ -77,24 +72,30 @@ pub struct UserRegistrationInput {
 impl InputValidation for UserRegistrationInput {
     fn validate_and_sanitize(&mut self) -> Result<(), ValidationErrors> {
         let mut errors = ValidationErrors::new();
-        
+
         // Validate email
         self.email = self.email.trim().to_lowercase();
         if !EMAIL_REGEX.is_match(&self.email) {
             errors.add_error("email", "Invalid email format");
         }
-        
+
         // Validate username
         self.username = self.username.trim().to_string();
         if !USERNAME_REGEX.is_match(&self.username) {
-            errors.add_error("username", "Username must be alphanumeric with underscores/hyphens only");
+            errors.add_error(
+                "username",
+                "Username must be alphanumeric with underscores/hyphens only",
+            );
         }
-        
+
         // Validate password strength
         if !validate_password_strength(&self.password) {
-            errors.add_error("password", "Password must contain uppercase, lowercase, number, and special character");
+            errors.add_error(
+                "password",
+                "Password must contain uppercase, lowercase, number, and special character",
+            );
         }
-        
+
         // Sanitize name if provided
         if let Some(ref mut name) = self.name {
             *name = sanitize_text(name);
@@ -102,7 +103,7 @@ impl InputValidation for UserRegistrationInput {
                 errors.add_error("name", "Name too long");
             }
         }
-        
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -123,21 +124,21 @@ pub struct ApiQueryParams {
 impl InputValidation for ApiQueryParams {
     fn validate_and_sanitize(&mut self) -> Result<(), ValidationErrors> {
         let mut errors = ValidationErrors::new();
-        
+
         // Validate page
         if let Some(page) = self.page {
             if page == 0 || page > 10000 {
                 errors.add_error("page", "Page must be between 1 and 10000");
             }
         }
-        
+
         // Validate limit
         if let Some(limit) = self.limit {
             if limit == 0 || limit > 100 {
                 errors.add_error("limit", "Limit must be between 1 and 100");
             }
         }
-        
+
         // Validate sort parameter
         if let Some(ref mut sort) = self.sort {
             *sort = sanitize_sort_parameter(sort);
@@ -145,7 +146,7 @@ impl InputValidation for ApiQueryParams {
                 errors.add_error("sort", "Invalid sort field");
             }
         }
-        
+
         // Sanitize filter parameter
         if let Some(ref mut filter) = self.filter {
             *filter = sanitize_text(filter);
@@ -153,7 +154,7 @@ impl InputValidation for ApiQueryParams {
                 errors.add_error("filter", "Filter string too long");
             }
         }
-        
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -174,29 +175,29 @@ pub struct FileUploadInput {
 impl InputValidation for FileUploadInput {
     fn validate_and_sanitize(&mut self) -> Result<(), ValidationErrors> {
         let mut errors = ValidationErrors::new();
-        
+
         // Sanitize filename
         self.filename = sanitize_filename(&self.filename);
         if self.filename.is_empty() || self.filename.len() > 255 {
             errors.add_error("filename", "Invalid filename");
         }
-        
+
         // Validate content type
         if !is_allowed_content_type(&self.content_type) {
             errors.add_error("content_type", "File type not allowed");
         }
-        
+
         // Validate file size (max 50MB)
         const MAX_SIZE: usize = 50 * 1024 * 1024;
         if self.size > MAX_SIZE {
             errors.add_error("size", "File size exceeds 50MB limit");
         }
-        
+
         // Check for malicious content in file data
         if contains_malicious_patterns(&self.data) {
             errors.add_error("data", "File contains potentially malicious content");
         }
-        
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -237,10 +238,17 @@ fn sanitize_sort_parameter(sort: &str) -> String {
 fn is_valid_sort_field(field: &str) -> bool {
     // Define allowed sort fields
     const ALLOWED_FIELDS: &[&str] = &[
-        "id", "name", "email", "created_at", "updated_at", 
-        "title", "date", "priority", "status"
+        "id",
+        "name",
+        "email",
+        "created_at",
+        "updated_at",
+        "title",
+        "date",
+        "priority",
+        "status",
     ];
-    
+
     // Check if field is in format "field" or "field-desc"/"field-asc"
     let base_field = field.trim_end_matches("-asc").trim_end_matches("-desc");
     ALLOWED_FIELDS.contains(&base_field)
@@ -252,7 +260,7 @@ fn validate_password_strength(password: &str) -> bool {
     let has_lowercase = password.chars().any(|c| c.is_lowercase());
     let has_number = password.chars().any(|c| c.is_numeric());
     let has_special = password.chars().any(|c| !c.is_alphanumeric());
-    
+
     has_uppercase && has_lowercase && has_number && has_special
 }
 
@@ -270,7 +278,7 @@ fn is_allowed_content_type(content_type: &str) -> bool {
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
-    
+
     ALLOWED_TYPES.contains(&content_type)
 }
 
@@ -288,25 +296,26 @@ fn contains_malicious_patterns(data: &[u8]) -> bool {
         b"exec(",
         b"system(",
     ];
-    
+
     for pattern in MALICIOUS_PATTERNS {
         if data.windows(pattern.len()).any(|window| window == *pattern) {
             return true;
         }
     }
-    
+
     false
 }
 
 // JSON input validation
-pub fn validate_json_input<T: InputValidation + for<'de> serde::Deserialize<'de>>(json_str: &str) -> Result<T, ValidationErrors> {
-    let mut input: T = serde_json::from_str(json_str)
-        .map_err(|_| {
-            let mut errors = ValidationErrors::new();
-            errors.add_error("json", "Invalid JSON format");
-            errors
-        })?;
-    
+pub fn validate_json_input<T: InputValidation + for<'de> serde::Deserialize<'de>>(
+    json_str: &str,
+) -> Result<T, ValidationErrors> {
+    let mut input: T = serde_json::from_str(json_str).map_err(|_| {
+        let mut errors = ValidationErrors::new();
+        errors.add_error("json", "Invalid JSON format");
+        errors
+    })?;
+
     input.validate_and_sanitize()?;
     Ok(input)
 }
@@ -373,9 +382,9 @@ mod tests {
             password: "SecureP@ss123".to_string(),
             name: Some("Test User".to_string()),
         };
-        
+
         assert!(input.validate_and_sanitize().is_ok());
-        
+
         // Test invalid email
         input.email = "invalid-email".to_string();
         assert!(input.validate_and_sanitize().is_err());
@@ -390,13 +399,18 @@ mod tests {
 
     #[test]
     fn test_sql_sanitization() {
-        assert_eq!(sanitize_sql_parameter("'; DROP TABLE users;"), "''; DROP TABLE users");
+        assert_eq!(
+            sanitize_sql_parameter("'; DROP TABLE users;"),
+            "''; DROP TABLE users"
+        );
         assert_eq!(sanitize_sql_parameter("normal input"), "normal input");
     }
 
     #[test]
     fn test_xss_encoding() {
-        assert_eq!(encode_for_html("<script>alert('xss')</script>"), 
-                   "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;&#x2F;script&gt;");
+        assert_eq!(
+            encode_for_html("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;&#x2F;script&gt;"
+        );
     }
 }

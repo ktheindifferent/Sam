@@ -1,7 +1,7 @@
 //! Task executor module
 
-use std::future::Future;
 use anyhow::Result;
+use std::future::Future;
 
 /// Task executor for managing async tasks
 pub struct TaskExecutor;

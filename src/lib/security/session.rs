@@ -1,6 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
-use deadpool_redis::{Config, Pool, Runtime};
 use deadpool_redis::redis::AsyncCommands;
+use deadpool_redis::{Config, Pool, Runtime};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -31,7 +31,7 @@ impl Session {
         let now = Utc::now();
         let session_id = Uuid::new_v4().to_string();
         let csrf_token = Uuid::new_v4().to_string();
-        
+
         Session {
             id: session_id,
             user_id: None,
@@ -47,17 +47,17 @@ impl Session {
             csrf_token,
         }
     }
-    
+
     /// Check if session is expired
     pub fn is_expired(&self) -> bool {
         Utc::now() > self.expires_at
     }
-    
+
     /// Update last accessed time
     pub fn touch(&mut self) {
         self.last_accessed = Utc::now();
     }
-    
+
     /// Authenticate the session with user information
     pub fn authenticate(&mut self, user_id: String, username: String, email: Option<String>) {
         self.user_id = Some(user_id);
@@ -66,7 +66,7 @@ impl Session {
         self.is_authenticated = true;
         self.touch();
     }
-    
+
     /// Invalidate the session (logout)
     pub fn invalidate(&mut self) {
         self.user_id = None;
@@ -87,21 +87,26 @@ pub struct SessionManager {
 
 impl SessionManager {
     /// Create a new session manager
-    pub async fn new(redis_url: &str, session_ttl_hours: i64) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(
+        redis_url: &str,
+        session_ttl_hours: i64,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let cfg = Config::from_url(redis_url);
         let pool = cfg.create_pool(Some(Runtime::Tokio1))?;
-        
+
         // Test connection
         let mut conn = pool.get().await?;
-        let _: String = deadpool_redis::redis::cmd("PING").query_async::<String>(&mut conn).await?;
-        
+        let _: String = deadpool_redis::redis::cmd("PING")
+            .query_async::<String>(&mut conn)
+            .await?;
+
         Ok(SessionManager {
             redis_pool: pool,
             session_ttl: session_ttl_hours * 3600,
             max_sessions_per_user: 5, // Limit concurrent sessions per user
         })
     }
-    
+
     /// Create a new session
     pub async fn create_session(
         &self,
@@ -112,81 +117,93 @@ impl SessionManager {
         self.save_session(&session).await?;
         Ok(session)
     }
-    
+
     /// Save session to Redis
-    pub fn save_session(&self, session: &Session) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), SessionError>> + Send + 'static>> {
+    pub fn save_session(
+        &self,
+        session: &Session,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(), SessionError>> + Send + 'static>,
+    > {
         let session = session.clone();
         let redis_pool = self.redis_pool.clone();
         let session_ttl = self.session_ttl;
         Box::pin(async move {
-        let mut conn = redis_pool.get().await.map_err(|e| SessionError::from(format!("Redis pool error: {}", e)))?;
-        let key = format!("session:{}", session.id);
-        let value = serde_json::to_string(&session)?;
-        
-        // Set with expiration
-        conn.set_ex::<_, _, ()>(key, value, session_ttl as u64).await?;
-        
-        // If authenticated, track user sessions
-        if let Some(user_id) = &session.user_id {
-            let user_sessions_key = format!("user_sessions:{}", user_id);
-            conn.sadd::<_, _, ()>(&user_sessions_key, &session.id).await?;
-            conn.expire::<_, ()>(&user_sessions_key, session_ttl).await?;
-            
-            // TODO: Enforce max sessions per user when lifetime issues are resolved
-        }
-        
-        Ok(())
+            let mut conn = redis_pool
+                .get()
+                .await
+                .map_err(|e| SessionError::from(format!("Redis pool error: {}", e)))?;
+            let key = format!("session:{}", session.id);
+            let value = serde_json::to_string(&session)?;
+
+            // Set with expiration
+            conn.set_ex::<_, _, ()>(key, value, session_ttl as u64)
+                .await?;
+
+            // If authenticated, track user sessions
+            if let Some(user_id) = &session.user_id {
+                let user_sessions_key = format!("user_sessions:{}", user_id);
+                conn.sadd::<_, _, ()>(&user_sessions_key, &session.id)
+                    .await?;
+                conn.expire::<_, ()>(&user_sessions_key, session_ttl)
+                    .await?;
+
+                // TODO: Enforce max sessions per user when lifetime issues are resolved
+            }
+
+            Ok(())
         })
     }
-    
+
     /// Get session from Redis
     pub async fn get_session(&self, session_id: &str) -> Result<Option<Session>, SessionError> {
         let mut conn = self.redis_pool.get().await?;
         let key = format!("session:{}", session_id);
-        
+
         let value: Option<String> = conn.get(&key).await?;
-        
+
         match value {
             Some(json) => {
                 let mut session: Session = serde_json::from_str(&json)?;
-                
+
                 // Check if expired
                 if session.is_expired() {
                     self.delete_session(&session.id).await?;
                     return Ok(None);
                 }
-                
+
                 // Update last accessed time
                 session.touch();
                 self.save_session(&session).await?;
-                
+
                 Ok(Some(session))
             }
             None => Ok(None),
         }
     }
-    
+
     /// Delete a session
     pub async fn delete_session(&self, session_id: &str) -> Result<(), SessionError> {
         let mut conn = self.redis_pool.get().await?;
         let key = format!("session:{}", session_id);
-        
+
         // Get session to find user_id
         let value: Option<String> = conn.get(&key).await?;
         if let Some(json) = value {
             if let Ok(session) = serde_json::from_str::<Session>(&json) {
                 if let Some(user_id) = session.user_id {
                     let user_sessions_key = format!("user_sessions:{}", user_id);
-                    conn.srem::<_, _, ()>(&user_sessions_key, session_id).await?;
+                    conn.srem::<_, _, ()>(&user_sessions_key, session_id)
+                        .await?;
                 }
             }
         }
-        
+
         // Delete the session
         conn.del::<_, ()>(&key).await?;
         Ok(())
     }
-    
+
     /// Validate CSRF token
     pub async fn validate_csrf_token(
         &self,
@@ -199,62 +216,65 @@ impl SessionManager {
             Ok(false)
         }
     }
-    
+
     /// Get all sessions for a user
     pub async fn get_user_sessions(&self, user_id: &str) -> Result<Vec<Session>, SessionError> {
         let mut conn = self.redis_pool.get().await?;
         let user_sessions_key = format!("user_sessions:{}", user_id);
-        
+
         let session_ids: Vec<String> = conn.smembers(&user_sessions_key).await?;
         let mut sessions = Vec::new();
-        
+
         for session_id in session_ids {
             if let Some(session) = self.get_session(&session_id).await? {
                 sessions.push(session);
             }
         }
-        
+
         Ok(sessions)
     }
-    
+
     /// Invalidate all sessions for a user
     pub async fn invalidate_user_sessions(&self, user_id: &str) -> Result<(), SessionError> {
         let sessions = self.get_user_sessions(user_id).await?;
-        
+
         for session in sessions {
             self.delete_session(&session.id).await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Enforce maximum sessions per user
     async fn enforce_session_limit(&self, user_id: &str) -> Result<(), SessionError> {
         let sessions = self.get_user_sessions(user_id).await?;
-        
+
         if sessions.len() > self.max_sessions_per_user {
             // Sort by last accessed time
             let mut sorted_sessions = sessions;
             sorted_sessions.sort_by(|a, b| a.last_accessed.cmp(&b.last_accessed));
-            
+
             // Remove oldest sessions
             let sessions_to_remove = sorted_sessions.len() - self.max_sessions_per_user;
             for i in 0..sessions_to_remove {
                 self.delete_session(&sorted_sessions[i].id).await?;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Clean up expired sessions (should be called periodically)
     pub async fn cleanup_expired_sessions(&self) -> Result<usize, SessionError> {
         let mut conn = self.redis_pool.get().await?;
         let pattern = "session:*";
-        let keys: Vec<String> = deadpool_redis::redis::cmd("KEYS").arg(pattern).query_async::<Vec<String>>(&mut conn).await?;
-        
+        let keys: Vec<String> = deadpool_redis::redis::cmd("KEYS")
+            .arg(pattern)
+            .query_async::<Vec<String>>(&mut conn)
+            .await?;
+
         let mut deleted_count = 0;
-        
+
         for key in keys {
             let value: Option<String> = conn.get(&key).await?;
             if let Some(json) = value {
@@ -266,7 +286,7 @@ impl SessionManager {
                 }
             }
         }
-        
+
         Ok(deleted_count)
     }
 }
@@ -280,7 +300,7 @@ impl SessionMiddleware {
     pub fn new(manager: SessionManager) -> Self {
         SessionMiddleware { manager }
     }
-    
+
     /// Extract and validate session from request headers
     pub async fn validate_request(
         &self,
@@ -299,7 +319,7 @@ impl SessionMiddleware {
                 }
             }
         };
-        
+
         // Get session
         let session = match self.manager.get_session(&session_id).await {
             Ok(Some(s)) => s,
@@ -312,21 +332,21 @@ impl SessionMiddleware {
             }
             Err(e) => return Err(format!("Session validation error: {}", e)),
         };
-        
+
         // Check authentication if required
         if require_auth && !session.is_authenticated {
             return Err("Authentication required".to_string());
         }
-        
+
         // Validate CSRF token if provided
         if let Some(token) = csrf_token {
             match self.manager.validate_csrf_token(&session_id, &token).await {
-                Ok(true) => {},
+                Ok(true) => {}
                 Ok(false) => return Err("Invalid CSRF token".to_string()),
                 Err(e) => return Err(format!("CSRF validation error: {}", e)),
             }
         }
-        
+
         Ok(Some(session))
     }
 }
@@ -334,72 +354,52 @@ impl SessionMiddleware {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_session_creation() {
-        let session = Session::new(
-            "192.168.1.1".to_string(),
-            "Mozilla/5.0".to_string(),
-            24,
-        );
-        
+        let session = Session::new("192.168.1.1".to_string(), "Mozilla/5.0".to_string(), 24);
+
         assert!(!session.id.is_empty());
         assert!(!session.csrf_token.is_empty());
         assert!(!session.is_authenticated);
         assert!(!session.is_expired());
     }
-    
+
     #[test]
     fn test_session_authentication() {
-        let mut session = Session::new(
-            "192.168.1.1".to_string(),
-            "Mozilla/5.0".to_string(),
-            24,
-        );
-        
+        let mut session = Session::new("192.168.1.1".to_string(), "Mozilla/5.0".to_string(), 24);
+
         session.authenticate(
             "user123".to_string(),
             "john_doe".to_string(),
             Some("john@example.com".to_string()),
         );
-        
+
         assert!(session.is_authenticated);
         assert_eq!(session.user_id, Some("user123".to_string()));
         assert_eq!(session.username, Some("john_doe".to_string()));
     }
-    
+
     #[test]
     fn test_session_expiration() {
-        let mut session = Session::new(
-            "192.168.1.1".to_string(),
-            "Mozilla/5.0".to_string(),
-            24,
-        );
-        
+        let mut session = Session::new("192.168.1.1".to_string(), "Mozilla/5.0".to_string(), 24);
+
         // Force expiration
         session.expires_at = Utc::now() - Duration::hours(1);
-        
+
         assert!(session.is_expired());
     }
-    
+
     #[test]
     fn test_session_invalidation() {
-        let mut session = Session::new(
-            "192.168.1.1".to_string(),
-            "Mozilla/5.0".to_string(),
-            24,
-        );
-        
-        session.authenticate(
-            "user123".to_string(),
-            "john_doe".to_string(),
-            None,
-        );
-        
+        let mut session = Session::new("192.168.1.1".to_string(), "Mozilla/5.0".to_string(), 24);
+
+        session.authenticate("user123".to_string(), "john_doe".to_string(), None);
+
         session.data.insert("key".to_string(), "value".to_string());
-        
+
         session.invalidate();
-        
+
         assert!(!session.is_authenticated);
         assert!(session.user_id.is_none());
         assert!(session.data.is_empty());

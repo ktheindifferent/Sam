@@ -133,99 +133,99 @@
 
 // Core modules
 pub mod constants;
-pub mod utils;
 pub mod service;
+pub mod utils;
 
 // Type definitions (consolidating)
-pub mod types;
 pub mod models;
+pub mod types;
 
 // Configuration system
 pub mod config;
 
 // Error handling system
-pub mod errors; // Legacy - being migrated
 pub mod error;
 pub mod error_handling;
 pub mod error_recovery;
+pub mod errors; // Legacy - being migrated
 
 // Provider system
-pub mod providers;
-pub mod provider_base;
-pub mod remote_ollama;
-pub mod ollama_config_manager;
 pub mod ollama_auto_config;
+pub mod ollama_config_manager;
+pub mod provider_base;
+pub mod providers;
+pub mod remote_ollama;
 
 // Execution and task management
-pub mod executor;
 pub mod command_executor;
-pub mod interactive_executor;
 pub mod execution_context;
 pub mod execution_state;
+pub mod executor;
+pub mod interactive_executor;
 pub mod step_parser;
 
 // Resource management
+pub mod gpu_offload;
 pub mod resource_limits;
 pub mod resource_manager;
-pub mod gpu_offload;
 
 // Code intelligence and analysis
-pub mod code_intelligence;
-pub mod workspace_analyzer;
-pub mod dependency_analyzer;
-pub mod code_metrics_dashboard;
-pub mod code_flow_visualizer;
 pub mod bug_predictor;
+pub mod code_flow_visualizer;
+pub mod code_intelligence;
+pub mod code_metrics_dashboard;
+pub mod dependency_analyzer;
+pub mod workspace_analyzer;
 
 // Code generation and refactoring
-pub mod scaffolding;
-pub mod refactoring;
-pub mod automated_refactoring;
-pub mod paradigm_translator;
 pub mod api_client_generator;
+pub mod automated_refactoring;
 pub mod migration;
+pub mod paradigm_translator;
+pub mod refactoring;
+pub mod scaffolding;
 
 // Testing and debugging
-pub mod testing;
 pub mod advanced_testing;
-pub mod test_generation;
-pub mod debugging;
 pub mod automated_debugging;
+pub mod debugging;
+pub mod test_generation;
+pub mod testing;
 
 // Documentation and review
-pub mod documentation_generator;
-pub mod code_review;
 pub mod code_explanation;
+pub mod code_review;
+pub mod documentation_generator;
 
 // Collaboration features
 pub mod collaboration;
-pub mod pair_programming;
 pub mod distributed_collaboration;
+pub mod pair_programming;
 pub mod realtime_collaboration;
 
 // Search and completion
+pub mod ai_code_search;
 pub mod completion;
 pub mod intelligent_completion;
-pub mod ai_code_search;
 pub mod multi_language_search;
 
 // Performance and security
-pub mod performance_profiler;
-pub mod performance_optimizer;
-pub mod security_analyzer;
 pub mod benchmarking;
+pub mod performance_optimizer;
+pub mod performance_profiler;
+pub mod security_analyzer;
 
 // Machine learning
-pub mod model_training;
 pub mod continuous_learning;
+pub mod model_training;
 
 // Version control
 pub mod git_integration;
 
 // Templates and context
-pub mod templates;
 pub mod context;
 pub mod metrics;
+pub mod templates;
 
 // Traits and interfaces
 pub mod traits;
@@ -238,30 +238,21 @@ pub mod io;
 // ==============================================================================
 
 // Re-export main service types
-pub use service::{CodingAgentService, ConversationMessage, ConversationMemory};
+pub use service::{CodingAgentService, ConversationMemory, ConversationMessage};
 
 // Re-export executor types
-pub use executor::{CodingAgentExecutor, UserMessage, EnhancedContext};
-pub use interactive_executor::{InteractiveExecutor, ExecutionContext as InteractiveContext};
 pub use command_executor::CommandExecutor;
+pub use executor::{CodingAgentExecutor, EnhancedContext, UserMessage};
+pub use interactive_executor::{ExecutionContext as InteractiveContext, InteractiveExecutor};
 
 // Re-export common types
 pub use types::{
-    CodeExecutionRequest,
-    CodingAgentResponse,
-    CommandHistoryEntry,
-    ProjectStructure,
-    ProjectType,
-    RiskLevel,
-    BuildSystem,
+    BuildSystem, CodeExecutionRequest, CodingAgentResponse, CommandHistoryEntry, ProjectStructure,
+    ProjectType, RiskLevel,
 };
 
 // Re-export execution state types
-pub use execution_state::{
-    IncrementalExecution,
-    ExecutionState,
-    ExecutionStep,
-};
+pub use execution_state::{ExecutionState, ExecutionStep, IncrementalExecution};
 
 // Re-export error types
 pub use errors::{CodingAgentError, CodingAgentResult, ErrorSeverity};
@@ -270,14 +261,14 @@ pub use errors::{CodingAgentError, CodingAgentResult, ErrorSeverity};
 pub use config::CodingAgentConfig;
 
 // Re-export provider types
-pub use providers::{ProviderManager, OllamaProvider, OpenAIProvider, LocalProvider};
+pub use providers::{LocalProvider, OllamaProvider, OpenAIProvider, ProviderManager};
 
 // Re-export resource management
 pub use resource_limits::{ResourceLimits, ResourceMonitor};
 pub use resource_manager::ResourceManager;
 
 // Re-export code intelligence
-pub use code_intelligence::{CodeIntelligence, FileAnalysis, CodeIssue};
+pub use code_intelligence::{CodeIntelligence, CodeIssue, FileAnalysis};
 
 // ==============================================================================
 // FEATURE FLAGS
@@ -290,7 +281,9 @@ pub async fn initialize() -> Result<CodingAgentService, CodingAgentError> {
 }
 
 /// Initialize with custom configuration
-pub async fn initialize_with_config(config: CodingAgentConfig) -> Result<CodingAgentService, CodingAgentError> {
+pub async fn initialize_with_config(
+    config: CodingAgentConfig,
+) -> Result<CodingAgentService, CodingAgentError> {
     Ok(CodingAgentService::new(config).await)
 }
 

@@ -1,24 +1,24 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::net::SocketAddr;
-use tokio::sync::{RwLock, broadcast, mpsc};
-use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::{accept_async, tungstenite::Message};
-use futures_util::{StreamExt, SinkExt};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use log::{info, error, debug, warn};
+use futures_util::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio_tungstenite::{accept_async, tungstenite::Message};
+use uuid::Uuid;
 
-mod security;
 mod error;
+mod security;
 #[cfg(test)]
 mod tests;
 
 use crate::network_monitor::NetworkMonitor;
-use security::{WebSocketLimits, WebSocketSecurityConfig, WsSecurityError, SessionInfo};
-use error::{safe_ops};
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
+use error::safe_ops;
+use security::{SessionInfo, WebSocketLimits, WebSocketSecurityConfig, WsSecurityError};
 
 // Type alias for Send + Sync errors
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -28,25 +28,66 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WsMessage {
     // Client -> Server
-    Subscribe { channels: Vec<String> },
-    Unsubscribe { channels: Vec<String> },
-    Ping { timestamp: i64 },
-    Command { id: String, command: String, args: serde_json::Value },
-    Authenticate { token: String },
-    Heartbeat { timestamp: i64 },
-    
+    Subscribe {
+        channels: Vec<String>,
+    },
+    Unsubscribe {
+        channels: Vec<String>,
+    },
+    Ping {
+        timestamp: i64,
+    },
+    Command {
+        id: String,
+        command: String,
+        args: serde_json::Value,
+    },
+    Authenticate {
+        token: String,
+    },
+    Heartbeat {
+        timestamp: i64,
+    },
+
     // Server -> Client
-    Pong { timestamp: i64 },
-    ServiceStatus { service: String, status: ServiceStatus },
-    SystemStats { stats: SystemStats },
-    NetworkStats { stats: NetworkStatsDetail },
-    Activity { activity: ActivityItem },
-    Alert { message: String, severity: AlertSeverity },
-    CommandResponse { id: String, success: bool, data: serde_json::Value },
-    Error { message: String, code: Option<i32> },
-    AuthenticationRequired { reason: String },
-    AuthenticationSuccess { permissions: Vec<String> },
-    HeartbeatAck { timestamp: i64 },
+    Pong {
+        timestamp: i64,
+    },
+    ServiceStatus {
+        service: String,
+        status: ServiceStatus,
+    },
+    SystemStats {
+        stats: SystemStats,
+    },
+    NetworkStats {
+        stats: NetworkStatsDetail,
+    },
+    Activity {
+        activity: ActivityItem,
+    },
+    Alert {
+        message: String,
+        severity: AlertSeverity,
+    },
+    CommandResponse {
+        id: String,
+        success: bool,
+        data: serde_json::Value,
+    },
+    Error {
+        message: String,
+        code: Option<i32>,
+    },
+    AuthenticationRequired {
+        reason: String,
+    },
+    AuthenticationSuccess {
+        permissions: Vec<String>,
+    },
+    HeartbeatAck {
+        timestamp: i64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,19 +199,19 @@ impl WsServer {
     pub fn new() -> Self {
         Self::with_config(WebSocketSecurityConfig::default())
     }
-    
+
     pub fn with_config(security_config: WebSocketSecurityConfig) -> Self {
         let (broadcast_tx, _) = broadcast::channel(1024);
         let (stats_tx, _) = broadcast::channel(128);
         let (audit_tx, mut audit_rx) = mpsc::unbounded_channel();
-        
+
         // Spawn audit logger
         tokio::spawn(async move {
             while let Some(event) = audit_rx.recv().await {
                 log_audit_event(event);
             }
         });
-        
+
         WsServer {
             clients: Arc::new(RwLock::new(HashMap::new())),
             broadcast_tx,
@@ -179,25 +220,30 @@ impl WsServer {
             audit_tx,
         }
     }
-    
+
     /// Start the WebSocket server
     pub async fn start(&self, addr: &str) -> Result<(), BoxError> {
         let listener = TcpListener::bind(addr).await?;
         info!("WebSocket server listening on {}", addr);
-        
+
+        self.accept_loop(listener).await
+    }
+
+    /// Run the accept loop for an already-bound listener.
+    async fn accept_loop(&self, listener: TcpListener) -> Result<(), BoxError> {
         // Start background tasks
         self.start_background_tasks();
-        
+
         loop {
             let (stream, addr) = listener.accept().await?;
             info!("New WebSocket connection from {}", addr);
-            
+
             let clients = self.clients.clone();
             let broadcast_tx = self.broadcast_tx.clone();
             let stats_tx = self.stats_tx.clone();
             let security_limits = self.security_limits.clone();
             let audit_tx = self.audit_tx.clone();
-            
+
             // Spawn connection handler
             tokio::spawn(handle_connection(
                 stream,
@@ -210,7 +256,7 @@ impl WsServer {
             ));
         }
     }
-    
+
     /// Start background tasks for periodic updates
     fn start_background_tasks(&self) {
         // Security cleanup task (every 30 seconds)
@@ -236,7 +282,9 @@ impl WsServer {
 
                 if let Ok(stats) = collect_system_stats().await {
                     let _ = stats_tx.send(stats.clone());
-                    let _ = broadcast_tx.send(WsMessage::SystemStats { stats: stats.clone() });
+                    let _ = broadcast_tx.send(WsMessage::SystemStats {
+                        stats: stats.clone(),
+                    });
 
                     // Threshold alerts
                     if stats.cpu >= 90.0 {
@@ -302,45 +350,55 @@ impl WsServer {
                 match event_rx.recv().await {
                     Ok(event) => {
                         let ws_msg = match event {
-                            crate::services::events::ServiceEvent::StatusChanged { service, old_status: _, new_status } => {
-                                WsMessage::ServiceStatus {
-                                    service: service.clone(),
-                                    status: ServiceStatus {
-                                        state: new_status.clone(),
-                                        message: Some(format!("Status changed to {}", new_status)),
-                                        progress: None,
-                                        last_check: Utc::now(),
-                                    },
-                                }
-                            }
+                            crate::services::events::ServiceEvent::StatusChanged {
+                                service,
+                                old_status: _,
+                                new_status,
+                            } => WsMessage::ServiceStatus {
+                                service: service.clone(),
+                                status: ServiceStatus {
+                                    state: new_status.clone(),
+                                    message: Some(format!("Status changed to {}", new_status)),
+                                    progress: None,
+                                    last_check: Utc::now(),
+                                },
+                            },
                             crate::services::events::ServiceEvent::Error { service, message } => {
                                 WsMessage::Alert {
                                     message: format!("[{}] {}", service, message),
                                     severity: AlertSeverity::Error,
                                 }
                             }
-                            crate::services::events::ServiceEvent::HealthCheck { service, healthy, message } => {
-                                WsMessage::ServiceStatus {
-                                    service: service.clone(),
-                                    status: ServiceStatus {
-                                        state: if healthy { "healthy".to_string() } else { "unhealthy".to_string() },
-                                        message: Some(message),
-                                        progress: None,
-                                        last_check: Utc::now(),
+                            crate::services::events::ServiceEvent::HealthCheck {
+                                service,
+                                healthy,
+                                message,
+                            } => WsMessage::ServiceStatus {
+                                service: service.clone(),
+                                status: ServiceStatus {
+                                    state: if healthy {
+                                        "healthy".to_string()
+                                    } else {
+                                        "unhealthy".to_string()
                                     },
-                                }
-                            }
-                            crate::services::events::ServiceEvent::MetricsUpdate { service, metric, value } => {
-                                WsMessage::Activity {
-                                    activity: ActivityItem {
-                                        id: Uuid::new_v4().to_string(),
-                                        timestamp: Utc::now(),
-                                        message: format!("{}: {} = {:.2}", service, metric, value),
-                                        activity_type: "metrics".to_string(),
-                                        metadata: None,
-                                    },
-                                }
-                            }
+                                    message: Some(message),
+                                    progress: None,
+                                    last_check: Utc::now(),
+                                },
+                            },
+                            crate::services::events::ServiceEvent::MetricsUpdate {
+                                service,
+                                metric,
+                                value,
+                            } => WsMessage::Activity {
+                                activity: ActivityItem {
+                                    id: Uuid::new_v4().to_string(),
+                                    timestamp: Utc::now(),
+                                    message: format!("{}: {} = {:.2}", service, metric, value),
+                                    activity_type: "metrics".to_string(),
+                                    metadata: None,
+                                },
+                            },
                         };
                         let _ = broadcast_tx.send(ws_msg);
                     }
@@ -389,21 +447,24 @@ impl WsServer {
 
                 if let Ok(bulbs) = crate::services::lifx::get_bulbs() {
                     if !bulbs.is_empty() {
-                        let bulbs_info: Vec<serde_json::Value> = bulbs.iter().map(|b| {
-                            serde_json::json!({
-                                "id": b.id,
-                                "label": b.label,
-                                "connected": b.connected,
-                                "power": b.power,
-                                "brightness": b.brightness,
-                                "color": b.lifx_color.as_ref().map(|c| serde_json::json!({
-                                    "hue": c.hue,
-                                    "saturation": c.saturation,
-                                    "brightness": c.brightness,
-                                    "kelvin": c.kelvin
-                                })),
+                        let bulbs_info: Vec<serde_json::Value> = bulbs
+                            .iter()
+                            .map(|b| {
+                                serde_json::json!({
+                                    "id": b.id,
+                                    "label": b.label,
+                                    "connected": b.connected,
+                                    "power": b.power,
+                                    "brightness": b.brightness,
+                                    "color": b.lifx_color.as_ref().map(|c| serde_json::json!({
+                                        "hue": c.hue,
+                                        "saturation": c.saturation,
+                                        "brightness": c.brightness,
+                                        "kelvin": c.kelvin
+                                    })),
+                                })
                             })
-                        }).collect();
+                            .collect();
 
                         let _ = lifx_broadcast_tx.send(WsMessage::Activity {
                             activity: ActivityItem {
@@ -419,23 +480,23 @@ impl WsServer {
             }
         });
     }
-    
+
     /// Broadcast a message to all subscribed clients
     pub async fn broadcast(&self, message: WsMessage) {
         let _ = self.broadcast_tx.send(message);
     }
-    
+
     /// Send a message to a specific client
     pub async fn send_to_client(&self, client_id: &str, message: WsMessage) -> Result<(), String> {
         // This would require storing client senders, implementing if needed
         Ok(())
     }
-    
+
     /// Get current client count
     pub async fn client_count(&self) -> usize {
         self.clients.read().await.len()
     }
-    
+
     /// Get client information
     pub async fn get_clients(&self) -> Vec<(String, Vec<String>)> {
         self.clients
@@ -459,9 +520,12 @@ async fn handle_connection(
 ) -> Result<(), BoxError> {
     let client_id = Uuid::new_v4().to_string();
     let ip = addr.ip();
-    
+
     // Validate connection limits and create session (no token provided initially)
-    let session_info = match security_limits.validate_connection(ip, client_id.clone(), None).await {
+    let session_info = match security_limits
+        .validate_connection(ip, client_id.clone(), None)
+        .await
+    {
         Ok(session) => session,
         Err(e) => {
             error!("Connection validation failed for {}: {}", addr, e);
@@ -477,10 +541,10 @@ async fn handle_connection(
             return Err(Box::new(e));
         }
     };
-    
+
     let ws_stream = accept_async(stream).await?;
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-    
+
     let client = WsClient {
         id: client_id.clone(),
         subscriptions: vec!["default".to_string()],
@@ -489,15 +553,15 @@ async fn handle_connection(
         session_info: session_info.clone(),
         remote_addr: addr,
     };
-    
+
     // Register client
     {
         let mut clients_guard = clients.write().await;
         clients_guard.insert(client_id.clone(), client);
     }
-    
+
     info!("WebSocket client {} connected from {}", client_id, addr);
-    
+
     // Log successful connection
     audit_tx.send(AuditEvent {
         timestamp: Utc::now(),
@@ -506,11 +570,11 @@ async fn handle_connection(
         details: serde_json::json!({ "ip": addr.to_string() }),
         severity: AuditSeverity::Info,
     })?;
-    
+
     // Subscribe to broadcasts
     let mut broadcast_rx = broadcast_tx.subscribe();
     let mut stats_rx = stats_tx.subscribe();
-    
+
     // Send initial connection message
     let welcome_msg = WsMessage::Activity {
         activity: ActivityItem {
@@ -521,10 +585,10 @@ async fn handle_connection(
             metadata: None,
         },
     };
-    
+
     let msg_json = serde_json::to_string(&welcome_msg)?;
     ws_sender.send(Message::Text(msg_json)).await?;
-    
+
     loop {
         tokio::select! {
             // Handle incoming messages from client
@@ -545,7 +609,7 @@ async fn handle_connection(
                                         &security_limits,
                                         &audit_tx
                                     ).await;
-                                    
+
                                     if let Err(e) = result {
                                         let error_str = e.to_string();
                                         // Report message handling errors to Sentry
@@ -579,7 +643,7 @@ async fn handle_connection(
                                     details: serde_json::json!({ "error": e.to_string() }),
                                     severity: AuditSeverity::Warning,
                                 })?;
-                                
+
                                 let error_msg = WsMessage::Error {
                                     message: match e {
                                         WsSecurityError::RateLimitExceeded { .. } => "Rate limit exceeded. Please slow down.".to_string(),
@@ -591,7 +655,7 @@ async fn handle_connection(
                                 };
                                 let msg_json = safe_ops::serialize_json_or_default(&error_msg, r#"{"type":"error","message":"Message validation failed"}"#);
                                 let _ = ws_sender.send(Message::Text(msg_json)).await;
-                                
+
                                 // For session expiry, close connection
                                 if matches!(e, WsSecurityError::SessionExpired) {
                                     break;
@@ -605,13 +669,13 @@ async fn handle_connection(
                     }
                     Some(Ok(Message::Ping(data))) => {
                         ws_sender.send(Message::Pong(data)).await?;
-                        
+
                         // Update last ping time and activity
                         let mut clients_guard = clients.write().await;
                         if let Some(client) = clients_guard.get_mut(&client_id) {
                             client.last_ping = Utc::now();
                         }
-                        
+
                         // Update connection activity
                         security_limits.connection_tracker.update_activity(ip, &client_id).await;
                     }
@@ -623,7 +687,7 @@ async fn handle_connection(
                     _ => {}
                 }
             }
-            
+
             // Handle broadcast messages
             msg = broadcast_rx.recv() => {
                 if let Ok(msg) = msg {
@@ -636,7 +700,7 @@ async fn handle_connection(
                     }
                 }
             }
-            
+
             // Handle stats updates
             stats = stats_rx.recv() => {
                 if let Ok(stats) = stats {
@@ -649,18 +713,24 @@ async fn handle_connection(
             }
         }
     }
-    
+
     // Remove client on disconnect
     {
         let mut clients_guard = clients.write().await;
         clients_guard.remove(&client_id);
     }
-    
+
     // Clean up security tracking
-    security_limits.connection_tracker.remove_connection(ip, &client_id).await;
-    security_limits.session_manager.remove_session(&client_id).await;
+    security_limits
+        .connection_tracker
+        .remove_connection(ip, &client_id)
+        .await;
+    security_limits
+        .session_manager
+        .remove_session(&client_id)
+        .await;
     security_limits.message_queue.clear_queue(&client_id).await;
-    
+
     // Log disconnection
     let _ = audit_tx.send(AuditEvent {
         timestamp: Utc::now(),
@@ -669,9 +739,9 @@ async fn handle_connection(
         details: serde_json::json!({ "ip": addr.to_string() }),
         severity: AuditSeverity::Info,
     });
-    
+
     info!("WebSocket client {} disconnected", client_id);
-    
+
     Ok(())
 }
 
@@ -682,7 +752,7 @@ async fn handle_client_message(
     clients: &Arc<RwLock<HashMap<String, WsClient>>>,
     ws_sender: &mut futures_util::stream::SplitSink<
         tokio_tungstenite::WebSocketStream<TcpStream>,
-        Message
+        Message,
     >,
     security_limits: &Arc<WebSocketLimits>,
     audit_tx: &mpsc::UnboundedSender<AuditEvent>,
@@ -698,105 +768,144 @@ async fn handle_client_message(
                 }
             }
         }
-        
+
         WsMessage::Unsubscribe { channels } => {
             let mut clients_guard = clients.write().await;
             if let Some(client) = clients_guard.get_mut(client_id) {
                 client.subscriptions.retain(|c| !channels.contains(c));
             }
         }
-        
+
         WsMessage::Ping { timestamp } => {
             let pong = WsMessage::Pong { timestamp };
             let msg_json = serde_json::to_string(&pong)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-            ws_sender.send(Message::Text(msg_json)).await
+            ws_sender
+                .send(Message::Text(msg_json))
+                .await
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-            
+
             // Update last ping time
             let mut clients_guard = clients.write().await;
             if let Some(client) = clients_guard.get_mut(client_id) {
                 client.last_ping = Utc::now();
             }
         }
-        
+
         WsMessage::Authenticate { token } => {
-            match security_limits.session_manager.reauthenticate(client_id, &token).await {
+            match security_limits
+                .session_manager
+                .reauthenticate(client_id, &token)
+                .await
+            {
                 Ok(_) => {
-                    let session = security_limits.session_manager.validate_session(client_id).await
+                    let session = security_limits
+                        .session_manager
+                        .validate_session(client_id)
+                        .await
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                    
-                    audit_tx.send(AuditEvent {
-                        timestamp: Utc::now(),
-                        client_id: client_id.to_string(),
-                        event_type: "reauthentication_success".to_string(),
-                        details: serde_json::json!({}),
-                        severity: AuditSeverity::Info,
-                    }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                    
+
+                    audit_tx
+                        .send(AuditEvent {
+                            timestamp: Utc::now(),
+                            client_id: client_id.to_string(),
+                            event_type: "reauthentication_success".to_string(),
+                            details: serde_json::json!({}),
+                            severity: AuditSeverity::Info,
+                        })
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
                     let msg = WsMessage::AuthenticationSuccess {
                         permissions: session.permissions,
                     };
                     let msg_json = serde_json::to_string(&msg)
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                    ws_sender.send(Message::Text(msg_json)).await
+                    ws_sender
+                        .send(Message::Text(msg_json))
+                        .await
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 }
                 Err(e) => {
-                    audit_tx.send(AuditEvent {
-                        timestamp: Utc::now(),
-                        client_id: client_id.to_string(),
-                        event_type: "reauthentication_failed".to_string(),
-                        details: serde_json::json!({ "error": e.to_string() }),
-                        severity: AuditSeverity::Warning,
-                    }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                    
+                    audit_tx
+                        .send(AuditEvent {
+                            timestamp: Utc::now(),
+                            client_id: client_id.to_string(),
+                            event_type: "reauthentication_failed".to_string(),
+                            details: serde_json::json!({ "error": e.to_string() }),
+                            severity: AuditSeverity::Warning,
+                        })
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
                     let msg = WsMessage::Error {
                         message: "Authentication failed".to_string(),
                         code: Some(401),
                     };
                     let msg_json = serde_json::to_string(&msg)
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                    ws_sender.send(Message::Text(msg_json)).await
+                    ws_sender
+                        .send(Message::Text(msg_json))
+                        .await
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 }
             }
         }
-        
+
         WsMessage::Heartbeat { timestamp } => {
             // Update activity
-            security_limits.session_manager.update_activity(client_id).await;
-            security_limits.connection_tracker.update_activity(
-                clients.read().await.get(client_id)
-                    .map(|c| c.remote_addr.ip())
-                    .unwrap_or_else(|| safe_ops::parse_ip_or_default("127.0.0.1")),
-                client_id
-            ).await;
-            
+            security_limits
+                .session_manager
+                .update_activity(client_id)
+                .await;
+            security_limits
+                .connection_tracker
+                .update_activity(
+                    clients
+                        .read()
+                        .await
+                        .get(client_id)
+                        .map(|c| c.remote_addr.ip())
+                        .unwrap_or_else(|| safe_ops::parse_ip_or_default("127.0.0.1")),
+                    client_id,
+                )
+                .await;
+
             let ack = WsMessage::HeartbeatAck { timestamp };
             let msg_json = safe_ops::serialize_json(&ack).map_err(|e| {
                 error!("Failed to serialize heartbeat ack: {}", e);
                 Box::new(e) as Box<dyn std::error::Error + Send + Sync>
             })?;
-            ws_sender.send(Message::Text(msg_json)).await
+            ws_sender
+                .send(Message::Text(msg_json))
+                .await
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         }
-        
+
         WsMessage::Command { id, command, args } => {
-            info!("Processing command '{}' with id '{}' and args: {:?}", command, id, args);
+            info!(
+                "Processing command '{}' with id '{}' and args: {:?}",
+                command, id, args
+            );
             // Validate command permissions
-            let session = security_limits.session_manager.validate_session(client_id).await
+            let session = security_limits
+                .session_manager
+                .validate_session(client_id)
+                .await
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-            
-            if let Err(e) = security_limits.message_validator.validate_command(&command, &session.permissions) {
-                audit_tx.send(AuditEvent {
-                    timestamp: Utc::now(),
-                    client_id: client_id.to_string(),
-                    event_type: "unauthorized_command".to_string(),
-                    details: serde_json::json!({ "command": command, "error": e.to_string() }),
-                    severity: AuditSeverity::Warning,
-                }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                
+
+            if let Err(e) = security_limits
+                .message_validator
+                .validate_command(&command, &session.permissions)
+            {
+                audit_tx
+                    .send(AuditEvent {
+                        timestamp: Utc::now(),
+                        client_id: client_id.to_string(),
+                        event_type: "unauthorized_command".to_string(),
+                        details: serde_json::json!({ "command": command, "error": e.to_string() }),
+                        severity: AuditSeverity::Warning,
+                    })
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
                 let msg = WsMessage::CommandResponse {
                     id,
                     success: false,
@@ -804,33 +913,40 @@ async fn handle_client_message(
                 };
                 let msg_json = serde_json::to_string(&msg)
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                ws_sender.send(Message::Text(msg_json)).await
+                ws_sender
+                    .send(Message::Text(msg_json))
+                    .await
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             } else {
                 // Process command and send response
                 info!("Executing command '{}' for client {}", command, client_id);
                 let response = process_command(&command, args).await;
-                
+
                 // Log command execution
                 let success = response.is_ok();
                 let response_data = response.unwrap_or_else(|e| {
                     error!("Command '{}' failed: {}", command, e);
                     serde_json::json!({ "error": e.to_string() })
                 });
-                
-                info!("Command '{}' result: success={}, data={:?}", command, success, response_data);
-                
-                audit_tx.send(AuditEvent {
-                    timestamp: Utc::now(),
-                    client_id: client_id.to_string(),
-                    event_type: "command_executed".to_string(),
-                    details: serde_json::json!({ 
-                        "command": command, 
-                        "success": success 
-                    }),
-                    severity: AuditSeverity::Info,
-                }).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                
+
+                info!(
+                    "Command '{}' result: success={}, data={:?}",
+                    command, success, response_data
+                );
+
+                audit_tx
+                    .send(AuditEvent {
+                        timestamp: Utc::now(),
+                        client_id: client_id.to_string(),
+                        event_type: "command_executed".to_string(),
+                        details: serde_json::json!({
+                            "command": command,
+                            "success": success
+                        }),
+                        severity: AuditSeverity::Info,
+                    })
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
                 let msg = WsMessage::CommandResponse {
                     id,
                     success,
@@ -839,16 +955,21 @@ async fn handle_client_message(
                 let msg_json = serde_json::to_string(&msg)
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 info!("Sending command response: {}", msg_json);
-                ws_sender.send(Message::Text(msg_json)).await
+                ws_sender
+                    .send(Message::Text(msg_json))
+                    .await
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             }
         }
-        
+
         _ => {
-            debug!("Unexpected message type from client {}: {:?}", client_id, message);
+            debug!(
+                "Unexpected message type from client {}: {:?}",
+                client_id, message
+            );
         }
     }
-    
+
     Ok(())
 }
 
@@ -859,23 +980,19 @@ async fn should_send_to_client(
     clients: &Arc<RwLock<HashMap<String, WsClient>>>,
 ) -> bool {
     let clients_guard = clients.read().await;
-    
+
     if let Some(client) = clients_guard.get(client_id) {
         // Check if client is subscribed to relevant channels
         match message {
             WsMessage::ServiceStatus { service, .. } => {
-                client.subscriptions.contains(&"services".to_string()) ||
-                client.subscriptions.contains(&format!("service:{}", service))
+                client.subscriptions.contains(&"services".to_string())
+                    || client
+                        .subscriptions
+                        .contains(&format!("service:{}", service))
             }
-            WsMessage::SystemStats { .. } => {
-                client.subscriptions.contains(&"stats".to_string())
-            }
-            WsMessage::Activity { .. } => {
-                client.subscriptions.contains(&"activity".to_string())
-            }
-            WsMessage::Alert { .. } => {
-                client.subscriptions.contains(&"alerts".to_string())
-            }
+            WsMessage::SystemStats { .. } => client.subscriptions.contains(&"stats".to_string()),
+            WsMessage::Activity { .. } => client.subscriptions.contains(&"activity".to_string()),
+            WsMessage::Alert { .. } => client.subscriptions.contains(&"alerts".to_string()),
             _ => true, // Send other messages to all clients
         }
     } else {
@@ -888,111 +1005,152 @@ async fn process_command(
     command: &str,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, BoxError> {
-    info!("process_command called with command: '{}', args: {:?}", command, args);
+    info!(
+        "process_command called with command: '{}', args: {:?}",
+        command, args
+    );
     match command {
         "get_stats" => {
             let stats = collect_system_stats().await?;
             Ok(serde_json::to_value(stats)?)
         }
-        
+
         "get_services" => {
             let services = collect_service_statuses().await?;
             Ok(serde_json::to_value(services)?)
         }
-        
+
         "get_network_stats" => {
             let stats = collect_network_stats().await?;
             Ok(serde_json::to_value(stats)?)
         }
-        
+
         "start_service" => {
             if let Some(service_name) = args.get("service").and_then(|s| s.as_str()) {
                 match service_name {
                     "redis" => {
                         crate::services::redis::start().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Redis service started" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Redis service started" }),
+                        )
                     }
                     "crawler" => {
                         crate::services::crawler::start_service_async().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Crawler service started" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Crawler service started" }),
+                        )
                     }
                     "docker" => {
                         crate::services::docker::start().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Docker service started" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Docker service started" }),
+                        )
                     }
                     "nextcloud" => {
-                        crate::services::fs::nextcloud::initialize().await
+                        crate::services::fs::nextcloud::initialize()
+                            .await
                             .map_err(|e| format!("Failed to start NextCloud service: {}", e))?;
-                        Ok(serde_json::json!({ "success": true, "message": "NextCloud service started" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "NextCloud service started" }),
+                        )
                     }
                     "lifx" => {
-                        crate::services::lifx::start_server().await
+                        crate::services::lifx::start_server()
+                            .await
                             .map_err(|e| format!("Failed to start LIFX service: {}", e))?;
-                        Ok(serde_json::json!({ "success": true, "message": "LIFX service started" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "LIFX service started" }),
+                        )
                     }
                     "ssh_server" => {
-                        crate::services::ssh::server::start_ssh_server().await
+                        crate::services::ssh::server::start_ssh_server()
+                            .await
                             .map_err(|e| format!("Failed to start SSH server: {}", e))?;
                         Ok(serde_json::json!({ "success": true, "message": "SSH server started" }))
                     }
                     "media" => {
-                        crate::services::media::start().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Media service started" }))
+                        crate::services::media::start()
+                            .await
+                            .map_err(|e| format!("Failed to start media service: {}", e))?;
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Media service started" }),
+                        )
                     }
                     "snapcast" => {
-                        crate::services::media::snapcast::init().await
+                        crate::services::media::snapcast::init()
+                            .await
                             .map_err(|e| format!("Failed to start Snapcast: {}", e))?;
-                        Ok(serde_json::json!({ "success": true, "message": "Snapcast service started" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Snapcast service started" }),
+                        )
                     }
-                    _ => Err(format!("Unknown service: {}", service_name).into())
+                    _ => Err(format!("Unknown service: {}", service_name).into()),
                 }
             } else {
                 Err("Missing service name".into())
             }
         }
-        
+
         "stop_service" => {
             if let Some(service_name) = args.get("service").and_then(|s| s.as_str()) {
                 match service_name {
                     "redis" => {
                         crate::services::redis::stop().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Redis service stopped" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Redis service stopped" }),
+                        )
                     }
                     "crawler" => {
                         crate::services::crawler::stop_service();
-                        Ok(serde_json::json!({ "success": true, "message": "Crawler service stopped" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Crawler service stopped" }),
+                        )
                     }
                     "docker" => {
                         crate::services::docker::stop().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Docker service stopped" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Docker service stopped" }),
+                        )
                     }
                     "nextcloud" => {
                         // NextCloud service doesn't have a persistent daemon to stop
-                        Ok(serde_json::json!({ "success": true, "message": "NextCloud service stopped" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "NextCloud service stopped" }),
+                        )
                     }
                     "lifx" => {
-                        crate::services::lifx::stop_server().await;
-                        Ok(serde_json::json!({ "success": true, "message": "LIFX service stopped" }))
+                        crate::services::lifx::stop_server()
+                            .await
+                            .map_err(|e| format!("Failed to stop LIFX service: {}", e))?;
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "LIFX service stopped" }),
+                        )
                     }
                     "ssh_server" => {
                         crate::services::ssh::server::stop_ssh_server().await;
                         Ok(serde_json::json!({ "success": true, "message": "SSH server stopped" }))
                     }
                     "media" => {
-                        crate::services::media::stop().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Media service stopped" }))
+                        crate::services::media::stop()
+                            .await
+                            .map_err(|e| format!("Failed to stop media service: {}", e))?;
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Media service stopped" }),
+                        )
                     }
                     "snapcast" => {
                         // Snapcast runs in background thread, just mark as stopped
-                        Ok(serde_json::json!({ "success": true, "message": "Snapcast service stopped" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Snapcast service stopped" }),
+                        )
                     }
-                    _ => Err(format!("Unknown service: {}", service_name).into())
+                    _ => Err(format!("Unknown service: {}", service_name).into()),
                 }
             } else {
                 Err("Missing service name".into())
             }
         }
-        
+
         "restart_service" => {
             if let Some(service_name) = args.get("service").and_then(|s| s.as_str()) {
                 match service_name {
@@ -1000,89 +1158,117 @@ async fn process_command(
                         crate::services::redis::stop().await;
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                         crate::services::redis::start().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Redis service restarted" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Redis service restarted" }),
+                        )
                     }
                     "crawler" => {
                         crate::services::crawler::stop_service();
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                         crate::services::crawler::start_service_async().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Crawler service restarted" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Crawler service restarted" }),
+                        )
                     }
                     "nextcloud" => {
                         // NextCloud is stateless, so restart is just a reinitialize
-                        crate::services::fs::nextcloud::initialize().await
+                        crate::services::fs::nextcloud::initialize()
+                            .await
                             .map_err(|e| format!("Failed to restart NextCloud service: {}", e))?;
-                        Ok(serde_json::json!({ "success": true, "message": "NextCloud service restarted" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "NextCloud service restarted" }),
+                        )
                     }
                     "lifx" => {
-                        crate::services::lifx::stop_server().await;
+                        crate::services::lifx::stop_server()
+                            .await
+                            .map_err(|e| format!("Failed to stop LIFX service: {}", e))?;
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                        crate::services::lifx::start_server().await
+                        crate::services::lifx::start_server()
+                            .await
                             .map_err(|e| format!("Failed to restart LIFX service: {}", e))?;
-                        Ok(serde_json::json!({ "success": true, "message": "LIFX service restarted" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "LIFX service restarted" }),
+                        )
                     }
                     "ssh_server" => {
                         crate::services::ssh::server::stop_ssh_server().await;
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                        crate::services::ssh::server::start_ssh_server().await
+                        crate::services::ssh::server::start_ssh_server()
+                            .await
                             .map_err(|e| format!("Failed to restart SSH server: {}", e))?;
-                        Ok(serde_json::json!({ "success": true, "message": "SSH server restarted" }))
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "SSH server restarted" }),
+                        )
                     }
                     "media" => {
-                        crate::services::media::stop().await;
+                        crate::services::media::stop()
+                            .await
+                            .map_err(|e| format!("Failed to stop media service: {}", e))?;
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                        crate::services::media::start().await;
-                        Ok(serde_json::json!({ "success": true, "message": "Media service restarted" }))
+                        crate::services::media::start()
+                            .await
+                            .map_err(|e| format!("Failed to start media service: {}", e))?;
+                        Ok(
+                            serde_json::json!({ "success": true, "message": "Media service restarted" }),
+                        )
                     }
-                    _ => Err(format!("Unknown service: {}", service_name).into())
+                    _ => Err(format!("Unknown service: {}", service_name).into()),
                 }
             } else {
                 Err("Missing service name".into())
             }
         }
-        
+
         // Ollama commands
         "ollama_install" => {
             let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.install().await {
                 Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
-                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
             }
         }
-        
+
         "ollama_start" => {
             let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.start_service().await {
                 Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
-                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
             }
         }
-        
+
         "ollama_stop" => {
             let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.stop_service().await {
                 Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
-                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
             }
         }
-        
+
         "ollama_status" => {
             let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             let installed = service.is_installed().await;
-            let running = if installed { service.is_running().await } else { false };
-            
+            let running = if installed {
+                service.is_running().await
+            } else {
+                false
+            };
+
             let version = if running {
                 service.get_version().await.ok()
             } else {
                 None
             };
-            
+
             let models = if running {
-                service.get_installed_model_names().await.unwrap_or_default()
+                service
+                    .get_installed_model_names()
+                    .await
+                    .unwrap_or_default()
             } else {
                 Vec::new()
             };
-            
+
             Ok(serde_json::json!({
                 "installed": installed,
                 "running": running,
@@ -1090,43 +1276,43 @@ async fn process_command(
                 "models": models
             }))
         }
-        
+
         "ollama_list_models" => {
             let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.list_models().await {
                 Ok(models) => Ok(serde_json::to_value(models)?),
-                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
             }
         }
-        
+
         "ollama_pull_model" => {
             if let Some(model_name) = args.get("model").and_then(|m| m.as_str()) {
                 let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
                 match service.pull_model(model_name).await {
                     Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
-                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
                 }
             } else {
                 Err("Missing model name".into())
             }
         }
-        
+
         "ollama_remove_model" => {
             if let Some(model_name) = args.get("model").and_then(|m| m.as_str()) {
                 let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
                 match service.remove_model(model_name).await {
                     Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
-                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
                 }
             } else {
                 Err("Missing model name".into())
             }
         }
-        
+
         "ollama_generate" => {
             if let (Some(model), Some(prompt)) = (
                 args.get("model").and_then(|m| m.as_str()),
-                args.get("prompt").and_then(|p| p.as_str())
+                args.get("prompt").and_then(|p| p.as_str()),
             ) {
                 let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
                 let options = args.get("options").and_then(|o| {
@@ -1140,30 +1326,30 @@ async fn process_command(
                         None
                     }
                 });
-                
+
                 match service.generate(model, prompt, options).await {
                     Ok(response) => Ok(serde_json::to_value(response)?),
-                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
                 }
             } else {
                 Err("Missing model or prompt".into())
             }
         }
-        
+
         "ollama_search_models" => {
             let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
             let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.search_models(query).await {
                 Ok(models) => Ok(serde_json::json!({ "success": true, "models": models })),
-                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
             }
         }
-        
+
         "ollama_install_recommended" => {
             let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
             match service.install_recommended_models().await {
                 Ok(message) => Ok(serde_json::json!({ "success": true, "message": message })),
-                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
             }
         }
 
@@ -1180,14 +1366,20 @@ async fn process_command(
                         };
 
                         match crate::services::fs::nextcloud::NextCloudService::new(config) {
-                            Ok(service) => {
-                                match service.test_connection().await {
-                                    Ok(true) => Ok(serde_json::json!({ "success": true, "message": "Connection successful" })),
-                                    Ok(false) => Ok(serde_json::json!({ "success": false, "error": "Connection failed" })),
-                                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
-                                }
+                            Ok(service) => match service.test_connection().await {
+                                Ok(true) => Ok(
+                                    serde_json::json!({ "success": true, "message": "Connection successful" }),
+                                ),
+                                Ok(false) => Ok(
+                                    serde_json::json!({ "success": false, "error": "Connection failed" }),
+                                ),
+                                Err(e) => Ok(
+                                    serde_json::json!({ "success": false, "error": e.to_string() }),
+                                ),
+                            },
+                            Err(e) => {
+                                Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
                             }
-                            Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
                         }
                     } else {
                         Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
@@ -1214,13 +1406,17 @@ async fn process_command(
                         };
 
                         match crate::services::fs::nextcloud::NextCloudService::new(config) {
-                            Ok(service) => {
-                                match service.list_files(path).await {
-                                    Ok(files) => Ok(serde_json::json!({ "success": true, "files": files })),
-                                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                            Ok(service) => match service.list_files(path).await {
+                                Ok(files) => {
+                                    Ok(serde_json::json!({ "success": true, "files": files }))
                                 }
+                                Err(e) => Ok(
+                                    serde_json::json!({ "success": false, "error": e.to_string() }),
+                                ),
+                            },
+                            Err(e) => {
+                                Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
                             }
-                            Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
                         }
                     } else {
                         Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
@@ -1237,34 +1433,59 @@ async fn process_command(
             if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
                 if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
                     if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
-                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str()) {
-                            if let Some(content_base64) = args.get("content").and_then(|s| s.as_str()) {
+                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str())
+                        {
+                            if let Some(content_base64) =
+                                args.get("content").and_then(|s| s.as_str())
+                            {
                                 match general_purpose::STANDARD.decode(content_base64) {
                                     Ok(content) => {
-                                        let config = crate::services::fs::nextcloud::NextCloudConfig {
-                                            server_url: server_url.to_string(),
-                                            username: username.to_string(),
-                                            password: password.to_string(),
-                                            ..Default::default()
-                                        };
+                                        let config =
+                                            crate::services::fs::nextcloud::NextCloudConfig {
+                                                server_url: server_url.to_string(),
+                                                username: username.to_string(),
+                                                password: password.to_string(),
+                                                ..Default::default()
+                                            };
 
-                                        match crate::services::fs::nextcloud::NextCloudService::new(config) {
+                                        match crate::services::fs::nextcloud::NextCloudService::new(
+                                            config,
+                                        ) {
                                             Ok(service) => {
-                                                match service.upload_file(std::path::Path::new(""), remote_path, &content).await {
-                                                    Ok(file_info) => Ok(serde_json::json!({ "success": true, "file": file_info })),
-                                                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                                                match service
+                                                    .upload_file(
+                                                        std::path::Path::new(""),
+                                                        remote_path,
+                                                        &content,
+                                                    )
+                                                    .await
+                                                {
+                                                    Ok(file_info) => Ok(
+                                                        serde_json::json!({ "success": true, "file": file_info }),
+                                                    ),
+                                                    Err(e) => Ok(
+                                                        serde_json::json!({ "success": false, "error": e.to_string() }),
+                                                    ),
                                                 }
                                             }
-                                            Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                                            Err(e) => Ok(
+                                                serde_json::json!({ "success": false, "error": e.to_string() }),
+                                            ),
                                         }
                                     }
-                                    Err(_) => Ok(serde_json::json!({ "success": false, "error": "Invalid base64 content" }))
+                                    Err(_) => Ok(
+                                        serde_json::json!({ "success": false, "error": "Invalid base64 content" }),
+                                    ),
                                 }
                             } else {
-                                Ok(serde_json::json!({ "success": false, "error": "Missing content" }))
+                                Ok(
+                                    serde_json::json!({ "success": false, "error": "Missing content" }),
+                                )
                             }
                         } else {
-                            Ok(serde_json::json!({ "success": false, "error": "Missing remote_path" }))
+                            Ok(
+                                serde_json::json!({ "success": false, "error": "Missing remote_path" }),
+                            )
                         }
                     } else {
                         Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
@@ -1281,7 +1502,8 @@ async fn process_command(
             if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
                 if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
                     if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
-                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str()) {
+                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str())
+                        {
                             let config = crate::services::fs::nextcloud::NextCloudConfig {
                                 server_url: server_url.to_string(),
                                 username: username.to_string(),
@@ -1290,19 +1512,26 @@ async fn process_command(
                             };
 
                             match crate::services::fs::nextcloud::NextCloudService::new(config) {
-                                Ok(service) => {
-                                    match service.download_file(remote_path).await {
-                                        Ok(content) => {
-                                            let content_base64 = general_purpose::STANDARD.encode(&content);
-                                            Ok(serde_json::json!({ "success": true, "content": content_base64, "size": content.len() }))
-                                        }
-                                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+                                Ok(service) => match service.download_file(remote_path).await {
+                                    Ok(content) => {
+                                        let content_base64 =
+                                            general_purpose::STANDARD.encode(&content);
+                                        Ok(
+                                            serde_json::json!({ "success": true, "content": content_base64, "size": content.len() }),
+                                        )
                                     }
-                                }
-                                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                                    Err(e) => Ok(
+                                        serde_json::json!({ "success": false, "error": e.to_string() }),
+                                    ),
+                                },
+                                Err(e) => Ok(
+                                    serde_json::json!({ "success": false, "error": e.to_string() }),
+                                ),
                             }
                         } else {
-                            Ok(serde_json::json!({ "success": false, "error": "Missing remote_path" }))
+                            Ok(
+                                serde_json::json!({ "success": false, "error": "Missing remote_path" }),
+                            )
                         }
                     } else {
                         Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
@@ -1319,7 +1548,8 @@ async fn process_command(
             if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
                 if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
                     if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
-                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str()) {
+                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str())
+                        {
                             let config = crate::services::fs::nextcloud::NextCloudConfig {
                                 server_url: server_url.to_string(),
                                 username: username.to_string(),
@@ -1328,16 +1558,22 @@ async fn process_command(
                             };
 
                             match crate::services::fs::nextcloud::NextCloudService::new(config) {
-                                Ok(service) => {
-                                    match service.delete_file(remote_path).await {
-                                        Ok(_) => Ok(serde_json::json!({ "success": true, "message": "File deleted successfully" })),
-                                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
-                                    }
-                                }
-                                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                                Ok(service) => match service.delete_file(remote_path).await {
+                                    Ok(_) => Ok(
+                                        serde_json::json!({ "success": true, "message": "File deleted successfully" }),
+                                    ),
+                                    Err(e) => Ok(
+                                        serde_json::json!({ "success": false, "error": e.to_string() }),
+                                    ),
+                                },
+                                Err(e) => Ok(
+                                    serde_json::json!({ "success": false, "error": e.to_string() }),
+                                ),
                             }
                         } else {
-                            Ok(serde_json::json!({ "success": false, "error": "Missing remote_path" }))
+                            Ok(
+                                serde_json::json!({ "success": false, "error": "Missing remote_path" }),
+                            )
                         }
                     } else {
                         Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
@@ -1354,7 +1590,8 @@ async fn process_command(
             if let Some(server_url) = args.get("server_url").and_then(|s| s.as_str()) {
                 if let Some(username) = args.get("username").and_then(|s| s.as_str()) {
                     if let Some(password) = args.get("password").and_then(|s| s.as_str()) {
-                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str()) {
+                        if let Some(remote_path) = args.get("remote_path").and_then(|s| s.as_str())
+                        {
                             let config = crate::services::fs::nextcloud::NextCloudConfig {
                                 server_url: server_url.to_string(),
                                 username: username.to_string(),
@@ -1363,16 +1600,22 @@ async fn process_command(
                             };
 
                             match crate::services::fs::nextcloud::NextCloudService::new(config) {
-                                Ok(service) => {
-                                    match service.create_directory(remote_path).await {
-                                        Ok(_) => Ok(serde_json::json!({ "success": true, "message": "Directory created successfully" })),
-                                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
-                                    }
-                                }
-                                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                                Ok(service) => match service.create_directory(remote_path).await {
+                                    Ok(_) => Ok(
+                                        serde_json::json!({ "success": true, "message": "Directory created successfully" }),
+                                    ),
+                                    Err(e) => Ok(
+                                        serde_json::json!({ "success": false, "error": e.to_string() }),
+                                    ),
+                                },
+                                Err(e) => Ok(
+                                    serde_json::json!({ "success": false, "error": e.to_string() }),
+                                ),
                             }
                         } else {
-                            Ok(serde_json::json!({ "success": false, "error": "Missing remote_path" }))
+                            Ok(
+                                serde_json::json!({ "success": false, "error": "Missing remote_path" }),
+                            )
                         }
                     } else {
                         Ok(serde_json::json!({ "success": false, "error": "Missing password" }))
@@ -1386,84 +1629,90 @@ async fn process_command(
         }
 
         // LIFX light control commands
-        "lifx_get_bulbs" => {
-            match crate::services::lifx::get_bulbs() {
-                Ok(bulbs) => {
-                    let bulbs_json: Vec<serde_json::Value> = bulbs.iter().map(|b| {
+        "lifx_get_bulbs" => match crate::services::lifx::get_bulbs() {
+            Ok(bulbs) => {
+                let bulbs_json: Vec<serde_json::Value> = bulbs
+                    .iter()
+                    .map(|b| {
                         serde_json::json!({
                             "id": b.id,
                             "label": b.label,
                             "power": b.power,
-                            "color": {
-                                "hue": b.color.hue,
-                                "saturation": b.color.saturation,
-                                "brightness": b.color.brightness,
-                                "kelvin": b.color.kelvin
-                            },
+                            "color": b.lifx_color,
                             "connected": b.connected
                         })
-                    }).collect();
-                    Ok(serde_json::json!({ "success": true, "bulbs": bulbs_json }))
-                }
-                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    })
+                    .collect();
+                Ok(serde_json::json!({ "success": true, "bulbs": bulbs_json }))
             }
-        }
-        
+            Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+        },
+
         "lifx_set_power" => {
             if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
                 let power = args.get("power").and_then(|p| p.as_bool()).unwrap_or(true);
                 let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
-                
+
                 let power_str = if power { "on" } else { "off" };
-                let url = format!("/api/services/lifx/selector/{}/power/{}", selector, power_str);
-                
+                let url = format!(
+                    "/api/services/lifx/selector/{}/power/{}",
+                    selector, power_str
+                );
+
                 let client = reqwest::Client::new();
-                match client.post(&url)
+                match client
+                    .post(&url)
                     .json(&serde_json::json!({ "duration": duration }))
                     .send()
-                    .await 
+                    .await
                 {
                     Ok(resp) => {
                         if resp.status().is_success() {
-                            Ok(serde_json::json!({ "success": true, "message": format!("Bulbs {} powered {}", selector, if power { "on" } else { "off" }) }))
+                            Ok(
+                                serde_json::json!({ "success": true, "message": format!("Bulbs {} powered {}", selector, if power { "on" } else { "off" }) }),
+                            )
                         } else {
-                            Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                            Ok(
+                                serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }),
+                            )
                         }
                     }
-                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
                 }
             } else {
                 Err("Missing selector argument".into())
             }
         }
-        
+
         "lifx_set_color" => {
             if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
                 if let Some(color) = args.get("color").and_then(|c| c.as_str()) {
                     let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
                     let brightness = args.get("brightness").and_then(|b| b.as_f64());
-                    
+
                     let url = format!("/api/services/lifx/selector/{}/color/{}", selector, color);
-                    
+
                     let mut req_body = serde_json::json!({ "duration": duration });
                     if let Some(b) = brightness {
                         req_body["brightness"] = serde_json::json!(b);
                     }
-                    
+
                     let client = reqwest::Client::new();
-                    match client.put(&url)
-                        .json(&req_body)
-                        .send()
-                        .await 
-                    {
+                    match client.put(&url).json(&req_body).send().await {
                         Ok(resp) => {
                             if resp.status().is_success() {
-                                Ok(serde_json::json!({ "success": true, "message": format!("Bulbs {} set to color {}", selector, color) }))
+                                Ok(
+                                    serde_json::json!({ "success": true, "message": format!("Bulbs {} set to color {}", selector, color) }),
+                                )
                             } else {
-                                Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                                Ok(
+                                    serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }),
+                                )
                             }
                         }
-                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                        Err(e) => {
+                            Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                        }
                     }
                 } else {
                     Err("Missing color argument".into())
@@ -1472,28 +1721,38 @@ async fn process_command(
                 Err("Missing selector argument".into())
             }
         }
-        
+
         "lifx_set_brightness" => {
             if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
                 if let Some(brightness) = args.get("brightness").and_then(|b| b.as_f64()) {
                     let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
-                    
-                    let url = format!("/api/services/lifx/selector/{}/brightness/{}", selector, brightness);
-                    
+
+                    let url = format!(
+                        "/api/services/lifx/selector/{}/brightness/{}",
+                        selector, brightness
+                    );
+
                     let client = reqwest::Client::new();
-                    match client.put(&url)
+                    match client
+                        .put(&url)
                         .json(&serde_json::json!({ "duration": duration }))
                         .send()
-                        .await 
+                        .await
                     {
                         Ok(resp) => {
                             if resp.status().is_success() {
-                                Ok(serde_json::json!({ "success": true, "message": format!("Bulbs {} brightness set to {}", selector, brightness) }))
+                                Ok(
+                                    serde_json::json!({ "success": true, "message": format!("Bulbs {} brightness set to {}", selector, brightness) }),
+                                )
                             } else {
-                                Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                                Ok(
+                                    serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }),
+                                )
                             }
                         }
-                        Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                        Err(e) => {
+                            Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                        }
                     }
                 } else {
                     Err("Missing brightness argument".into())
@@ -1502,91 +1761,109 @@ async fn process_command(
                 Err("Missing selector argument".into())
             }
         }
-        
+
         "lifx_set_scene" => {
             if let Some(scene) = args.get("scene").and_then(|s| s.as_str()) {
-                let selector = args.get("selector").and_then(|s| s.as_str()).unwrap_or("all");
-                
+                let selector = args
+                    .get("selector")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("all");
+
                 let url = format!("/api/services/lifx/selector/{}/effects/scene", selector);
-                
+
                 let client = reqwest::Client::new();
-                match client.post(&url)
+                match client
+                    .post(&url)
                     .json(&serde_json::json!({ "scene": scene }))
                     .send()
-                    .await 
+                    .await
                 {
                     Ok(resp) => {
                         if resp.status().is_success() {
-                            Ok(serde_json::json!({ "success": true, "message": format!("Scene {} applied to {}", scene, selector) }))
+                            Ok(
+                                serde_json::json!({ "success": true, "message": format!("Scene {} applied to {}", scene, selector) }),
+                            )
                         } else {
-                            Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                            Ok(
+                                serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }),
+                            )
                         }
                     }
-                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
                 }
             } else {
                 Err("Missing scene argument".into())
             }
         }
-        
+
         "lifx_effect_pulse" => {
             if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
                 let color = args.get("color").and_then(|c| c.as_str()).unwrap_or("red");
                 let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
                 let cycles = args.get("cycles").and_then(|c| c.as_f64()).unwrap_or(1.0);
-                
+
                 let url = format!("/api/services/lifx/selector/{}/effects/pulse", selector);
-                
+
                 let client = reqwest::Client::new();
-                match client.post(&url)
-                    .json(&serde_json::json!({ 
+                match client
+                    .post(&url)
+                    .json(&serde_json::json!({
                         "color": color,
                         "duration": duration,
                         "cycles": cycles
                     }))
                     .send()
-                    .await 
+                    .await
                 {
                     Ok(resp) => {
                         if resp.status().is_success() {
-                            Ok(serde_json::json!({ "success": true, "message": "Pulse effect started" }))
+                            Ok(
+                                serde_json::json!({ "success": true, "message": "Pulse effect started" }),
+                            )
                         } else {
-                            Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                            Ok(
+                                serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }),
+                            )
                         }
                     }
-                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
                 }
             } else {
                 Err("Missing selector argument".into())
             }
         }
-        
+
         "lifx_effect_breathe" => {
             if let Some(selector) = args.get("selector").and_then(|s| s.as_str()) {
                 let color = args.get("color").and_then(|c| c.as_str()).unwrap_or("blue");
                 let duration = args.get("duration").and_then(|d| d.as_f64()).unwrap_or(1.0);
                 let cycles = args.get("cycles").and_then(|c| c.as_f64()).unwrap_or(1.0);
-                
+
                 let url = format!("/api/services/lifx/selector/{}/effects/breathe", selector);
-                
+
                 let client = reqwest::Client::new();
-                match client.post(&url)
-                    .json(&serde_json::json!({ 
+                match client
+                    .post(&url)
+                    .json(&serde_json::json!({
                         "color": color,
                         "duration": duration,
                         "cycles": cycles
                     }))
                     .send()
-                    .await 
+                    .await
                 {
                     Ok(resp) => {
                         if resp.status().is_success() {
-                            Ok(serde_json::json!({ "success": true, "message": "Breathe effect started" }))
+                            Ok(
+                                serde_json::json!({ "success": true, "message": "Breathe effect started" }),
+                            )
                         } else {
-                            Ok(serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }))
+                            Ok(
+                                serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) }),
+                            )
                         }
                     }
-                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() }))
+                    Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
                 }
             } else {
                 Err("Missing selector argument".into())
@@ -1604,7 +1881,10 @@ async fn process_command(
         }
 
         "test_notification" => {
-            let channel = args.get("channel").and_then(|c| c.as_str()).unwrap_or("websocket");
+            let channel = args
+                .get("channel")
+                .and_then(|c| c.as_str())
+                .unwrap_or("websocket");
             let message = args
                 .get("message")
                 .and_then(|m| m.as_str())
@@ -1625,14 +1905,17 @@ async fn process_command(
                         .as_ref()
                         .and_then(|n| n.sms_recipients.clone())
                     {
-                        let ch = crate::services::notifications::channels::SmsChannel { recipients };
+                        let ch =
+                            crate::services::notifications::channels::SmsChannel { recipients };
                         use crate::services::notifications::channels::NotificationChannel;
                         ch.send(&notification)
                             .await
                             .map_err(|e| -> BoxError { e.into() })?;
                         Ok(serde_json::json!({ "success": true, "message": "Test SMS sent" }))
                     } else {
-                        Ok(serde_json::json!({ "success": false, "error": "No SMS recipients configured" }))
+                        Ok(
+                            serde_json::json!({ "success": false, "error": "No SMS recipients configured" }),
+                        )
                     }
                 }
                 _ => {
@@ -1660,30 +1943,30 @@ async fn process_command(
 /// Collect system statistics
 async fn collect_system_stats() -> Result<SystemStats, BoxError> {
     use sysinfo::System;
-    
+
     let mut sys = System::new_all();
     sys.refresh_all();
-    
+
     let cpu = sys.global_cpu_usage();
     let memory_used = sys.used_memory();
     let memory_total = sys.total_memory();
     let memory_percent = (memory_used as f32 / memory_total as f32) * 100.0;
-    
+
     let mut disk_used = 0u64;
     let mut disk_total = 0u64;
-    
+
     let disks = sysinfo::Disks::new_with_refreshed_list();
     for disk in disks.list() {
         disk_used += disk.total_space() - disk.available_space();
         disk_total += disk.total_space();
     }
-    
+
     let disk_percent = if disk_total > 0 {
         (disk_used as f32 / disk_total as f32) * 100.0
     } else {
         0.0
     };
-    
+
     // Get network speed from the network monitor
     let network_monitor = NetworkMonitor::new();
     let network_speed = match network_monitor.get_total_speed_mbps().await {
@@ -1693,7 +1976,7 @@ async fn collect_system_stats() -> Result<SystemStats, BoxError> {
             0.0
         }
     };
-    
+
     Ok(SystemStats {
         cpu,
         memory_used,
@@ -1709,25 +1992,28 @@ async fn collect_system_stats() -> Result<SystemStats, BoxError> {
 
 /// Collect detailed network statistics
 async fn collect_network_stats() -> Result<NetworkStatsDetail, BoxError> {
-    use crate::network_monitor::{NetworkMonitor, ConnectionStats};
-    
+    use crate::network_monitor::{ConnectionStats, NetworkMonitor};
+
     let monitor = NetworkMonitor::new();
     let metrics = monitor.get_metrics().await?;
-    
+
     // Convert network speeds to interface stats
     let mut interfaces = HashMap::new();
     for (name, speed) in metrics.speeds {
-        interfaces.insert(name.clone(), InterfaceStats {
-            name: name.clone(),
-            download_mbps: speed.download_speed_mbps as f32,
-            upload_mbps: speed.upload_speed_mbps as f32,
-            rx_packets: 0, // Would need to be tracked separately
-            tx_packets: 0,
-            rx_errors: 0,
-            tx_errors: 0,
-        });
+        interfaces.insert(
+            name.clone(),
+            InterfaceStats {
+                name: name.clone(),
+                download_mbps: speed.download_speed_mbps as f32,
+                upload_mbps: speed.upload_speed_mbps as f32,
+                rx_packets: 0, // Would need to be tracked separately
+                tx_packets: 0,
+                rx_errors: 0,
+                tx_errors: 0,
+            },
+        );
     }
-    
+
     // Get connection statistics
     let connection_stats = ConnectionStats::gather().await.unwrap_or(ConnectionStats {
         tcp_established: 0,
@@ -1736,7 +2022,7 @@ async fn collect_network_stats() -> Result<NetworkStatsDetail, BoxError> {
         udp_connections: 0,
         total_connections: 0,
     });
-    
+
     Ok(NetworkStatsDetail {
         interfaces,
         total_download_mbps: metrics.total_download_mbps as f32,
@@ -1751,7 +2037,7 @@ async fn collect_network_stats() -> Result<NetworkStatsDetail, BoxError> {
 /// Collect service statuses
 async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, BoxError> {
     let mut statuses = HashMap::new();
-    
+
     // Check Redis
     if crate::services::redis::is_running().await {
         statuses.insert(
@@ -1774,7 +2060,7 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
             },
         );
     }
-    
+
     // Check Crawler
     let crawler_status = crate::services::crawler::service_status();
     info!("Crawler status check: {}", crawler_status);
@@ -1792,7 +2078,7 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
             last_check: Utc::now(),
         },
     );
-    
+
     // Skip Docker check to avoid 2-second blocking timeout
     statuses.insert(
         "docker".to_string(),
@@ -1803,19 +2089,21 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
             last_check: Utc::now(),
         },
     );
-    
+
     // PostgreSQL status - assume healthy since the app is running
     // Skip actual check to avoid blocking/runtime panics
     statuses.insert(
         "postgres".to_string(),
         ServiceStatus {
             state: "healthy".to_string(),
-            message: Some("PostgreSQL assumed healthy (check disabled to prevent blocking)".to_string()),
+            message: Some(
+                "PostgreSQL assumed healthy (check disabled to prevent blocking)".to_string(),
+            ),
             progress: None,
             last_check: Utc::now(),
         },
     );
-    
+
     // Check WebSocket
     statuses.insert(
         "websocket".to_string(),
@@ -1826,13 +2114,18 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
             last_check: Utc::now(),
         },
     );
-    
+
     // Check SSH server
     let ssh_server_running = crate::services::ssh::server::is_ssh_server_running().await;
     statuses.insert(
         "ssh_server".to_string(),
         ServiceStatus {
-            state: if ssh_server_running { "healthy" } else { "stopped" }.to_string(),
+            state: if ssh_server_running {
+                "healthy"
+            } else {
+                "stopped"
+            }
+            .to_string(),
             message: Some(if ssh_server_running {
                 "SSH server running on port 2222".to_string()
             } else {
@@ -1842,20 +2135,26 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
             last_check: Utc::now(),
         },
     );
-    
+
     // Check LIFX service
-    let lifx_status = crate::services::lifx::status_service().unwrap_or_else(|_| "stopped".to_string());
+    let lifx_status =
+        crate::services::lifx::status_service().unwrap_or_else(|_| "stopped".to_string());
     let lifx_bulbs = crate::services::lifx::get_bulb_count().unwrap_or(0);
     statuses.insert(
         "lifx".to_string(),
         ServiceStatus {
-            state: if lifx_status.contains("running") || lifx_status.contains("discovery") { "healthy" } else { "stopped" }.to_string(),
+            state: if lifx_status.contains("running") || lifx_status.contains("discovery") {
+                "healthy"
+            } else {
+                "stopped"
+            }
+            .to_string(),
             message: Some(format!("LIFX: {} ({} bulbs)", lifx_status, lifx_bulbs)),
             progress: None,
             last_check: Utc::now(),
         },
     );
-    
+
     // Check Media service
     let media_running = crate::services::media::is_running().await;
     statuses.insert(
@@ -1871,7 +2170,7 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
             last_check: Utc::now(),
         },
     );
-    
+
     // Check Snapcast service
     let snapcast_running = std::process::Command::new("pgrep")
         .arg("snapserver")
@@ -1882,7 +2181,12 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
     statuses.insert(
         "snapcast".to_string(),
         ServiceStatus {
-            state: if snapcast_running { "healthy" } else { "stopped" }.to_string(),
+            state: if snapcast_running {
+                "healthy"
+            } else {
+                "stopped"
+            }
+            .to_string(),
             message: Some(if snapcast_running {
                 "Snapcast server running".to_string()
             } else {
@@ -1892,7 +2196,7 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
             last_check: Utc::now(),
         },
     );
-    
+
     // Check Voice/TTS service
     statuses.insert(
         "voice".to_string(),
@@ -1903,7 +2207,7 @@ async fn collect_service_statuses() -> Result<HashMap<String, ServiceStatus>, Bo
             last_check: Utc::now(),
         },
     );
-    
+
     Ok(statuses)
 }
 
@@ -1916,14 +2220,14 @@ fn log_audit_event(event: AuditEvent) {
         event.event_type,
         event.details
     );
-    
+
     match event.severity {
         AuditSeverity::Info => info!("{}", log_message),
         AuditSeverity::Warning => warn!("{}", log_message),
         AuditSeverity::Error => error!("{}", log_message),
         AuditSeverity::Critical => error!("[CRITICAL] {}", log_message),
     }
-    
+
     // Optionally write to a dedicated audit log file
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
@@ -1931,44 +2235,57 @@ fn log_audit_event(event: AuditEvent) {
         .open("websocket_audit.log")
     {
         use std::io::Write;
-        let _ = writeln!(file, "{}: {}", event.timestamp.to_rfc3339(), serde_json::to_string(&event).unwrap_or_default());
-    }
-}
-
-/// Simple WebSocket server placeholder
-pub struct WebSocketServer;
-
-impl Default for WebSocketServer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl WebSocketServer {
-    pub fn new() -> Self {
-        Self
-    }
-    
-    pub async fn start(&self, _addr: &str) -> Result<(), BoxError> {
-        // TODO: Implement actual WebSocket server
-        log::info!("WebSocket server placeholder started");
-        Ok(())
+        let _ = writeln!(
+            file,
+            "{}: {}",
+            event.timestamp.to_rfc3339(),
+            serde_json::to_string(&event).unwrap_or_default()
+        );
     }
 }
 
 /// Global websocket server instance
-static WEBSOCKET_SERVER: once_cell::sync::OnceCell<WebSocketServer> = once_cell::sync::OnceCell::new();
+static WEBSOCKET_SERVER: once_cell::sync::OnceCell<Arc<WsServer>> =
+    once_cell::sync::OnceCell::new();
+static WEBSOCKET_HANDLE: once_cell::sync::Lazy<
+    tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+> = once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(None));
 
 /// Start the websocket server
 pub async fn start_server() -> Result<(), BoxError> {
-    let server = WEBSOCKET_SERVER.get_or_init(WebSocketServer::new);
-    server.start("0.0.0.0:8080").await
+    let mut handle_guard = WEBSOCKET_HANDLE.lock().await;
+    if handle_guard
+        .as_ref()
+        .map(|handle| !handle.is_finished())
+        .unwrap_or(false)
+    {
+        info!("WebSocket server is already running");
+        return Ok(());
+    }
+
+    let listener = TcpListener::bind("0.0.0.0:8080").await?;
+    let addr = listener.local_addr()?;
+    let server = WEBSOCKET_SERVER
+        .get_or_init(|| Arc::new(WsServer::new()))
+        .clone();
+
+    let handle = tokio::spawn(async move {
+        info!("WebSocket server listening on {}", addr);
+        if let Err(e) = server.accept_loop(listener).await {
+            error!("WebSocket server stopped with error: {}", e);
+        }
+    });
+
+    *handle_guard = Some(handle);
+    Ok(())
 }
 
 /// Stop the websocket server
 pub async fn stop_server() -> Result<(), BoxError> {
-    // For now, this is a no-op since we don't store server handles
-    // In a full implementation, you'd store the server handle and call shutdown
+    let mut handle_guard = WEBSOCKET_HANDLE.lock().await;
+    if let Some(handle) = handle_guard.take() {
+        handle.abort();
+        info!("WebSocket server stopped");
+    }
     Ok(())
 }
-

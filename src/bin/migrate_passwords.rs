@@ -6,13 +6,13 @@
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting password migration to secure hashes...");
-    
+
     // TODO: Implement password migration once modules are properly structured
     // let humans = Human::select(None, None, None, None)?;
-    
+
     let migrated_count = 0;
     let error_count = 0;
-    
+
     // TODO: Fix once modules are properly structured
     /*
     for mut human in humans {
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Check if already hashed (argon2 hashes start with $argon2)
             if !password.starts_with("$argon2") {
                 println!("Migrating password for user: {}", human.email.as_ref().unwrap_or(&"Unknown".to_string()));
-                
+
                 // Hash the plaintext password
                 match Auth::hash_password(password) {
                     Ok(hashed) => {
@@ -42,18 +42,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             } else {
-                println!("User {} already has hashed password, skipping", 
+                println!("User {} already has hashed password, skipping",
                     human.email.as_ref().unwrap_or(&"Unknown".to_string()));
             }
         }
     }
     */
-    
+
     println!("\nMigration complete!");
     println!("  Migrated: {} passwords", migrated_count);
     if error_count > 0 {
         println!("  Errors: {} passwords failed to migrate", error_count);
     }
-    
+
     Ok(())
 }

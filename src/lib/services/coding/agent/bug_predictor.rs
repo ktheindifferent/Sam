@@ -1,13 +1,13 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use chrono::{DateTime, Utc};
 
 use crate::services::coding::agent::{
-    errors::{CodingAgentError, CodingAgentResult},
     code_intelligence::{CodeIntelligence, Symbol},
     code_review::CodeLocation,
+    errors::{CodingAgentError, CodingAgentResult},
 };
 
 use super::traits::provider::LLMProvider;
@@ -366,16 +366,14 @@ impl BugPatternAnalyzer {
     }
 
     fn load_patterns() -> Vec<BugPattern> {
-        vec![
-            BugPattern {
-                pattern_id: "NPE001".to_string(),
-                name: "Null pointer dereference".to_string(),
-                bug_type: BugType::NullDereference,
-                detection_rules: vec![],
-                severity: BugSeverity::High,
-                false_positive_rate: 0.1,
-            },
-        ]
+        vec![BugPattern {
+            pattern_id: "NPE001".to_string(),
+            name: "Null pointer dereference".to_string(),
+            bug_type: BugType::NullDereference,
+            detection_rules: vec![],
+            severity: BugSeverity::High,
+            false_positive_rate: 0.1,
+        }]
     }
 
     pub async fn analyze(&self, code: &str) -> Vec<DetectedPattern> {
@@ -511,9 +509,7 @@ pub enum AnomalyType {
 
 impl RuntimeAnalyzer {
     pub fn new() -> Self {
-        Self {
-            traces: Vec::new(),
-        }
+        Self { traces: Vec::new() }
     }
 
     pub async fn analyze_traces(&self) -> Vec<RuntimeIssue> {
@@ -687,7 +683,10 @@ impl BugPredictor {
         }
     }
 
-    pub async fn predict_bugs(&self, request: BugPredictionRequest) -> CodingAgentResult<BugPredictionResult> {
+    pub async fn predict_bugs(
+        &self,
+        request: BugPredictionRequest,
+    ) -> CodingAgentResult<BugPredictionResult> {
         let code = self.read_target(&request.target).await?;
 
         // Run multiple analysis types in parallel
@@ -715,7 +714,8 @@ impl BugPredictor {
         )?;
 
         // Filter by confidence threshold
-        let filtered_bugs: Vec<PredictedBug> = predicted_bugs.into_iter()
+        let filtered_bugs: Vec<PredictedBug> = predicted_bugs
+            .into_iter()
             .filter(|bug| bug.confidence >= request.confidence_threshold)
             .collect();
 
@@ -750,10 +750,11 @@ impl BugPredictor {
     async fn read_target(&self, target: &AnalysisTarget) -> CodingAgentResult<String> {
         match target {
             AnalysisTarget::File(path) => {
-                tokio::fs::read_to_string(path).await
+                tokio::fs::read_to_string(path)
+                    .await
                     .map_err(|e| CodingAgentError::IoError {
                         message: e.to_string(),
-                        path: None
+                        path: None,
                     })
             }
             _ => Ok(String::new()),
@@ -816,7 +817,8 @@ impl BugPredictor {
     }
 
     fn assess_risk(&self, bugs: &[PredictedBug]) -> RiskAssessment {
-        let critical_count = bugs.iter()
+        let critical_count = bugs
+            .iter()
             .filter(|b| matches!(b.severity, BugSeverity::Critical))
             .count();
 
@@ -869,6 +871,8 @@ impl BugPredictor {
         let complexity_penalty = (features.cyclomatic_complexity / 10.0).min(1.0) * 0.2;
         let coverage_bonus = features.test_coverage * 0.3;
 
-        (1.0 - bug_penalty - complexity_penalty + coverage_bonus).max(0.0).min(1.0)
+        (1.0 - bug_penalty - complexity_penalty + coverage_bonus)
+            .max(0.0)
+            .min(1.0)
     }
 }

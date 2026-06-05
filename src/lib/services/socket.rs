@@ -7,10 +7,10 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+use crate::services::thread_manager::{self, ThreadConfig};
 use simple_websockets::{Event, Responder};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
-use crate::services::thread_manager::{self, ThreadConfig};
 
 pub fn init() {
     let config = ThreadConfig {
@@ -24,10 +24,10 @@ pub fn init() {
         max_memory_mb: None,
         cpu_affinity: None,
     };
-    
+
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
         log::info!("WebSocket server starting on port 2794");
-        
+
         // listen for WebSockets on port 2794:
         let event_hub = match simple_websockets::launch(2794) {
             Ok(hub) => hub,
@@ -36,7 +36,7 @@ pub fn init() {
                 return;
             }
         };
-        
+
         // map between client ids and the client's `Responder`:
         let mut clients: HashMap<u64, Responder> = HashMap::new();
 
@@ -67,11 +67,11 @@ pub fn init() {
                     }
                 }
             }
-            
+
             // Small sleep to prevent busy-waiting
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        
+
         log::info!("WebSocket server stopped");
     });
 }

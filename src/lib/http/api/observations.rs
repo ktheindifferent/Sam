@@ -36,7 +36,9 @@ pub fn handle(
         let url = request.url();
         let split = url.split("/");
         let vec: Vec<&str> = split.collect();
-        let oid = vec[4];
+        let oid = vec
+            .get(4)
+            .ok_or_else(|| crate::http::Error::BadRequest("Missing observation id".to_string()))?;
 
         // Build query
         let mut pg_query = crate::memory::PostgresQueries::default();
@@ -46,11 +48,11 @@ pub fn handle(
         pg_query.query_columns.push("oid =".to_string());
 
         // Select project by oid
-        let observations =
-            crate::memory::Observation::select(None, None, None, Some(pg_query))?;
-        let observation = observations.first().ok_or_else(|| {
-            crate::http::Error::BadRequest("Observation not found".to_string())
-        })?.clone();
+        let observations = crate::memory::Observation::select(None, None, None, Some(pg_query))?;
+        let observation = observations
+            .first()
+            .ok_or_else(|| crate::http::Error::BadRequest("Observation not found".to_string()))?
+            .clone();
 
         let file_data = observation.observation_file.ok_or_else(|| {
             crate::http::Error::BadRequest("Observation file not found".to_string())
@@ -65,7 +67,9 @@ pub fn handle(
         let url = request.url();
         let split = url.split("/");
         let vec: Vec<&str> = split.collect();
-        let oid = vec[4];
+        let oid = vec
+            .get(4)
+            .ok_or_else(|| crate::http::Error::BadRequest("Missing observation id".to_string()))?;
 
         // Build query
         let mut pg_query = crate::memory::PostgresQueries::default();
@@ -75,11 +79,11 @@ pub fn handle(
         pg_query.query_columns.push("oid =".to_string());
 
         // Select project by oid
-        let observations =
-            crate::memory::Observation::select(None, None, None, Some(pg_query))?;
-        let observation = observations.first().ok_or_else(|| {
-            crate::http::Error::BadRequest("Observation not found".to_string())
-        })?.clone();
+        let observations = crate::memory::Observation::select(None, None, None, Some(pg_query))?;
+        let observation = observations
+            .first()
+            .ok_or_else(|| crate::http::Error::BadRequest("Observation not found".to_string()))?
+            .clone();
 
         let wav_data = observation.observation_file.ok_or_else(|| {
             crate::http::Error::BadRequest("Observation file not found".to_string())
@@ -102,12 +106,29 @@ pub fn handle(
         // TODO: Fix 8000 vs 16000
         crate::tools::safe_uinx_cmd(
             "ffmpeg",
-            &["-y", "-i", &tmp_file_path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", &wav_16_path],
+            &[
+                "-y",
+                "-i",
+                &tmp_file_path,
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                &wav_16_path,
+            ],
         );
 
         crate::tools::safe_uinx_cmd(
             "/opt/sam/bin/whisper",
-            &["-m", "/opt/sam/models/ggml-large.bin", "-f", &wav_16_path, "-owts"],
+            &[
+                "-m",
+                "/opt/sam/models/ggml-large.bin",
+                "-f",
+                &wav_16_path,
+                "-owts",
+            ],
         );
 
         crate::services::stt::patch_whisper_wts()?;

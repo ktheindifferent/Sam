@@ -1,15 +1,15 @@
 use async_trait::async_trait;
+use petgraph::algo::{connected_components, tarjan_scc, toposort};
+use petgraph::dot::{Config, Dot};
+use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
-use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::algo::{connected_components, tarjan_scc, toposort};
-use petgraph::dot::{Dot, Config};
 
 use crate::services::coding::agent::{
-    errors::{CodingAgentError, CodingAgentResult},
     code_intelligence::{Symbol, SymbolKind},
     code_review::CodeLocation,
+    errors::{CodingAgentError, CodingAgentResult},
 };
 
 /// Visual code flow analyzer for creating diagrams and understanding code structure
@@ -360,7 +360,10 @@ impl FlowAnalyzer {
         }
     }
 
-    pub async fn analyze_control_flow(&mut self, code: &str) -> CodingAgentResult<ControlFlowGraph> {
+    pub async fn analyze_control_flow(
+        &mut self,
+        code: &str,
+    ) -> CodingAgentResult<ControlFlowGraph> {
         // Parse code and build control flow graph
         self.build_flow_graph(code)?;
 
@@ -391,7 +394,10 @@ impl FlowAnalyzer {
         sccs.into_iter()
             .filter(|scc| scc.len() > 1)
             .map(|scc| Cycle {
-                nodes: scc.into_iter().map(|idx| self.graph[idx].id.clone()).collect(),
+                nodes: scc
+                    .into_iter()
+                    .map(|idx| self.graph[idx].id.clone())
+                    .collect(),
             })
             .collect()
     }
@@ -414,29 +420,38 @@ impl FlowAnalyzer {
     }
 
     fn extract_edges(&self) -> Vec<(String, String, FlowEdge)> {
-        self.graph.edge_indices()
+        self.graph
+            .edge_indices()
             .filter_map(|e| {
                 let (from, to) = self.graph.edge_endpoints(e)?;
                 let edge = self.graph[e].clone();
-                Some((
-                    self.graph[from].id.clone(),
-                    self.graph[to].id.clone(),
-                    edge,
-                ))
+                Some((self.graph[from].id.clone(), self.graph[to].id.clone(), edge))
             })
             .collect()
     }
 
     fn find_entry_points(&self) -> Vec<String> {
-        self.graph.node_indices()
-            .filter(|&n| self.graph.edges_directed(n, petgraph::Direction::Incoming).count() == 0)
+        self.graph
+            .node_indices()
+            .filter(|&n| {
+                self.graph
+                    .edges_directed(n, petgraph::Direction::Incoming)
+                    .count()
+                    == 0
+            })
             .map(|n| self.graph[n].id.clone())
             .collect()
     }
 
     fn find_exit_points(&self) -> Vec<String> {
-        self.graph.node_indices()
-            .filter(|&n| self.graph.edges_directed(n, petgraph::Direction::Outgoing).count() == 0)
+        self.graph
+            .node_indices()
+            .filter(|&n| {
+                self.graph
+                    .edges_directed(n, petgraph::Direction::Outgoing)
+                    .count()
+                    == 0
+            })
             .map(|n| self.graph[n].id.clone())
             .collect()
     }
@@ -495,13 +510,19 @@ impl DiagramGenerator {
         Self { templates }
     }
 
-    pub async fn generate(&self, graph: &ControlFlowGraph, format: OutputFormat) -> CodingAgentResult<String> {
+    pub async fn generate(
+        &self,
+        graph: &ControlFlowGraph,
+        format: OutputFormat,
+    ) -> CodingAgentResult<String> {
         match format {
             OutputFormat::DOT => self.generate_dot(graph),
             OutputFormat::PlantUML => self.generate_plantuml(graph),
             OutputFormat::Mermaid => self.generate_mermaid(graph),
             OutputFormat::D2 => self.generate_d2(graph),
-            _ => Err(CodingAgentError::ConfigError { message: format!("Output format {:?} not supported", format) }),
+            _ => Err(CodingAgentError::ConfigError {
+                message: format!("Output format {:?} not supported", format),
+            }),
         }
     }
 
@@ -517,8 +538,10 @@ impl DiagramGenerator {
                 FlowNodeType::Loop => "ellipse",
                 _ => "box",
             };
-            dot.push_str(&format!("  \"{}\" [label=\"{}\", shape={}];\n",
-                node.id, node.label, shape));
+            dot.push_str(&format!(
+                "  \"{}\" [label=\"{}\", shape={}];\n",
+                node.id, node.label, shape
+            ));
         }
 
         // Add edges
@@ -528,8 +551,10 @@ impl DiagramGenerator {
                 FlowEdgeType::Exception => "dashed",
                 _ => "solid",
             };
-            dot.push_str(&format!("  \"{}\" -> \"{}\" [label=\"{}\", style={}];\n",
-                from, to, label, style));
+            dot.push_str(&format!(
+                "  \"{}\" -> \"{}\" [label=\"{}\", style={}];\n",
+                from, to, label, style
+            ));
         }
 
         dot.push_str("}\n");
@@ -571,7 +596,7 @@ impl DiagramGenerator {
         for (from, to, edge) in &graph.edges {
             let arrow = match edge.edge_type {
                 FlowEdgeType::Conditional => "-->",
-                _ => "-->"
+                _ => "-->",
             };
             let label = edge.condition.as_deref().unwrap_or("");
             if !label.is_empty() {
@@ -627,7 +652,10 @@ impl GraphBuilder {
         })
     }
 
-    pub async fn build_dependency_graph(&self, _project: &str) -> CodingAgentResult<DependencyGraph> {
+    pub async fn build_dependency_graph(
+        &self,
+        _project: &str,
+    ) -> CodingAgentResult<DependencyGraph> {
         Ok(DependencyGraph {
             modules: Vec::new(),
             dependencies: Vec::new(),
@@ -703,7 +731,12 @@ impl LayoutEngine {
         // Apply force-directed layout or hierarchical layout
         LayoutResult {
             positions: HashMap::new(),
-            bounds: Bounds { x: 0.0, y: 0.0, width: 800.0, height: 600.0 },
+            bounds: Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 800.0,
+                height: 600.0,
+            },
         }
     }
 }
@@ -748,7 +781,10 @@ impl CodeFlowVisualizer {
         }
     }
 
-    pub async fn visualize(&mut self, request: VisualizationRequest) -> CodingAgentResult<VisualizationResult> {
+    pub async fn visualize(
+        &mut self,
+        request: VisualizationRequest,
+    ) -> CodingAgentResult<VisualizationResult> {
         // Analyze code flow based on visualization type
         let graph = match request.visualization_type {
             VisualizationType::ControlFlow => {
@@ -758,13 +794,19 @@ impl CodeFlowVisualizer {
             }
             _ => {
                 return Err(CodingAgentError::ConfigError {
-                    message: format!("Visualization type {:?} not yet implemented", request.visualization_type)
+                    message: format!(
+                        "Visualization type {:?} not yet implemented",
+                        request.visualization_type
+                    ),
                 });
             }
         };
 
         // Generate diagram
-        let diagram_content = self.diagram_generator.generate(&graph, request.output_format.clone()).await?;
+        let diagram_content = self
+            .diagram_generator
+            .generate(&graph, request.output_format.clone())
+            .await?;
 
         // Apply layout
         let layout = self.layout_engine.layout(&graph);
@@ -802,10 +844,11 @@ impl CodeFlowVisualizer {
     async fn read_target(&self, target: &VisualizationTarget) -> CodingAgentResult<String> {
         match target {
             VisualizationTarget::File(path) => {
-                tokio::fs::read_to_string(path).await
+                tokio::fs::read_to_string(path)
+                    .await
                     .map_err(|e| CodingAgentError::IoError {
                         message: e.to_string(),
-                        path: None
+                        path: None,
                     })
             }
             _ => Ok(String::new()),
@@ -836,9 +879,7 @@ impl CodeFlowVisualizer {
                 description: format!("Found {} cycles in control flow", graph.cycles.len()),
                 severity: InsightSeverity::Info,
                 location: None,
-                suggestions: vec![
-                    "Review cycles for potential infinite loops".to_string(),
-                ],
+                suggestions: vec!["Review cycles for potential infinite loops".to_string()],
             });
         }
 

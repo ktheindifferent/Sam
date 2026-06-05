@@ -143,7 +143,13 @@ impl Location {
             if self.lifx_api_key.is_some() {
                 client.execute(
                     "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                    &[&self.lifx_api_key.as_ref().expect("lifx_api_key should be Some"), &self.oid],
+                    &[
+                        &self
+                            .lifx_api_key
+                            .as_ref()
+                            .expect("lifx_api_key should be Some"),
+                        &self.oid,
+                    ],
                 )?;
             }
             let statement = client.prepare("SELECT * FROM locations WHERE oid = $1")?;
@@ -166,7 +172,13 @@ impl Location {
                 if self.lifx_api_key.is_some() {
                     client.execute(
                         "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                        &[&self.lifx_api_key.as_ref().expect("lifx_api_key should be Some"), &ads.oid],
+                        &[
+                            &self
+                                .lifx_api_key
+                                .as_ref()
+                                .expect("lifx_api_key should be Some"),
+                            &ads.oid,
+                        ],
                     )?;
                 }
             }
@@ -252,7 +264,13 @@ impl Location {
                 client
                     .execute(
                         "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                        &[&self.lifx_api_key.as_ref().expect("lifx_api_key should be Some"), &self.oid],
+                        &[
+                            &self
+                                .lifx_api_key
+                                .as_ref()
+                                .expect("lifx_api_key should be Some"),
+                            &self.oid,
+                        ],
                     )
                     .await?;
             }
@@ -274,7 +292,13 @@ impl Location {
                     client
                         .execute(
                             "UPDATE locations SET lifx_api_key = $1 WHERE oid = $2;",
-                            &[&self.lifx_api_key.as_ref().expect("lifx_api_key should be Some"), &ads.oid],
+                            &[
+                                &self
+                                    .lifx_api_key
+                                    .as_ref()
+                                    .expect("lifx_api_key should be Some"),
+                                &ads.oid,
+                            ],
                         )
                         .await?;
                 }

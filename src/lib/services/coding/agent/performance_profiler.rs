@@ -1,12 +1,12 @@
-use std::collections::{HashMap, BTreeMap, VecDeque};
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use tokio::sync::{RwLock, mpsc};
-use tokio::process::Command;
 use tokio::fs;
+use tokio::process::Command;
+use tokio::sync::{mpsc, RwLock};
 
 use super::errors::CodingAgentError as ServiceError;
 use super::traits::provider::LLMProvider;
@@ -238,7 +238,7 @@ pub struct CoreUtilization {
 pub struct InstructionStatistics {
     pub instructions_executed: usize,
     pub cycles: usize,
-    pub ipc: f64,  // Instructions per cycle
+    pub ipc: f64, // Instructions per cycle
     pub cache_misses: CacheMissStats,
 }
 
@@ -381,18 +381,29 @@ impl PerformanceProfiler {
     }
 
     fn register_profilers(&mut self) {
-        self.profilers.insert("rust".to_string(), Box::new(RustProfiler::new()));
-        self.profilers.insert("javascript".to_string(), Box::new(JsProfiler::new()));
-        self.profilers.insert("python".to_string(), Box::new(PythonProfiler::new()));
-        self.profilers.insert("go".to_string(), Box::new(GoProfiler::new()));
-        self.profilers.insert("java".to_string(), Box::new(JavaProfiler::new()));
+        self.profilers
+            .insert("rust".to_string(), Box::new(RustProfiler::new()));
+        self.profilers
+            .insert("javascript".to_string(), Box::new(JsProfiler::new()));
+        self.profilers
+            .insert("python".to_string(), Box::new(PythonProfiler::new()));
+        self.profilers
+            .insert("go".to_string(), Box::new(GoProfiler::new()));
+        self.profilers
+            .insert("java".to_string(), Box::new(JavaProfiler::new()));
     }
 
     fn register_analyzers(&mut self) {
-        self.analyzers.insert("cpu".to_string(), Box::new(CpuAnalyzer::new()));
-        self.analyzers.insert("memory".to_string(), Box::new(MemoryAnalyzer::new()));
-        self.analyzers.insert("io".to_string(), Box::new(IoAnalyzer::new()));
-        self.analyzers.insert("concurrency".to_string(), Box::new(ConcurrencyAnalyzer::new()));
+        self.analyzers
+            .insert("cpu".to_string(), Box::new(CpuAnalyzer::new()));
+        self.analyzers
+            .insert("memory".to_string(), Box::new(MemoryAnalyzer::new()));
+        self.analyzers
+            .insert("io".to_string(), Box::new(IoAnalyzer::new()));
+        self.analyzers.insert(
+            "concurrency".to_string(),
+            Box::new(ConcurrencyAnalyzer::new()),
+        );
     }
 
     pub async fn profile(
@@ -407,7 +418,9 @@ impl PerformanceProfiler {
         let language = self.detect_language(target).await?;
 
         // Get appropriate profiler
-        let profiler = self.profilers.get(&language)
+        let profiler = self
+            .profilers
+            .get(&language)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "profiler".to_string(),
                 id: language.clone(),
@@ -417,7 +430,10 @@ impl PerformanceProfiler {
         let raw_data = profiler.collect_data(target, &config).await?;
 
         // Generate flame graph
-        let flame_graph = self.flame_graph_generator.generate(&raw_data, config.format).await?;
+        let flame_graph = self
+            .flame_graph_generator
+            .generate(&raw_data, config.format)
+            .await?;
 
         // Analyze hotspots
         let hotspots = self.analyze_hotspots(&flame_graph).await?;
@@ -432,12 +448,9 @@ impl PerformanceProfiler {
         let io_profile = self.collect_io_profile(&raw_data).await?;
 
         // Generate recommendations
-        let recommendations = self.generate_recommendations(
-            &hotspots,
-            &memory_profile,
-            &cpu_profile,
-            &io_profile,
-        ).await?;
+        let recommendations = self
+            .generate_recommendations(&hotspots, &memory_profile, &cpu_profile, &io_profile)
+            .await?;
 
         let duration = start_time.elapsed();
 
@@ -476,7 +489,10 @@ impl PerformanceProfiler {
         }
     }
 
-    async fn analyze_hotspots(&self, flame_graph: &FlameGraph) -> Result<Vec<Hotspot>, ServiceError> {
+    async fn analyze_hotspots(
+        &self,
+        flame_graph: &FlameGraph,
+    ) -> Result<Vec<Hotspot>, ServiceError> {
         let mut hotspots = Vec::new();
         self.traverse_flame_graph(&flame_graph.root, &mut hotspots, flame_graph.total_samples);
 
@@ -489,8 +505,14 @@ impl PerformanceProfiler {
         Ok(hotspots)
     }
 
-    fn traverse_flame_graph(&self, node: &FlameNode, hotspots: &mut Vec<Hotspot>, total_samples: usize) {
-        if node.percentage > 1.0 {  // Only consider functions taking more than 1% of time
+    fn traverse_flame_graph(
+        &self,
+        node: &FlameNode,
+        hotspots: &mut Vec<Hotspot>,
+        total_samples: usize,
+    ) {
+        if node.percentage > 1.0 {
+            // Only consider functions taking more than 1% of time
             hotspots.push(Hotspot {
                 function: node.name.clone(),
                 location: CodeLocation {
@@ -535,14 +557,32 @@ impl PerformanceProfiler {
         }
     }
 
-    async fn collect_memory_profile(&self, raw_data: &ProfileData) -> Result<MemoryProfile, ServiceError> {
+    async fn collect_memory_profile(
+        &self,
+        raw_data: &ProfileData,
+    ) -> Result<MemoryProfile, ServiceError> {
         Ok(MemoryProfile {
             heap_usage: HeapUsage {
-                used: raw_data.memory_samples.last().map(|s| s.heap_used).unwrap_or(0),
-                allocated: raw_data.memory_samples.last().map(|s| s.heap_allocated).unwrap_or(0),
-                peak: raw_data.memory_samples.iter().map(|s| s.heap_used).max().unwrap_or(0),
+                used: raw_data
+                    .memory_samples
+                    .last()
+                    .map(|s| s.heap_used)
+                    .unwrap_or(0),
+                allocated: raw_data
+                    .memory_samples
+                    .last()
+                    .map(|s| s.heap_allocated)
+                    .unwrap_or(0),
+                peak: raw_data
+                    .memory_samples
+                    .iter()
+                    .map(|s| s.heap_used)
+                    .max()
+                    .unwrap_or(0),
                 limit: None,
-                timeline: raw_data.memory_samples.iter()
+                timeline: raw_data
+                    .memory_samples
+                    .iter()
                     .map(|s| (s.timestamp, s.heap_used))
                     .collect(),
             },
@@ -558,11 +598,13 @@ impl PerformanceProfiler {
         })
     }
 
-    async fn collect_cpu_profile(&self, raw_data: &ProfileData) -> Result<CpuProfile, ServiceError> {
+    async fn collect_cpu_profile(
+        &self,
+        raw_data: &ProfileData,
+    ) -> Result<CpuProfile, ServiceError> {
         Ok(CpuProfile {
-            usage_percentage: raw_data.cpu_samples.iter()
-                .map(|s| s.usage)
-                .sum::<f64>() / raw_data.cpu_samples.len().max(1) as f64,
+            usage_percentage: raw_data.cpu_samples.iter().map(|s| s.usage).sum::<f64>()
+                / raw_data.cpu_samples.len().max(1) as f64,
             user_time: Duration::from_secs(0),
             system_time: Duration::from_secs(0),
             idle_time: Duration::from_secs(0),
@@ -615,10 +657,19 @@ impl PerformanceProfiler {
             total_time: raw_data.duration,
             cpu_time: Duration::from_secs(0),
             wall_time: raw_data.duration,
-            memory_peak: raw_data.memory_samples.iter().map(|s| s.heap_used).max().unwrap_or(0),
+            memory_peak: raw_data
+                .memory_samples
+                .iter()
+                .map(|s| s.heap_used)
+                .max()
+                .unwrap_or(0),
             memory_average: if !raw_data.memory_samples.is_empty() {
-                raw_data.memory_samples.iter().map(|s| s.heap_used).sum::<usize>() /
-                raw_data.memory_samples.len()
+                raw_data
+                    .memory_samples
+                    .iter()
+                    .map(|s| s.heap_used)
+                    .sum::<usize>()
+                    / raw_data.memory_samples.len()
             } else {
                 0
             },
@@ -691,9 +742,10 @@ impl PerformanceProfiler {
         current: &PerformanceProfile,
     ) -> Result<PerformanceComparison, ServiceError> {
         Ok(PerformanceComparison {
-            improvement: (baseline.metrics.total_time.as_secs_f64() -
-                         current.metrics.total_time.as_secs_f64()) /
-                         baseline.metrics.total_time.as_secs_f64() * 100.0,
+            improvement: (baseline.metrics.total_time.as_secs_f64()
+                - current.metrics.total_time.as_secs_f64())
+                / baseline.metrics.total_time.as_secs_f64()
+                * 100.0,
             regression_areas: Vec::new(),
             improvement_areas: Vec::new(),
             new_hotspots: Vec::new(),
@@ -768,7 +820,11 @@ struct CpuSample {
 // Profiler trait
 #[async_trait]
 trait Profiler: Send + Sync {
-    async fn collect_data(&self, target: &Path, config: &ProfileConfig) -> Result<ProfileData, ServiceError>;
+    async fn collect_data(
+        &self,
+        target: &Path,
+        config: &ProfileConfig,
+    ) -> Result<ProfileData, ServiceError>;
     fn language(&self) -> &str;
 }
 
@@ -783,10 +839,24 @@ impl RustProfiler {
 
 #[async_trait]
 impl Profiler for RustProfiler {
-    async fn collect_data(&self, target: &Path, config: &ProfileConfig) -> Result<ProfileData, ServiceError> {
+    async fn collect_data(
+        &self,
+        target: &Path,
+        config: &ProfileConfig,
+    ) -> Result<ProfileData, ServiceError> {
         // Use cargo-flamegraph or perf
+        let target_name = target
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| {
+                ServiceError::ExecutionError(format!(
+                    "Profiling target must have a UTF-8 file stem: {}",
+                    target.display()
+                ))
+            })?;
+
         let _output = Command::new("cargo")
-            .args(&["flamegraph", "--bin", target.file_stem().unwrap().to_str().unwrap()])
+            .args(["flamegraph", "--bin", target_name])
             .output()
             .await
             .map_err(|e| ServiceError::ExecutionError(e.to_string()))?;
@@ -814,7 +884,11 @@ impl JsProfiler {
 
 #[async_trait]
 impl Profiler for JsProfiler {
-    async fn collect_data(&self, _target: &Path, config: &ProfileConfig) -> Result<ProfileData, ServiceError> {
+    async fn collect_data(
+        &self,
+        _target: &Path,
+        config: &ProfileConfig,
+    ) -> Result<ProfileData, ServiceError> {
         Ok(ProfileData {
             duration: config.duration,
             samples: Vec::new(),
@@ -838,7 +912,11 @@ impl PythonProfiler {
 
 #[async_trait]
 impl Profiler for PythonProfiler {
-    async fn collect_data(&self, _target: &Path, config: &ProfileConfig) -> Result<ProfileData, ServiceError> {
+    async fn collect_data(
+        &self,
+        _target: &Path,
+        config: &ProfileConfig,
+    ) -> Result<ProfileData, ServiceError> {
         Ok(ProfileData {
             duration: config.duration,
             samples: Vec::new(),
@@ -862,7 +940,11 @@ impl GoProfiler {
 
 #[async_trait]
 impl Profiler for GoProfiler {
-    async fn collect_data(&self, _target: &Path, config: &ProfileConfig) -> Result<ProfileData, ServiceError> {
+    async fn collect_data(
+        &self,
+        _target: &Path,
+        config: &ProfileConfig,
+    ) -> Result<ProfileData, ServiceError> {
         Ok(ProfileData {
             duration: config.duration,
             samples: Vec::new(),
@@ -886,7 +968,11 @@ impl JavaProfiler {
 
 #[async_trait]
 impl Profiler for JavaProfiler {
-    async fn collect_data(&self, _target: &Path, config: &ProfileConfig) -> Result<ProfileData, ServiceError> {
+    async fn collect_data(
+        &self,
+        _target: &Path,
+        config: &ProfileConfig,
+    ) -> Result<ProfileData, ServiceError> {
         Ok(ProfileData {
             duration: config.duration,
             samples: Vec::new(),
@@ -975,7 +1061,11 @@ impl FlameGraphGenerator {
         Self
     }
 
-    async fn generate(&self, data: &ProfileData, format: FlameGraphFormat) -> Result<FlameGraph, ServiceError> {
+    async fn generate(
+        &self,
+        data: &ProfileData,
+        format: FlameGraphFormat,
+    ) -> Result<FlameGraph, ServiceError> {
         Ok(FlameGraph {
             root: FlameNode {
                 name: "root".to_string(),

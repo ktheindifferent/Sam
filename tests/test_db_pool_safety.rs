@@ -40,11 +40,11 @@ mod tests {
             .map(|i| {
                 thread::spawn(move || {
                     println!("Thread {} attempting to get pool connection", i);
-                    
+
                     // Simulate concurrent access to the pool
                     // In a real test, you would call your actual connect() function
                     thread::sleep(Duration::from_millis(10));
-                    
+
                     println!("Thread {} successfully accessed pool", i);
                 })
             })
@@ -54,29 +54,29 @@ mod tests {
         for handle in handles {
             handle.join().unwrap();
         }
-        
+
         println!("All threads successfully accessed the pool without race conditions");
     }
 
-    #[test] 
+    #[test]
     fn test_pool_initialization_race() {
         // Test that multiple threads trying to initialize the pool simultaneously
         // won't cause race conditions
         let barrier = Arc::new(std::sync::Barrier::new(5));
-        
+
         let handles: Vec<_> = (0..5)
             .map(|i| {
                 let barrier = barrier.clone();
                 thread::spawn(move || {
                     // All threads wait at the barrier
                     barrier.wait();
-                    
+
                     // Then all try to initialize at the same time
                     println!("Thread {} racing to initialize pool", i);
-                    
+
                     // In a real test, you would call your actual connect() function
                     thread::sleep(Duration::from_millis(1));
-                    
+
                     println!("Thread {} completed initialization attempt", i);
                 })
             })
@@ -85,7 +85,7 @@ mod tests {
         for handle in handles {
             handle.join().unwrap();
         }
-        
+
         println!("Pool initialization race test passed - no unsafe access detected");
     }
 }

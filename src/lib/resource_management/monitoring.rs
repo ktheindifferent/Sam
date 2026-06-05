@@ -1,10 +1,10 @@
+use chrono::{DateTime, Utc};
+use log::info;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::interval;
-use serde::{Deserialize, Serialize};
-use log::info;
-use chrono::{DateTime, Utc};
 
 /// Resource monitor for tracking system resources
 pub struct ResourceMonitor {
@@ -214,17 +214,17 @@ impl MetricsHistory {
             max_size,
         }
     }
-    
+
     fn add(&mut self, metrics: ResourceMetrics) {
         if self.samples.len() >= self.max_size {
             self.samples.remove(0);
         }
         self.samples.push(metrics);
     }
-    
+
     fn get_recent(&self, duration: Duration) -> Vec<ResourceMetrics> {
         let cutoff = Utc::now() - chrono::Duration::from_std(duration).unwrap();
-        
+
         self.samples
             .iter()
             .filter(|m| m.timestamp > cutoff)
@@ -274,7 +274,7 @@ impl ResourceMonitor {
     pub fn new() -> Self {
         ResourceMonitor::with_config(MonitorConfig::default())
     }
-    
+
     /// Create with custom configuration
     pub fn with_config(config: MonitorConfig) -> Self {
         ResourceMonitor {
@@ -284,41 +284,41 @@ impl ResourceMonitor {
             config,
         }
     }
-    
+
     /// Start monitoring
     pub async fn start(&self) {
         if !self.config.enable_monitoring {
             return;
         }
-        
+
         let metrics = self.metrics.clone();
         let history = self.history.clone();
         let alerts = self.alerts.clone();
         let config = self.config.clone();
-        
+
         tokio::spawn(async move {
             let mut interval = interval(config.collection_interval);
-            
+
             loop {
                 interval.tick().await;
-                
+
                 // Collect metrics
                 let new_metrics = Self::collect_metrics().await;
-                
+
                 // Check for alerts
                 let new_alerts = Self::check_alerts(&new_metrics, &config.alert_thresholds);
-                
+
                 // Update current metrics
                 *metrics.write().await = new_metrics.clone();
-                
+
                 // Add to history
                 history.write().await.add(new_metrics);
-                
+
                 // Add new alerts
                 if !new_alerts.is_empty() {
                     let mut alerts = alerts.write().await;
                     alerts.extend(new_alerts);
-                    
+
                     // Keep only recent alerts (last 1000)
                     let len = alerts.len();
                     if len > 1000 {
@@ -327,17 +327,17 @@ impl ResourceMonitor {
                 }
             }
         });
-        
+
         info!("Started resource monitoring");
     }
-    
+
     /// Collect current metrics
     pub async fn collect_metrics() -> ResourceMetrics {
         use sysinfo::System;
-        
+
         let mut sys = System::new_all();
         sys.refresh_all();
-        
+
         let memory = MemoryMetrics {
             total_bytes: sys.total_memory() * 1024,
             used_bytes: sys.used_memory() * 1024,
@@ -352,15 +352,17 @@ impl ResourceMonitor {
                 .ok()
                 .and_then(|pid| sys.process(pid))
                 .map(|p| p.memory())
-                .unwrap_or(0) * 1024,
+                .unwrap_or(0)
+                * 1024,
             process_vms: (std::process::id() as usize)
                 .try_into()
                 .ok()
                 .and_then(|pid| sys.process(pid))
                 .map(|p| p.virtual_memory())
-                .unwrap_or(0) * 1024,
+                .unwrap_or(0)
+                * 1024,
         };
-        
+
         let cpu = CpuMetrics {
             usage_percent: sys.global_cpu_usage(),
             load_average_1m: sysinfo::System::load_average().one as f32,
@@ -376,17 +378,17 @@ impl ResourceMonitor {
             system_cpu_percent: 0.0, // Would need more complex calculation
             user_cpu_percent: 0.0,   // Would need more complex calculation
         };
-        
+
         let disk = {
             let mut total = 0u64;
             let mut used = 0u64;
-            
+
             let disks = sysinfo::Disks::new_with_refreshed_list();
             for disk in disks.list() {
                 total += disk.total_space();
                 used += disk.total_space() - disk.available_space();
             }
-            
+
             DiskMetrics {
                 total_bytes: total,
                 used_bytes: used,
@@ -404,39 +406,39 @@ impl ResourceMonitor {
                 storage_dir_size: 0,    // Would need directory traversal
             }
         };
-        
+
         let network = {
             let networks = sysinfo::Networks::new_with_refreshed_list();
             let mut bytes_sent = 0u64;
             let mut bytes_received = 0u64;
             let mut packets_sent = 0u64;
             let mut packets_received = 0u64;
-            
+
             for (_interface_name, network_data) in &networks {
                 bytes_sent += network_data.total_transmitted();
                 bytes_received += network_data.total_received();
                 packets_sent += network_data.total_packets_transmitted();
                 packets_received += network_data.total_packets_received();
             }
-            
+
             // for (_name, network) in networks {
             //     bytes_sent += network.total_transmitted();
             //     bytes_received += network.total_received();
             //     packets_sent += network.total_packets_transmitted();
             //     packets_received += network.total_packets_received();
             // }
-            
+
             NetworkMetrics {
                 bytes_sent,
                 bytes_received,
                 packets_sent,
                 packets_received,
-                errors_in: 0,  // Platform specific
-                errors_out: 0, // Platform specific
+                errors_in: 0,          // Platform specific
+                errors_out: 0,         // Platform specific
                 active_connections: 0, // Would need netstat equivalent
             }
         };
-        
+
         ResourceMetrics {
             timestamp: Utc::now(),
             uptime_seconds: sysinfo::System::uptime(),
@@ -450,18 +452,21 @@ impl ResourceMonitor {
             cleanup: CleanupMetrics::default(),
         }
     }
-    
+
     /// Check for alerts
     fn check_alerts(metrics: &ResourceMetrics, thresholds: &AlertThresholds) -> Vec<ResourceAlert> {
         let mut alerts = Vec::new();
-        
+
         // Check memory
         if metrics.memory.usage_percent > thresholds.memory_critical * 100.0 {
             alerts.push(ResourceAlert {
                 timestamp: Utc::now(),
                 severity: AlertSeverity::Critical,
                 resource_type: ResourceType::Memory,
-                message: format!("Memory usage critical: {:.1}%", metrics.memory.usage_percent),
+                message: format!(
+                    "Memory usage critical: {:.1}%",
+                    metrics.memory.usage_percent
+                ),
                 value: metrics.memory.usage_percent as f64,
                 threshold: (thresholds.memory_critical * 100.0) as f64,
             });
@@ -475,7 +480,7 @@ impl ResourceMonitor {
                 threshold: (thresholds.memory_warning * 100.0) as f64,
             });
         }
-        
+
         // Check CPU
         if metrics.cpu.usage_percent > thresholds.cpu_critical * 100.0 {
             alerts.push(ResourceAlert {
@@ -496,7 +501,7 @@ impl ResourceMonitor {
                 threshold: (thresholds.cpu_warning * 100.0) as f64,
             });
         }
-        
+
         // Check disk
         if metrics.disk.usage_percent > thresholds.disk_critical * 100.0 {
             alerts.push(ResourceAlert {
@@ -517,25 +522,25 @@ impl ResourceMonitor {
                 threshold: (thresholds.disk_warning * 100.0) as f64,
             });
         }
-        
+
         alerts
     }
-    
+
     /// Get current metrics
     pub async fn get_metrics(&self) -> ResourceMetrics {
         self.metrics.read().await.clone()
     }
-    
+
     /// Get metrics history
     pub async fn get_history(&self, duration: Duration) -> Vec<ResourceMetrics> {
         self.history.read().await.get_recent(duration)
     }
-    
+
     /// Get recent alerts
     pub async fn get_alerts(&self) -> Vec<ResourceAlert> {
         self.alerts.read().await.clone()
     }
-    
+
     /// Record cleanup success
     pub fn record_cleanup_success(&self) {
         let metrics = self.metrics.clone();
@@ -546,7 +551,7 @@ impl ResourceMonitor {
             m.cleanup.last_cleanup = Some(Utc::now());
         });
     }
-    
+
     /// Record cleanup failure
     pub fn record_cleanup_failure(&self) {
         let metrics = self.metrics.clone();
@@ -556,19 +561,19 @@ impl ResourceMonitor {
             m.cleanup.total_cleanups += 1;
         });
     }
-    
+
     /// Update connection metrics
     pub async fn update_connection_metrics(&self, metrics: ConnectionMetrics) {
         let mut m = self.metrics.write().await;
         m.connections = metrics;
     }
-    
+
     /// Update request metrics
     pub async fn update_request_metrics(&self, metrics: RequestMetrics) {
         let mut m = self.metrics.write().await;
         m.requests = metrics;
     }
-    
+
     /// Update file metrics
     pub async fn update_file_metrics(&self, metrics: FileMetrics) {
         let mut m = self.metrics.write().await;
@@ -584,14 +589,14 @@ mod tests {
     async fn test_resource_monitor_creation() {
         let monitor = ResourceMonitor::new();
         let metrics = monitor.get_metrics().await;
-        
+
         assert!(metrics.timestamp <= Utc::now());
     }
 
     #[tokio::test]
     async fn test_metrics_collection() {
         let metrics = ResourceMonitor::collect_metrics().await;
-        
+
         // Basic sanity checks
         assert!(metrics.memory.total_bytes > 0);
         assert!(metrics.cpu.core_count > 0);
@@ -601,7 +606,7 @@ mod tests {
     #[test]
     fn test_alert_thresholds() {
         let thresholds = AlertThresholds::default();
-        
+
         assert!(thresholds.memory_warning < thresholds.memory_critical);
         assert!(thresholds.cpu_warning < thresholds.cpu_critical);
         assert!(thresholds.disk_warning < thresholds.disk_critical);

@@ -11,7 +11,9 @@ async fn detect_package_manager() -> Result<PackageManager> {
     if which::which("port").is_ok() {
         return Ok(PackageManager::MacPorts);
     }
-    Err(anyhow::anyhow!("No supported package manager found (brew or macports)"))
+    Err(anyhow::anyhow!(
+        "No supported package manager found (brew or macports)"
+    ))
 }
 
 enum PackageManager {

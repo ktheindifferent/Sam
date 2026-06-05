@@ -1,8 +1,8 @@
-use rouille::{Request, Response, input::json::JsonError};
-use serde::{Deserialize, Serialize};
-use log::{info, error};
-use std::collections::HashMap;
 use crate::services::llms::ollama::OllamaService;
+use log::{error, info};
+use rouille::{input::json::JsonError, Request, Response};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaStatus {
@@ -56,7 +56,7 @@ pub struct ApiResponse {
 /// Handle Ollama service API endpoints
 pub fn handle(request: &Request) -> Result<Response, crate::http::Error> {
     let url = request.url();
-    
+
     match request.method() {
         "GET" => handle_get_request(&url),
         "POST" => handle_post_request(request, &url),
@@ -76,19 +76,20 @@ fn handle_get_request(url: &str) -> Result<Response, crate::http::Error> {
         _ if url.starts_with("/api/ollama/models/available/") => {
             let query = url.trim_start_matches("/api/ollama/models/available/");
             rt.block_on(search_available_models(query))
-        },
+        }
         _ if url.starts_with("/api/ollama/models/") && url.ends_with("/info") => {
-            let model_name = url.trim_start_matches("/api/ollama/models/")
-                               .trim_end_matches("/info");
+            let model_name = url
+                .trim_start_matches("/api/ollama/models/")
+                .trim_end_matches("/info");
             rt.block_on(get_model_info(model_name))
-        },
+        }
         _ => Ok(Response::empty_404()),
     }
 }
 
 fn handle_post_request(request: &Request, url: &str) -> Result<Response, crate::http::Error> {
     let rt = tokio::runtime::Runtime::new()?;
-    
+
     match url {
         "/api/ollama/install" => rt.block_on(install_ollama()),
         "/api/ollama/start" => rt.block_on(start_service()),
@@ -103,34 +104,41 @@ fn handle_post_request(request: &Request, url: &str) -> Result<Response, crate::
 
 fn handle_delete_request(_request: &Request, url: &str) -> Result<Response, crate::http::Error> {
     let rt = tokio::runtime::Runtime::new()?;
-    
+
     if url.starts_with("/api/ollama/models/") {
         let model_name = url.trim_start_matches("/api/ollama/models/");
         return rt.block_on(remove_model(model_name));
     }
-    
+
     Ok(Response::empty_404())
 }
 
 async fn get_ollama_status() -> Result<Response, crate::http::Error> {
     info!("Getting Ollama status");
-    
+
     let service = OllamaService::new_with_defaults();
     let installed = service.is_installed().await;
-    let running = if installed { service.is_running().await } else { false };
-    
+    let running = if installed {
+        service.is_running().await
+    } else {
+        false
+    };
+
     let version = if running {
         service.get_version().await.ok()
     } else {
         None
     };
-    
+
     let models = if running {
-        service.get_installed_model_names().await.unwrap_or_default()
+        service
+            .get_installed_model_names()
+            .await
+            .unwrap_or_default()
     } else {
         Vec::new()
     };
-    
+
     let status_text = if !installed {
         "Ollama not installed".to_string()
     } else if !running {
@@ -138,7 +146,7 @@ async fn get_ollama_status() -> Result<Response, crate::http::Error> {
     } else {
         format!("Ollama running with {} models", models.len())
     };
-    
+
     let status = OllamaStatus {
         installed,
         running,
@@ -146,15 +154,15 @@ async fn get_ollama_status() -> Result<Response, crate::http::Error> {
         models,
         status_text,
     };
-    
+
     Ok(Response::json(&status))
 }
 
 async fn install_ollama() -> Result<Response, crate::http::Error> {
     info!("Installing Ollama");
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     if service.is_installed().await {
         let response = InstallResponse {
             success: true,
@@ -162,7 +170,7 @@ async fn install_ollama() -> Result<Response, crate::http::Error> {
         };
         return Ok(Response::json(&response));
     }
-    
+
     match service.install().await {
         Ok(message) => {
             info!("Ollama installation successful: {}", message);
@@ -171,7 +179,7 @@ async fn install_ollama() -> Result<Response, crate::http::Error> {
                 message,
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Ollama installation failed: {}", e);
             let response = InstallResponse {
@@ -185,9 +193,9 @@ async fn install_ollama() -> Result<Response, crate::http::Error> {
 
 async fn start_service() -> Result<Response, crate::http::Error> {
     info!("Starting Ollama service");
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     match service.start_service().await {
         Ok(message) => {
             info!("Ollama service start: {}", message);
@@ -197,7 +205,7 @@ async fn start_service() -> Result<Response, crate::http::Error> {
                 data: None,
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to start Ollama service: {}", e);
             let response = ApiResponse {
@@ -212,9 +220,9 @@ async fn start_service() -> Result<Response, crate::http::Error> {
 
 async fn stop_service() -> Result<Response, crate::http::Error> {
     info!("Stopping Ollama service");
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     match service.stop_service().await {
         Ok(message) => {
             info!("Ollama service stop: {}", message);
@@ -224,7 +232,7 @@ async fn stop_service() -> Result<Response, crate::http::Error> {
                 data: None,
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to stop Ollama service: {}", e);
             let response = ApiResponse {
@@ -256,10 +264,13 @@ async fn list_models() -> Result<Response, crate::http::Error> {
             let response = ApiResponse {
                 success: true,
                 message: format!("Found {} models", models.models.len()),
-                data: Some(serde_json::to_value(models).map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?),
+                data: Some(
+                    serde_json::to_value(models)
+                        .map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?,
+                ),
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to list models: {}", e);
             let response = ApiResponse {
@@ -288,11 +299,17 @@ async fn list_all_models() -> Result<Response, crate::http::Error> {
 
             let response = ApiResponse {
                 success: true,
-                message: format!("Found {} installed and {} available models", all_models.total_installed, all_models.total_available),
-                data: Some(serde_json::to_value(all_models).map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?),
+                message: format!(
+                    "Found {} installed and {} available models",
+                    all_models.total_installed, all_models.total_available
+                ),
+                data: Some(
+                    serde_json::to_value(all_models)
+                        .map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?,
+                ),
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to list all models: {}", e);
             let response = ApiResponse {
@@ -307,18 +324,21 @@ async fn list_all_models() -> Result<Response, crate::http::Error> {
 
 async fn search_available_models(query: &str) -> Result<Response, crate::http::Error> {
     info!("Searching available models with query: '{}'", query);
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     match service.search_models(query).await {
         Ok(models) => {
             let response = ApiResponse {
                 success: true,
                 message: format!("Found {} models matching '{}'", models.len(), query),
-                data: Some(serde_json::to_value(models).map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?),
+                data: Some(
+                    serde_json::to_value(models)
+                        .map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?,
+                ),
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to search models: {}", e);
             let response = ApiResponse {
@@ -333,9 +353,9 @@ async fn search_available_models(query: &str) -> Result<Response, crate::http::E
 
 async fn get_model_info(model_name: &str) -> Result<Response, crate::http::Error> {
     info!("Getting model info for: {}", model_name);
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     if !service.is_running().await {
         let response = ApiResponse {
             success: false,
@@ -344,7 +364,7 @@ async fn get_model_info(model_name: &str) -> Result<Response, crate::http::Error
         };
         return Ok(Response::json(&response).with_status_code(503));
     }
-    
+
     match service.show_model(model_name).await {
         Ok(model_info) => {
             let response = ApiResponse {
@@ -353,7 +373,7 @@ async fn get_model_info(model_name: &str) -> Result<Response, crate::http::Error
                 data: Some(model_info),
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to get model info: {}", e);
             let response = ApiResponse {
@@ -376,7 +396,7 @@ async fn generate_text(request: &Request) -> Result<Response, crate::http::Error
                 data: None,
             };
             return Ok(Response::json(&response).with_status_code(400));
-        },
+        }
         Err(e) => {
             error!("Invalid JSON in generate request: {}", e);
             let response = ApiResponse {
@@ -387,11 +407,11 @@ async fn generate_text(request: &Request) -> Result<Response, crate::http::Error
             return Ok(Response::json(&response).with_status_code(400));
         }
     };
-    
+
     info!("Generating text with model: {}", generate_req.model);
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     if !service.is_running().await {
         let response = ApiResponse {
             success: false,
@@ -400,16 +420,26 @@ async fn generate_text(request: &Request) -> Result<Response, crate::http::Error
         };
         return Ok(Response::json(&response).with_status_code(503));
     }
-    
-    match service.generate(&generate_req.model, &generate_req.prompt, generate_req.options).await {
+
+    match service
+        .generate(
+            &generate_req.model,
+            &generate_req.prompt,
+            generate_req.options,
+        )
+        .await
+    {
         Ok(generation) => {
             let response = ApiResponse {
                 success: true,
                 message: "Text generated successfully".to_string(),
-                data: Some(serde_json::to_value(generation).map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?),
+                data: Some(
+                    serde_json::to_value(generation)
+                        .map_err(|e| crate::http::Error::InternalServerError(e.to_string()))?,
+                ),
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to generate text: {}", e);
             let response = ApiResponse {
@@ -432,7 +462,7 @@ async fn generate_text_stream(request: &Request) -> Result<Response, crate::http
                 data: None,
             };
             return Ok(Response::json(&response).with_status_code(400));
-        },
+        }
         Err(e) => {
             error!("Invalid JSON in stream generate request: {}", e);
             let response = ApiResponse {
@@ -443,11 +473,14 @@ async fn generate_text_stream(request: &Request) -> Result<Response, crate::http
             return Ok(Response::json(&response).with_status_code(400));
         }
     };
-    
-    info!("Starting streaming generation with model: {}", generate_req.model);
-    
+
+    info!(
+        "Starting streaming generation with model: {}",
+        generate_req.model
+    );
+
     let service = OllamaService::new_with_defaults();
-    
+
     if !service.is_running().await {
         let response = ApiResponse {
             success: false,
@@ -456,7 +489,7 @@ async fn generate_text_stream(request: &Request) -> Result<Response, crate::http
         };
         return Ok(Response::json(&response).with_status_code(503));
     }
-    
+
     // For now, we'll return a message indicating streaming is not fully implemented
     // In a production system, you'd want to implement Server-Sent Events or WebSocket streaming
     let response = ApiResponse {
@@ -477,7 +510,7 @@ async fn pull_model(request: &Request) -> Result<Response, crate::http::Error> {
                 data: None,
             };
             return Ok(Response::json(&response).with_status_code(400));
-        },
+        }
         Err(e) => {
             error!("Invalid JSON in pull model request: {}", e);
             let response = ApiResponse {
@@ -488,11 +521,11 @@ async fn pull_model(request: &Request) -> Result<Response, crate::http::Error> {
             return Ok(Response::json(&response).with_status_code(400));
         }
     };
-    
+
     info!("Pulling model: {}", model_req.model);
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     if !service.is_running().await {
         let response = ApiResponse {
             success: false,
@@ -501,7 +534,7 @@ async fn pull_model(request: &Request) -> Result<Response, crate::http::Error> {
         };
         return Ok(Response::json(&response).with_status_code(503));
     }
-    
+
     match service.pull_model(&model_req.model).await {
         Ok(message) => {
             info!("Model pull successful: {}", message);
@@ -511,7 +544,7 @@ async fn pull_model(request: &Request) -> Result<Response, crate::http::Error> {
                 data: None,
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to pull model: {}", e);
             let response = ApiResponse {
@@ -526,9 +559,9 @@ async fn pull_model(request: &Request) -> Result<Response, crate::http::Error> {
 
 async fn remove_model(model_name: &str) -> Result<Response, crate::http::Error> {
     info!("Removing model: {}", model_name);
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     if !service.is_running().await {
         let response = ApiResponse {
             success: false,
@@ -537,7 +570,7 @@ async fn remove_model(model_name: &str) -> Result<Response, crate::http::Error> 
         };
         return Ok(Response::json(&response).with_status_code(503));
     }
-    
+
     match service.remove_model(model_name).await {
         Ok(message) => {
             info!("Model removal successful: {}", message);
@@ -547,7 +580,7 @@ async fn remove_model(model_name: &str) -> Result<Response, crate::http::Error> 
                 data: None,
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to remove model: {}", e);
             let response = ApiResponse {
@@ -562,9 +595,9 @@ async fn remove_model(model_name: &str) -> Result<Response, crate::http::Error> 
 
 async fn install_recommended_models() -> Result<Response, crate::http::Error> {
     info!("Installing recommended models");
-    
+
     let service = OllamaService::new_with_defaults();
-    
+
     if !service.is_running().await {
         let response = ApiResponse {
             success: false,
@@ -573,7 +606,7 @@ async fn install_recommended_models() -> Result<Response, crate::http::Error> {
         };
         return Ok(Response::json(&response).with_status_code(503));
     }
-    
+
     match service.install_recommended_models().await {
         Ok(message) => {
             info!("Recommended models installation: {}", message);
@@ -583,7 +616,7 @@ async fn install_recommended_models() -> Result<Response, crate::http::Error> {
                 data: None,
             };
             Ok(Response::json(&response))
-        },
+        }
         Err(e) => {
             error!("Failed to install recommended models: {}", e);
             let response = ApiResponse {

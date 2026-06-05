@@ -94,9 +94,7 @@ impl NotificationService {
         if default_channels.contains(&"webhook".to_string()) {
             if let Some(urls) = &config.webhook_urls {
                 for url in urls {
-                    channels.push(Arc::new(WebhookChannel {
-                        url: url.clone(),
-                    }));
+                    channels.push(Arc::new(WebhookChannel { url: url.clone() }));
                 }
             }
         }
@@ -110,8 +108,10 @@ impl NotificationService {
             let service = Arc::new(RwLock::new(Self::from_config(&config)));
             let mut rx = events::subscribe();
 
-            log::info!("NotificationService started with {} rules",
-                config.rules.as_ref().map(|r| r.len()).unwrap_or(0));
+            log::info!(
+                "NotificationService started with {} rules",
+                config.rules.as_ref().map(|r| r.len()).unwrap_or(0)
+            );
 
             loop {
                 match rx.recv().await {

@@ -1,11 +1,11 @@
+use crate::services::llms::ollama::OllamaService;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::services::llms::ollama::OllamaService;
 
 /// Handle Ollama CLI commands in the TUI
 pub async fn handle_ollama(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     let service = OllamaService::new_with_defaults();
-    
+
     match cmd.trim() {
         "ollama" | "ollama help" => {
             show_ollama_help(output_lines).await;
@@ -114,14 +114,24 @@ async fn show_ollama_help(output_lines: &Arc<Mutex<Vec<String>>>) {
 
 async fn check_ollama_status(service: &OllamaService, output_lines: &Arc<Mutex<Vec<String>>>) {
     let mut lines = output_lines.lock().await;
-    
+
     let installed = service.is_installed().await;
-    let running = if installed { service.is_running().await } else { false };
-    
+    let running = if installed {
+        service.is_running().await
+    } else {
+        false
+    };
+
     lines.push("Ollama Status:".to_string());
-    lines.push(format!("  Installed: {}", if installed { "✓ Yes" } else { "✗ No" }));
-    lines.push(format!("  Running:   {}", if running { "✓ Yes" } else { "✗ No" }));
-    
+    lines.push(format!(
+        "  Installed: {}",
+        if installed { "✓ Yes" } else { "✗ No" }
+    ));
+    lines.push(format!(
+        "  Running:   {}",
+        if running { "✓ Yes" } else { "✗ No" }
+    ));
+
     if running {
         match service.get_version().await {
             Ok(version) => {
@@ -136,7 +146,7 @@ async fn check_ollama_status(service: &OllamaService, output_lines: &Arc<Mutex<V
             }
             Err(e) => lines.push(format!("  Version:   Error - {}", e)),
         }
-        
+
         match service.get_installed_model_names().await {
             Ok(models) => {
                 lines.push(format!("  Models:    {} installed", models.len()));
@@ -144,7 +154,7 @@ async fn check_ollama_status(service: &OllamaService, output_lines: &Arc<Mutex<V
             Err(e) => lines.push(format!("  Models:    Error - {}", e)),
         }
     }
-    
+
     if !installed {
         lines.push("".to_string());
         lines.push("Run 'ollama install' to install Ollama.".to_string());
@@ -156,7 +166,7 @@ async fn check_ollama_status(service: &OllamaService, output_lines: &Arc<Mutex<V
 
 async fn install_ollama(service: &OllamaService, output_lines: &Arc<Mutex<Vec<String>>>) {
     let service_clone = service.clone();
-    
+
     crate::cli::spinner::run_with_spinner(
         output_lines,
         "Installing Ollama...",
@@ -167,22 +177,21 @@ async fn install_ollama(service: &OllamaService, output_lines: &Arc<Mutex<Vec<St
                 lines.push(format!("✓ {}", result));
             }
         },
-        move || {
-            async move {
-                match service_clone.install().await {
-                    Ok(message) => message,
-                    Err(e) => format!("ERROR: ✗ Installation failed: {}", e),
-                }
+        move || async move {
+            match service_clone.install().await {
+                Ok(message) => message,
+                Err(e) => format!("ERROR: ✗ Installation failed: {}", e),
             }
-        }
-    ).await;
+        },
+    )
+    .await;
 }
 
 async fn start_ollama(service: &OllamaService, output_lines: &Arc<Mutex<Vec<String>>>) {
     let mut lines = output_lines.lock().await;
     lines.push("Starting Ollama service...".to_string());
     drop(lines);
-    
+
     match service.start_service().await {
         Ok(message) => {
             let mut lines = output_lines.lock().await;
@@ -199,7 +208,7 @@ async fn stop_ollama(service: &OllamaService, output_lines: &Arc<Mutex<Vec<Strin
     let mut lines = output_lines.lock().await;
     lines.push("Stopping Ollama service...".to_string());
     drop(lines);
-    
+
     match service.stop_service().await {
         Ok(message) => {
             let mut lines = output_lines.lock().await;
@@ -325,16 +334,17 @@ async fn pull_model(service: &OllamaService, model: &str, output_lines: &Arc<Mut
     let mut lines = output_lines.lock().await;
     lines.push("This may take several minutes depending on model size.".to_string());
     drop(lines);
-    
+
     let service_clone = service.clone();
     let model_clone = model.to_string();
-    
+
     crate::cli::spinner::run_with_spinner(
         output_lines,
         &format!("Pulling model: {}...", model),
         |lines, result| {
             if result.starts_with("ERROR:") {
-                let error_lines: Vec<&str> = result.trim_start_matches("ERROR: ").split('\n').collect();
+                let error_lines: Vec<&str> =
+                    result.trim_start_matches("ERROR: ").split('\n').collect();
                 for line in error_lines {
                     if !line.is_empty() {
                         lines.push(line.to_string());
@@ -344,24 +354,28 @@ async fn pull_model(service: &OllamaService, model: &str, output_lines: &Arc<Mut
                 lines.push(format!("✓ {}", result));
             }
         },
-        move || {
-            async move {
-                match service_clone.pull_model(&model_clone).await {
-                    Ok(message) => message,
-                    Err(e) => {
-                        let mut error_msg = format!("ERROR: ✗ Failed to pull model '{}': {}", model_clone, e);
-                        if e.to_string().contains("connection") {
-                            error_msg.push_str("\nMake sure Ollama service is running: 'ollama start'");
-                        }
-                        error_msg
+        move || async move {
+            match service_clone.pull_model(&model_clone).await {
+                Ok(message) => message,
+                Err(e) => {
+                    let mut error_msg =
+                        format!("ERROR: ✗ Failed to pull model '{}': {}", model_clone, e);
+                    if e.to_string().contains("connection") {
+                        error_msg.push_str("\nMake sure Ollama service is running: 'ollama start'");
                     }
+                    error_msg
                 }
             }
-        }
-    ).await;
+        },
+    )
+    .await;
 }
 
-async fn remove_model(service: &OllamaService, model: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
+async fn remove_model(
+    service: &OllamaService,
+    model: &str,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+) {
     match service.remove_model(model).await {
         Ok(message) => {
             let mut lines = output_lines.lock().await;
@@ -374,7 +388,11 @@ async fn remove_model(service: &OllamaService, model: &str, output_lines: &Arc<M
     }
 }
 
-async fn search_models(service: &OllamaService, query: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
+async fn search_models(
+    service: &OllamaService,
+    query: &str,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+) {
     match service.search_models(query).await {
         Ok(models) => {
             let mut lines = output_lines.lock().await;
@@ -405,13 +423,17 @@ async fn search_models(service: &OllamaService, query: &str, output_lines: &Arc<
     }
 }
 
-async fn show_model_info(service: &OllamaService, model: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
+async fn show_model_info(
+    service: &OllamaService,
+    model: &str,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+) {
     match service.show_model(model).await {
         Ok(info) => {
             let mut lines = output_lines.lock().await;
             lines.push(format!("Model Information: {}", model));
             lines.push("".to_string());
-            
+
             // Pretty print the JSON information
             if let Ok(formatted) = serde_json::to_string_pretty(&info) {
                 // Split into lines and add each one
@@ -432,16 +454,21 @@ async fn show_model_info(service: &OllamaService, model: &str, output_lines: &Ar
     }
 }
 
-async fn generate_text(service: &OllamaService, model: &str, prompt: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
+async fn generate_text(
+    service: &OllamaService,
+    model: &str,
+    prompt: &str,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+) {
     let mut lines = output_lines.lock().await;
     lines.push(format!("Prompt: {}", prompt));
     lines.push("".to_string());
     drop(lines);
-    
+
     let service_clone = service.clone();
     let model_clone = model.to_string();
     let prompt_clone = prompt.to_string();
-    
+
     crate::cli::spinner::run_with_spinner(
         output_lines,
         &format!("Generating with model '{}'...", model),
@@ -451,7 +478,7 @@ async fn generate_text(service: &OllamaService, model: &str, prompt: &str, outpu
             } else {
                 lines.push("Response:".to_string());
                 lines.push("".to_string());
-                
+
                 // Parse the result to extract response and timing
                 if let Some((response_text, timing)) = result.split_once("||TIMING||") {
                     for line in response_text.lines() {
@@ -466,35 +493,45 @@ async fn generate_text(service: &OllamaService, model: &str, prompt: &str, outpu
                 }
             }
         },
-        move || {
-            async move {
-                match service_clone.generate(&model_clone, &prompt_clone, None).await {
-                    Ok(response) => {
-                        let duration = if let Some(total_duration) = response.total_duration {
-                            format!("{:.2}", total_duration as f64 / 1_000_000_000.0)
-                        } else {
-                            "unknown".to_string()
-                        };
-                        format!("{}||TIMING||{}", response.response, duration)
+        move || async move {
+            match service_clone
+                .generate(&model_clone, &prompt_clone, None)
+                .await
+            {
+                Ok(response) => {
+                    let duration = if let Some(total_duration) = response.total_duration {
+                        format!("{:.2}", total_duration as f64 / 1_000_000_000.0)
+                    } else {
+                        "unknown".to_string()
+                    };
+                    format!("{}||TIMING||{}", response.response, duration)
+                }
+                Err(e) => {
+                    let mut error_msg = format!("ERROR: ✗ Failed to generate text: {}", e);
+                    if e.to_string().contains("connection") {
+                        error_msg.push_str("\nMake sure Ollama service is running: 'ollama start'");
+                    } else if e.to_string().contains("not found") {
+                        error_msg.push_str(&format!(
+                            "\nModel '{}' not found. Use 'ollama pull {}' to install it.",
+                            model_clone, model_clone
+                        ));
                     }
-                    Err(e) => {
-                        let mut error_msg = format!("ERROR: ✗ Failed to generate text: {}", e);
-                        if e.to_string().contains("connection") {
-                            error_msg.push_str("\nMake sure Ollama service is running: 'ollama start'");
-                        } else if e.to_string().contains("not found") {
-                            error_msg.push_str(&format!("\nModel '{}' not found. Use 'ollama pull {}' to install it.", model_clone, model_clone));
-                        }
-                        error_msg
-                    }
+                    error_msg
                 }
             }
-        }
-    ).await;
+        },
+    )
+    .await;
 }
 
-async fn install_recommended_models(service: &OllamaService, output_lines: &Arc<Mutex<Vec<String>>>) {
+async fn install_recommended_models(
+    service: &OllamaService,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+) {
     let mut lines = output_lines.lock().await;
-    lines.push("This will install: llama3.2, codellama, mistral, gemma2:2b, and phi3:mini".to_string());
+    lines.push(
+        "This will install: llama3.2, codellama, mistral, gemma2:2b, and phi3:mini".to_string(),
+    );
     lines.push("This may take several minutes.".to_string());
     drop(lines);
 
@@ -514,13 +551,12 @@ async fn install_recommended_models(service: &OllamaService, output_lines: &Arc<
                 }
             }
         },
-        move || {
-            async move {
-                match service_clone.install_recommended_models().await {
-                    Ok(message) => message,
-                    Err(e) => format!("ERROR: ✗ Failed to install recommended models: {}", e),
-                }
+        move || async move {
+            match service_clone.install_recommended_models().await {
+                Ok(message) => message,
+                Err(e) => format!("ERROR: ✗ Failed to install recommended models: {}", e),
             }
-        }
-    ).await;
+        },
+    )
+    .await;
 }

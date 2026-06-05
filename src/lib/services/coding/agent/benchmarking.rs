@@ -1,10 +1,10 @@
-use std::collections::{HashMap, BTreeMap};
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use tokio::process::Command;
 use tokio::fs;
+use tokio::process::Command;
 
 use super::errors::CodingAgentError as ServiceError;
 
@@ -109,21 +109,34 @@ impl BenchmarkingEngine {
 
     fn register_components(&mut self) {
         // Benchmark runners for different languages
-        self.runners.insert("rust".to_string(), Box::new(RustBenchmarkRunner::new()));
-        self.runners.insert("python".to_string(), Box::new(PythonBenchmarkRunner::new()));
-        self.runners.insert("javascript".to_string(), Box::new(JsBenchmarkRunner::new()));
-        self.runners.insert("go".to_string(), Box::new(GoBenchmarkRunner::new()));
-        self.runners.insert("java".to_string(), Box::new(JavaBenchmarkRunner::new()));
+        self.runners
+            .insert("rust".to_string(), Box::new(RustBenchmarkRunner::new()));
+        self.runners
+            .insert("python".to_string(), Box::new(PythonBenchmarkRunner::new()));
+        self.runners
+            .insert("javascript".to_string(), Box::new(JsBenchmarkRunner::new()));
+        self.runners
+            .insert("go".to_string(), Box::new(GoBenchmarkRunner::new()));
+        self.runners
+            .insert("java".to_string(), Box::new(JavaBenchmarkRunner::new()));
 
         // Profilers
-        self.profilers.insert("memory".to_string(), Box::new(MemoryProfiler::new()));
-        self.profilers.insert("cpu".to_string(), Box::new(CpuProfiler::new()));
-        self.profilers.insert("io".to_string(), Box::new(IoProfiler::new()));
+        self.profilers
+            .insert("memory".to_string(), Box::new(MemoryProfiler::new()));
+        self.profilers
+            .insert("cpu".to_string(), Box::new(CpuProfiler::new()));
+        self.profilers
+            .insert("io".to_string(), Box::new(IoProfiler::new()));
 
         // Optimizers
-        self.optimizers.insert("algorithm".to_string(), Box::new(AlgorithmOptimizer::new()));
-        self.optimizers.insert("memory".to_string(), Box::new(MemoryOptimizer::new()));
-        self.optimizers.insert("concurrency".to_string(), Box::new(ConcurrencyOptimizer::new()));
+        self.optimizers
+            .insert("algorithm".to_string(), Box::new(AlgorithmOptimizer::new()));
+        self.optimizers
+            .insert("memory".to_string(), Box::new(MemoryOptimizer::new()));
+        self.optimizers.insert(
+            "concurrency".to_string(),
+            Box::new(ConcurrencyOptimizer::new()),
+        );
     }
 
     pub async fn benchmark_code(
@@ -131,10 +144,12 @@ impl BenchmarkingEngine {
         code_path: &Path,
         config: &BenchmarkConfig,
     ) -> Result<Vec<BenchmarkResult>, ServiceError> {
-        let runner = self.runners.get(&config.language)
-            .ok_or_else(|| ServiceError::ConfigError {
-                message: format!("No benchmark runner for language: {}", config.language)
-            })?;
+        let runner =
+            self.runners
+                .get(&config.language)
+                .ok_or_else(|| ServiceError::ConfigError {
+                    message: format!("No benchmark runner for language: {}", config.language),
+                })?;
 
         let mut results = Vec::new();
 
@@ -193,13 +208,17 @@ impl BenchmarkingEngine {
         runner: &dyn BenchmarkRunner,
     ) -> Result<(usize, f64), ServiceError> {
         // Start profilers
-        let memory_profiler = self.profilers.get("memory")
+        let memory_profiler =
+            self.profilers
+                .get("memory")
+                .ok_or_else(|| ServiceError::ConfigError {
+                    message: "Memory profiler not found".to_string(),
+                })?;
+        let cpu_profiler = self
+            .profilers
+            .get("cpu")
             .ok_or_else(|| ServiceError::ConfigError {
-                message: "Memory profiler not found".to_string()
-            })?;
-        let cpu_profiler = self.profilers.get("cpu")
-            .ok_or_else(|| ServiceError::ConfigError {
-                message: "CPU profiler not found".to_string()
+                message: "CPU profiler not found".to_string(),
             })?;
 
         memory_profiler.start().await?;
@@ -248,12 +267,14 @@ impl BenchmarkingEngine {
         let max = *sorted_timings.last().unwrap_or(&Duration::from_secs(0));
 
         // Calculate standard deviation
-        let variance = timings.iter()
+        let variance = timings
+            .iter()
             .map(|t| {
                 let diff = t.as_secs_f64() - mean.as_secs_f64();
                 diff * diff
             })
-            .sum::<f64>() / timings.len() as f64;
+            .sum::<f64>()
+            / timings.len() as f64;
         let std_dev = Duration::from_secs_f64(variance.sqrt());
 
         // Calculate throughput (operations per second)
@@ -291,11 +312,16 @@ impl BenchmarkingEngine {
     }
 
     async fn load_baseline(&self, path: &str) -> Result<BenchmarkResult, ServiceError> {
-        let content = fs::read_to_string(path).await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+        let content = fs::read_to_string(path)
+            .await
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| ServiceError::ConfigError { message: e.to_string() })
+        serde_json::from_str(&content).map_err(|e| ServiceError::ConfigError {
+            message: e.to_string(),
+        })
     }
 
     pub async fn optimize_code(
@@ -303,8 +329,12 @@ impl BenchmarkingEngine {
         code_path: &Path,
         language: &str,
     ) -> Result<Vec<OptimizationSuggestion>, ServiceError> {
-        let code = fs::read_to_string(code_path).await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+        let code = fs::read_to_string(code_path)
+            .await
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         let mut suggestions = Vec::new();
 
@@ -315,16 +345,14 @@ impl BenchmarkingEngine {
         }
 
         // Sort by impact and difficulty
-        suggestions.sort_by(|a, b| {
-            match (&a.impact, &b.impact) {
-                (OptimizationImpact::High, OptimizationImpact::High) => std::cmp::Ordering::Equal,
-                (OptimizationImpact::High, _) => std::cmp::Ordering::Less,
-                (_, OptimizationImpact::High) => std::cmp::Ordering::Greater,
-                (OptimizationImpact::Medium, OptimizationImpact::Medium) => std::cmp::Ordering::Equal,
-                (OptimizationImpact::Medium, _) => std::cmp::Ordering::Less,
-                (_, OptimizationImpact::Medium) => std::cmp::Ordering::Greater,
-                _ => std::cmp::Ordering::Equal,
-            }
+        suggestions.sort_by(|a, b| match (&a.impact, &b.impact) {
+            (OptimizationImpact::High, OptimizationImpact::High) => std::cmp::Ordering::Equal,
+            (OptimizationImpact::High, _) => std::cmp::Ordering::Less,
+            (_, OptimizationImpact::High) => std::cmp::Ordering::Greater,
+            (OptimizationImpact::Medium, OptimizationImpact::Medium) => std::cmp::Ordering::Equal,
+            (OptimizationImpact::Medium, _) => std::cmp::Ordering::Less,
+            (_, OptimizationImpact::Medium) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
         });
 
         Ok(suggestions)
@@ -358,21 +386,29 @@ impl BenchmarkingEngine {
             "rust" => self.profile_rust_code(code_path).await,
             "python" => self.profile_python_code(code_path).await,
             "javascript" => self.profile_js_code(code_path).await,
-            _ => Err(ServiceError::ConfigError { message: format!("Profiling not supported for {}", language) }),
+            _ => Err(ServiceError::ConfigError {
+                message: format!("Profiling not supported for {}", language),
+            }),
         }
     }
 
     async fn profile_rust_code(&self, code_path: &Path) -> Result<ProfilingData, ServiceError> {
         // Use cargo-flamegraph or similar
         let output = Command::new("cargo")
-            .args(&["flamegraph", "--bin", code_path.to_str()
-                .ok_or_else(|| ServiceError::IoError {
+            .args(&[
+                "flamegraph",
+                "--bin",
+                code_path.to_str().ok_or_else(|| ServiceError::IoError {
                     message: format!("Invalid path: {:?}", code_path),
-                    path: Some(code_path.to_path_buf())
-                })?])
+                    path: Some(code_path.to_path_buf()),
+                })?,
+            ])
             .output()
             .await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         // Parse flamegraph output
         Ok(ProfilingData::default())
@@ -381,14 +417,22 @@ impl BenchmarkingEngine {
     async fn profile_python_code(&self, code_path: &Path) -> Result<ProfilingData, ServiceError> {
         // Use cProfile
         let output = Command::new("python")
-            .args(&["-m", "cProfile", "-o", "profile.stats", code_path.to_str()
-                .ok_or_else(|| ServiceError::IoError {
+            .args(&[
+                "-m",
+                "cProfile",
+                "-o",
+                "profile.stats",
+                code_path.to_str().ok_or_else(|| ServiceError::IoError {
                     message: format!("Invalid path: {:?}", code_path),
-                    path: Some(code_path.to_path_buf())
-                })?])
+                    path: Some(code_path.to_path_buf()),
+                })?,
+            ])
             .output()
             .await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         // Parse profile stats
         Ok(ProfilingData::default())
@@ -397,14 +441,19 @@ impl BenchmarkingEngine {
     async fn profile_js_code(&self, code_path: &Path) -> Result<ProfilingData, ServiceError> {
         // Use node --prof
         let output = Command::new("node")
-            .args(&["--prof", code_path.to_str()
-                .ok_or_else(|| ServiceError::IoError {
+            .args(&[
+                "--prof",
+                code_path.to_str().ok_or_else(|| ServiceError::IoError {
                     message: format!("Invalid path: {:?}", code_path),
-                    path: Some(code_path.to_path_buf())
-                })?])
+                    path: Some(code_path.to_path_buf()),
+                })?,
+            ])
             .output()
             .await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         // Parse V8 profiling data
         Ok(ProfilingData::default())
@@ -437,7 +486,8 @@ impl BenchmarkingEngine {
     }
 
     fn analyze_memory_allocations(&self, data: &ProfilingData) -> Vec<MemoryAllocation> {
-        data.memory_events.iter()
+        data.memory_events
+            .iter()
             .map(|event| MemoryAllocation {
                 location: event.location.clone(),
                 size: event.size,
@@ -468,26 +518,36 @@ impl RustBenchmarkRunner {
 impl BenchmarkRunner for RustBenchmarkRunner {
     async fn run_once(&self, code_path: &Path) -> Result<(), ServiceError> {
         let output = Command::new("cargo")
-            .args(&["bench", "--bench", code_path.file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| ServiceError::IoError {
-                    message: format!("Invalid benchmark path: {:?}", code_path),
-                    path: Some(code_path.to_path_buf())
-                })?])
+            .args(&[
+                "bench",
+                "--bench",
+                code_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| ServiceError::IoError {
+                        message: format!("Invalid benchmark path: {:?}", code_path),
+                        path: Some(code_path.to_path_buf()),
+                    })?,
+            ])
             .output()
             .await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         if !output.status.success() {
             return Err(ServiceError::ExecutionError(
-                String::from_utf8_lossy(&output.stderr).to_string()
+                String::from_utf8_lossy(&output.stderr).to_string(),
             ));
         }
 
         Ok(())
     }
 
-    fn language(&self) -> &str { "rust" }
+    fn language(&self) -> &str {
+        "rust"
+    }
 }
 
 struct PythonBenchmarkRunner;
@@ -502,22 +562,34 @@ impl PythonBenchmarkRunner {
 impl BenchmarkRunner for PythonBenchmarkRunner {
     async fn run_once(&self, code_path: &Path) -> Result<(), ServiceError> {
         let output = Command::new("python")
-            .args(&["-m", "timeit", "-n", "1", "-r", "1",
-                   &format!("exec(open('{}').read())", code_path.display())])
+            .args(&[
+                "-m",
+                "timeit",
+                "-n",
+                "1",
+                "-r",
+                "1",
+                &format!("exec(open('{}').read())", code_path.display()),
+            ])
             .output()
             .await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         if !output.status.success() {
             return Err(ServiceError::ExecutionError(
-                String::from_utf8_lossy(&output.stderr).to_string()
+                String::from_utf8_lossy(&output.stderr).to_string(),
             ));
         }
 
         Ok(())
     }
 
-    fn language(&self) -> &str { "python" }
+    fn language(&self) -> &str {
+        "python"
+    }
 }
 
 struct JsBenchmarkRunner;
@@ -535,18 +607,23 @@ impl BenchmarkRunner for JsBenchmarkRunner {
             .arg(code_path)
             .output()
             .await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         if !output.status.success() {
             return Err(ServiceError::ExecutionError(
-                String::from_utf8_lossy(&output.stderr).to_string()
+                String::from_utf8_lossy(&output.stderr).to_string(),
             ));
         }
 
         Ok(())
     }
 
-    fn language(&self) -> &str { "javascript" }
+    fn language(&self) -> &str {
+        "javascript"
+    }
 }
 
 struct GoBenchmarkRunner;
@@ -561,25 +638,34 @@ impl GoBenchmarkRunner {
 impl BenchmarkRunner for GoBenchmarkRunner {
     async fn run_once(&self, code_path: &Path) -> Result<(), ServiceError> {
         let output = Command::new("go")
-            .args(&["test", "-bench", ".", code_path.to_str()
-                .ok_or_else(|| ServiceError::IoError {
+            .args(&[
+                "test",
+                "-bench",
+                ".",
+                code_path.to_str().ok_or_else(|| ServiceError::IoError {
                     message: format!("Invalid path: {:?}", code_path),
-                    path: Some(code_path.to_path_buf())
-                })?])
+                    path: Some(code_path.to_path_buf()),
+                })?,
+            ])
             .output()
             .await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         if !output.status.success() {
             return Err(ServiceError::ExecutionError(
-                String::from_utf8_lossy(&output.stderr).to_string()
+                String::from_utf8_lossy(&output.stderr).to_string(),
             ));
         }
 
         Ok(())
     }
 
-    fn language(&self) -> &str { "go" }
+    fn language(&self) -> &str {
+        "go"
+    }
 }
 
 struct JavaBenchmarkRunner;
@@ -595,25 +681,33 @@ impl BenchmarkRunner for JavaBenchmarkRunner {
     async fn run_once(&self, code_path: &Path) -> Result<(), ServiceError> {
         // Use JMH (Java Microbenchmark Harness)
         let output = Command::new("java")
-            .args(&["-jar", "jmh.jar", code_path.to_str()
-                .ok_or_else(|| ServiceError::IoError {
+            .args(&[
+                "-jar",
+                "jmh.jar",
+                code_path.to_str().ok_or_else(|| ServiceError::IoError {
                     message: format!("Invalid path: {:?}", code_path),
-                    path: Some(code_path.to_path_buf())
-                })?])
+                    path: Some(code_path.to_path_buf()),
+                })?,
+            ])
             .output()
             .await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         if !output.status.success() {
             return Err(ServiceError::ExecutionError(
-                String::from_utf8_lossy(&output.stderr).to_string()
+                String::from_utf8_lossy(&output.stderr).to_string(),
             ));
         }
 
         Ok(())
     }
 
-    fn language(&self) -> &str { "java" }
+    fn language(&self) -> &str {
+        "java"
+    }
 }
 
 // Profiler trait and implementations
@@ -647,7 +741,9 @@ impl Profiler for MemoryProfiler {
         Ok(0.0)
     }
 
-    fn metric_type(&self) -> &str { "memory" }
+    fn metric_type(&self) -> &str {
+        "memory"
+    }
 }
 
 struct CpuProfiler {
@@ -672,7 +768,9 @@ impl Profiler for CpuProfiler {
         Ok(0.0)
     }
 
-    fn metric_type(&self) -> &str { "cpu" }
+    fn metric_type(&self) -> &str {
+        "cpu"
+    }
 }
 
 struct IoProfiler {
@@ -689,7 +787,9 @@ struct IoStats {
 
 impl IoProfiler {
     fn new() -> Self {
-        Self { io_start_stats: None }
+        Self {
+            io_start_stats: None,
+        }
     }
 }
 
@@ -705,14 +805,20 @@ impl Profiler for IoProfiler {
         Ok(0.0)
     }
 
-    fn metric_type(&self) -> &str { "io" }
+    fn metric_type(&self) -> &str {
+        "io"
+    }
 }
 
 // Optimizer trait and implementations
 
 #[async_trait]
 trait Optimizer: Send + Sync {
-    async fn analyze(&self, code: &str, language: &str) -> Result<Vec<OptimizationSuggestion>, ServiceError>;
+    async fn analyze(
+        &self,
+        code: &str,
+        language: &str,
+    ) -> Result<Vec<OptimizationSuggestion>, ServiceError>;
     fn optimization_type(&self) -> &str;
 }
 
@@ -726,7 +832,11 @@ impl AlgorithmOptimizer {
 
 #[async_trait]
 impl Optimizer for AlgorithmOptimizer {
-    async fn analyze(&self, code: &str, _language: &str) -> Result<Vec<OptimizationSuggestion>, ServiceError> {
+    async fn analyze(
+        &self,
+        code: &str,
+        _language: &str,
+    ) -> Result<Vec<OptimizationSuggestion>, ServiceError> {
         let mut suggestions = Vec::new();
 
         // Check for common algorithm inefficiencies
@@ -734,7 +844,8 @@ impl Optimizer for AlgorithmOptimizer {
             // Nested loops
             suggestions.push(OptimizationSuggestion {
                 title: "Nested Loop Optimization".to_string(),
-                description: "Consider using a more efficient algorithm to avoid O(n²) complexity".to_string(),
+                description: "Consider using a more efficient algorithm to avoid O(n²) complexity"
+                    .to_string(),
                 impact: OptimizationImpact::High,
                 difficulty: Difficulty::Medium,
                 code_before: "for i in items:\n    for j in items:".to_string(),
@@ -761,7 +872,9 @@ impl Optimizer for AlgorithmOptimizer {
         Ok(suggestions)
     }
 
-    fn optimization_type(&self) -> &str { "algorithm" }
+    fn optimization_type(&self) -> &str {
+        "algorithm"
+    }
 }
 
 struct MemoryOptimizer;
@@ -774,7 +887,11 @@ impl MemoryOptimizer {
 
 #[async_trait]
 impl Optimizer for MemoryOptimizer {
-    async fn analyze(&self, code: &str, _language: &str) -> Result<Vec<OptimizationSuggestion>, ServiceError> {
+    async fn analyze(
+        &self,
+        code: &str,
+        _language: &str,
+    ) -> Result<Vec<OptimizationSuggestion>, ServiceError> {
         let mut suggestions = Vec::new();
 
         // Check for memory inefficiencies
@@ -807,7 +924,9 @@ impl Optimizer for MemoryOptimizer {
         Ok(suggestions)
     }
 
-    fn optimization_type(&self) -> &str { "memory" }
+    fn optimization_type(&self) -> &str {
+        "memory"
+    }
 }
 
 struct ConcurrencyOptimizer;
@@ -820,7 +939,11 @@ impl ConcurrencyOptimizer {
 
 #[async_trait]
 impl Optimizer for ConcurrencyOptimizer {
-    async fn analyze(&self, code: &str, _language: &str) -> Result<Vec<OptimizationSuggestion>, ServiceError> {
+    async fn analyze(
+        &self,
+        code: &str,
+        _language: &str,
+    ) -> Result<Vec<OptimizationSuggestion>, ServiceError> {
         let mut suggestions = Vec::new();
 
         // Check for concurrency opportunities
@@ -853,7 +976,9 @@ impl Optimizer for ConcurrencyOptimizer {
         Ok(suggestions)
     }
 
-    fn optimization_type(&self) -> &str { "concurrency" }
+    fn optimization_type(&self) -> &str {
+        "concurrency"
+    }
 }
 
 // Supporting data structures
@@ -924,17 +1049,14 @@ impl PerformanceComparator {
         }
     }
 
-    pub fn compare(
-        &self,
-        before: &BenchmarkResult,
-        after: &BenchmarkResult,
-    ) -> ComparisonReport {
+    pub fn compare(&self, before: &BenchmarkResult, after: &BenchmarkResult) -> ComparisonReport {
         let speedup = before.duration_mean.as_secs_f64() / after.duration_mean.as_secs_f64();
-        let memory_reduction = if let (Some(before_mem), Some(after_mem)) = (before.memory_peak, after.memory_peak) {
-            Some((before_mem as f64 - after_mem as f64) / before_mem as f64 * 100.0)
-        } else {
-            None
-        };
+        let memory_reduction =
+            if let (Some(before_mem), Some(after_mem)) = (before.memory_peak, after.memory_peak) {
+                Some((before_mem as f64 - after_mem as f64) / before_mem as f64 * 100.0)
+            } else {
+                None
+            };
 
         ComparisonReport {
             speedup,
@@ -955,8 +1077,14 @@ impl PerformanceComparator {
         for result in results {
             report.push_str(&format!("## {}\n\n", result.name));
             report.push_str(&format!("- Mean Duration: {:?}\n", result.duration_mean));
-            report.push_str(&format!("- Median Duration: {:?}\n", result.duration_median));
-            report.push_str(&format!("- Min/Max: {:?}/{:?}\n", result.duration_min, result.duration_max));
+            report.push_str(&format!(
+                "- Median Duration: {:?}\n",
+                result.duration_median
+            ));
+            report.push_str(&format!(
+                "- Min/Max: {:?}/{:?}\n",
+                result.duration_min, result.duration_max
+            ));
             report.push_str(&format!("- Throughput: {:.2} ops/sec\n", result.throughput));
 
             if let Some(mem) = result.memory_peak {

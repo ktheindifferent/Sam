@@ -1,10 +1,10 @@
 // Command modules
 pub mod cd;
 pub mod crawler;
-pub mod doctor;
 pub mod crawler_stats;
 pub mod darknet;
 pub mod docker;
+pub mod doctor;
 pub mod help;
 pub mod lifx;
 pub mod llama;
@@ -58,7 +58,7 @@ pub async fn handle_command(
 
     // Route the command to the appropriate handler
     router::route_command(cmd, &mut ctx).await;
-    
+
     // Adjust scroll offset after command execution
     utils::adjust_scroll_offset(&mut ctx).await;
 }

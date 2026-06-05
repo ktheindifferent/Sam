@@ -1,10 +1,10 @@
+use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use serde::{Deserialize, Serialize};
-use anyhow::{Result, Context};
-use chrono::{DateTime, Utc};
-use log::{info, debug, warn, error};
 
 /// Git integration for version control operations
 pub struct GitIntegration {
@@ -211,8 +211,10 @@ impl GitIntegration {
             .context("Failed to initialize git repository")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Git init failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Git init failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -228,9 +230,8 @@ impl GitIntegration {
         let conflicts = self.get_conflicts()?;
         let stash_count = self.get_stash_count()?;
 
-        let is_clean = staged_files.is_empty() &&
-                      unstaged_files.is_empty() &&
-                      untracked_files.is_empty();
+        let is_clean =
+            staged_files.is_empty() && unstaged_files.is_empty() && untracked_files.is_empty();
 
         Ok(RepositoryStatus {
             branch,
@@ -255,8 +256,10 @@ impl GitIntegration {
             .context("Failed to stage files")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to stage files: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to stage files: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -273,8 +276,10 @@ impl GitIntegration {
             .context("Failed to unstage files")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to unstage files: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to unstage files: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -283,9 +288,7 @@ impl GitIntegration {
     /// Commit changes
     pub async fn commit(&self, message: &str, amend: bool) -> Result<String> {
         let mut cmd = Command::new("git");
-        cmd.arg("commit")
-           .arg("-m")
-           .arg(message);
+        cmd.arg("commit").arg("-m").arg(message);
 
         if amend {
             cmd.arg("--amend");
@@ -295,13 +298,16 @@ impl GitIntegration {
             cmd.arg("-S");
         }
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to commit")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Commit failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Commit failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         // Get the commit hash
@@ -393,13 +399,16 @@ impl GitIntegration {
             cmd.arg("--force");
         }
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to push")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Push failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Push failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -418,13 +427,16 @@ impl GitIntegration {
             cmd.arg(branch);
         }
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to pull")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Pull failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Pull failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -441,13 +453,16 @@ impl GitIntegration {
             cmd.arg(remote);
         }
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to fetch")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Fetch failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Fetch failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -470,8 +485,10 @@ impl GitIntegration {
         let output = output.context("Failed to create branch")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to create branch: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to create branch: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -486,8 +503,10 @@ impl GitIntegration {
             .context("Failed to checkout")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Checkout failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Checkout failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -496,8 +515,7 @@ impl GitIntegration {
     /// Merge branch
     pub async fn merge(&self, branch: &str, no_ff: bool, message: Option<&str>) -> Result<()> {
         let mut cmd = Command::new("git");
-        cmd.arg("merge")
-           .arg(branch);
+        cmd.arg("merge").arg(branch);
 
         if no_ff {
             cmd.arg("--no-ff");
@@ -507,13 +525,16 @@ impl GitIntegration {
             cmd.arg("-m").arg(msg);
         }
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to merge")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Merge failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Merge failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -530,13 +551,16 @@ impl GitIntegration {
 
         cmd.arg(onto);
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to rebase")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Rebase failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Rebase failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -551,8 +575,10 @@ impl GitIntegration {
             .context("Failed to cherry-pick")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Cherry-pick failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Cherry-pick failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -571,13 +597,16 @@ impl GitIntegration {
             cmd.arg("-u");
         }
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to stash")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Stash failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Stash failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -592,13 +621,16 @@ impl GitIntegration {
             cmd.arg(format!("stash@{{{}}}", idx));
         }
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to pop stash")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Stash pop failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Stash pop failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -618,15 +650,17 @@ impl GitIntegration {
                 "log",
                 &format!("-{}", limit),
                 "--pretty=format:%H|%h|%an|%ae|%ai|%s",
-                "--numstat"
+                "--numstat",
             ])
             .current_dir(&self.repo_path)
             .output()
             .context("Failed to get history")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to get history: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to get history: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         let commits = self.parse_log_output(&String::from_utf8_lossy(&output.stdout))?;
@@ -649,13 +683,16 @@ impl GitIntegration {
             }
         }
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to get diff")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to get diff: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to get diff: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         self.parse_diff_output(&String::from_utf8_lossy(&output.stdout))
@@ -670,8 +707,10 @@ impl GitIntegration {
             .context("Failed to get blame")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Blame failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Blame failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         self.parse_blame_output(file_path, &String::from_utf8_lossy(&output.stdout))
@@ -688,13 +727,16 @@ impl GitIntegration {
 
         cmd.arg("-v");
 
-        let output = cmd.current_dir(&self.repo_path)
+        let output = cmd
+            .current_dir(&self.repo_path)
             .output()
             .context("Failed to get branches")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to get branches: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to get branches: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         self.parse_branches(&String::from_utf8_lossy(&output.stdout))
@@ -709,8 +751,10 @@ impl GitIntegration {
             .context("Failed to get tags")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to get tags: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to get tags: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         self.parse_tags(&String::from_utf8_lossy(&output.stdout))
@@ -725,8 +769,10 @@ impl GitIntegration {
             .context("Failed to get remotes")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to get remotes: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to get remotes: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         self.parse_remotes(&String::from_utf8_lossy(&output.stdout))
@@ -887,7 +933,7 @@ impl GitIntegration {
                     if parts.len() >= 3 {
                         FileChangeType::Renamed {
                             from: parts[1].to_string(),
-                            to: parts[2].to_string()
+                            to: parts[2].to_string(),
                         }
                     } else {
                         continue;
@@ -897,7 +943,7 @@ impl GitIntegration {
                     if parts.len() >= 3 {
                         FileChangeType::Copied {
                             from: parts[1].to_string(),
-                            to: parts[2].to_string()
+                            to: parts[2].to_string(),
                         }
                     } else {
                         continue;
@@ -907,8 +953,9 @@ impl GitIntegration {
             };
 
             let path = match &status {
-                FileChangeType::Renamed { to, .. } |
-                FileChangeType::Copied { to, .. } => to.clone(),
+                FileChangeType::Renamed { to, .. } | FileChangeType::Copied { to, .. } => {
+                    to.clone()
+                }
                 _ => parts[1].to_string(),
             };
 

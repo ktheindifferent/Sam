@@ -1,14 +1,14 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use chrono::{DateTime, Utc};
 
 use crate::services::coding::agent::{
-    errors::{CodingAgentError, CodingAgentResult},
     code_intelligence::{CodeIntelligence, Symbol, SymbolKind},
-    testing::{TestingEngine, TestFramework, TestResult},
     code_review::CodeLocation,
+    errors::{CodingAgentError, CodingAgentResult},
+    testing::{TestFramework, TestResult, TestingEngine},
 };
 
 use super::traits::provider::LLMProvider;
@@ -371,7 +371,10 @@ impl EdgeCaseFinder {
         })
     }
 
-    fn create_constraint_test(&self, violation: ConstraintViolation) -> CodingAgentResult<EdgeCase> {
+    fn create_constraint_test(
+        &self,
+        violation: ConstraintViolation,
+    ) -> CodingAgentResult<EdgeCase> {
         // Generate test code before moving violation fields
         let test_code = self.generate_test_code(&violation)?;
 
@@ -492,7 +495,9 @@ impl StringBoundaryAnalyzer {
         boundaries.push(BoundaryValue {
             name: "Special characters".to_string(),
             description: "Test special characters".to_string(),
-            values: vec![TestValue::String("!@#$%^&*()_+-=[]{}|;':\",./<>?".to_string())],
+            values: vec![TestValue::String(
+                "!@#$%^&*()_+-=[]{}|;':\",./<>?".to_string(),
+            )],
             expected_behavior: "Handle special characters correctly".to_string(),
         });
 
@@ -553,7 +558,10 @@ pub struct ConstraintViolation {
 }
 
 impl ConstraintSolver {
-    pub fn find_violations(&self, function: &Symbol) -> CodingAgentResult<Vec<ConstraintViolation>> {
+    pub fn find_violations(
+        &self,
+        function: &Symbol,
+    ) -> CodingAgentResult<Vec<ConstraintViolation>> {
         // Analyze function constraints and find potential violations
         let violations = Vec::new();
         Ok(violations)
@@ -704,10 +712,7 @@ pub enum MutationStrategy {
 }
 
 impl FuzzingEngine {
-    pub async fn generate_fuzz_tests(
-        &self,
-        function: &Symbol,
-    ) -> CodingAgentResult<Vec<FuzzTest>> {
+    pub async fn generate_fuzz_tests(&self, function: &Symbol) -> CodingAgentResult<Vec<FuzzTest>> {
         let mut fuzz_tests = Vec::new();
 
         fuzz_tests.push(FuzzTest {
@@ -807,7 +812,10 @@ impl TestGenerationEngine {
         let start_time = Utc::now();
 
         // Analyze target code
-        let analysis = self.code_intelligence.analyze_file(&request.target_path).await?;
+        let analysis = self
+            .code_intelligence
+            .analyze_file(&request.target_path)
+            .await?;
 
         // Find target function/class
         let target = self.find_target(&analysis.symbols, &request)?;
@@ -833,7 +841,10 @@ impl TestGenerationEngine {
 
         // Find and generate edge cases
         if request.include_edge_cases {
-            edge_cases = self.edge_case_finder.find_edge_cases(&target, &context).await?;
+            edge_cases = self
+                .edge_case_finder
+                .find_edge_cases(&target, &context)
+                .await?;
         }
 
         // Generate property-based tests
@@ -854,7 +865,9 @@ impl TestGenerationEngine {
 
         // Optimize for coverage
         if request.optimization_level != OptimizationLevel::None {
-            self.coverage_optimizer.optimize_coverage(&mut tests, request.coverage_target).await?;
+            self.coverage_optimizer
+                .optimize_coverage(&mut tests, request.coverage_target)
+                .await?;
         }
 
         // Minimize test suite
@@ -919,7 +932,10 @@ impl TestGenerationEngine {
             target.name
         );
 
-        let test_code = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let test_code = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(GeneratedTest {
             name: format!("test_{}_happy_path", target.name),
@@ -971,17 +987,20 @@ impl TestGenerationEngine {
             }
         }
 
-        Err(CodingAgentError::NotFound { resource: "Target".to_string(), id: "unknown".to_string() })
+        Err(CodingAgentError::NotFound {
+            resource: "Target".to_string(),
+            id: "unknown".to_string(),
+        })
     }
 
     fn detect_language(&self, path: &PathBuf) -> CodingAgentResult<String> {
         // Detect programming language from file extension
-        let extension = path.extension()
-            .and_then(|e| e.to_str())
-            .ok_or_else(|| CodingAgentError::ValidationError {
+        let extension = path.extension().and_then(|e| e.to_str()).ok_or_else(|| {
+            CodingAgentError::ValidationError {
                 field: "path".to_string(),
-                message: "No file extension".to_string()
-            })?;
+                message: "No file extension".to_string(),
+            }
+        })?;
 
         Ok(match extension {
             "rs" => "rust",
@@ -1000,7 +1019,8 @@ impl TestGenerationEngine {
             "scala" => "scala",
             "r" => "r",
             _ => "unknown",
-        }.to_string())
+        }
+        .to_string())
     }
 
     async fn find_existing_tests(&self, path: &PathBuf) -> CodingAgentResult<Vec<String>> {
@@ -1008,7 +1028,10 @@ impl TestGenerationEngine {
         Ok(Vec::new())
     }
 
-    fn convert_mutations_to_tests(&self, mutations: Vec<MutationTest>) -> CodingAgentResult<Vec<GeneratedTest>> {
+    fn convert_mutations_to_tests(
+        &self,
+        mutations: Vec<MutationTest>,
+    ) -> CodingAgentResult<Vec<GeneratedTest>> {
         // Convert mutation tests to GeneratedTest format
         Ok(Vec::new())
     }

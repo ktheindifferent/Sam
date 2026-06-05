@@ -9,17 +9,18 @@ impl super::Migration for Migration {
     fn version(&self) -> i64 {
         3
     }
-    
+
     fn name(&self) -> &str {
         "add_security_tables"
     }
-    
+
     fn description(&self) -> &str {
         "Add security audit and rate limiting tables"
     }
-    
+
     async fn up(&self, tx: &Transaction<'_>) -> Result<()> {
-        tx.batch_execute(r#"
+        tx.batch_execute(
+            r#"
             -- Security audit log table
             CREATE TABLE IF NOT EXISTS security_audit_log (
                 id SERIAL PRIMARY KEY,
@@ -93,19 +94,24 @@ impl super::Migration for Migration {
                 ON api_keys(key_hash);
             CREATE INDEX IF NOT EXISTS idx_api_keys_expires 
                 ON api_keys(expires_at);
-        "#).await?;
-        
+        "#,
+        )
+        .await?;
+
         Ok(())
     }
-    
+
     async fn down(&self, tx: &Transaction<'_>) -> Result<()> {
-        tx.batch_execute(r#"
+        tx.batch_execute(
+            r#"
             DROP TABLE IF EXISTS api_keys CASCADE;
             DROP TABLE IF EXISTS failed_login_attempts CASCADE;
             DROP TABLE IF EXISTS rate_limit_records CASCADE;
             DROP TABLE IF EXISTS security_audit_log CASCADE;
-        "#).await?;
-        
+        "#,
+        )
+        .await?;
+
         Ok(())
     }
 }

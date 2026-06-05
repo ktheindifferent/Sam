@@ -5,9 +5,7 @@
 // - Debugging assistance
 // - Code review
 
-use libsam::services::coding::agent::{
-    CodingAgentService, CodingAgentConfig
-};
+use libsam::services::coding::agent::{CodingAgentConfig, CodingAgentService};
 use std::path::PathBuf;
 use tokio;
 
@@ -30,12 +28,14 @@ async fn main() -> anyhow::Result<()> {
     println!("Demo 1: Code Analysis Request");
     println!("-----------------------------");
 
-    let analysis = agent.generate_response(
-        "Analyze this code for potential improvements: fn add(a: i32, b: i32) -> i32 { a + b }",
-        &current_dir,
-        &["Focus on: performance, safety, documentation".to_string()],
-        None
-    ).await?;
+    let analysis = agent
+        .generate_response(
+            "Analyze this code for potential improvements: fn add(a: i32, b: i32) -> i32 { a + b }",
+            &current_dir,
+            &["Focus on: performance, safety, documentation".to_string()],
+            None,
+        )
+        .await?;
 
     println!("Analysis: {}\n", analysis.response_text);
 
@@ -43,12 +43,17 @@ async fn main() -> anyhow::Result<()> {
     println!("Demo 2: Refactoring Suggestions");
     println!("-------------------------------");
 
-    let refactor = agent.generate_response(
-        "How would you refactor a function with 10 parameters?",
-        &current_dir,
-        &["Language: Rust".to_string(), "Context: Web API handler".to_string()],
-        None
-    ).await?;
+    let refactor = agent
+        .generate_response(
+            "How would you refactor a function with 10 parameters?",
+            &current_dir,
+            &[
+                "Language: Rust".to_string(),
+                "Context: Web API handler".to_string(),
+            ],
+            None,
+        )
+        .await?;
 
     println!("Suggestions: {}\n", refactor.response_text);
 
@@ -56,12 +61,17 @@ async fn main() -> anyhow::Result<()> {
     println!("Demo 3: Debugging Assistance");
     println!("----------------------------");
 
-    let debug_help = agent.generate_response(
-        "My Rust program panics with 'index out of bounds'. How do I debug this?",
-        &current_dir,
-        &["Using: Vec operations".to_string(), "No external debugger available".to_string()],
-        None
-    ).await?;
+    let debug_help = agent
+        .generate_response(
+            "My Rust program panics with 'index out of bounds'. How do I debug this?",
+            &current_dir,
+            &[
+                "Using: Vec operations".to_string(),
+                "No external debugger available".to_string(),
+            ],
+            None,
+        )
+        .await?;
 
     println!("Debug advice: {}\n", debug_help.response_text);
 
@@ -69,12 +79,17 @@ async fn main() -> anyhow::Result<()> {
     println!("Demo 4: Code Review Request");
     println!("---------------------------");
 
-    let review = agent.generate_response(
-        "Review this error handling: result.unwrap_or_else(|e| panic!(\"Error: {}\", e))",
-        &current_dir,
-        &["Production code".to_string(), "High reliability required".to_string()],
-        None
-    ).await?;
+    let review = agent
+        .generate_response(
+            "Review this error handling: result.unwrap_or_else(|e| panic!(\"Error: {}\", e))",
+            &current_dir,
+            &[
+                "Production code".to_string(),
+                "High reliability required".to_string(),
+            ],
+            None,
+        )
+        .await?;
 
     println!("Review: {}\n", review.response_text);
 
@@ -82,12 +97,17 @@ async fn main() -> anyhow::Result<()> {
     println!("Demo 5: Best Practices");
     println!("----------------------");
 
-    let practices = agent.generate_response(
-        "What are the best practices for async Rust programming?",
-        &current_dir,
-        &["Using: Tokio".to_string(), "Building: REST API server".to_string()],
-        None
-    ).await?;
+    let practices = agent
+        .generate_response(
+            "What are the best practices for async Rust programming?",
+            &current_dir,
+            &[
+                "Using: Tokio".to_string(),
+                "Building: REST API server".to_string(),
+            ],
+            None,
+        )
+        .await?;
 
     println!("Best practices: {}\n", practices.response_text);
 

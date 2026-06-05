@@ -19,7 +19,9 @@ pub fn handle(
         let url = request.url().clone();
         let split = url.split("/");
         let vec = split.collect::<Vec<&str>>();
-        let room_oid = vec[3];
+        let Some(room_oid) = vec.get(3).filter(|oid| !oid.is_empty()) else {
+            return Ok(Response::empty_404());
+        };
 
         #[derive(Serialize, Deserialize, Debug, Clone)]
         pub struct WebThing {
@@ -53,8 +55,8 @@ pub fn handle(
             let rooms = crate::memory::Room::select(None, None, None, Some(pg_query));
             match rooms {
                 Ok(r) => {
-                    if !r.is_empty() {
-                        room = Some(r[0].clone());
+                    if let Some(found_room) = r.first() {
+                        room = Some(found_room.clone());
                     }
                 }
                 Err(e) => {

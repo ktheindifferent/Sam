@@ -1,12 +1,12 @@
+use async_trait::async_trait;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use tokio::sync::{RwLock, mpsc};
 use tokio::process::Command;
-use regex::Regex;
+use tokio::sync::{mpsc, RwLock};
 
 use super::errors::CodingAgentError as ServiceError;
 use super::traits::provider::LLMProvider;
@@ -122,15 +122,15 @@ pub struct Mutation {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MutationType {
-    ArithmeticOperator,    // + → -, * → /, etc.
-    RelationalOperator,    // > → <, >= → <=, etc.
-    LogicalOperator,       // && → ||, ! → identity
-    ConditionalBoundary,   // < → <=, > → >=
-    IncrementDecrement,    // ++ → --, += → -=
-    ReturnValue,           // return x → return !x, return 0
-    RemoveStatement,       // Delete a statement
-    ConstantReplacement,   // 0 → 1, true → false
-    StringMutation,        // "foo" → "bar", empty → non-empty
+    ArithmeticOperator,  // + → -, * → /, etc.
+    RelationalOperator,  // > → <, >= → <=, etc.
+    LogicalOperator,     // && → ||, ! → identity
+    ConditionalBoundary, // < → <=, > → >=
+    IncrementDecrement,  // ++ → --, += → -=
+    ReturnValue,         // return x → return !x, return 0
+    RemoveStatement,     // Delete a statement
+    ConstantReplacement, // 0 → 1, true → false
+    StringMutation,      // "foo" → "bar", empty → non-empty
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,11 +143,11 @@ pub struct CodeLocation {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MutationStatus {
-    Killed,      // Test detected the mutation
-    Survived,    // Tests passed despite mutation
-    NoCoverage,  // No test covers this code
-    Timeout,     // Test timeout with mutation
-    Error,       // Compilation or runtime error
+    Killed,     // Test detected the mutation
+    Survived,   // Tests passed despite mutation
+    NoCoverage, // No test covers this code
+    Timeout,    // Test timeout with mutation
+    Error,      // Compilation or runtime error
 }
 
 // Property-Based Testing
@@ -178,14 +178,33 @@ pub struct ValueGenerator {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GeneratorType {
-    Integer { min: i64, max: i64 },
-    Float { min: f64, max: f64 },
-    String { min_length: usize, max_length: usize },
+    Integer {
+        min: i64,
+        max: i64,
+    },
+    Float {
+        min: f64,
+        max: f64,
+    },
+    String {
+        min_length: usize,
+        max_length: usize,
+    },
     Boolean,
-    Array { element_type: Box<GeneratorType>, min_size: usize, max_size: usize },
-    Object { fields: HashMap<String, GeneratorType> },
-    OneOf { options: Vec<GeneratorType> },
-    Custom { generator_code: String },
+    Array {
+        element_type: Box<GeneratorType>,
+        min_size: usize,
+        max_size: usize,
+    },
+    Object {
+        fields: HashMap<String, GeneratorType>,
+    },
+    OneOf {
+        options: Vec<GeneratorType>,
+    },
+    Custom {
+        generator_code: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -332,10 +351,22 @@ impl AdvancedTestingEngine {
     fn initialize_runners() -> HashMap<String, Box<dyn TestRunner>> {
         let mut runners = HashMap::new();
 
-        runners.insert("rust".to_string(), Box::new(RustTestRunner::new()) as Box<dyn TestRunner>);
-        runners.insert("javascript".to_string(), Box::new(JsTestRunner::new()) as Box<dyn TestRunner>);
-        runners.insert("python".to_string(), Box::new(PythonTestRunner::new()) as Box<dyn TestRunner>);
-        runners.insert("go".to_string(), Box::new(GoTestRunner::new()) as Box<dyn TestRunner>);
+        runners.insert(
+            "rust".to_string(),
+            Box::new(RustTestRunner::new()) as Box<dyn TestRunner>,
+        );
+        runners.insert(
+            "javascript".to_string(),
+            Box::new(JsTestRunner::new()) as Box<dyn TestRunner>,
+        );
+        runners.insert(
+            "python".to_string(),
+            Box::new(PythonTestRunner::new()) as Box<dyn TestRunner>,
+        );
+        runners.insert(
+            "go".to_string(),
+            Box::new(GoTestRunner::new()) as Box<dyn TestRunner>,
+        );
 
         runners
     }
@@ -359,11 +390,18 @@ impl AdvancedTestingEngine {
             code
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
         self.parse_generated_tests(&response, test_type)
     }
 
-    fn parse_generated_tests(&self, response: &str, test_type: TestType) -> Result<Vec<TestCase>, ServiceError> {
+    fn parse_generated_tests(
+        &self,
+        response: &str,
+        test_type: TestType,
+    ) -> Result<Vec<TestCase>, ServiceError> {
         let mut tests = Vec::new();
         let test_blocks = response.split("```").collect::<Vec<_>>();
 
@@ -393,7 +431,9 @@ impl AdvancedTestingEngine {
         test_path: &Path,
         language: &str,
     ) -> Result<MutationTestingReport, ServiceError> {
-        self.mutation_engine.run(code_path, test_path, language).await
+        self.mutation_engine
+            .run(code_path, test_path, language)
+            .await
     }
 
     pub async fn run_property_testing(
@@ -417,13 +457,12 @@ impl AdvancedTestingEngine {
         test_results: &TestResults,
         code_path: &Path,
     ) -> Result<CoverageData, ServiceError> {
-        self.coverage_analyzer.analyze(test_results, code_path).await
+        self.coverage_analyzer
+            .analyze(test_results, code_path)
+            .await
     }
 
-    pub async fn generate_test_report(
-        &self,
-        results: TestResults,
-    ) -> Result<String, ServiceError> {
+    pub async fn generate_test_report(&self, results: TestResults) -> Result<String, ServiceError> {
         let mut report = String::from("# Test Execution Report\n\n");
 
         report.push_str(&format!("## Summary\n"));
@@ -435,10 +474,22 @@ impl AdvancedTestingEngine {
 
         if let Some(coverage) = results.coverage {
             report.push_str(&format!("## Coverage\n"));
-            report.push_str(&format!("- Line Coverage: {:.2}%\n", coverage.line_coverage.percentage));
-            report.push_str(&format!("- Branch Coverage: {:.2}%\n", coverage.branch_coverage.percentage));
-            report.push_str(&format!("- Function Coverage: {:.2}%\n", coverage.function_coverage.percentage));
-            report.push_str(&format!("- Mutation Score: {:.2}%\n\n", coverage.mutation_score));
+            report.push_str(&format!(
+                "- Line Coverage: {:.2}%\n",
+                coverage.line_coverage.percentage
+            ));
+            report.push_str(&format!(
+                "- Branch Coverage: {:.2}%\n",
+                coverage.branch_coverage.percentage
+            ));
+            report.push_str(&format!(
+                "- Function Coverage: {:.2}%\n",
+                coverage.function_coverage.percentage
+            ));
+            report.push_str(&format!(
+                "- Mutation Score: {:.2}%\n\n",
+                coverage.mutation_score
+            ));
         }
 
         if !results.failures.is_empty() {
@@ -545,7 +596,8 @@ impl RustTestRunner {
     fn extract_number(&self, line: &str, keyword: &str) -> Option<usize> {
         if let Some(pos) = line.find(keyword) {
             let before = &line[..pos];
-            before.split_whitespace()
+            before
+                .split_whitespace()
                 .last()
                 .and_then(|s| s.parse().ok())
         } else {
@@ -672,11 +724,13 @@ impl MutationEngine {
         test_path: &Path,
         language: &str,
     ) -> Result<MutationTestingReport, ServiceError> {
-        let code = tokio::fs::read_to_string(code_path).await
-            .map_err(|e| ServiceError::IoError {
-                message: e.to_string(),
-                path: Some(code_path.to_path_buf()),
-            })?;
+        let code =
+            tokio::fs::read_to_string(code_path)
+                .await
+                .map_err(|e| ServiceError::IoError {
+                    message: e.to_string(),
+                    path: Some(code_path.to_path_buf()),
+                })?;
 
         let mutations = self.generate_mutations(&code, language).await?;
         let mut killed = 0;
@@ -695,12 +749,20 @@ impl MutationEngine {
             total_mutations: mutations.len(),
             killed_mutations: killed,
             survived_mutations: survived,
-            mutation_score: if mutations.is_empty() { 0.0 } else { killed as f64 / mutations.len() as f64 * 100.0 },
+            mutation_score: if mutations.is_empty() {
+                0.0
+            } else {
+                killed as f64 / mutations.len() as f64 * 100.0
+            },
             mutations,
         })
     }
 
-    async fn generate_mutations(&self, code: &str, language: &str) -> Result<Vec<Mutation>, ServiceError> {
+    async fn generate_mutations(
+        &self,
+        code: &str,
+        language: &str,
+    ) -> Result<Vec<Mutation>, ServiceError> {
         let mut mutations = Vec::new();
 
         // Generate different types of mutations
@@ -711,7 +773,11 @@ impl MutationEngine {
         Ok(mutations)
     }
 
-    async fn generate_arithmetic_mutations(&self, code: &str, _language: &str) -> Result<Vec<Mutation>, ServiceError> {
+    async fn generate_arithmetic_mutations(
+        &self,
+        code: &str,
+        _language: &str,
+    ) -> Result<Vec<Mutation>, ServiceError> {
         let mut mutations = Vec::new();
         let operators = vec![("+", "-"), ("-", "+"), ("*", "/"), ("/", "*")];
 
@@ -738,7 +804,11 @@ impl MutationEngine {
         Ok(mutations)
     }
 
-    async fn generate_conditional_mutations(&self, code: &str, _language: &str) -> Result<Vec<Mutation>, ServiceError> {
+    async fn generate_conditional_mutations(
+        &self,
+        code: &str,
+        _language: &str,
+    ) -> Result<Vec<Mutation>, ServiceError> {
         let mut mutations = Vec::new();
         let conditionals = vec![("<", "<="), (">", ">="), ("==", "!="), ("!=", "==")];
 
@@ -764,7 +834,11 @@ impl MutationEngine {
         Ok(mutations)
     }
 
-    async fn generate_logical_mutations(&self, code: &str, _language: &str) -> Result<Vec<Mutation>, ServiceError> {
+    async fn generate_logical_mutations(
+        &self,
+        code: &str,
+        _language: &str,
+    ) -> Result<Vec<Mutation>, ServiceError> {
         let mut mutations = Vec::new();
         let logicals = vec![("&&", "||"), ("||", "&&")];
 
@@ -874,11 +948,7 @@ impl FuzzingEngine {
         Self
     }
 
-    async fn run(
-        &self,
-        _target: &str,
-        _max_time: Duration,
-    ) -> Result<FuzzingReport, ServiceError> {
+    async fn run(&self, _target: &str, _max_time: Duration) -> Result<FuzzingReport, ServiceError> {
         Ok(FuzzingReport {
             iterations_run: 0,
             unique_crashes: 0,

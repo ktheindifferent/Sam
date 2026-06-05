@@ -1,9 +1,9 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
 
 /// Debugging engine for interactive debugging support
 pub struct DebuggingEngine {
@@ -46,13 +46,13 @@ pub struct DebugConfig {
 /// Debug adapter protocol support
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DebugAdapter {
-    Lldb,           // Rust, C/C++, Swift
-    Gdb,            // C/C++, Go
-    Delve,          // Go
-    Pdb,            // Python
-    NodeDebug,      // JavaScript/TypeScript
-    JavaDebug,      // Java
-    NetCoreDebug,   // C#/.NET
+    Lldb,         // Rust, C/C++, Swift
+    Gdb,          // C/C++, Go
+    Delve,        // Go
+    Pdb,          // Python
+    NodeDebug,    // JavaScript/TypeScript
+    JavaDebug,    // Java
+    NetCoreDebug, // C#/.NET
 }
 
 /// Debug session
@@ -225,7 +225,8 @@ impl BreakpointManager {
         };
 
         let mut breakpoints = self.breakpoints.write().await;
-        breakpoints.entry(file.to_string_lossy().to_string())
+        breakpoints
+            .entry(file.to_string_lossy().to_string())
             .or_insert_with(Vec::new)
             .push(breakpoint);
 
@@ -247,7 +248,8 @@ impl BreakpointManager {
 
     pub async fn get_breakpoints(&self, file: &Path) -> Vec<Breakpoint> {
         let breakpoints = self.breakpoints.read().await;
-        breakpoints.get(&file.to_string_lossy().to_string())
+        breakpoints
+            .get(&file.to_string_lossy().to_string())
             .cloned()
             .unwrap_or_default()
     }
@@ -308,7 +310,10 @@ impl DebuggingEngine {
         file: PathBuf,
         line: usize,
     ) -> Result<String> {
-        let bp_id = self.breakpoint_manager.add_breakpoint(file.clone(), line).await;
+        let bp_id = self
+            .breakpoint_manager
+            .add_breakpoint(file.clone(), line)
+            .await;
 
         let sessions = self.sessions.read().await;
         if let Some(session) = sessions.get(session_id) {
@@ -333,7 +338,8 @@ impl DebuggingEngine {
     /// Continue execution
     pub async fn continue_execution(&self, session_id: &str) -> Result<DebugEvent> {
         let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
+        let session = sessions
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
 
         let debugger = self.select_debugger(&session.config)?;
@@ -363,7 +369,8 @@ impl DebuggingEngine {
     /// Step over
     pub async fn step_over(&self, session_id: &str) -> Result<DebugEvent> {
         let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
+        let session = sessions
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
 
         let debugger = self.select_debugger(&session.config)?;
@@ -373,7 +380,8 @@ impl DebuggingEngine {
     /// Step into
     pub async fn step_into(&self, session_id: &str) -> Result<DebugEvent> {
         let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
+        let session = sessions
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
 
         let debugger = self.select_debugger(&session.config)?;
@@ -383,7 +391,8 @@ impl DebuggingEngine {
     /// Get stack trace
     pub async fn get_stack_trace(&self, session_id: &str) -> Result<Vec<StackFrame>> {
         let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
+        let session = sessions
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
 
         let debugger = self.select_debugger(&session.config)?;
@@ -393,7 +402,8 @@ impl DebuggingEngine {
     /// Evaluate expression
     pub async fn evaluate(&self, session_id: &str, expression: &str) -> Result<Value> {
         let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
+        let session = sessions
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
 
         let debugger = self.select_debugger(&session.config)?;
@@ -419,7 +429,8 @@ impl DebuggingEngine {
     /// Update watch expressions
     pub async fn update_watches(&self, session_id: &str) -> Result<Vec<WatchExpression>> {
         let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
+        let session = sessions
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
 
         let debugger = self.select_debugger(&session.config)?;
@@ -447,7 +458,8 @@ impl DebuggingEngine {
     /// Stop debug session
     pub async fn stop_session(&self, session_id: &str) -> Result<()> {
         let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
+        let session = sessions
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
 
         let debugger = self.select_debugger(&session.config)?;
@@ -472,7 +484,8 @@ impl DebuggingEngine {
             DebugAdapter::NetCoreDebug => "netcore",
         };
 
-        self.debuggers.get(debugger_name)
+        self.debuggers
+            .get(debugger_name)
             .ok_or_else(|| anyhow::anyhow!("Debugger '{}' not available", debugger_name))
     }
 

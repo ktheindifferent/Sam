@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use super::types::{CodeTemplate, ProjectType, TemplateVariable, VariableType};
 use anyhow::Result;
-use super::types::{CodeTemplate, TemplateVariable, VariableType, ProjectType};
+use std::collections::HashMap;
 
 /// Template manager for code generation
 pub struct TemplateManager {
@@ -25,7 +25,8 @@ impl TemplateManager {
                 template_content: r#"/// {description}
 pub fn {function_name}({parameters}) -> {return_type} {
     {body}
-}"#.to_string(),
+}"#
+                .to_string(),
                 variables: vec![
                     TemplateVariable {
                         name: "function_name".to_string(),
@@ -64,9 +65,11 @@ pub fn {function_name}({parameters}) -> {return_type} {
                     },
                 ],
                 dependencies: vec![],
-                use_cases: vec!["Creating new functions".to_string(), "Implementing methods".to_string()],
+                use_cases: vec![
+                    "Creating new functions".to_string(),
+                    "Implementing methods".to_string(),
+                ],
             },
-
             // Rust struct template
             CodeTemplate {
                 name: "rust_struct".to_string(),
@@ -76,7 +79,8 @@ pub fn {function_name}({parameters}) -> {return_type} {
 #[derive({derives})]
 pub struct {struct_name} {
 {fields}
-}"#.to_string(),
+}"#
+                .to_string(),
                 variables: vec![
                     TemplateVariable {
                         name: "struct_name".to_string(),
@@ -108,9 +112,11 @@ pub struct {struct_name} {
                     },
                 ],
                 dependencies: vec![],
-                use_cases: vec!["Data structures".to_string(), "Configuration objects".to_string()],
+                use_cases: vec![
+                    "Data structures".to_string(),
+                    "Configuration objects".to_string(),
+                ],
             },
-
             // Rust error enum template
             CodeTemplate {
                 name: "rust_error".to_string(),
@@ -131,20 +137,21 @@ pub enum {error_name} {
 }
 
 pub type Result<T> = std::result::Result<T, {error_name}>;
-"#.to_string(),
-                variables: vec![
-                    TemplateVariable {
-                        name: "error_name".to_string(),
-                        description: "Name of the error enum".to_string(),
-                        default_value: Some("AppError".to_string()),
-                        required: true,
-                        variable_type: VariableType::String,
-                    },
-                ],
+"#
+                .to_string(),
+                variables: vec![TemplateVariable {
+                    name: "error_name".to_string(),
+                    description: "Name of the error enum".to_string(),
+                    default_value: Some("AppError".to_string()),
+                    required: true,
+                    variable_type: VariableType::String,
+                }],
                 dependencies: vec!["thiserror".to_string()],
-                use_cases: vec!["Error handling".to_string(), "Library development".to_string()],
+                use_cases: vec![
+                    "Error handling".to_string(),
+                    "Library development".to_string(),
+                ],
             },
-
             // JavaScript/TypeScript async function template
             CodeTemplate {
                 name: "js_async_function".to_string(),
@@ -163,7 +170,8 @@ async function {function_name}({parameters}) {
         throw error;
     }
 }
-"#.to_string(),
+"#
+                .to_string(),
                 variables: vec![
                     TemplateVariable {
                         name: "function_name".to_string(),
@@ -211,7 +219,6 @@ async function {function_name}({parameters}) {
                 dependencies: vec![],
                 use_cases: vec!["Async operations".to_string(), "API calls".to_string()],
             },
-
             // Python class template
             CodeTemplate {
                 name: "python_class".to_string(),
@@ -242,7 +249,8 @@ async function {function_name}({parameters}) {
             {method_return_doc}
         """
         {method_body}
-"#.to_string(),
+"#
+                .to_string(),
                 variables: vec![
                     TemplateVariable {
                         name: "class_name".to_string(),
@@ -323,7 +331,10 @@ async function {function_name}({parameters}) {
                     },
                 ],
                 dependencies: vec![],
-                use_cases: vec!["Object-oriented programming".to_string(), "Class creation".to_string()],
+                use_cases: vec![
+                    "Object-oriented programming".to_string(),
+                    "Class creation".to_string(),
+                ],
             },
         ]
     }
@@ -347,16 +358,20 @@ async function {function_name}({parameters}) {
         template_name: &str,
         variables: HashMap<String, String>,
     ) -> Result<String> {
-        let template = self.get_template(template_name)
+        let template = self
+            .get_template(template_name)
             .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", template_name))?;
 
         let mut content = template.template_content.clone();
 
         // Substitute variables
         for variable in &template.variables {
-            let value = variables.get(&variable.name)
+            let value = variables
+                .get(&variable.name)
                 .or(variable.default_value.as_ref())
-                .ok_or_else(|| anyhow::anyhow!("Required variable '{}' not provided", variable.name))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Required variable '{}' not provided", variable.name)
+                })?;
 
             let placeholder = format!("{{{}}}", variable.name);
             content = content.replace(&placeholder, value);
@@ -386,12 +401,16 @@ async function {function_name}({parameters}) {
 
     /// Get template by language
     pub fn get_templates_by_language(&self, language: ProjectType) -> Vec<&CodeTemplate> {
-        self.templates.iter().filter(|t| t.language == language).collect()
+        self.templates
+            .iter()
+            .filter(|t| t.language == language)
+            .collect()
     }
 
     /// Search templates by use case
     pub fn search_templates_by_use_case(&self, use_case: &str) -> Vec<&CodeTemplate> {
-        self.templates.iter()
+        self.templates
+            .iter()
             .filter(|t| t.use_cases.iter().any(|uc| uc.contains(use_case)))
             .collect()
     }
@@ -402,13 +421,17 @@ async function {function_name}({parameters}) {
         template_name: &str,
         variables: &HashMap<String, String>,
     ) -> Result<Vec<String>> {
-        let template = self.get_template(template_name)
+        let template = self
+            .get_template(template_name)
             .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", template_name))?;
 
         let mut missing_required = Vec::new();
 
         for variable in &template.variables {
-            if variable.required && !variables.contains_key(&variable.name) && variable.default_value.is_none() {
+            if variable.required
+                && !variables.contains_key(&variable.name)
+                && variable.default_value.is_none()
+            {
                 missing_required.push(variable.name.clone());
             }
         }
@@ -422,7 +445,8 @@ async function {function_name}({parameters}) {
 
     /// Get template dependencies
     pub fn get_template_dependencies(&self, template_name: &str) -> Option<Vec<String>> {
-        self.get_template(template_name).map(|t| t.dependencies.clone())
+        self.get_template(template_name)
+            .map(|t| t.dependencies.clone())
     }
 
     /// Create a template from existing code

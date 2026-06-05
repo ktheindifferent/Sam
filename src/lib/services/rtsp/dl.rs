@@ -1,7 +1,7 @@
 // RTSP Deep Learning Module
 // Provides computer vision and deep learning capabilities for RTSP streams
 
-use crate::memory::{Observation, ObservationType, ObservationObjects};
+use crate::memory::{Observation, ObservationObjects, ObservationType};
 // use crate::services::errors::CommonError;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -99,10 +99,12 @@ impl MotionDetector {
     #[cfg(feature = "opencv")]
     pub fn detect_motion(&self, frame: &core::Mat) -> Result<(bool, Vec<core::Rect>)> {
         let mut fg_mask = core::Mat::default();
-        let mut bg_sub = self.background_subtractor.lock().unwrap();
-        
+        let mut bg_sub = self.background_subtractor.lock().map_err(|e| {
+            anyhow::anyhow!("Motion detector background subtractor lock poisoned: {}", e)
+        })?;
+
         bg_sub.apply(frame, &mut fg_mask, -1.0)?;
-        
+
         // Find contours
         let mut contours = core::Vector::<core::Vector<core::Point>>::new();
         imgproc::find_contours(
@@ -112,21 +114,21 @@ impl MotionDetector {
             imgproc::CHAIN_APPROX_SIMPLE,
             core::Point::new(0, 0),
         )?;
-        
+
         let mut motion_areas = Vec::new();
         let mut motion_detected = false;
-        
+
         for i in 0..contours.len() {
             let contour = contours.get(i)?;
             let area = imgproc::contour_area(&contour, false)?;
-            
+
             if area > self.min_area as f64 {
                 let rect = imgproc::bounding_rect(&contour)?;
                 motion_areas.push(rect);
                 motion_detected = true;
             }
         }
-        
+
         Ok((motion_detected, motion_areas))
     }
 
@@ -158,13 +160,13 @@ impl YoloDetector {
     pub fn new(config_path: &str, weights_path: &str, names_path: &str) -> Result<Self> {
         // Load YOLO model
         let net = opencv::dnn::read_net_from_darknet(config_path, weights_path)?;
-        
+
         // Load class names
         let classes = std::fs::read_to_string(names_path)?
             .lines()
             .map(|s| s.to_string())
             .collect();
-        
+
         Ok(Self {
             net,
             classes,
@@ -180,7 +182,7 @@ impl YoloDetector {
             .lines()
             .map(|s| s.to_string())
             .collect();
-        
+
         Ok(Self {
             classes,
             confidence_threshold: 0.5,
@@ -200,29 +202,30 @@ impl YoloDetector {
             false,
             core::CV_32F,
         )?;
-        
-        self.net.set_input(&blob, "", 1.0, core::Scalar::default())?;
-        
+
+        self.net
+            .set_input(&blob, "", 1.0, core::Scalar::default())?;
+
         // Get output layer names
         let output_names = self.net.get_unconnected_out_layers_names()?;
         let mut outputs = core::Vector::<core::Mat>::new();
         self.net.forward(&mut outputs, &output_names)?;
-        
+
         let mut detections = Vec::new();
         let frame_height = frame.rows();
         let frame_width = frame.cols();
-        
+
         // Process outputs
         for i in 0..outputs.len() {
             let output = outputs.get(i)?;
             let rows = output.rows();
-            
+
             for j in 0..rows {
                 let scores_start = 5;
                 let num_classes = output.cols() - scores_start;
                 let mut max_score = 0.0f32;
                 let mut class_id = 0;
-                
+
                 // Find class with maximum score
                 for k in 0..num_classes {
                     let score = *output.at_2d::<f32>(j, scores_start + k)?;
@@ -231,15 +234,19 @@ impl YoloDetector {
                         class_id = k;
                     }
                 }
-                
+
                 if max_score > self.confidence_threshold {
                     let center_x = *output.at_2d::<f32>(j, 0)? * frame_width as f32;
                     let center_y = *output.at_2d::<f32>(j, 1)? * frame_height as f32;
                     let width = *output.at_2d::<f32>(j, 2)? * frame_width as f32;
                     let height = *output.at_2d::<f32>(j, 3)? * frame_height as f32;
-                    
+
                     detections.push(Detection {
-                        class: self.classes.get(class_id).unwrap_or(&"unknown".to_string()).clone(),
+                        class: self
+                            .classes
+                            .get(class_id)
+                            .unwrap_or(&"unknown".to_string())
+                            .clone(),
                         confidence: max_score,
                         bbox: BoundingBox {
                             x: center_x - width / 2.0,
@@ -252,12 +259,12 @@ impl YoloDetector {
                 }
             }
         }
-        
+
         // Apply NMS
         let mut boxes = Vec::new();
         let mut confidences = Vec::new();
         let mut class_ids = Vec::new();
-        
+
         for detection in &detections {
             boxes.push(core::Rect::new(
                 detection.bbox.x as i32,
@@ -266,9 +273,14 @@ impl YoloDetector {
                 detection.bbox.height as i32,
             ));
             confidences.push(detection.confidence);
-            class_ids.push(detections.iter().position(|d| d.class == detection.class).unwrap() as i32);
+            class_ids.push(
+                detections
+                    .iter()
+                    .position(|d| d.class == detection.class)
+                    .unwrap() as i32,
+            );
         }
-        
+
         let mut indices = Vec::new();
         opencv::dnn::nms_boxes(
             &boxes,
@@ -279,12 +291,12 @@ impl YoloDetector {
             1.0,
             0,
         )?;
-        
+
         let mut final_detections = Vec::new();
         for &idx in &indices {
             final_detections.push(detections[idx as usize].clone());
         }
-        
+
         Ok(final_detections)
     }
 
@@ -312,7 +324,7 @@ impl FaceRecognizer {
     pub fn new() -> Result<Self> {
         let cascade_path = "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml";
         let face_cascade = objdetect::CascadeClassifier::new(cascade_path)?;
-        
+
         Ok(Self {
             face_cascade,
             face_embeddings: HashMap::new(),
@@ -330,7 +342,7 @@ impl FaceRecognizer {
     pub fn detect_faces(&mut self, frame: &core::Mat) -> Result<Vec<FaceDetection>> {
         let mut gray = core::Mat::default();
         imgproc::cvt_color(frame, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
-        
+
         let mut faces = core::Vector::<core::Rect>::new();
         self.face_cascade.detect_multi_scale(
             &gray,
@@ -341,7 +353,7 @@ impl FaceRecognizer {
             core::Size::new(30, 30),
             core::Size::new(0, 0),
         )?;
-        
+
         let mut face_detections = Vec::new();
         for i in 0..faces.len() {
             let face = faces.get(i)?;
@@ -357,7 +369,7 @@ impl FaceRecognizer {
                 identity: None,
             });
         }
-        
+
         Ok(face_detections)
     }
 
@@ -374,7 +386,7 @@ impl FaceRecognizer {
     pub fn recognize_face(&self, encoding: &[f32]) -> Option<String> {
         let mut best_match = None;
         let mut best_distance = f32::MAX;
-        
+
         for (name, known_encoding) in &self.face_embeddings {
             let distance = euclidean_distance(encoding, known_encoding);
             if distance < 0.6 && distance < best_distance {
@@ -382,7 +394,7 @@ impl FaceRecognizer {
                 best_match = Some(name.clone());
             }
         }
-        
+
         best_match
     }
 }
@@ -416,25 +428,29 @@ impl AnomalyDetector {
     #[cfg(feature = "opencv")]
     pub fn detect_anomaly(&mut self, frame: &core::Mat, motion_level: f32) -> Result<f32> {
         let stats = self.calculate_frame_statistics(frame, motion_level)?;
-        
+
         // Update history
         self.history.push(stats.clone());
         if self.history.len() > self.history_size {
             self.history.remove(0);
         }
-        
+
         // Calculate baseline if needed
         if self.baseline_stats.is_none() && self.history.len() >= 10 {
             self.calculate_baseline();
         }
-        
+
         // Calculate anomaly score
         if let Some(baseline) = &self.baseline_stats {
-            let intensity_diff = (stats.mean_intensity - baseline.mean_intensity).abs() / baseline.mean_intensity;
-            let std_diff = (stats.std_deviation - baseline.std_deviation).abs() / baseline.std_deviation.max(0.001);
-            let edge_diff = (stats.edge_density - baseline.edge_density).abs() / baseline.edge_density.max(0.001);
-            let motion_diff = (stats.motion_level - baseline.motion_level).abs() / baseline.motion_level.max(0.001);
-            
+            let intensity_diff =
+                (stats.mean_intensity - baseline.mean_intensity).abs() / baseline.mean_intensity;
+            let std_diff = (stats.std_deviation - baseline.std_deviation).abs()
+                / baseline.std_deviation.max(0.001);
+            let edge_diff = (stats.edge_density - baseline.edge_density).abs()
+                / baseline.edge_density.max(0.001);
+            let motion_diff = (stats.motion_level - baseline.motion_level).abs()
+                / baseline.motion_level.max(0.001);
+
             let anomaly_score = (intensity_diff + std_diff + edge_diff + motion_diff) / 4.0;
             Ok(anomaly_score * self.sensitivity)
         } else {
@@ -443,25 +459,29 @@ impl AnomalyDetector {
     }
 
     #[cfg(feature = "opencv")]
-    fn calculate_frame_statistics(&self, frame: &core::Mat, motion_level: f32) -> Result<FrameStatistics> {
+    fn calculate_frame_statistics(
+        &self,
+        frame: &core::Mat,
+        motion_level: f32,
+    ) -> Result<FrameStatistics> {
         let mut gray = core::Mat::default();
         imgproc::cvt_color(frame, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
-        
+
         // Calculate mean and std deviation
         let mut mean = core::Mat::default();
         let mut stddev = core::Mat::default();
         core::mean_std_dev(&gray, &mut mean, &mut stddev, &core::no_array())?;
-        
+
         let mean_intensity = *mean.at::<f64>(0)? as f32;
         let std_deviation = *stddev.at::<f64>(0)? as f32;
-        
+
         // Calculate edge density
         let mut edges = core::Mat::default();
         imgproc::canny(&gray, &mut edges, 50.0, 150.0, 3, false)?;
         let edge_pixels = core::count_non_zero(&edges)?;
         let total_pixels = (edges.rows() * edges.cols()) as f32;
         let edge_density = edge_pixels as f32 / total_pixels;
-        
+
         Ok(FrameStatistics {
             mean_intensity,
             std_deviation,
@@ -471,9 +491,13 @@ impl AnomalyDetector {
     }
 
     #[cfg(not(feature = "opencv"))]
-    fn calculate_frame_statistics(&self, _frame: &[u8], motion_level: f32) -> Result<FrameStatistics> {
+    fn calculate_frame_statistics(
+        &self,
+        _frame: &[u8],
+        motion_level: f32,
+    ) -> Result<FrameStatistics> {
         Ok(FrameStatistics {
-            mean_intensity: 128.0,  // Default gray value
+            mean_intensity: 128.0, // Default gray value
             std_deviation: 0.0,
             edge_density: 0.0,
             motion_level,
@@ -484,13 +508,13 @@ impl AnomalyDetector {
         if self.history.is_empty() {
             return;
         }
-        
+
         let n = self.history.len() as f32;
         let mean_intensity = self.history.iter().map(|s| s.mean_intensity).sum::<f32>() / n;
         let std_deviation = self.history.iter().map(|s| s.std_deviation).sum::<f32>() / n;
         let edge_density = self.history.iter().map(|s| s.edge_density).sum::<f32>() / n;
         let motion_level = self.history.iter().map(|s| s.motion_level).sum::<f32>() / n;
-        
+
         self.baseline_stats = Some(FrameStatistics {
             mean_intensity,
             std_deviation,
@@ -546,19 +570,27 @@ impl AlertManager {
 
     pub async fn send_alert(&self, alert: Alert) -> Result<()> {
         let alert_key = format!("{:?}_{}", alert.alert_type, alert.thing_oid);
-        
+
         // Check cooldown
-        let mut last_times = self.last_alert_times.lock().unwrap();
-        if let Some(last_time) = last_times.get(&alert_key) {
-            if last_time.elapsed().unwrap_or(Duration::MAX) < self.cooldown_duration {
-                return Ok(()); // Skip alert due to cooldown
+        {
+            let last_times = self
+                .last_alert_times
+                .lock()
+                .map_err(|e| anyhow::anyhow!("RTSP alert cooldown lock poisoned: {}", e))?;
+            if let Some(last_time) = last_times.get(&alert_key) {
+                if last_time.elapsed().unwrap_or(Duration::MAX) < self.cooldown_duration {
+                    return Ok(()); // Skip alert due to cooldown
+                }
             }
         }
-        
+
         // Send alert
         self.alert_tx.send(alert).await?;
-        last_times.insert(alert_key, SystemTime::now());
-        
+        self.last_alert_times
+            .lock()
+            .map_err(|e| anyhow::anyhow!("RTSP alert cooldown lock poisoned: {}", e))?
+            .insert(alert_key, SystemTime::now());
+
         Ok(())
     }
 }
@@ -575,20 +607,17 @@ pub struct RtspStreamProcessor {
 }
 
 impl RtspStreamProcessor {
-    pub fn new(
-        thing_oid: String,
-        rtsp_url: String,
-        alert_tx: mpsc::Sender<Alert>,
-    ) -> Result<Self> {
+    pub fn new(thing_oid: String, rtsp_url: String, alert_tx: mpsc::Sender<Alert>) -> Result<Self> {
         let motion_detector = MotionDetector::new(0.02, 500.0)?;
         let face_recognizer = FaceRecognizer::new()?;
         let anomaly_detector = AnomalyDetector::new(1.5, 100);
         let alert_manager = AlertManager::new(alert_tx, 60);
-        
+
         // Try to load YOLO if available
-        let yolo_detector = if Path::new("/opt/sam/models/yolo/yolov4.cfg").exists() 
-            && Path::new("/opt/sam/models/yolo/yolov4.weights").exists() 
-            && Path::new("/opt/sam/models/yolo/coco.names").exists() {
+        let yolo_detector = if Path::new("/opt/sam/models/yolo/yolov4.cfg").exists()
+            && Path::new("/opt/sam/models/yolo/yolov4.weights").exists()
+            && Path::new("/opt/sam/models/yolo/coco.names").exists()
+        {
             Some(YoloDetector::new(
                 "/opt/sam/models/yolo/yolov4.cfg",
                 "/opt/sam/models/yolo/yolov4.weights",
@@ -598,7 +627,7 @@ impl RtspStreamProcessor {
             log::warn!("YOLO model files not found, object detection disabled");
             None
         };
-        
+
         Ok(Self {
             thing_oid,
             rtsp_url,
@@ -613,49 +642,53 @@ impl RtspStreamProcessor {
     #[cfg(feature = "opencv")]
     pub async fn process_stream(&mut self) -> Result<()> {
         let mut cap = videoio::VideoCapture::new(&self.rtsp_url, videoio::CAP_ANY)?;
-        
+
         if !cap.is_opened()? {
             return Err(anyhow::anyhow!("Failed to open RTSP stream"));
         }
-        
+
         let mut frame = core::Mat::default();
         let mut frame_count = 0u64;
-        
+
         loop {
             if !cap.read(&mut frame)? || frame.empty() {
                 log::warn!("Failed to read frame or empty frame");
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 continue;
             }
-            
+
             frame_count += 1;
-            
+
             // Process every Nth frame to reduce CPU load
             if frame_count % 5 != 0 {
                 continue;
             }
-            
+
             let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| anyhow::anyhow!("System clock is before Unix epoch: {}", e))?
                 .as_secs() as i64;
-            
+
             // Motion detection
             let (motion_detected, motion_areas) = self.motion_detector.detect_motion(&frame)?;
             let motion_level = motion_areas.len() as f32 / 10.0; // Normalized motion level
-            
+
             // Object detection
             let mut object_detections = Vec::new();
             if let Some(yolo) = &mut self.yolo_detector {
                 object_detections = yolo.detect(&frame)?;
-                
+
                 // Send alerts for detected objects
                 for detection in &object_detections {
                     if detection.confidence > 0.7 {
                         let alert = Alert {
                             timestamp,
                             alert_type: AlertType::ObjectDetected(detection.class.clone()),
-                            description: format!("{} detected with {:.2}% confidence", detection.class, detection.confidence * 100.0),
+                            description: format!(
+                                "{} detected with {:.2}% confidence",
+                                detection.class,
+                                detection.confidence * 100.0
+                            ),
                             severity: if detection.class == "person" {
                                 AlertSeverity::High
                             } else {
@@ -672,7 +705,7 @@ impl RtspStreamProcessor {
                     }
                 }
             }
-            
+
             // Face detection
             let faces = self.face_recognizer.detect_faces(&frame)?;
             for face in &faces {
@@ -697,7 +730,7 @@ impl RtspStreamProcessor {
                 };
                 self.alert_manager.send_alert(alert).await?;
             }
-            
+
             // Anomaly detection
             let anomaly_score = self.anomaly_detector.detect_anomaly(&frame, motion_level)?;
             if anomaly_score > 0.8 {
@@ -718,18 +751,23 @@ impl RtspStreamProcessor {
                 };
                 self.alert_manager.send_alert(alert).await?;
             }
-            
+
             // Store observation in database
-            if motion_detected || !object_detections.is_empty() || !faces.is_empty() || anomaly_score > 0.5 {
+            if motion_detected
+                || !object_detections.is_empty()
+                || !faces.is_empty()
+                || anomaly_score > 0.5
+            {
                 self.store_observation(
                     timestamp,
                     motion_detected,
                     object_detections,
                     faces,
                     anomaly_score,
-                ).await?;
+                )
+                .await?;
             }
-            
+
             // Small delay to prevent CPU overload
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -752,47 +790,58 @@ impl RtspStreamProcessor {
         } else {
             ObservationType::UNKNOWN
         };
-        
+
         // Clone detections before moving them
         let detections_clone = detections.clone();
-        
+
         // Add detected objects
         for detection in detections {
             observation.observation_objects.push(ObservationObjects {
                 name: detection.class.clone(),
                 confidence: detection.confidence,
-                location: Some(format!("{},{},{},{}", 
-                    detection.bbox.x, detection.bbox.y, 
-                    detection.bbox.width, detection.bbox.height)),
+                location: Some(format!(
+                    "{},{},{},{}",
+                    detection.bbox.x, detection.bbox.y, detection.bbox.width, detection.bbox.height
+                )),
             });
         }
-        
+
         // Add detection notes
         if motion_detected {
-            observation.observation_notes.push("Motion detected".to_string());
+            observation
+                .observation_notes
+                .push("Motion detected".to_string());
         }
         if anomaly_score > 0.5 {
-            observation.observation_notes.push(format!("Anomaly score: {:.2}", anomaly_score));
+            observation
+                .observation_notes
+                .push(format!("Anomaly score: {:.2}", anomaly_score));
         }
         if !faces.is_empty() {
-            observation.observation_notes.push(format!("{} face(s) detected", faces.len()));
+            observation
+                .observation_notes
+                .push(format!("{} face(s) detected", faces.len()));
         }
-        
+
         // Store deep vision results
-        observation.deep_vision_json = Some(serde_json::json!({
-            "motion_detected": motion_detected,
-            "detections": detections_clone,
-            "faces": faces,
-            "anomaly_score": anomaly_score,
-        }).to_string());
-        
+        observation.deep_vision_json = Some(
+            serde_json::json!({
+                "motion_detected": motion_detected,
+                "detections": detections_clone,
+                "faces": faces,
+                "anomaly_score": anomaly_score,
+            })
+            .to_string(),
+        );
+
         // Save to database
         task::spawn_blocking(move || {
             if let Err(e) = observation.save() {
                 log::error!("Failed to save observation: {}", e);
             }
-        }).await?;
-        
+        })
+        .await?;
+
         Ok(())
     }
 }

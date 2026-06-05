@@ -18,18 +18,14 @@ pub fn handle(
     current_session: crate::memory::cache::WebSessions,
     request: &Request,
 ) -> Result<Response, crate::http::Error> {
-    
     if request.url() == "/api/services/notifications/unseen" && request.method() == "GET" {
-        
         let mut pg_query = crate::memory::PostgresQueries::default();
-        pg_query
-            .queries
-            .push(crate::memory::PGCol::Boolean(false));
+        pg_query.queries.push(crate::memory::PGCol::Boolean(false));
         pg_query.query_columns.push("seen".to_string());
 
-        pg_query
-            .queries
-            .push(crate::memory::PGCol::String(current_session.human_oid.clone()));
+        pg_query.queries.push(crate::memory::PGCol::String(
+            current_session.human_oid.clone(),
+        ));
         pg_query.query_columns.push("human_oid".to_string());
 
         pg_query
@@ -66,9 +62,11 @@ pub fn handle(
             Some("timestamp DESC".to_string()),
             Some(pg_query),
         )?;
-        let mut notification = notifications[0].clone();
+        let Some(mut notification) = notifications.first().cloned() else {
+            return Ok(Response::empty_404());
+        };
         notification.seen = true;
-        notification.save().unwrap();
+        notification.save()?;
 
         return Ok(Response::json(&notification));
     }
@@ -101,7 +99,7 @@ pub fn handle(
             notification.message = input.message;
             notification.sid = current_session.sid;
             notification.human_oid = current_session.human_oid;
-            notification.save().unwrap();
+            notification.save()?;
 
             return Ok(Response::json(&notification));
         }

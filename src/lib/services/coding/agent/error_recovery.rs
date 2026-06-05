@@ -1,12 +1,12 @@
+use log::info;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, timeout};
-use regex::Regex;
-use log::info;
 
 use super::errors::{CodingAgentError as ServiceError, ErrorSeverity};
 use super::traits::provider::LLMProvider;
@@ -57,16 +57,41 @@ pub struct RecoveryStrategy {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RecoveryAction {
-    RestartService { service_name: String },
-    RollbackChange { file: PathBuf, commit_id: Option<String> },
-    ApplyPatch { patch_content: String },
-    ModifyCode { file: PathBuf, changes: Vec<CodeChange> },
-    UpdateDependency { name: String, version: String },
-    ChangeConfiguration { key: String, value: String },
-    ClearCache { cache_name: Option<String> },
-    RetryOperation { max_attempts: usize, delay_ms: u64 },
-    Fallback { alternative: String },
-    ManualIntervention { instructions: String },
+    RestartService {
+        service_name: String,
+    },
+    RollbackChange {
+        file: PathBuf,
+        commit_id: Option<String>,
+    },
+    ApplyPatch {
+        patch_content: String,
+    },
+    ModifyCode {
+        file: PathBuf,
+        changes: Vec<CodeChange>,
+    },
+    UpdateDependency {
+        name: String,
+        version: String,
+    },
+    ChangeConfiguration {
+        key: String,
+        value: String,
+    },
+    ClearCache {
+        cache_name: Option<String>,
+    },
+    RetryOperation {
+        max_attempts: usize,
+        delay_ms: u64,
+    },
+    Fallback {
+        alternative: String,
+    },
+    ManualIntervention {
+        instructions: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,12 +149,10 @@ impl ErrorRecoveryEngine {
                 name: "Compilation Error Recovery".to_string(),
                 description: "Fixes common compilation errors".to_string(),
                 success_rate: 0.75,
-                actions: vec![
-                    RecoveryAction::ModifyCode {
-                        file: PathBuf::new(),
-                        changes: vec![],
-                    },
-                ],
+                actions: vec![RecoveryAction::ModifyCode {
+                    file: PathBuf::new(),
+                    changes: vec![],
+                }],
                 prerequisites: vec!["Source code access".to_string()],
                 risk_level: RiskLevel::Low,
             },
@@ -142,12 +165,10 @@ impl ErrorRecoveryEngine {
                 name: "Dependency Resolution".to_string(),
                 description: "Resolves dependency conflicts and missing packages".to_string(),
                 success_rate: 0.85,
-                actions: vec![
-                    RecoveryAction::UpdateDependency {
-                        name: String::new(),
-                        version: String::new(),
-                    },
-                ],
+                actions: vec![RecoveryAction::UpdateDependency {
+                    name: String::new(),
+                    version: String::new(),
+                }],
                 prerequisites: vec!["Package manager access".to_string()],
                 risk_level: RiskLevel::Medium,
             },
@@ -164,9 +185,7 @@ impl ErrorRecoveryEngine {
                     RecoveryAction::RestartService {
                         service_name: String::new(),
                     },
-                    RecoveryAction::ClearCache {
-                        cache_name: None,
-                    },
+                    RecoveryAction::ClearCache { cache_name: None },
                 ],
                 prerequisites: vec!["Service control".to_string()],
                 risk_level: RiskLevel::Medium,
@@ -196,18 +215,17 @@ impl ErrorRecoveryEngine {
         let known_solutions = self.solution_database.search(&error_context).await?;
 
         // Generate recovery strategies
-        let strategies = self.generate_recovery_strategies(
-            &error_context,
-            &analysis,
-            &patterns,
-            &known_solutions,
-        ).await?;
+        let strategies = self
+            .generate_recovery_strategies(&error_context, &analysis, &patterns, &known_solutions)
+            .await?;
 
         // Execute recovery
         let result = self.execute_recovery(&error_context, strategies).await?;
 
         // Learn from the outcome
-        self.learning_engine.record_outcome(&error_context, &result).await?;
+        self.learning_engine
+            .record_outcome(&error_context, &result)
+            .await?;
 
         Ok(result)
     }
@@ -223,13 +241,13 @@ impl ErrorRecoveryEngine {
             1. Root cause analysis\n\
             2. Potential fixes\n\
             3. Prevention strategies",
-            context.error_type,
-            context.error_message,
-            context.language,
-            context.stack_trace
+            context.error_type, context.error_message, context.language, context.stack_trace
         );
 
-        let analysis = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let analysis = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(ErrorAnalysis {
             root_cause: self.extract_root_cause(&analysis),
@@ -240,21 +258,29 @@ impl ErrorRecoveryEngine {
     }
 
     fn extract_root_cause(&self, analysis: &str) -> String {
-        analysis.lines()
+        analysis
+            .lines()
             .find(|line| line.contains("cause") || line.contains("Root"))
             .unwrap_or("Unknown cause")
             .to_string()
     }
 
     fn extract_fixes(&self, analysis: &str) -> Vec<String> {
-        analysis.lines()
+        analysis
+            .lines()
             .filter(|line| line.starts_with("-") || line.starts_with("•"))
-            .map(|line| line.trim_start_matches("-").trim_start_matches("•").trim().to_string())
+            .map(|line| {
+                line.trim_start_matches("-")
+                    .trim_start_matches("•")
+                    .trim()
+                    .to_string()
+            })
             .collect()
     }
 
     fn extract_prevention(&self, analysis: &str) -> Vec<String> {
-        analysis.lines()
+        analysis
+            .lines()
             .skip_while(|line| !line.contains("Prevention"))
             .skip(1)
             .take_while(|line| !line.is_empty())
@@ -292,7 +318,9 @@ impl ErrorRecoveryEngine {
         strategies.sort_by(|a, b| {
             let score_a = a.success_rate * (1.0 - self.risk_to_score(&a.risk_level));
             let score_b = b.success_rate * (1.0 - self.risk_to_score(&b.risk_level));
-            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            score_b
+                .partial_cmp(&score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         Ok(strategies)
@@ -336,9 +364,7 @@ impl ErrorRecoveryEngine {
                     max_attempts: 3,
                     delay_ms: 1000,
                 });
-                actions.push(RecoveryAction::ClearCache {
-                    cache_name: None,
-                });
+                actions.push(RecoveryAction::ClearCache { cache_name: None });
             }
             _ => {
                 actions.push(RecoveryAction::Fallback {
@@ -426,7 +452,8 @@ impl ErrorRecoveryEngine {
             let result = timeout(
                 Duration::from_secs(30),
                 self.recovery_executor.execute(&strategy, context),
-            ).await;
+            )
+            .await;
 
             let duration = start.elapsed().unwrap_or(Duration::from_secs(0));
 
@@ -495,8 +522,12 @@ impl ErrorRecoveryEngine {
         let mut severity_counts = HashMap::new();
 
         for error in history.iter() {
-            *type_counts.entry(format!("{:?}", error.error_type)).or_insert(0) += 1;
-            *severity_counts.entry(format!("{:?}", error.severity)).or_insert(0) += 1;
+            *type_counts
+                .entry(format!("{:?}", error.error_type))
+                .or_insert(0) += 1;
+            *severity_counts
+                .entry(format!("{:?}", error.severity))
+                .or_insert(0) += 1;
         }
 
         ErrorStatistics {
@@ -603,7 +634,10 @@ impl ErrorPatternMatcher {
         });
     }
 
-    async fn find_patterns(&self, context: &ErrorContext) -> Result<Vec<ErrorPattern>, ServiceError> {
+    async fn find_patterns(
+        &self,
+        context: &ErrorContext,
+    ) -> Result<Vec<ErrorPattern>, ServiceError> {
         let mut matched = Vec::new();
 
         for pattern in &self.patterns {
@@ -652,18 +686,22 @@ impl SolutionDatabase {
 
     fn similarity(&self, s1: &str, s2: &str) -> f64 {
         // Simple similarity - in production use more sophisticated algorithm
-        let common_chars = s1.chars()
-            .filter(|c| s2.contains(*c))
-            .count();
+        let common_chars = s1.chars().filter(|c| s2.contains(*c)).count();
 
         common_chars as f64 / s1.len().max(s2.len()) as f64
     }
 
-    async fn add_solution(&self, context: &ErrorContext, strategy: RecoveryStrategy, success: bool) {
+    async fn add_solution(
+        &self,
+        context: &ErrorContext,
+        strategy: RecoveryStrategy,
+        success: bool,
+    ) {
         let signature = self.generate_signature(context);
         let mut solutions = self.solutions.write().await;
 
-        solutions.entry(signature.clone())
+        solutions
+            .entry(signature.clone())
             .and_modify(|s| {
                 if success {
                     s.success_count += 1;
@@ -692,7 +730,11 @@ impl LearningEngine {
         }
     }
 
-    async fn record_outcome(&self, context: &ErrorContext, result: &RecoveryResult) -> Result<(), ServiceError> {
+    async fn record_outcome(
+        &self,
+        context: &ErrorContext,
+        result: &RecoveryResult,
+    ) -> Result<(), ServiceError> {
         let mut outcomes = self.outcomes.write().await;
 
         outcomes.push(RecoveryOutcome {
@@ -718,7 +760,8 @@ impl LearningEngine {
         let mut strategy_success = HashMap::new();
         for outcome in outcomes.iter() {
             if let Some(ref strategy) = outcome.result.strategy_used {
-                let entry = strategy_success.entry(strategy.name.clone())
+                let entry = strategy_success
+                    .entry(strategy.name.clone())
                     .or_insert((0, 0));
                 if outcome.result.success {
                     entry.0 += 1;
@@ -728,10 +771,22 @@ impl LearningEngine {
         }
 
         LearningInsights {
-            overall_success_rate: if total > 0 { successful as f64 / total as f64 } else { 0.0 },
-            strategy_effectiveness: strategy_success.into_iter()
+            overall_success_rate: if total > 0 {
+                successful as f64 / total as f64
+            } else {
+                0.0
+            },
+            strategy_effectiveness: strategy_success
+                .into_iter()
                 .map(|(name, (success, total))| {
-                    (name, if total > 0 { success as f64 / total as f64 } else { 0.0 })
+                    (
+                        name,
+                        if total > 0 {
+                            success as f64 / total as f64
+                        } else {
+                            0.0
+                        },
+                    )
                 })
                 .collect(),
             common_errors: Vec::new(),
@@ -787,7 +842,11 @@ impl RecoveryExecutor {
             }
             RecoveryAction::ModifyCode { file, changes } => {
                 // Implement code modification
-                info!("Modifying {} with {} changes", file.display(), changes.len());
+                info!(
+                    "Modifying {} with {} changes",
+                    file.display(),
+                    changes.len()
+                );
                 Ok(())
             }
             RecoveryAction::UpdateDependency { name, version } => {
@@ -800,7 +859,10 @@ impl RecoveryExecutor {
                 info!("Clearing cache: {:?}", cache_name);
                 Ok(())
             }
-            RecoveryAction::RetryOperation { max_attempts, delay_ms } => {
+            RecoveryAction::RetryOperation {
+                max_attempts,
+                delay_ms,
+            } => {
                 // Implement retry logic
                 for attempt in 1..=*max_attempts {
                     info!("Retry attempt {}/{}", attempt, max_attempts);
@@ -829,7 +891,10 @@ impl ErrorPreventionEngine {
         }
     }
 
-    pub async fn analyze_code_for_issues(&self, code: &str) -> Result<Vec<PotentialIssue>, ServiceError> {
+    pub async fn analyze_code_for_issues(
+        &self,
+        code: &str,
+    ) -> Result<Vec<PotentialIssue>, ServiceError> {
         let mut issues = Vec::new();
 
         // Static analysis

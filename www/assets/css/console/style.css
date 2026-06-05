@@ -169,7 +169,9 @@ body {
 }
 
 /* Block Styles */
-.status-block, .output-block, .input-block, .log-block, .controls-block, .placeholder-content, .help-content-block {
+.status-block, .output-block, .input-block, .log-block, .controls-block, .placeholder-content, .help-content-block,
+.database-summary-block, .database-table-block, .database-records-block,
+.files-toolbar-block, .files-list-block, .files-preview-block {
   border: 1px solid #7eda28;
   border-radius: 3px;
   margin-bottom: 10px;
@@ -457,6 +459,152 @@ body {
   margin-right: 5px;
 }
 
+/* Database Mode */
+.database-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+.database-summary-block {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.database-table-block,
+.database-records-block {
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.database-summary-content,
+.database-table-content,
+.database-records-content {
+  padding: 8px;
+}
+
+.database-table-content,
+.database-records-content {
+  height: calc(100% - 34px);
+  overflow-y: auto;
+}
+
+.database-table-item,
+.database-record-item {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(125, 218, 40, 0.2);
+  color: #ddd;
+  cursor: pointer;
+}
+
+.database-table-item:hover,
+.database-table-item.selected {
+  background: rgba(221, 221, 0, 0.18);
+  color: white;
+}
+
+.database-record-key {
+  color: #dddd00;
+}
+
+.database-record-value {
+  color: #ddd;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Files Mode */
+.files-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+.files-toolbar-block,
+.files-list-block,
+.files-preview-block {
+  margin-bottom: 0;
+}
+
+.files-list-block {
+  flex: 1;
+  min-height: 0;
+}
+
+.files-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  flex-wrap: wrap;
+}
+
+.console-button {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid #7eda28;
+  color: #dddd00;
+  border-radius: 2px;
+  padding: 4px 8px;
+  font-family: 'Ubuntu Mono', monospace;
+  cursor: pointer;
+}
+
+.console-button:hover {
+  background: rgba(125, 218, 40, 0.2);
+}
+
+.files-list-content {
+  height: calc(100% - 34px);
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  color: #ddd;
+  font-family: 'Ubuntu Mono', monospace;
+  line-height: 1.35;
+}
+
+.files-help-content {
+  padding: 8px;
+  color: #ddd;
+}
+
+.file-entry {
+  display: grid;
+  grid-template-columns: 60px minmax(180px, 1fr) 90px 180px;
+  gap: 8px;
+  padding: 3px 4px;
+  border-bottom: 1px solid rgba(125, 218, 40, 0.12);
+  white-space: nowrap;
+}
+
+.file-entry-directory {
+  cursor: pointer;
+}
+
+.file-entry-directory:hover {
+  background: rgba(125, 218, 40, 0.18);
+}
+
+.file-kind {
+  color: #4b9cd3;
+}
+
+.file-name {
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-size,
+.file-modified {
+  color: #888;
+}
+
 /* Help Mode */
 .help-content {
   padding: 15px;
@@ -502,6 +650,11 @@ body {
   
   .system-layout {
     gap: 10px;
+  }
+
+  .database-layout {
+    display: flex;
+    flex-direction: column;
   }
   
   #nav-tabs {

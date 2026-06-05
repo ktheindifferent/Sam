@@ -269,9 +269,10 @@ impl CrawlJob {
         // let pg_client = crate::memory::Config::client_async().await.unwrap();
         // Spawn the connection to drive it
         // tokio::spawn(connection);
-        let rows = pg_client.execute(&query, &[&oid]).await.map_err(|e| {
-            crate::memory::Error::Other(format!("Failed to delete crawl job: {e}"))
-        })?;
+        let rows = pg_client
+            .execute(&query, &[&oid])
+            .await
+            .map_err(|e| crate::memory::Error::Other(format!("Failed to delete crawl job: {e}")))?;
         Ok(rows > 0)
     }
 
@@ -280,17 +281,19 @@ impl CrawlJob {
     pub async fn is_recently_crawled(start_url: &str) -> crate::memory::Result<bool> {
         let config = crate::memory::Config::new();
         let client = config.connect_pool().await?;
-        
+
         // Calculate timestamp for one month ago (30 days)
         let one_month_ago = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64 - (30 * 24 * 60 * 60)) // 30 days in seconds
             .unwrap_or(0);
-        
+
         let query = "SELECT COUNT(*) FROM crawl_jobs WHERE start_url = $1 AND created_at > $2";
-        let row = client.query_one(query, &[&start_url, &one_month_ago]).await?;
+        let row = client
+            .query_one(query, &[&start_url, &one_month_ago])
+            .await?;
         let count: i64 = row.get(0);
-        
+
         Ok(count > 0)
     }
 

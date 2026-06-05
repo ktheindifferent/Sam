@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 /// Test generation and management engine
 pub struct TestingEngine {
@@ -86,12 +86,12 @@ pub enum TestFramework {
 /// Test strategy
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TestStrategy {
-    BlackBox,      // Test only public interface
-    WhiteBox,      // Test internal implementation
-    GrayBox,       // Mix of both
-    Mutation,      // Mutation testing
-    Property,      // Property-based testing
-    Fuzzing,       // Fuzz testing
+    BlackBox, // Test only public interface
+    WhiteBox, // Test internal implementation
+    GrayBox,  // Mix of both
+    Mutation, // Mutation testing
+    Property, // Property-based testing
+    Fuzzing,  // Fuzz testing
 }
 
 /// Generated test
@@ -203,7 +203,11 @@ pub trait CoverageTool: Send + Sync {
     fn supported_languages(&self) -> Vec<&str>;
 
     async fn analyze(&self, project_path: &Path) -> Result<CoverageReport>;
-    async fn generate_report(&self, coverage: &CoverageReport, format: ReportFormat) -> Result<String>;
+    async fn generate_report(
+        &self,
+        coverage: &CoverageReport,
+        format: ReportFormat,
+    ) -> Result<String>;
     async fn find_uncovered(&self, coverage: &CoverageReport) -> Vec<UncoveredCode>;
 }
 
@@ -327,7 +331,9 @@ impl TestingEngine {
 
     /// Run tests
     pub async fn run_tests(&self, test_path: &Path, framework: &str) -> Result<TestResult> {
-        let runner = self.runners.get(framework)
+        let runner = self
+            .runners
+            .get(framework)
             .ok_or_else(|| anyhow::anyhow!("Test runner '{}' not found", framework))?;
 
         runner.run_test(test_path).await
@@ -339,7 +345,9 @@ impl TestingEngine {
         test_path: &Path,
         framework: &str,
     ) -> Result<(TestResult, CoverageReport)> {
-        let runner = self.runners.get(framework)
+        let runner = self
+            .runners
+            .get(framework)
             .ok_or_else(|| anyhow::anyhow!("Test runner '{}' not found", framework))?;
 
         runner.run_with_coverage(test_path).await
@@ -361,7 +369,9 @@ impl TestingEngine {
         coverage: &CoverageReport,
         format: ReportFormat,
     ) -> Result<String> {
-        self.coverage_analyzer.generate_report(coverage, format).await
+        self.coverage_analyzer
+            .generate_report(coverage, format)
+            .await
     }
 
     /// Select appropriate generator
@@ -372,7 +382,10 @@ impl TestingEngine {
             }
         }
 
-        Err(anyhow::anyhow!("No test generator found for language: {}", language))
+        Err(anyhow::anyhow!(
+            "No test generator found for language: {}",
+            language
+        ))
     }
 
     /// Create edge case context
@@ -451,15 +464,14 @@ impl CoverageAnalyzer {
         format: ReportFormat,
     ) -> Result<String> {
         match format {
-            ReportFormat::Json => {
-                Ok(serde_json::to_string_pretty(coverage)?)
-            }
-            ReportFormat::Text => {
-                Ok(self.generate_text_report(coverage))
-            }
+            ReportFormat::Json => Ok(serde_json::to_string_pretty(coverage)?),
+            ReportFormat::Text => Ok(self.generate_text_report(coverage)),
             _ => {
                 // Use appropriate tool for other formats
-                let tool = self.tools.values().next()
+                let tool = self
+                    .tools
+                    .values()
+                    .next()
                     .ok_or_else(|| anyhow::anyhow!("No coverage tool available"))?;
                 tool.generate_report(coverage, format).await
             }
@@ -493,7 +505,8 @@ impl CoverageAnalyzer {
     }
 
     fn select_tool(&self, _project_path: &Path) -> Result<&Box<dyn CoverageTool>> {
-        self.tools.values()
+        self.tools
+            .values()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No coverage tool available"))
     }

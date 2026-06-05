@@ -128,14 +128,10 @@ pub fn handle(
                 .push(crate::memory::PGCol::String(oid.to_string()));
             pg_query.query_columns.push("oid =".to_string());
 
-            let files =
-                crate::memory::storage::File::select(None, None, None, Some(pg_query))?;
+            let files = crate::memory::storage::File::select(None, None, None, Some(pg_query))?;
             if let Some(file) = files.first() {
                 if let Some(file_data) = file.file_data.clone() {
-                    return Ok(Response::from_data(
-                        file.file_type.clone(),
-                        file_data,
-                    ));
+                    return Ok(Response::from_data(file.file_type.clone(), file_data));
                 } else {
                     return Ok(Response::empty_404());
                 }

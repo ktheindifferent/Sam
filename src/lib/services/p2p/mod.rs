@@ -9,9 +9,9 @@
 
 pub mod enhanced;
 pub mod file_sharing;
-pub mod sync;
-pub mod secure;
 pub mod network_segmentation;
+pub mod secure;
+pub mod sync;
 
 use crate::services::crawler::page::CrawledPage;
 use log::{error, info};
@@ -25,9 +25,9 @@ use tokio::sync::{broadcast, Mutex};
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 // Re-export enhanced P2P types
-pub use enhanced::{P2PNode, P2PConfig, PeerInfo, P2PMessage, SyncType};
+pub use enhanced::{P2PConfig, P2PMessage, P2PNode, PeerInfo, SyncType};
 pub use file_sharing::{FileTransferManager, FileTransferRequest, FileTransferStatus};
-pub use sync::{SyncManager, SyncConfig};
+pub use sync::{SyncConfig, SyncManager};
 
 static P2P_RUNNING: AtomicBool = AtomicBool::new(false);
 static P2P_HANDLE: Lazy<Mutex<Option<tokio::task::JoinHandle<()>>>> =
@@ -93,14 +93,14 @@ pub async fn start_enhanced(name: String, config: Option<P2PConfig>) -> Result<(
 
     let config = config.unwrap_or_default();
     let node = P2PNode::new(name, config)?;
-    
+
     node.start().await?;
-    
+
     P2P_RUNNING.store(true, Ordering::SeqCst);
-    
+
     let mut node_guard = P2P_NODE.lock().await;
     *node_guard = Some(node);
-    
+
     info!("Enhanced P2P service started");
     Ok(())
 }
@@ -135,14 +135,14 @@ pub async fn stop() {
         return;
     }
     P2P_RUNNING.store(false, Ordering::SeqCst);
-    
+
     // Stop enhanced node if running
     let mut node_guard = P2P_NODE.lock().await;
     if let Some(node) = node_guard.as_ref() {
         let _ = node.stop().await;
     }
     *node_guard = None;
-    
+
     {
         let mut tx_guard = P2P_TX.lock().await;
         *tx_guard = None;

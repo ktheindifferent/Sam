@@ -205,13 +205,11 @@ where
     where
         C: fmt::Display + Send + Sync + 'static,
     {
-        self.map_err(|e| {
-            AgentError::Core {
-                kind: ErrorKind::Internal,
-                message: context.to_string(),
-                source: Some(Box::new(e)),
-                context: ErrorContext::default(),
-            }
+        self.map_err(|e| AgentError::Core {
+            kind: ErrorKind::Internal,
+            message: context.to_string(),
+            source: Some(Box::new(e)),
+            context: ErrorContext::default(),
         })
     }
 
@@ -220,13 +218,11 @@ where
         C: fmt::Display + Send + Sync + 'static,
         F: FnOnce() -> C,
     {
-        self.map_err(|e| {
-            AgentError::Core {
-                kind: ErrorKind::Internal,
-                message: f().to_string(),
-                source: Some(Box::new(e)),
-                context: ErrorContext::default(),
-            }
+        self.map_err(|e| AgentError::Core {
+            kind: ErrorKind::Internal,
+            message: f().to_string(),
+            source: Some(Box::new(e)),
+            context: ErrorContext::default(),
         })
     }
 }
@@ -237,13 +233,11 @@ impl From<crate::services::coding::agent::errors::CodingAgentError> for AgentErr
         use crate::services::coding::agent::errors::CodingAgentError as Old;
 
         match old {
-            Old::ProviderUnavailable { provider, reason } => {
-                ProviderError::Unavailable {
-                    name: provider,
-                    reason: reason.unwrap_or_default(),
-                }
-                .into()
+            Old::ProviderUnavailable { provider, reason } => ProviderError::Unavailable {
+                name: provider,
+                reason: reason.unwrap_or_default(),
             }
+            .into(),
             Old::ProviderNotFound { provider } => ProviderError::NotFound { name: provider }.into(),
             Old::NoProviderConfigured => ProviderError::NoProvider.into(),
             Old::CommandExecutionFailed {

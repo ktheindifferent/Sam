@@ -1,10 +1,10 @@
+use super::super::state::{ServiceStatus, SERVICE_CATALOG};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Sparkline},
 };
-use super::super::state::ServiceStatus;
 
 /// Render the status bar with sparkline CPU/Memory charts
 pub fn render_status_bar(
@@ -24,7 +24,11 @@ pub fn render_status_bar(
     // CPU sparkline
     let cpu_data = status.cpu_history.as_u64_vec();
     let cpu_sparkline = Sparkline::default()
-        .block(Block::default().borders(Borders::ALL).title(format!("CPU {}", &status.cpu_usage)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("CPU {}", &status.cpu_usage)),
+        )
         .data(&cpu_data)
         .max(100)
         .style(Style::default().fg(Color::Cyan));
@@ -33,24 +37,29 @@ pub fn render_status_bar(
     // Memory sparkline
     let mem_data = status.memory_history.as_u64_vec();
     let mem_sparkline = Sparkline::default()
-        .block(Block::default().borders(Borders::ALL).title(format!("Mem {}", &status.memory_usage)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("Mem {}", &status.memory_usage)),
+        )
         .data(&mem_data)
         .max(100)
         .style(Style::default().fg(Color::Green));
     f.render_widget(mem_sparkline, chunks[1]);
 
     // Status text
-    let running_count = [
-        &status.crawler, &status.redis, &status.docker, &status.postgres,
-        &status.http_server, &status.ollama, &status.ssh_server,
-        &status.media, &status.snapcast, &status.lifx,
-    ].iter().filter(|s| **s == "running" || **s == "connected").count();
-
-    let total_services = 10;
+    let running_count = status.healthy_service_count();
+    let total_services = SERVICE_CATALOG.len();
     let status_text = Line::from(vec![
-        Span::styled(format!("{}/{}", running_count, total_services), Style::default().fg(Color::Green)),
+        Span::styled(
+            format!("{}/{}", running_count, total_services),
+            Style::default().fg(Color::Green),
+        ),
         Span::raw(" svcs "),
-        Span::styled(format!("#{}", status.update_count), Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("#{}", status.update_count),
+            Style::default().fg(Color::DarkGray),
+        ),
     ]);
 
     let status_widget = ratatui::widgets::Paragraph::new(status_text)

@@ -119,7 +119,8 @@ static REDIS_URL: &str = "redis://127.0.0.1/";
 static REDIS_POOL: once_cell::sync::Lazy<Pool> = once_cell::sync::Lazy::new(|| {
     let cfg = DeadpoolConfig::from_url(REDIS_URL);
 
-    cfg.create_pool(Some(Runtime::Tokio1)).expect("Failed to create Redis connection pool")
+    cfg.create_pool(Some(Runtime::Tokio1))
+        .expect("Failed to create Redis connection pool")
 });
 
 /// Loads the DNS cache from Redis or a file, depending on configuration and availability.
@@ -373,38 +374,44 @@ async fn crawl_url_inner(
         Ok(valid_url) => valid_url,
         Err(e) => {
             log::warn!("URL validation failed for {}: {}", url, e);
-            return Err(crate::memory::Error::Other(
-                format!("URL validation failed: {}", e),
-            )
-            .into());
+            return Err(
+                crate::memory::Error::Other(format!("URL validation failed: {}", e)).into(),
+            );
         }
     };
-    
+
     // Extract domain from URL for various checks
     let domain = parsed_url.host_str().unwrap_or_default().to_string();
 
     // Get the user agent for this URL (for consistency)
     let user_agent = super::user_agents::get_user_agent_for_url(&url).await;
-    
+
     // Check if URL was previously rejected (optimization to avoid repeated checks)
     // Only check if database is available
     match super::CrawlRejected::is_rejected(&url, &user_agent).await {
         Ok(Some(previous_rejection)) => {
-            log::debug!("URL previously rejected ({} times): {} - reason: {:?}", 
-                       previous_rejection.rejection_count, url, previous_rejection.reason);
-            
+            log::debug!(
+                "URL previously rejected ({} times): {} - reason: {:?}",
+                previous_rejection.rejection_count,
+                url,
+                previous_rejection.reason
+            );
+
             // For robots.txt rejections, we still need to check as rules may have changed
             // For other rejections, we can skip if they're recent (within last hour)
             let one_hour_ago = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64 - 3600;
-                
-            if previous_rejection.reason != super::RejectionReason::RobotsTxt 
-                && previous_rejection.rejected_at > one_hour_ago {
-                return Err(crate::memory::Error::Other(
-                    format!("URL previously rejected: {:?}", previous_rejection.reason),
-                ).into());
+                .map(|duration| duration.as_secs() as i64 - 3600)
+                .unwrap_or(0);
+
+            if previous_rejection.reason != super::RejectionReason::RobotsTxt
+                && previous_rejection.rejected_at > one_hour_ago
+            {
+                return Err(crate::memory::Error::Other(format!(
+                    "URL previously rejected: {:?}",
+                    previous_rejection.reason
+                ))
+                .into());
             }
         }
         Ok(None) => {
@@ -412,7 +419,10 @@ async fn crawl_url_inner(
         }
         Err(e) => {
             // Database not available, continue without check
-            log::debug!("Could not check rejection history (database unavailable): {}", e);
+            log::debug!(
+                "Could not check rejection history (database unavailable): {}",
+                e
+            );
         }
     }
 
@@ -420,7 +430,7 @@ async fn crawl_url_inner(
     if !super::robots::is_url_allowed(&url).await {
         log::info!("URL blocked by robots.txt: {}", url);
         super::metrics::record_robots_block(&domain, &url).await;
-        
+
         // Record the rejection to database for analysis and to avoid repeated checks
         let mut rejection = super::CrawlRejected::robots_blocked(
             url.clone(),
@@ -428,22 +438,19 @@ async fn crawl_url_inner(
             user_agent.clone(),
             Some(job_oid.clone()),
         );
-        
+
         if let Err(e) = rejection.save().await {
             log::warn!("Failed to save robots.txt rejection record: {}", e);
         }
-        
-        return Err(crate::memory::Error::Other(
-            "URL blocked by robots.txt".to_string(),
-        )
-        .into());
+
+        return Err(crate::memory::Error::Other("URL blocked by robots.txt".to_string()).into());
     }
 
     // Check circuit breaker
     if !super::circuit_breaker::is_domain_allowed(&domain).await {
         log::info!("Domain blocked by circuit breaker: {}", domain);
         super::metrics::record_circuit_breaker_block(&domain).await;
-        
+
         // Record circuit breaker rejection
         let mut rejection = super::CrawlRejected::new(
             url.clone(),
@@ -451,27 +458,26 @@ async fn crawl_url_inner(
             user_agent.clone(),
             Some(job_oid.clone()),
         );
-        
+
         if let Err(e) = rejection.save().await {
             log::warn!("Failed to save circuit breaker rejection record: {}", e);
         }
-        
-        return Err(crate::memory::Error::Other(
-            "Domain blocked by circuit breaker".to_string(),
-        )
-        .into());
+
+        return Err(
+            crate::memory::Error::Other("Domain blocked by circuit breaker".to_string()).into(),
+        );
     }
 
     // Apply rate limiting and validation
     apply_global_rate_limit().await;
     validate_url(&url)?;
-    
+
     // Apply crawl delay from robots.txt if specified
     if let Some(delay) = super::robots::get_crawl_delay(&domain).await {
         log::debug!("Applying crawl delay of {:?} for {}", delay, domain);
         tokio::time::sleep(delay).await;
     }
-    
+
     apply_domain_rate_limit(&url).await;
 
     if is_search_url(&url.to_ascii_lowercase()) {
@@ -502,7 +508,7 @@ async fn crawl_url_inner(
 
     // Use the user agent we already fetched
     log::debug!("Using user agent for {}: {}", url, user_agent);
-    
+
     // Check if domain has authentication configured
     let config = super::config::get_config().await;
     let auth_method = if let Some(domain_config) = config.domains.get(&domain) {
@@ -519,20 +525,21 @@ async fn crawl_url_inner(
     let mut last_err = None;
     for attempt in 0..3 {
         let mut headers = reqwest::header::HeaderMap::new();
-        
+
         // Apply authentication if configured
-        if let Err(e) = super::auth::apply_auth_to_request(&mut headers, &domain, &auth_method).await {
+        if let Err(e) =
+            super::auth::apply_auth_to_request(&mut headers, &domain, &auth_method).await
+        {
             log::warn!("Failed to apply authentication for {}: {}", domain, e);
         }
-        
-        let mut request = client.get(&url)
-            .header("User-Agent", &user_agent);
-        
+
+        let mut request = client.get(&url).header("User-Agent", &user_agent);
+
         // Add auth headers
         for (name, value) in headers.iter() {
             request = request.header(name, value);
         }
-        
+
         match tokio::time::timeout(Duration::from_secs(60), request.send()).await {
             Ok(Ok(r)) => {
                 resp = Some(r);
@@ -575,16 +582,18 @@ async fn crawl_url_inner(
                 let url_clone = url.clone();
                 let headers_clone = headers.clone();
                 let mime_from_header = extract_mime_from_headers(&headers_clone);
-                
+
                 // Detect content type from headers
-                let content_type_str = headers.get("content-type")
+                let content_type_str = headers
+                    .get("content-type")
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("text/html");
-                
+
                 // Get response body based on content type
-                let (mut html, raw_bytes) = if content_type_str.starts_with("image/") || 
-                                              content_type_str.starts_with("application/pdf") ||
-                                              content_type_str.starts_with("application/octet-stream") {
+                let (mut html, raw_bytes) = if content_type_str.starts_with("image/")
+                    || content_type_str.starts_with("application/pdf")
+                    || content_type_str.starts_with("application/octet-stream")
+                {
                     // For binary content, get bytes
                     match resp.bytes().await {
                         Ok(bytes) => {
@@ -601,21 +610,29 @@ async fn crawl_url_inner(
                     match resp.text().await {
                         Ok(text) => {
                             // For JS/CSS, we might want to extract useful information
-                            if content_type_str.contains("javascript") || content_type_str.contains("css") {
-                                log::debug!("Got {} characters of {} content for {}", 
-                                    text.len(), 
-                                    if content_type_str.contains("javascript") { "JavaScript" } else { "CSS" },
-                                    url);
+                            if content_type_str.contains("javascript")
+                                || content_type_str.contains("css")
+                            {
+                                log::debug!(
+                                    "Got {} characters of {} content for {}",
+                                    text.len(),
+                                    if content_type_str.contains("javascript") {
+                                        "JavaScript"
+                                    } else {
+                                        "CSS"
+                                    },
+                                    url
+                                );
                             }
                             (text, None)
-                        },
+                        }
                         Err(e) => {
                             log::warn!("Failed to get text for {}: {}", url, e);
                             (String::new(), None)
                         }
                     }
                 };
-                
+
                 // Check if the page needs JavaScript rendering
                 // (e.g., minimal HTML, SPA indicators, or specific domains)
                 let needs_js = super::js_renderer::is_js_rendering_available().await && {
@@ -628,58 +645,74 @@ async fn crawl_url_inner(
                          html.contains("new Vue") ||
                          html.contains("_app") ||
                          html.contains("__NEXT_DATA__"));
-                    
+
                     // Check for specific domains known to be SPAs
-                    let spa_domain = url.contains("twitter.com") ||
-                        url.contains("facebook.com") ||
-                        url.contains("instagram.com") ||
-                        url.contains("linkedin.com") ||
-                        url.contains("github.com");
-                    
+                    let spa_domain = url.contains("twitter.com")
+                        || url.contains("facebook.com")
+                        || url.contains("instagram.com")
+                        || url.contains("linkedin.com")
+                        || url.contains("github.com");
+
                     is_spa || spa_domain
                 };
-                
+
                 if needs_js {
-                    log::info!("Page appears to be an SPA, attempting JavaScript rendering for: {}", url);
+                    log::info!(
+                        "Page appears to be an SPA, attempting JavaScript rendering for: {}",
+                        url
+                    );
                     match super::js_renderer::render_with_javascript(&url).await {
                         Ok(render_result) => {
-                            log::info!("Successfully rendered with JavaScript: {} ({}ms, {} links found)", 
-                                url, render_result.render_time.as_millis(), render_result.links.len());
-                            
+                            log::info!(
+                                "Successfully rendered with JavaScript: {} ({}ms, {} links found)",
+                                url,
+                                render_result.render_time.as_millis(),
+                                render_result.links.len()
+                            );
+
                             // Use the rendered HTML
                             html = render_result.html;
-                            
+
                             // Log any detected frameworks
                             if !render_result.frameworks.is_empty() {
                                 log::debug!("Detected frameworks: {:?}", render_result.frameworks);
                             }
-                            
+
                             // Log any JavaScript errors
                             if !render_result.js_errors.is_empty() {
-                                log::debug!("JavaScript errors encountered: {:?}", render_result.js_errors);
+                                log::debug!(
+                                    "JavaScript errors encountered: {:?}",
+                                    render_result.js_errors
+                                );
                             }
                         }
                         Err(e) => {
-                            log::warn!("JavaScript rendering failed for {}: {}, using original HTML", url, e);
+                            log::warn!(
+                                "JavaScript rendering failed for {}: {}, using original HTML",
+                                url,
+                                e
+                            );
                             // Continue with original HTML
                         }
                     }
                 }
-                
+
                 let content_type = super::content_types::ContentType::from_mime(content_type_str);
-                
+
                 // Process content based on type - use raw bytes if available, otherwise HTML
                 let content_bytes = if let Some(bytes) = &raw_bytes {
                     bytes.as_slice()
                 } else {
                     html.as_bytes()
                 };
-                
+
                 let processed_content = match super::content_types::ContentProcessor::process(
                     content_bytes,
                     &content_type,
-                    &url
-                ).await {
+                    &url,
+                )
+                .await
+                {
                     Ok(content) => content,
                     Err(e) => {
                         log::warn!("Failed to process content for {}: {}", url, e);
@@ -695,23 +728,29 @@ async fn crawl_url_inner(
                         }
                     }
                 };
-                
+
                 // Save the processed content to CrawledContent
                 // For images and binary content, we might not have text but still want to save metadata
-                let should_save = processed_content.text.is_some() || 
-                                 matches!(content_type, super::content_types::ContentType::Image(_) | 
-                                                       super::content_types::ContentType::Pdf);
-                
+                let should_save = processed_content.text.is_some()
+                    || matches!(
+                        content_type,
+                        super::content_types::ContentType::Image(_)
+                            | super::content_types::ContentType::Pdf
+                    );
+
                 if should_save {
                     // Use extracted text or metadata for searchable content
                     let searchable_text = if let Some(text) = &processed_content.text {
                         text.clone()
                     } else if matches!(content_type, super::content_types::ContentType::Image(_)) {
-                        format!("Image: {} Size: {} bytes", url, processed_content.size_bytes)
+                        format!(
+                            "Image: {} Size: {} bytes",
+                            url, processed_content.size_bytes
+                        )
                     } else {
                         String::new()
                     };
-                    
+
                     // Store original content - for binary, store the raw bytes
                     let original_content = if raw_bytes.is_some() {
                         // For binary content, we could store a reference or skip storing
@@ -719,28 +758,35 @@ async fn crawl_url_inner(
                     } else {
                         Some(html.as_str())
                     };
-                    
+
                     let content_storage = super::CrawledContent::new(
                         url.clone(),
                         &searchable_text,
                         original_content,
-                        status
+                        status,
                     );
-                    
+
                     // Extract title and description from HTML (if HTML)
                     let mut content_with_metadata = content_storage;
                     if !html.is_empty() {
                         content_with_metadata.title = super::CrawledContent::extract_title(&html);
-                        content_with_metadata.description = super::CrawledContent::extract_description(&html);
-                        content_with_metadata.language = super::CrawledContent::detect_language(&html);
+                        content_with_metadata.description =
+                            super::CrawledContent::extract_description(&html);
+                        content_with_metadata.language =
+                            super::CrawledContent::detect_language(&html);
                     } else {
                         // For non-HTML content, use metadata from processed content
-                        content_with_metadata.title = processed_content.metadata.get("title")
+                        content_with_metadata.title = processed_content
+                            .metadata
+                            .get("title")
                             .map(|s| s.to_string());
-                        content_with_metadata.description = Some(format!("{:?} - {} bytes", content_type, processed_content.size_bytes));
+                        content_with_metadata.description = Some(format!(
+                            "{:?} - {} bytes",
+                            content_type, processed_content.size_bytes
+                        ));
                     }
                     content_with_metadata.content_type = mime_from_header.clone();
-                    
+
                     // Convert headers to JSON
                     let headers_json = serde_json::json!({
                         "headers": headers.iter()
@@ -748,14 +794,17 @@ async fn crawl_url_inner(
                             .collect::<Vec<_>>()
                     });
                     content_with_metadata.headers = headers_json;
-                    
+
                     // Save content asynchronously (don't block on it)
                     match content_with_metadata.save().await {
                         Ok(was_new) => {
                             if was_new {
                                 log::debug!("Saved new content for URL: {}", url);
                             } else {
-                                log::debug!("Content already exists (deduplicated) for URL: {}", url);
+                                log::debug!(
+                                    "Content already exists (deduplicated) for URL: {}",
+                                    url
+                                );
                             }
                         }
                         Err(e) => {
@@ -763,12 +812,12 @@ async fn crawl_url_inner(
                         }
                     }
                 }
-                
+
                 // Pass headers and html into the closure
                 // Instead of spawn_blocking, do parsing directly (async context)
                 let mut tokens = Vec::new();
                 let mut links = Vec::new();
-                
+
                 // Add links from processed content (for PDFs, XML, JSON, etc.)
                 if !processed_content.links.is_empty() {
                     links.extend(processed_content.links.clone());
@@ -794,7 +843,9 @@ async fn crawl_url_inner(
                     || doc_exts.iter().any(|ext| url.ends_with(ext));
 
                 // Extract links for HTML documents, or if we have links from processed content
-                if (is_document && mime_tokens.iter().any(|m| m.starts_with("text/html"))) || !processed_content.links.is_empty() {
+                if (is_document && mime_tokens.iter().any(|m| m.starts_with("text/html")))
+                    || !processed_content.links.is_empty()
+                {
                     let document = scraper::Html::parse_document(&html);
 
                     let contains_replacement_char = html.contains('�')
@@ -872,15 +923,21 @@ async fn crawl_url_inner(
                     response_time,
                     status,
                     mime_tokens.first().cloned(),
-                ).await;
+                )
+                .await;
                 super::circuit_breaker::record_domain_success(&domain).await;
 
                 all_pages.push(page.clone());
             } else {
                 // Record failed crawl (non-200 status)
-                super::metrics::record_crawl_failure(&domain, &url, &format!("HTTP status: {}", status)).await;
+                super::metrics::record_crawl_failure(
+                    &domain,
+                    &url,
+                    &format!("HTTP status: {}", status),
+                )
+                .await;
                 super::circuit_breaker::record_domain_failure(&domain).await;
-                
+
                 tokio::spawn({
                     let url = url.clone();
                     async move {
@@ -891,7 +948,7 @@ async fn crawl_url_inner(
         }
         Err(e) => {
             log::warn!("Error fetching URL {}: {}", url, e);
-            
+
             // Record failed crawl metrics
             super::metrics::record_crawl_failure(&domain, &url, &e.to_string()).await;
             super::circuit_breaker::record_domain_failure(&domain).await;
@@ -907,19 +964,25 @@ async fn crawl_url_inner(
 
             let err_str = e.to_string().to_ascii_lowercase();
             if err_str.contains("timed out") || err_str.contains("timeout") {
-                let mut count = TIMEOUT_COUNT.lock().expect("Failed to acquire timeout count lock");
-                *count += 1;
-                if (*count % 10) == 0 {
-                    // Set global sleep for all threads for a random duration between 10 and 120 seconds
-                    let mut rng = rand::thread_rng();
-                    let sleep_secs = rng.gen_range(10..=120);
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .expect("Time went backwards")
-                        .as_secs();
-                    let until = now + sleep_secs;
-                    SLEEP_UNTIL.store(until, Ordering::SeqCst);
-                    log::warn!("Timeout detected {} times, sleeping ALL threads for {} seconds to avoid ban", *count, sleep_secs);
+                match TIMEOUT_COUNT.lock() {
+                    Ok(mut count) => {
+                        *count += 1;
+                        if (*count % 10) == 0 {
+                            // Set global sleep for all threads for a random duration between 10 and 120 seconds
+                            let mut rng = rand::thread_rng();
+                            let sleep_secs = rng.gen_range(10..=120);
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|duration| duration.as_secs())
+                                .unwrap_or(0);
+                            let until = now + sleep_secs;
+                            SLEEP_UNTIL.store(until, Ordering::SeqCst);
+                            log::warn!("Timeout detected {} times, sleeping ALL threads for {} seconds to avoid ban", *count, sleep_secs);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to acquire timeout count lock: {}", e);
+                    }
                 }
             }
         }
@@ -943,9 +1006,7 @@ fn crawl_url_boxed<'a>(
 ) -> std::pin::Pin<
     Box<dyn std::future::Future<Output = crate::memory::Result<Vec<CrawledPage>>> + Send + 'a>,
 > {
-    Box::pin(async move {
-        crawl_url_inner(job_oid, url, depth, client).await
-    })
+    Box::pin(async move { crawl_url_inner(job_oid, url, depth, client).await })
 }
 
 /// Public entry point for crawling a URL (non-recursive).
@@ -966,20 +1027,20 @@ pub async fn crawl_url(
     // Add a timeout to prevent hanging
     match tokio::time::timeout(
         Duration::from_secs(30),
-        crawl_url_boxed(job_oid, url.clone(), 0, client)
-    ).await {
+        crawl_url_boxed(job_oid, url.clone(), 0, client),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(_) => {
             log::error!("Timeout crawling URL after 30s: {}", url);
-            Err(crate::memory::Error::Other(
-                format!("Timeout crawling URL: {}", url)
-            ).into())
+            Err(crate::memory::Error::Other(format!("Timeout crawling URL: {}", url)).into())
         }
     }
 }
 
 /// Start the crawler service synchronously
-/// 
+///
 /// This function blocks the current thread and starts the crawler service.
 /// For async contexts, use `start_service_async` instead.
 pub fn start_service() {
@@ -992,11 +1053,11 @@ pub fn start_service() {
 /// Wrapper for run_crawler_service to simplify spawning
 async fn run_crawler_wrapper() {
     log::info!("Crawler wrapper started - entry point");
-    
+
     // Add a small delay to ensure logging works
     tokio::time::sleep(Duration::from_millis(10)).await;
     log::info!("Crawler wrapper - after initial sleep");
-    
+
     match run_crawler_service().await {
         Ok(_) => {
             log::info!("Crawler service completed normally");
@@ -1006,7 +1067,7 @@ async fn run_crawler_wrapper() {
             CRAWLER_RUNNING.store(false, Ordering::SeqCst);
         }
     }
-    
+
     log::info!("Crawler wrapper finished");
 }
 
@@ -1026,32 +1087,34 @@ pub async fn start_service_async() {
         log::info!("Crawler service already running");
         return;
     }
-    
+
     log::info!("Crawler service starting...");
     CRAWLER_RUNNING.store(true, Ordering::SeqCst);
-    
+
     // Try running directly first to bypass spawn issues
     log::info!("Running crawler directly without spawn");
-    
+
     // Use tokio::spawn but immediately await it
     let result = tokio::spawn(async {
         log::info!("Inside spawn block - starting");
-        
+
         // Try a very simple test first
         let test_url = "http://127.0.0.1:8000";
         log::info!("Testing basic connectivity to {}", test_url);
-        
+
         // Use blocking thread for network operations to bypass async issues
         let blocking_result = tokio::task::spawn_blocking(move || {
             log::info!("In blocking thread - testing connection");
-            
+
             // Try raw TCP connection
             match std::net::TcpStream::connect_timeout(
-                &"127.0.0.1:8000".parse::<std::net::SocketAddr>().unwrap_or_else(|_| {
-                    log::error!("Failed to parse socket address");
-                    "127.0.0.1:8000".parse().unwrap()
-                }),
-                std::time::Duration::from_secs(5)
+                &"127.0.0.1:8000"
+                    .parse::<std::net::SocketAddr>()
+                    .unwrap_or_else(|_| {
+                        log::error!("Failed to parse socket address");
+                        "127.0.0.1:8000".parse().unwrap()
+                    }),
+                std::time::Duration::from_secs(5),
             ) {
                 Ok(stream) => {
                     log::info!("✓ Blocking TCP connection successful to 127.0.0.1:8000");
@@ -1063,8 +1126,9 @@ pub async fn start_service_async() {
                     false
                 }
             }
-        }).await;
-        
+        })
+        .await;
+
         match blocking_result {
             Ok(success) => {
                 if success {
@@ -1082,15 +1146,16 @@ pub async fn start_service_async() {
                 log::error!("Blocking task join error: {}", e);
             }
         }
-        
+
         log::info!("Spawn block completed");
-    }).await;
-    
+    })
+    .await;
+
     match result {
         Ok(_) => log::info!("Spawn completed successfully"),
         Err(e) => log::error!("Spawn join error: {}", e),
     }
-    
+
     // Keep the service marked as running
     log::info!("Crawler service spawn sequence completed");
 }
@@ -1103,7 +1168,7 @@ pub async fn start_service_async() {
 pub fn stop_service() {
     info!("Crawler service stopping...");
     CRAWLER_RUNNING.store(false, Ordering::SeqCst);
-    
+
     // Shutdown JavaScript renderer if running
     let rt = tokio::runtime::Runtime::new();
     if let Ok(runtime) = rt {
@@ -1116,7 +1181,7 @@ pub fn stop_service() {
             }
         });
     }
-    
+
     info!("Crawler service stopped.");
 }
 
@@ -1161,7 +1226,7 @@ pub fn service_status() -> &'static str {
 /// This function is async and should be awaited.
 pub async fn run_crawler_service() -> crate::memory::Result<()> {
     log::info!("run_crawler_service: Starting crawler service loop");
-    
+
     // Load configuration
     log::info!("run_crawler_service: Loading crawler configuration");
     match super::config::CrawlerConfig::load() {
@@ -1172,24 +1237,35 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             }
         }
         Err(e) => {
-            log::warn!("run_crawler_service: Failed to load configuration: {}, using defaults", e);
+            log::warn!(
+                "run_crawler_service: Failed to load configuration: {}, using defaults",
+                e
+            );
         }
     }
-    
+
     // Initialize database pool for the crawler
     log::info!("run_crawler_service: Initializing database connection pool");
     match super::initialize_db_pool().await {
         Ok(_) => log::info!("run_crawler_service: Database pool initialized successfully"),
         Err(e) => {
-            log::error!("run_crawler_service: Failed to initialize database pool: {}", e);
+            log::error!(
+                "run_crawler_service: Failed to initialize database pool: {}",
+                e
+            );
             // Continue anyway - some operations may work without database
-            log::warn!("run_crawler_service: Continuing without database - some features will be limited");
+            log::warn!(
+                "run_crawler_service: Continuing without database - some features will be limited"
+            );
         }
     }
-    
+
     // Process unshared content for telemetry
     log::info!("run_crawler_service: Processing unshared content for telemetry");
-    match crate::services::telemetry::get_telemetry_service().process_unshared_content().await {
+    match crate::services::telemetry::get_telemetry_service()
+        .process_unshared_content()
+        .await
+    {
         Ok(count) if count > 0 => {
             log::info!("run_crawler_service: Sent {} items to telemetry", count);
         }
@@ -1200,7 +1276,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             log::warn!("run_crawler_service: Failed to process telemetry: {}", e);
         }
     }
-    
+
     log::info!("run_crawler_service: Creating HTTP client");
     let client = match std::panic::catch_unwind(|| Arc::new(REQWEST_CLIENT.clone())) {
         Ok(c) => c,
@@ -1210,7 +1286,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         }
     };
     log::info!("run_crawler_service: HTTP client created");
-    
+
     // Initialize JavaScript renderer for SPA support (optional)
     log::info!("run_crawler_service: Initializing JavaScript renderer");
     let js_config = super::js_renderer::JsRendererConfig {
@@ -1227,15 +1303,18 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         ],
         ..Default::default()
     };
-    
+
     match super::js_renderer::initialize_js_renderer(js_config).await {
         Ok(_) => log::info!("run_crawler_service: JavaScript renderer initialized successfully"),
         Err(e) => {
-            log::warn!("run_crawler_service: Failed to initialize JavaScript renderer: {}", e);
+            log::warn!(
+                "run_crawler_service: Failed to initialize JavaScript renderer: {}",
+                e
+            );
             log::warn!("run_crawler_service: Continuing without JavaScript rendering support");
         }
     }
-    
+
     let all_crawled_pages = Arc::new(tokio::sync::Mutex::new(Vec::new()));
     // Set up logging
     // log::set_max_level(LevelFilter::Info);
@@ -1247,23 +1326,24 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
 
     // DNS resolver setup - use system default for now
     log::info!("run_crawler_service: Setting up DNS resolver");
-    
-    let resolver = if false && (std::env::var("ATLAS_DNS_SERVER").is_ok() || std::env::var("CAPROVER").is_ok()) {
+
+    let resolver = if false
+        && (std::env::var("ATLAS_DNS_SERVER").is_ok() || std::env::var("CAPROVER").is_ok())
+    {
         // Use Atlas DNS server
-        let atlas_addr = std::env::var("ATLAS_DNS_SERVER")
-            .unwrap_or_else(|_| {
-                if std::env::var("CAPROVER").is_ok() {
-                    // For CapRover, we need to resolve the service name first or use IP directly
-                    "172.16.0.15:53".to_string()  // Use localhost for now in CapRover
-                } else {
-                    "172.16.0.15:53".to_string()  // Local Atlas
-                }
-            });
-        
+        let atlas_addr = std::env::var("ATLAS_DNS_SERVER").unwrap_or_else(|_| {
+            if std::env::var("CAPROVER").is_ok() {
+                // For CapRover, we need to resolve the service name first or use IP directly
+                "172.16.0.15:53".to_string() // Use localhost for now in CapRover
+            } else {
+                "172.16.0.15:53".to_string() // Local Atlas
+            }
+        });
+
         log::info!("Using Atlas DNS server at: {}", atlas_addr);
-        
+
         let mut config = ResolverConfig::new();
-        
+
         // Parse address - handle both IP:port and hostname:port formats
         let socket_addr = if let Ok(addr) = atlas_addr.parse::<std::net::SocketAddr>() {
             Some(addr)
@@ -1283,7 +1363,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         } else {
             None
         };
-        
+
         if let Some(socket_addr) = socket_addr {
             config.add_name_server(trust_dns_resolver::config::NameServerConfig {
                 socket_addr,
@@ -1297,7 +1377,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             log::warn!("Failed to parse Atlas DNS address, using default resolver");
             config = ResolverConfig::default();
         }
-        
+
         // Add fallback DNS servers
         config.add_name_server(trust_dns_resolver::config::NameServerConfig {
             socket_addr: "8.8.8.8:53".parse().unwrap(),
@@ -1307,7 +1387,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             bind_addr: None,
             tls_config: None,
         });
-        
+
         TokioAsyncResolver::tokio(config, ResolverOpts::default())
     } else {
         log::info!("Using default system DNS resolver");
@@ -1321,7 +1401,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
 
     // Track when we last saved DNS cache
     let mut last_dns_save = std::time::Instant::now();
-    
+
     loop {
         log::info!("run_crawler_service: Main loop iteration starting");
         if !CRAWLER_RUNNING.load(Ordering::SeqCst) {
@@ -1343,40 +1423,41 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
         log::info!("Checking for pending crawl jobs...");
         let mut jobs = match tokio::time::timeout(
             Duration::from_secs(5),
-            CrawlJob::select_async(Some(100), None, None, None)
-        ).await {
+            CrawlJob::select_async(Some(100), None, None, None),
+        )
+        .await
+        {
             Ok(Ok(jobs)) => {
                 log::info!("Found {} total crawl jobs", jobs.len());
-                jobs
-                    .into_iter()
+                jobs.into_iter()
                     .filter(|j| j.status == "pending")
                     .collect::<Vec<_>>()
-            },
+            }
             Ok(Err(e)) => {
                 log::error!("Failed to query crawl jobs from database: {}", e);
                 vec![]
-            },
+            }
             Err(_) => {
                 log::warn!("Database query timed out after 5 seconds, proceeding without jobs");
                 vec![]
-            },
+            }
         };
 
         // If no jobs found, generate random domains and create jobs for valid ones
         if jobs.is_empty() {
             log::info!("No pending jobs found, generating random domains to crawl");
-            
+
             // Generate 10 random domains (smaller number for job creation)
             let tlds = COMMON_TLDS.clone();
             let words = COMMON_WORDS.clone();
             let prefixes = COMMON_PREFIXES.clone();
             let mut rng = SmallRng::from_entropy();
-            
+
             let mut candidate_domains = Vec::new();
             for _ in 0..10 {
                 let word = &words[rng.gen_range(0..words.len())];
                 let tld = &tlds[rng.gen_range(0..tlds.len())];
-                
+
                 // 70% simple domain, 30% with prefix
                 if rng.gen_range(0..10) < 7 {
                     candidate_domains.push(format!("{}.{}", word, tld));
@@ -1385,13 +1466,16 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                     candidate_domains.push(format!("{}.{}.{}", prefix, word, tld));
                 }
             }
-            
-            log::info!("Testing connectivity for {} random domains", candidate_domains.len());
-            
+
+            log::info!(
+                "Testing connectivity for {} random domains",
+                candidate_domains.len()
+            );
+
             // Test connectivity and create jobs for responsive domains
             for domain in candidate_domains {
                 let url = format!("https://{}/", domain);
-                
+
                 // Check if recently crawled first
                 match CrawlJob::is_recently_crawled(&url).await {
                     Ok(true) => {
@@ -1402,30 +1486,36 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                         log::debug!("Domain not recently crawled: {}", domain);
                     }
                     Err(e) => {
-                        log::warn!("Failed to check recent crawls for {}: {}, proceeding anyway", url, e);
+                        log::warn!(
+                            "Failed to check recent crawls for {}: {}, proceeding anyway",
+                            url,
+                            e
+                        );
                     }
                 }
-                
+
                 // Quick connectivity test
                 let client = reqwest::Client::builder()
                     .timeout(Duration::from_secs(5))
                     .build()
                     .unwrap_or_default();
-                
+
                 let is_responsive = match client.head(&url).send().await {
-                    Ok(response) => response.status().is_success() || response.status().is_redirection(),
+                    Ok(response) => {
+                        response.status().is_success() || response.status().is_redirection()
+                    }
                     Err(_) => false,
                 };
-                
+
                 if is_responsive {
                     log::info!("Creating crawl job for responsive domain: {}", domain);
-                    
+
                     let oid: String = rand::thread_rng()
                         .sample_iter(&Alphanumeric)
                         .take(15)
                         .map(char::from)
                         .collect();
-                        
+
                     let mut job = CrawlJob::new();
                     job.oid = oid;
                     job.start_url = url;
@@ -1435,7 +1525,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                         .map(|d| d.as_secs() as i64)
                         .unwrap_or(0);
                     job.updated_at = job.created_at;
-                    
+
                     // Try to save the job, but continue even if it fails
                     match job.save_async().await {
                         Ok(_) => {
@@ -1443,28 +1533,38 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                             jobs.push(job);
                         }
                         Err(e) => {
-                            log::warn!("Failed to save crawl job to database: {}, using in-memory", e);
+                            log::warn!(
+                                "Failed to save crawl job to database: {}, using in-memory",
+                                e
+                            );
                             jobs.push(job);
                         }
                     }
                 } else {
                     log::debug!("Domain {} not responsive, skipping", domain);
                 }
-                
+
                 // Limit to prevent too many jobs
                 if jobs.len() >= 3 {
                     break;
                 }
             }
         }
-        
+
         jobs.shuffle(&mut rand::thread_rng());
         jobs.truncate(1);
-        
+
         // If no jobs found, add delay to prevent CPU spinning
         if jobs.is_empty() {
-            let no_jobs_delay = if std::env::var("CAPROVER").is_ok() { 5000 } else { 2000 };
-            log::info!("No pending jobs found after creation attempt, sleeping for {}ms", no_jobs_delay);
+            let no_jobs_delay = if std::env::var("CAPROVER").is_ok() {
+                5000
+            } else {
+                2000
+            };
+            log::info!(
+                "No pending jobs found after creation attempt, sleeping for {}ms",
+                no_jobs_delay
+            );
             tokio::time::sleep(Duration::from_millis(no_jobs_delay)).await;
             continue;
         }
@@ -1493,39 +1593,52 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             let max_depth = 10;
             // Initialize visited set with URLs from all CrawlJob entries in Postgres
             let mut visited_urls = HashSet::new();
-            
+
             log::info!("Loading existing crawled pages from database (paginated)...");
             let mut offset = 0;
             let page_size = 1000;
             let mut total_loaded = 0;
-            
+
             loop {
                 match tokio::time::timeout(
                     Duration::from_secs(3),
-                    CrawledPage::select_async(Some(page_size), Some(offset), None, None)
-                ).await {
+                    CrawledPage::select_async(Some(page_size), Some(offset), None, None),
+                )
+                .await
+                {
                     Ok(Ok(crawled_pages)) => {
                         if crawled_pages.is_empty() {
                             break;
                         }
-                        
+
                         total_loaded += crawled_pages.len();
                         for page in crawled_pages {
                             visited_urls.insert(page.url);
                         }
-                        
+
                         offset += page_size;
-                        log::debug!("Loaded batch of {} pages, total: {}", page_size, total_loaded);
-                        
+                        log::debug!(
+                            "Loaded batch of {} pages, total: {}",
+                            page_size,
+                            total_loaded
+                        );
+
                         // Yield control to prevent blocking
                         tokio::task::yield_now().await;
                     }
                     Ok(Err(e)) => {
-                        log::warn!("Failed to load crawled pages batch at offset {}: {}, stopping", offset, e);
+                        log::warn!(
+                            "Failed to load crawled pages batch at offset {}: {}, stopping",
+                            offset,
+                            e
+                        );
                         break;
                     }
                     Err(_) => {
-                        log::warn!("Timeout loading crawled pages batch at offset {}, stopping", offset);
+                        log::warn!(
+                            "Timeout loading crawled pages batch at offset {}, stopping",
+                            offset
+                        );
                         break;
                     }
                 }
@@ -1537,34 +1650,47 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             let mut job_offset = 0;
             let job_page_size = 500;
             let mut total_jobs_loaded = 0;
-            
+
             loop {
                 match tokio::time::timeout(
                     Duration::from_secs(3),
-                    CrawlJob::select_async(Some(job_page_size), Some(job_offset), None, None)
-                ).await {
+                    CrawlJob::select_async(Some(job_page_size), Some(job_offset), None, None),
+                )
+                .await
+                {
                     Ok(Ok(all_jobs)) => {
                         if all_jobs.is_empty() {
                             break;
                         }
-                        
+
                         total_jobs_loaded += all_jobs.len();
                         for job in all_jobs {
                             job_urls.insert(job.start_url);
                         }
-                        
+
                         job_offset += job_page_size;
-                        log::debug!("Loaded batch of {} jobs, total: {}", job_page_size, total_jobs_loaded);
-                        
+                        log::debug!(
+                            "Loaded batch of {} jobs, total: {}",
+                            job_page_size,
+                            total_jobs_loaded
+                        );
+
                         // Yield control to prevent blocking
                         tokio::task::yield_now().await;
                     }
                     Ok(Err(e)) => {
-                        log::warn!("Failed to load jobs batch at offset {}: {}, continuing", job_offset, e);
+                        log::warn!(
+                            "Failed to load jobs batch at offset {}: {}, continuing",
+                            job_offset,
+                            e
+                        );
                         break;
                     }
                     Err(_) => {
-                        log::warn!("Timeout loading jobs batch at offset {}, continuing", job_offset);
+                        log::warn!(
+                            "Timeout loading jobs batch at offset {}, continuing",
+                            job_offset
+                        );
                         break;
                     }
                 }
@@ -1579,36 +1705,40 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             )])));
 
             let concurrency = std::env::var("SAM_WORKER_THREADS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| {
-                let cores = num_cpus::get();
-                let is_caprover = std::env::var("CAPROVER").is_ok();
-                
-                if is_caprover {
-                    // Very conservative for CapRover to prevent resource exhaustion
-                    std::cmp::min(cores / 2, 8).max(2)
-                } else if cores >= 32 {
-                    cores / 2  // Reduced from 2x to 0.5x for high-core systems
-                } else if cores >= 16 {
-                    cores / 2  // Reduced from 1.5x to 0.5x for mid-range
-                } else {
-                    std::cmp::min(cores, 4)  // Cap at 4 for low-core systems
-                }
-            });
-            log::info!("Starting crawl loop with concurrency={}, max_depth={}", concurrency, max_depth);
-            
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_else(|| {
+                    let cores = num_cpus::get();
+                    let is_caprover = std::env::var("CAPROVER").is_ok();
+
+                    if is_caprover {
+                        // Very conservative for CapRover to prevent resource exhaustion
+                        std::cmp::min(cores / 2, 8).max(2)
+                    } else if cores >= 32 {
+                        cores / 2 // Reduced from 2x to 0.5x for high-core systems
+                    } else if cores >= 16 {
+                        cores / 2 // Reduced from 1.5x to 0.5x for mid-range
+                    } else {
+                        std::cmp::min(cores, 4) // Cap at 4 for low-core systems
+                    }
+                });
+            log::info!(
+                "Starting crawl loop with concurrency={}, max_depth={}",
+                concurrency,
+                max_depth
+            );
+
             let mut iteration = 0;
             loop {
                 iteration += 1;
                 log::debug!("Crawl iteration {}", iteration);
-                
+
                 // Collect all URLs at the current minimum depth
                 let (batch, current_depth) = {
                     let mut q = queue.lock().await;
                     let queue_size = q.len();
                     log::debug!("Queue has {} URLs", queue_size);
-                    
+
                     let mut batch = Vec::new();
                     let mut min_depth: Option<usize> = None;
                     // Find the minimum depth in the queue
@@ -1625,13 +1755,13 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                             break;
                         }
                     };
-                    
+
                     // Check depth limit
                     if min_depth >= max_depth {
                         log::info!("Reached max depth {}, stopping crawl", max_depth);
                         break;
                     }
-                    
+
                     // Drain all URLs at this depth
                     let mut i = 0;
                     while i < q.len() {
@@ -1658,15 +1788,19 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                 }
 
                 // Crawl all URLs at this depth concurrently with CPU throttling
-                log::info!("Starting concurrent crawl of {} URLs with concurrency {}", batch.len(), concurrency);
-                
+                log::info!(
+                    "Starting concurrent crawl of {} URLs with concurrency {}",
+                    batch.len(),
+                    concurrency
+                );
+
                 // Split batch into smaller chunks to prevent memory exhaustion
                 let chunk_size = std::cmp::min(concurrency * 2, 20);
                 let mut all_results = Vec::new();
-                
+
                 for chunk in batch.chunks(chunk_size) {
                     log::debug!("Processing chunk of {} URLs", chunk.len());
-                    
+
                     use futures::stream;
                     let chunk_results = stream::iter(chunk.iter().cloned())
                         .map(|(url, depth)| {
@@ -1676,41 +1810,60 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                             async move {
                                 log::debug!("Crawling URL: {}", url);
                                 let start = tokio::time::Instant::now();
-                                
+
                                 // Add small delay to reduce CPU pressure
-                                let delay_ms = if std::env::var("CAPROVER").is_ok() { 100 } else { 50 };
+                                let delay_ms = if std::env::var("CAPROVER").is_ok() {
+                                    100
+                                } else {
+                                    50
+                                };
                                 tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                                
+
                                 let result = crawl_url(job_oid.clone(), url.clone(), client).await;
                                 let elapsed = start.elapsed();
-                                
+
                                 match &result {
-                                    Ok(pages) => log::info!("✓ Crawled {} in {:.2}s, found {} pages", 
-                                        url, elapsed.as_secs_f32(), pages.len()),
-                                    Err(e) => log::warn!("✗ Failed to crawl {} in {:.2}s: {}", 
-                                        url, elapsed.as_secs_f32(), e),
+                                    Ok(pages) => log::info!(
+                                        "✓ Crawled {} in {:.2}s, found {} pages",
+                                        url,
+                                        elapsed.as_secs_f32(),
+                                        pages.len()
+                                    ),
+                                    Err(e) => log::warn!(
+                                        "✗ Failed to crawl {} in {:.2}s: {}",
+                                        url,
+                                        elapsed.as_secs_f32(),
+                                        e
+                                    ),
                                 }
-                                
+
                                 (url, depth, result)
                             }
                         })
                         .buffer_unordered(concurrency)
                         .collect::<Vec<_>>()
                         .await;
-                    
+
                     all_results.extend(chunk_results);
-                    
+
                     // Add inter-chunk delay for CPU throttling
                     if chunk.len() == chunk_size {
-                        let inter_chunk_delay = if std::env::var("CAPROVER").is_ok() { 500 } else { 200 };
+                        let inter_chunk_delay = if std::env::var("CAPROVER").is_ok() {
+                            500
+                        } else {
+                            200
+                        };
                         log::debug!("Inter-chunk delay: {}ms", inter_chunk_delay);
                         tokio::time::sleep(Duration::from_millis(inter_chunk_delay)).await;
                     }
                 }
-                
+
                 let results = all_results;
-                
-                log::info!("Completed crawling batch, processing {} results", results.len());
+
+                log::info!(
+                    "Completed crawling batch, processing {} results",
+                    results.len()
+                );
 
                 // Process results
                 let mut new_links = Vec::new();
@@ -1747,10 +1900,9 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                                             });
                                             {
                                                 let mut batch = JOB_BATCH.lock().await;
-                                                let cache_job =
-                                                    crate::memory::cache::WebCrawl::new(
-                                                        link.clone(),
-                                                    );
+                                                let cache_job = crate::memory::cache::WebCrawl::new(
+                                                    link.clone(),
+                                                );
 
                                                 let url_lc = link.clone();
                                                 if is_search_url(&url_lc) {
@@ -1875,7 +2027,6 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             // No jobs: generate random domains and find ones that respond
             info!("No pending crawl jobs found. Generating random domains to crawl.");
             let mut urls_to_try: Vec<String> = Vec::new();
-            
 
             // Load retry URLs from the retry file and remove the file after loading
             let retry_path = "/opt/sam/tmp/crawl_retry.dmp";
@@ -1900,17 +2051,17 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             let domain_gen_start = tokio::time::Instant::now();
 
             let tlds = COMMON_TLDS.clone();
-            let prefixes = COMMON_PREFIXES.clone(); 
+            let prefixes = COMMON_PREFIXES.clone();
             let words = COMMON_WORDS.clone();
             let mut rng = SmallRng::from_entropy();
 
             let mut domains = Vec::new();
-            
+
             // Generate 100 random domain combinations
             for _ in 0..100 {
                 let word = &words[rng.gen_range(0..words.len())];
                 let tld = &tlds[rng.gen_range(0..tlds.len())];
-                
+
                 // 70% chance of simple word.tld, 30% chance of prefix.word.tld
                 if rng.gen_range(0..10) < 7 {
                     domains.push(format!("{}.{}", word, tld));
@@ -1925,7 +2076,11 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             domains.dedup();
 
             let domain_gen_duration = domain_gen_start.elapsed();
-            log::info!("Generated {} random domains in {:?}", domains.len(), domain_gen_duration);
+            log::info!(
+                "Generated {} random domains in {:?}",
+                domains.len(),
+                domain_gen_duration
+            );
 
             let mut urls_found = Vec::new();
 
@@ -1953,16 +2108,19 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                         let lookup_start = tokio::time::Instant::now();
                         let found = lookup_domain(&resolver, &domain, client_clone).await;
                         let lookup_duration = lookup_start.elapsed();
-                        
+
                         // Update progress counter
-                        let count = processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                        let count =
+                            processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                         if count % 10 == 0 || count == total {
                             log::info!(
                                 "DNS lookup progress: {}/{} domains processed ({:.1}%)",
-                                count, total, (count as f64 / total as f64) * 100.0
+                                count,
+                                total,
+                                (count as f64 / total as f64) * 100.0
                             );
                         }
-                        
+
                         log::debug!(
                             "DNS+HTTP lookup for domain {} took {:?} (found={})",
                             domain,
@@ -2003,7 +2161,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             let mut urls: Vec<String> = urls_to_try.into_iter().collect();
 
             urls.shuffle(&mut rng);
-            
+
             // Actually crawl the URLs since database isn't working
             log::info!("Starting to crawl {} URLs directly", urls.len());
             // Still try to create jobs for tracking (even if saves fail)
@@ -2018,10 +2176,14 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                         log::debug!("URL not recently crawled: {}", url);
                     }
                     Err(e) => {
-                        log::warn!("Failed to check recent crawls for {}: {}, proceeding anyway", url, e);
+                        log::warn!(
+                            "Failed to check recent crawls for {}: {}, proceeding anyway",
+                            url,
+                            e
+                        );
                     }
                 }
-                
+
                 let job_create_start = tokio::time::Instant::now();
                 let oid: String = thread_rng()
                     .sample_iter(&Alphanumeric)
@@ -2054,7 +2216,11 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
             }
         }
         // Add longer delay for CapRover to prevent resource exhaustion
-        let main_loop_delay = if std::env::var("CAPROVER").is_ok() { 30 } else { 10 };
+        let main_loop_delay = if std::env::var("CAPROVER").is_ok() {
+            30
+        } else {
+            10
+        };
         log::debug!("Main loop delay: {}s", main_loop_delay);
         sleep(Duration::from_secs(main_loop_delay)).await;
     }
@@ -2078,7 +2244,7 @@ async fn lookup_domain(
     client: std::sync::Arc<reqwest::Client>,
 ) -> bool {
     log::debug!("lookup_domain: Starting lookup for domain: {}", domain);
-    
+
     // Check cache first
     {
         let cache = DNS_LOOKUP_CACHE.lock().await;
@@ -2088,13 +2254,17 @@ async fn lookup_domain(
         }
     }
     log::debug!("lookup_domain: Cache miss for {}, doing DNS lookup", domain);
-    
+
     // Not in cache, do DNS lookup
     let mut found = false;
     for attempt in 0..3 {
-        log::debug!("lookup_domain: DNS lookup attempt {} for {}", attempt + 1, domain);
+        log::debug!(
+            "lookup_domain: DNS lookup attempt {} for {}",
+            attempt + 1,
+            domain
+        );
         let dns_start = tokio::time::Instant::now();
-        
+
         let result = match tokio::time::timeout(
             Duration::from_secs(3), // Reduced for faster processing
             resolver.lookup_ip(domain),
@@ -2102,44 +2272,58 @@ async fn lookup_domain(
         .await
         {
             Ok(Ok(lookup)) if lookup.iter().next().is_some() => {
-                log::debug!("lookup_domain: DNS resolved {} in {:?}", domain, dns_start.elapsed());
+                log::debug!(
+                    "lookup_domain: DNS resolved {} in {:?}",
+                    domain,
+                    dns_start.elapsed()
+                );
                 // DNS exists, now check HTTP/HTTPS connectivity
                 let http_url = format!("http://{domain}/");
                 let https_url = format!("https://{domain}/");
 
                 let mut http_ok = false;
-                
+
                 // Try HTTPS first (more common now), then HTTP as fallback
                 for protocol_attempt in 0..2 {
-                    let test_url = if protocol_attempt == 0 { &https_url } else { &http_url };
-                    let protocol = if protocol_attempt == 0 { "HTTPS" } else { "HTTP" };
-                    
+                    let test_url = if protocol_attempt == 0 {
+                        &https_url
+                    } else {
+                        &http_url
+                    };
+                    let protocol = if protocol_attempt == 0 {
+                        "HTTPS"
+                    } else {
+                        "HTTP"
+                    };
+
                     // Try both HEAD and GET (some servers block HEAD)
                     for method_attempt in 0..2 {
                         let request_method = if method_attempt == 0 { "HEAD" } else { "GET" };
-                        
+
                         let request_fut = if method_attempt == 0 {
                             client.head(test_url).timeout(Duration::from_secs(8)).send()
                         } else {
                             // For GET, limit response size to avoid downloading large files
-                            client.get(test_url)
+                            client
+                                .get(test_url)
                                 .timeout(Duration::from_secs(8))
                                 .header("Range", "bytes=0-1023") // Only get first 1KB
                                 .send()
                         };
-                        
-                        let result = tokio::time::timeout(
-                            Duration::from_secs(10),
-                            request_fut
-                        ).await;
-                        
+
+                        let result =
+                            tokio::time::timeout(Duration::from_secs(10), request_fut).await;
+
                         match result {
                             Ok(Ok(response)) => {
                                 let status = response.status();
                                 if status.is_success() || status.is_redirection() {
                                     log::debug!(
                                         "lookup_domain: {} {} successful for {} (status: {})",
-                                        protocol, request_method, domain, status
+                                        protocol,
+                                        request_method,
+                                        domain,
+                                        status
                                     );
                                     http_ok = true;
                                     break;
@@ -2147,36 +2331,49 @@ async fn lookup_domain(
                                     // Method Not Allowed for HEAD, try GET
                                     log::debug!(
                                         "lookup_domain: {} HEAD returned 405 for {}, will try GET",
-                                        protocol, domain
+                                        protocol,
+                                        domain
                                     );
                                     continue;
                                 } else {
                                     log::debug!(
                                         "lookup_domain: {} {} returned status {} for {}",
-                                        protocol, request_method, status, domain
+                                        protocol,
+                                        request_method,
+                                        status,
+                                        domain
                                     );
                                 }
                             }
                             Ok(Err(e)) => {
                                 log::debug!(
                                     "lookup_domain: {} {} error for {}: {}",
-                                    protocol, request_method, domain, e
+                                    protocol,
+                                    request_method,
+                                    domain,
+                                    e
                                 );
                             }
                             Err(_) => {
                                 log::debug!(
                                     "lookup_domain: {} {} timeout for {}",
-                                    protocol, request_method, domain
+                                    protocol,
+                                    request_method,
+                                    domain
                                 );
                             }
                         }
-                        
-                        if http_ok { break; }
+
+                        if http_ok {
+                            break;
+                        }
                     }
-                    
-                    if http_ok { break; }
+
+                    if http_ok {
+                        break;
+                    }
                 }
-                
+
                 if http_ok {
                     found = true;
                     break;
@@ -2185,15 +2382,28 @@ async fn lookup_domain(
                 false
             }
             Ok(Ok(_)) => {
-                log::debug!("lookup_domain: DNS resolved but no IPs found for {} in {:?}", domain, dns_start.elapsed());
+                log::debug!(
+                    "lookup_domain: DNS resolved but no IPs found for {} in {:?}",
+                    domain,
+                    dns_start.elapsed()
+                );
                 false
             }
             Ok(Err(e)) => {
-                log::debug!("lookup_domain: DNS lookup error for {} in {:?}: {}", domain, dns_start.elapsed(), e);
+                log::debug!(
+                    "lookup_domain: DNS lookup error for {} in {:?}: {}",
+                    domain,
+                    dns_start.elapsed(),
+                    e
+                );
                 false
             }
             Err(_) => {
-                log::warn!("lookup_domain: DNS lookup timeout (3s) for {} on attempt {}", domain, attempt + 1);
+                log::warn!(
+                    "lookup_domain: DNS lookup timeout (3s) for {} on attempt {}",
+                    domain,
+                    attempt + 1
+                );
                 false
             }
         };
@@ -2208,7 +2418,11 @@ async fn lookup_domain(
         let mut cache = DNS_LOOKUP_CACHE.lock().await;
         cache.insert(domain.to_string(), found);
     }
-    log::debug!("lookup_domain: Final result for {}: found={}", domain, found);
+    log::debug!(
+        "lookup_domain: Final result for {}: found={}",
+        domain,
+        found
+    );
     found
 }
 
@@ -2370,12 +2584,17 @@ fn filter_tokens(tokens: &mut Vec<String>, url: &str) {
 /// Creates regex patterns for various date formats
 fn create_date_regex_patterns() -> Vec<regex::Regex> {
     vec![
-        regex::Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$").expect("Failed to compile date regex pattern"),
-        regex::Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$").expect("Failed to compile date regex pattern"),
-        regex::Regex::new(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$").expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$")
+            .expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$")
+            .expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$")
+            .expect("Failed to compile date regex pattern"),
         regex::Regex::new(r"^\d{8}$").expect("Failed to compile date regex pattern"),
-        regex::Regex::new(r"^\d{4}\.\d{1,2}\.\d{1,2}$").expect("Failed to compile date regex pattern"),
-        regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$").expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{4}\.\d{1,2}\.\d{1,2}$")
+            .expect("Failed to compile date regex pattern"),
+        regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$")
+            .expect("Failed to compile date regex pattern"),
         regex::Regex::new(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|([+-]\d{2}:\d{2}))?)?$")
             .expect("Failed to compile ISO date regex pattern"),
     ]
@@ -2406,8 +2625,8 @@ fn remove_domain_tokens(tokens: &mut Vec<String>, url: &str) {
 async fn apply_global_rate_limit() {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_secs();
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
     let sleep_until = SLEEP_UNTIL.load(Ordering::SeqCst);
 
     if now < sleep_until {
@@ -2437,8 +2656,8 @@ async fn apply_domain_rate_limit(url: &str) {
             let mut last_access_map = DOMAIN_LAST_ACCESS.lock().await;
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_millis() as u64;
+                .map(|duration| duration.as_millis() as u64)
+                .unwrap_or(0);
 
             if let Some(&last_access) = last_access_map.get(&domain_str) {
                 let elapsed = now_ms.saturating_sub(last_access);
@@ -2477,30 +2696,36 @@ async fn process_mime_type(
 
     if let Some(mime) = file_mime {
         // Check if this is a supported content type
-        let is_supported = mime.starts_with("text/") ||
-                          mime.starts_with("image/") ||
-                          mime.starts_with("application/json") ||
-                          mime.starts_with("application/xml") ||
-                          mime.starts_with("application/pdf") ||
-                          mime.starts_with("application/javascript") ||
-                          mime.starts_with("text/javascript") ||
-                          mime.starts_with("text/css") ||
-                          mime.starts_with("application/x-javascript") ||
-                          mime == "application/octet-stream"; // Generic binary, let content-type detection handle it
-        
+        let is_supported = mime.starts_with("text/")
+            || mime.starts_with("image/")
+            || mime.starts_with("application/json")
+            || mime.starts_with("application/xml")
+            || mime.starts_with("application/pdf")
+            || mime.starts_with("application/javascript")
+            || mime.starts_with("text/javascript")
+            || mime.starts_with("text/css")
+            || mime.starts_with("application/x-javascript")
+            || mime == "application/octet-stream"; // Generic binary, let content-type detection handle it
+
         if is_supported {
             mime_tokens.push(mime.to_string());
             log::debug!("Processing URL with MIME type: {}", mime);
         } else {
             // For other MIME types, check if they're explicitly blocked
             // Common blocked types (large media files)
-            let blocked_types = ["video/", "audio/", "application/zip", "application/x-rar", "application/x-tar"];
+            let blocked_types = [
+                "video/",
+                "audio/",
+                "application/zip",
+                "application/x-rar",
+                "application/x-tar",
+            ];
             let is_blocked = blocked_types.iter().any(|bt| mime.starts_with(bt));
-            
+
             if is_blocked {
                 log::debug!("Skipping URL with blocked MIME type: {}", mime);
                 page.tokens = vec![mime.to_string()];
-                
+
                 // Store in CrawlRejected table for analysis
                 let mut rejection = super::CrawlRejected {
                     id: 0, // Will be set by database
@@ -2515,15 +2740,17 @@ async fn process_mime_type(
                     retry_after: None,
                     rejection_count: 1,
                 };
-                
+
                 // Try to save rejection (don't fail if database is unavailable)
                 if let Err(e) = rejection.save().await {
                     log::debug!("Failed to save rejection record: {}", e);
                 }
-                
-                return Err(crate::memory::Error::Other(format!("Blocked MIME type: {}", mime)).into());
+
+                return Err(
+                    crate::memory::Error::Other(format!("Blocked MIME type: {}", mime)).into(),
+                );
             }
-            
+
             // Otherwise, allow it through and let content processor handle it
             log::debug!("Allowing URL with MIME type: {}", mime);
             mime_tokens.push(mime.to_string());

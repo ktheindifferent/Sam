@@ -3,18 +3,18 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-pub mod ollama;
-pub mod openai;
 pub mod local;
 pub mod manager;
+pub mod ollama;
+pub mod openai;
 
-pub use ollama::OllamaProvider;
-pub use openai::OpenAIProvider;
 pub use local::LocalProvider;
 pub use manager::ProviderManager;
+pub use ollama::OllamaProvider;
+pub use openai::OpenAIProvider;
 
 use super::traits::provider::{
-    LLMProvider as LLMProviderTrait, GenerateRequest, GenerateResponse, Model, ProviderInfo,
+    GenerateRequest, GenerateResponse, LLMProvider as LLMProviderTrait, Model, ProviderInfo,
     ProviderMetrics,
 };
 

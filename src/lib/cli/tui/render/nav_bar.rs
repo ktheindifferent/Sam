@@ -1,16 +1,12 @@
+use super::super::state::TuiMode;
 use ratatui::{
     style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
-use super::super::state::TuiMode;
 
 /// Render the navigation bar at the top of the TUI
-pub fn render_nav_bar(
-    f: &mut ratatui::Frame,
-    area: ratatui::layout::Rect,
-    current_mode: &TuiMode,
-) {
+pub fn render_nav_bar(f: &mut ratatui::Frame, area: ratatui::layout::Rect, current_mode: &TuiMode) {
     let nav_items = vec![
         ("F1", "Command", *current_mode == TuiMode::Command),
         ("F2", "Services", *current_mode == TuiMode::Services),
@@ -42,7 +38,7 @@ pub fn render_nav_bar(
             .collect::<Vec<_>>(),
     );
 
-    let nav_widget = Paragraph::new(nav_line)
-        .block(Block::default().borders(Borders::ALL).title("Navigation"));
+    let nav_widget =
+        Paragraph::new(nav_line).block(Block::default().borders(Borders::ALL).title("Navigation"));
     f.render_widget(nav_widget, area);
 }

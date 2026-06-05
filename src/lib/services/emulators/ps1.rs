@@ -1,12 +1,14 @@
-use tokio::process::Command;
-use tokio::fs;
 use std::path::Path;
+use tokio::fs;
+use tokio::process::Command;
 
 pub async fn install() -> Result<(), anyhow::Error> {
     let repo_path = "scripts/px1-sam";
     // Step 1: Clone or update the repository
     // Check if the directory exists or is empty
-    if !Path::new(repo_path).exists() || fs::read_dir(repo_path).await?.next_entry().await?.is_none() {
+    if !Path::new(repo_path).exists()
+        || fs::read_dir(repo_path).await?.next_entry().await?.is_none()
+    {
         println!("Cloning px1-sam repository...");
         let status = Command::new("git")
             .arg("clone")

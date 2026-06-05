@@ -1,17 +1,17 @@
 use dropbox_sdk::default_client::NoauthDefaultClient;
 use dropbox_sdk::default_client::UserAuthDefaultClient;
 use dropbox_sdk::{files, UserAuthClient};
+use once_cell::sync::Lazy;
 use rouille::post_input;
 use rouille::Request;
 use rouille::Response;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::sync::Mutex;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-use sha2::{Sha256, Digest};
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
-use std::collections::HashMap;
 
 use std::io::prelude::*;
 
@@ -23,7 +23,9 @@ pub fn get_db_obj() -> Result<crate::memory::config::Service, crate::services::E
     pg_query.query_columns.push("identifier =".to_string());
     let service = crate::memory::config::Service::select(None, None, None, Some(pg_query))
         .map_err(|e| crate::services::Error::Other(e.to_string()))?;
-    Ok(service[0].clone())
+    service.first().cloned().ok_or_else(|| {
+        crate::services::Error::Other("Dropbox service is not configured".to_string())
+    })
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -69,7 +71,10 @@ pub fn update_key(key: String, refresh: Option<String>) -> Result<(), crate::ser
             } else {
                 let existing = get_db_obj().map_err(|e| {
                     log::error!("Failed to get dropbox database object: {}", e);
-                    crate::services::Error::Other(format!("Failed to get dropbox database object: {}", e))
+                    crate::services::Error::Other(format!(
+                        "Failed to get dropbox database object: {}",
+                        e
+                    ))
                 })?;
                 service.key = existing.key;
             }
@@ -77,7 +82,10 @@ pub fn update_key(key: String, refresh: Option<String>) -> Result<(), crate::ser
         None => {
             let existing = get_db_obj().map_err(|e| {
                 log::error!("Failed to get dropbox database object: {}", e);
-                crate::services::Error::Other(format!("Failed to get dropbox database object: {}", e))
+                crate::services::Error::Other(format!(
+                    "Failed to get dropbox database object: {}",
+                    e
+                ))
             })?;
             service.key = existing.key;
         }
@@ -86,7 +94,10 @@ pub fn update_key(key: String, refresh: Option<String>) -> Result<(), crate::ser
     service.endpoint = String::new();
     service.save().map_err(|e| {
         log::error!("Failed to save dropbox service configuration: {}", e);
-        crate::services::Error::Other(format!("Failed to save dropbox service configuration: {}", e))
+        crate::services::Error::Other(format!(
+            "Failed to save dropbox service configuration: {}",
+            e
+        ))
     })?;
     Ok(())
 }
@@ -206,9 +217,17 @@ pub fn create_folder(path: &str) -> Result<(), crate::services::Error> {
     dropbox_sdk::files::create_folder_v2(
         &client,
         &dropbox_sdk::files::CreateFolderArg::new(path.to_string()),
-    ).map_err(|e| {
+    )
+    .map_err(|e| {
         log::error!("Failed to create dropbox folder '{}': {}", path, e);
         crate::services::Error::Other(format!("Failed to create dropbox folder '{}': {}", path, e))
+    })?
+    .map_err(|e| {
+        log::error!("Dropbox rejected create folder '{}': {:?}", path, e);
+        crate::services::Error::Other(format!(
+            "Dropbox rejected create folder '{}': {:?}",
+            path, e
+        ))
     })?;
     Ok(())
 }
@@ -223,9 +242,8 @@ struct CachedFile {
 }
 
 /// In-memory cache for Dropbox files with TTL
-static FILE_CACHE: Lazy<Mutex<HashMap<String, CachedFile>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
-});
+static FILE_CACHE: Lazy<Mutex<HashMap<String, CachedFile>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Cache configuration
 const CACHE_TTL_SECONDS: u64 = 3600; // 1 hour TTL
@@ -251,9 +269,7 @@ fn current_timestamp() -> u64 {
 fn clean_expired_cache() {
     let now = current_timestamp();
     if let Ok(mut cache) = FILE_CACHE.lock() {
-        cache.retain(|_, entry| {
-            now - entry.cached_at < CACHE_TTL_SECONDS
-        });
+        cache.retain(|_, entry| now - entry.cached_at < CACHE_TTL_SECONDS);
     }
 }
 
@@ -269,10 +285,10 @@ fn get_cache_size() -> usize {
 /// Evict least recently cached files if cache is too large
 fn evict_if_needed(new_size: usize) {
     let max_size_bytes = MAX_CACHE_SIZE_MB * 1024 * 1024;
-    
+
     if let Ok(mut cache) = FILE_CACHE.lock() {
         let current_size = cache.values().map(|e| e.size).sum::<usize>();
-        
+
         if current_size + new_size > max_size_bytes {
             // Sort by cached_at timestamp and remove oldest entries
             let mut entries: Vec<(String, u64, usize)> = cache
@@ -280,7 +296,7 @@ fn evict_if_needed(new_size: usize) {
                 .map(|(k, v)| (k.clone(), v.cached_at, v.size))
                 .collect();
             entries.sort_by_key(|e| e.1);
-            
+
             let mut removed_size = 0;
             for (key, _, size) in entries {
                 if current_size - removed_size + new_size <= max_size_bytes {
@@ -298,7 +314,7 @@ fn evict_if_needed(new_size: usize) {
 pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
     // Clean expired entries periodically
     clean_expired_cache();
-    
+
     // Check cache first
     if let Ok(cache) = FILE_CACHE.lock() {
         if let Some(entry) = cache.get(dropbox_path) {
@@ -309,8 +325,11 @@ pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
             }
         }
     }
-    
-    log::info!("Cache miss for file: {}, downloading from Dropbox", dropbox_path);
+
+    log::info!(
+        "Cache miss for file: {}, downloading from Dropbox",
+        dropbox_path
+    );
     let obj = get_db_obj().map_err(|e| {
         log::error!("Failed to get dropbox database object: {}", e);
         format!("Failed to get dropbox database object: {}", e)
@@ -332,12 +351,12 @@ pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
         log::error!("Failed to download file from dropbox: {}", e);
         format!("Failed to download file from dropbox: {}", e)
     })?;
-    
+
     let file_data = file_result.map_err(|e| {
         log::error!("Dropbox API error: {}", e);
         format!("Dropbox API error: {}", e)
     })?;
-    
+
     let mut body = file_data.body.ok_or_else(|| {
         log::error!("No body in dropbox download response");
         "No body in dropbox download response".to_string()
@@ -354,22 +373,26 @@ pub fn download_file(dropbox_path: &str) -> Result<Vec<u8>, String> {
     if file_size <= MAX_FILE_SIZE_MB * 1024 * 1024 {
         // Evict old entries if needed
         evict_if_needed(file_size);
-        
+
         let cached_file = CachedFile {
             data: data.clone(),
             hash: calculate_hash(&data),
             cached_at: current_timestamp(),
             size: file_size,
         };
-        
+
         if let Ok(mut cache) = FILE_CACHE.lock() {
             cache.insert(dropbox_path.to_string(), cached_file);
             log::info!("Cached file: {} ({}KB)", dropbox_path, file_size / 1024);
         }
     } else {
-        log::info!("File too large to cache: {} ({}MB)", dropbox_path, file_size / 1024 / 1024);
+        log::info!(
+            "File too large to cache: {} ({}MB)",
+            dropbox_path,
+            file_size / 1024 / 1024
+        );
     }
-    
+
     Ok(data)
 
     // log::info!("dropbox_file: {:?}", );
@@ -389,9 +412,14 @@ pub fn delete(path: &str) -> Result<(), crate::services::Error> {
     dropbox_sdk::files::delete_v2(
         &client,
         &dropbox_sdk::files::DeleteArg::new(path.to_string()),
-    ).map_err(|e| {
+    )
+    .map_err(|e| {
         log::error!("Failed to delete dropbox path '{}': {}", path, e);
         crate::services::Error::Other(format!("Failed to delete dropbox path '{}': {}", path, e))
+    })?
+    .map_err(|e| {
+        log::error!("Dropbox rejected delete '{}': {:?}", path, e);
+        crate::services::Error::Other(format!("Dropbox rejected delete '{}': {:?}", path, e))
     })?;
     Ok(())
 }
@@ -471,7 +499,10 @@ pub fn empty_directories() -> Vec<String> {
             return Vec::new();
         }
     };
-    let auth = match dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret) {
+    let auth = match dropbox_sdk::oauth2::Authorization::load(
+        "ogyeqdms81svfke".to_string(),
+        &obj.secret,
+    ) {
         Some(auth) => auth,
         None => {
             log::error!("Failed to load dropbox authorization");
@@ -531,7 +562,10 @@ pub fn is_path_empty(path: &str) -> bool {
             return false; // Conservative approach - assume not empty if we can't check
         }
     };
-    let auth = match dropbox_sdk::oauth2::Authorization::load("ogyeqdms81svfke".to_string(), &obj.secret) {
+    let auth = match dropbox_sdk::oauth2::Authorization::load(
+        "ogyeqdms81svfke".to_string(),
+        &obj.secret,
+    ) {
         Some(auth) => auth,
         None => {
             log::error!("Failed to load dropbox authorization");

@@ -10,12 +10,12 @@
 //! - Automatic recovery detection
 //! - Configurable thresholds and timeouts
 
+use log::{debug, info, warn};
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
-use log::{debug, warn, info};
-use once_cell::sync::Lazy;
 
 /// Circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -87,7 +87,7 @@ impl Default for CircuitBreakerConfig {
         Self {
             failure_threshold: 5,
             initial_backoff: Duration::from_secs(60),
-            max_backoff: Duration::from_secs(3600), // 1 hour
+            max_backoff: Duration::from_secs(3600),  // 1 hour
             open_duration: Duration::from_secs(300), // 5 minutes
             half_open_success_threshold: 3,
         }
@@ -141,13 +141,15 @@ impl CircuitBreaker {
                         }
                     }
                 }
-                debug!("Circuit breaker blocking request to {} (cooldown: {:?} remaining)", 
-                       domain, 
-                       stats.backoff_duration.saturating_sub(
-                           SystemTime::now()
-                               .duration_since(stats.circuit_opened_at.unwrap_or(SystemTime::now()))
-                               .unwrap_or_default()
-                       ));
+                debug!(
+                    "Circuit breaker blocking request to {} (cooldown: {:?} remaining)",
+                    domain,
+                    stats.backoff_duration.saturating_sub(
+                        SystemTime::now()
+                            .duration_since(stats.circuit_opened_at.unwrap_or(SystemTime::now()))
+                            .unwrap_or_default()
+                    )
+                );
                 false
             }
             CircuitState::HalfOpen => {
@@ -172,8 +174,10 @@ impl CircuitBreaker {
                 stats.half_open_successes += 1;
                 // Check if we should close the circuit based on half-open successes
                 if stats.half_open_successes >= self.config.half_open_success_threshold {
-                    info!("Circuit breaker for {} closing after {} successful recovery attempts", 
-                          domain, stats.half_open_successes);
+                    info!(
+                        "Circuit breaker for {} closing after {} successful recovery attempts",
+                        domain, stats.half_open_successes
+                    );
                     stats.state = CircuitState::Closed;
                     stats.backoff_duration = self.config.initial_backoff;
                     stats.circuit_opened_at = None;
@@ -202,32 +206,32 @@ impl CircuitBreaker {
         match stats.state {
             CircuitState::Closed => {
                 if stats.consecutive_failures >= self.config.failure_threshold {
-                    warn!("Circuit breaker opening for {} after {} consecutive failures", 
-                          domain, stats.consecutive_failures);
+                    warn!(
+                        "Circuit breaker opening for {} after {} consecutive failures",
+                        domain, stats.consecutive_failures
+                    );
                     stats.state = CircuitState::Open;
                     stats.circuit_opened_at = Some(SystemTime::now());
                 }
             }
             CircuitState::HalfOpen => {
                 // Failure in half-open state, reopen circuit with increased backoff
-                warn!("Circuit breaker reopening for {} after half-open failure (had {} successes)", 
-                      domain, stats.half_open_successes);
+                warn!(
+                    "Circuit breaker reopening for {} after half-open failure (had {} successes)",
+                    domain, stats.half_open_successes
+                );
                 stats.state = CircuitState::Open;
                 stats.circuit_opened_at = Some(SystemTime::now());
                 stats.half_open_successes = 0; // Reset the counter
-                
+
                 // Exponential backoff
-                stats.backoff_duration = std::cmp::min(
-                    stats.backoff_duration * 2,
-                    self.config.max_backoff
-                );
+                stats.backoff_duration =
+                    std::cmp::min(stats.backoff_duration * 2, self.config.max_backoff);
             }
             CircuitState::Open => {
                 // Already open, update backoff if needed
-                stats.backoff_duration = std::cmp::min(
-                    stats.backoff_duration * 2,
-                    self.config.max_backoff
-                );
+                stats.backoff_duration =
+                    std::cmp::min(stats.backoff_duration * 2, self.config.max_backoff);
             }
         }
     }
@@ -235,7 +239,8 @@ impl CircuitBreaker {
     /// Get the current state of a domain
     pub async fn get_state(&self, domain: &str) -> CircuitState {
         let stats_map = self.domain_stats.read().await;
-        stats_map.get(domain)
+        stats_map
+            .get(domain)
             .map(|s| s.state)
             .unwrap_or(CircuitState::Closed)
     }
@@ -298,18 +303,21 @@ impl CircuitBreaker {
             }
         })
     }
-    
+
     /// Check and update circuit states (useful for periodic maintenance)
     pub async fn check_and_update_states(&self) {
         let mut stats_map = self.domain_stats.write().await;
         let now = SystemTime::now();
-        
+
         for (domain, stats) in stats_map.iter_mut() {
             if stats.state == CircuitState::Open {
                 if let Some(opened_at) = stats.circuit_opened_at {
                     if let Ok(elapsed) = now.duration_since(opened_at) {
                         if elapsed >= stats.backoff_duration {
-                            info!("Circuit breaker for {} ready for half-open transition", domain);
+                            info!(
+                                "Circuit breaker for {} ready for half-open transition",
+                                domain
+                            );
                             // Don't auto-transition here, wait for next request
                         }
                     }
@@ -320,9 +328,7 @@ impl CircuitBreaker {
 }
 
 /// Global circuit breaker instance
-static GLOBAL_CIRCUIT_BREAKER: Lazy<CircuitBreaker> = Lazy::new(|| {
-    CircuitBreaker::new()
-});
+static GLOBAL_CIRCUIT_BREAKER: Lazy<CircuitBreaker> = Lazy::new(|| CircuitBreaker::new());
 
 /// Check if a domain is allowed using the global circuit breaker
 pub async fn is_domain_allowed(domain: &str) -> bool {
@@ -367,7 +373,7 @@ mod tests {
             open_duration: Duration::from_millis(200),
             half_open_success_threshold: 2,
         };
-        
+
         let breaker = CircuitBreaker::with_config(config);
         let domain = "test.com";
 
@@ -378,7 +384,7 @@ mod tests {
         // Record failures to open circuit
         breaker.record_failure(domain).await;
         assert!(breaker.is_allowed(domain).await); // Still closed after 1 failure
-        
+
         breaker.record_failure(domain).await;
         assert_eq!(breaker.get_state(domain).await, CircuitState::Open);
         assert!(!breaker.is_allowed(domain).await); // Now open

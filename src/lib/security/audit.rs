@@ -417,7 +417,11 @@ impl AuditLogger {
         if let Some(&(threshold, window)) = self.alert_threshold.get(&event.event_type) {
             let events = self.events.read().await;
             let now = Utc::now();
-            let window_start = now - chrono::Duration::from_std(window).unwrap();
+            let Ok(window) = chrono::Duration::from_std(window) else {
+                log::warn!("Skipping security alert pattern with unsupported window");
+                return;
+            };
+            let window_start = now - window;
             
             let count = events
                 .iter()

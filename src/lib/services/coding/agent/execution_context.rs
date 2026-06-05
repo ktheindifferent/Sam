@@ -1,10 +1,10 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
-use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 use std::sync::Arc;
-use anyhow::Result;
+use std::time::{Duration, SystemTime};
+use tokio::sync::RwLock;
 
 /// Enhanced execution context that maintains state across commands
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,7 +154,7 @@ impl Default for ExecutionContext {
 
         Self {
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
-            environment: essential_env,  // Use only essential env vars
+            environment: essential_env, // Use only essential env vars
             aliases: HashMap::new(),
             timeout: Duration::from_secs(120),
             shell: ShellType::Bash,
@@ -186,9 +186,15 @@ impl ExecutionContext {
             colors: ColorDepth::TrueColor,
         };
         // Set up virtual display for term.everything
-        context.environment.insert("TERM_GUI".to_string(), "1".to_string());
-        context.environment.insert("TERM_GUI_WIDTH".to_string(), width.to_string());
-        context.environment.insert("TERM_GUI_HEIGHT".to_string(), height.to_string());
+        context
+            .environment
+            .insert("TERM_GUI".to_string(), "1".to_string());
+        context
+            .environment
+            .insert("TERM_GUI_WIDTH".to_string(), width.to_string());
+        context
+            .environment
+            .insert("TERM_GUI_HEIGHT".to_string(), height.to_string());
         context
     }
 
@@ -283,9 +289,8 @@ impl ExecutionContext {
 
     /// Clean up background processes
     pub fn cleanup_processes(&mut self) {
-        self.background_processes.retain(|p| {
-            matches!(p.status, ProcessStatus::Running | ProcessStatus::Stopped)
-        });
+        self.background_processes
+            .retain(|p| matches!(p.status, ProcessStatus::Running | ProcessStatus::Stopped));
     }
 
     /// Get context summary

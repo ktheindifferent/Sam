@@ -10,9 +10,11 @@ pub async fn handle_lifx(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
             out.push("LIFX service started.".to_string());
         }
         "lifx stop" => {
-            crate::services::lifx::stop_service();
             let mut out = output_lines.lock().await;
-            out.push("LIFX service stopped.".to_string());
+            match crate::services::lifx::stop_service() {
+                Ok(()) => out.push("LIFX service stopped.".to_string()),
+                Err(e) => out.push(format!("Failed to stop LIFX service: {}", e)),
+            }
         }
         "lifx status" => {
             let status = match crate::services::lifx::status_service() {

@@ -1,13 +1,13 @@
 //! Improved resource management with async patterns and automatic cleanup
 
-use std::sync::Arc;
+use anyhow::{Context, Result};
+use log::{debug, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, Semaphore};
 use tokio::time::timeout;
-use anyhow::{Result, Context};
-use log::{info, warn, debug};
-use serde::{Serialize, Deserialize};
 
 // Removed unused import: CodingAgentError
 
@@ -57,33 +57,45 @@ impl ResourcePool {
         let mut resources = HashMap::new();
 
         // Initialize default resource limits
-        resources.insert(ResourceType::Memory, ResourceLimit {
-            max_amount: 4 * 1024 * 1024 * 1024, // 4GB
-            current_usage: 0,
-            peak_usage: 0,
-            last_cleanup: Instant::now(),
-        });
+        resources.insert(
+            ResourceType::Memory,
+            ResourceLimit {
+                max_amount: 4 * 1024 * 1024 * 1024, // 4GB
+                current_usage: 0,
+                peak_usage: 0,
+                last_cleanup: Instant::now(),
+            },
+        );
 
-        resources.insert(ResourceType::FileHandles, ResourceLimit {
-            max_amount: 1024,
-            current_usage: 0,
-            peak_usage: 0,
-            last_cleanup: Instant::now(),
-        });
+        resources.insert(
+            ResourceType::FileHandles,
+            ResourceLimit {
+                max_amount: 1024,
+                current_usage: 0,
+                peak_usage: 0,
+                last_cleanup: Instant::now(),
+            },
+        );
 
-        resources.insert(ResourceType::NetworkConnections, ResourceLimit {
-            max_amount: 100,
-            current_usage: 0,
-            peak_usage: 0,
-            last_cleanup: Instant::now(),
-        });
+        resources.insert(
+            ResourceType::NetworkConnections,
+            ResourceLimit {
+                max_amount: 100,
+                current_usage: 0,
+                peak_usage: 0,
+                last_cleanup: Instant::now(),
+            },
+        );
 
-        resources.insert(ResourceType::ThreadPool, ResourceLimit {
-            max_amount: 50,
-            current_usage: 0,
-            peak_usage: 0,
-            last_cleanup: Instant::now(),
-        });
+        resources.insert(
+            ResourceType::ThreadPool,
+            ResourceLimit {
+                max_amount: 50,
+                current_usage: 0,
+                peak_usage: 0,
+                last_cleanup: Instant::now(),
+            },
+        );
 
         let pool = Self {
             resources: Arc::new(RwLock::new(resources)),
@@ -126,9 +138,12 @@ impl ResourcePool {
                     // Release the resources
                     let mut res = resources.write().await;
                     if let Some(limit) = res.get_mut(&expired_alloc.resource_type) {
-                        limit.current_usage = limit.current_usage.saturating_sub(expired_alloc.amount);
-                        debug!("Released expired allocation: {:?} ({} units)",
-                               expired_alloc.resource_type, expired_alloc.amount);
+                        limit.current_usage =
+                            limit.current_usage.saturating_sub(expired_alloc.amount);
+                        debug!(
+                            "Released expired allocation: {:?} ({} units)",
+                            expired_alloc.resource_type, expired_alloc.amount
+                        );
                     }
                 }
 
@@ -152,13 +167,17 @@ impl ResourcePool {
         owner: String,
     ) -> Result<ResourceGuard> {
         // Acquire rate limit permit
-        let _permit = self.rate_limiter.acquire().await
+        let _permit = self
+            .rate_limiter
+            .acquire()
+            .await
             .context("Failed to acquire rate limit permit")?;
 
         // Check and allocate resource
         let mut resources = self.resources.write().await;
 
-        let limit = resources.get_mut(&resource_type)
+        let limit = resources
+            .get_mut(&resource_type)
             .ok_or_else(|| anyhow::anyhow!("Resource type {:?} not configured", resource_type))?;
 
         if limit.current_usage + amount > limit.max_amount {
@@ -184,8 +203,10 @@ impl ResourcePool {
 
         self.allocations.write().await.push(allocation.clone());
 
-        info!("Allocated {} units of {:?} for {}",
-              amount, resource_type, allocation.owner);
+        info!(
+            "Allocated {} units of {:?} for {}",
+            amount, resource_type, allocation.owner
+        );
 
         // Return RAII guard
         Ok(ResourceGuard {
@@ -223,14 +244,20 @@ impl ResourcePool {
     pub async fn get_all_usage(&self) -> HashMap<ResourceType, ResourceUsage> {
         let resources = self.resources.read().await;
 
-        resources.iter().map(|(typ, limit)| {
-            (typ.clone(), ResourceUsage {
-                current: limit.current_usage,
-                max: limit.max_amount,
-                peak: limit.peak_usage,
-                utilization: (limit.current_usage as f64 / limit.max_amount as f64) * 100.0,
+        resources
+            .iter()
+            .map(|(typ, limit)| {
+                (
+                    typ.clone(),
+                    ResourceUsage {
+                        current: limit.current_usage,
+                        max: limit.max_amount,
+                        peak: limit.peak_usage,
+                        utilization: (limit.current_usage as f64 / limit.max_amount as f64) * 100.0,
+                    },
+                )
             })
-        }).collect()
+            .collect()
     }
 
     /// Release resources manually
@@ -239,8 +266,10 @@ impl ResourcePool {
 
         if let Some(limit) = resources.get_mut(&allocation.resource_type) {
             limit.current_usage = limit.current_usage.saturating_sub(allocation.amount);
-            debug!("Released {} units of {:?}",
-                   allocation.amount, allocation.resource_type);
+            debug!(
+                "Released {} units of {:?}",
+                allocation.amount, allocation.resource_type
+            );
         }
 
         // Remove from active allocations
@@ -292,9 +321,10 @@ pub struct ResourceGuard {
 impl Drop for ResourceGuard {
     fn drop(&mut self) {
         // Try to release resources if pool still exists
-        if let (Some(resources), Some(allocations)) =
-            (self.pool.resources.upgrade(), self.pool.allocations.upgrade()) {
-
+        if let (Some(resources), Some(allocations)) = (
+            self.pool.resources.upgrade(),
+            self.pool.allocations.upgrade(),
+        ) {
             let allocation = self.allocation.clone();
 
             // Spawn cleanup task
@@ -387,8 +417,10 @@ impl ResourceManager {
             if usage.utilization > policies.throttle_threshold {
                 if priority < 5 {
                     // Low priority requests are throttled
-                    warn!("Throttling allocation request for {} due to high utilization",
-                          owner);
+                    warn!(
+                        "Throttling allocation request for {} due to high utilization",
+                        owner
+                    );
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
@@ -401,12 +433,17 @@ impl ResourceManager {
         }
 
         // Attempt allocation
-        match self.pool.allocate(resource_type.clone(), amount, owner).await {
+        match self
+            .pool
+            .allocate(resource_type.clone(), amount, owner)
+            .await
+        {
             Ok(guard) => {
                 // Update peak utilization
                 if let Some(usage) = self.pool.get_usage(&resource_type).await {
                     let mut metrics = self.metrics.write().await;
-                    metrics.peak_utilization
+                    metrics
+                        .peak_utilization
                         .entry(resource_type)
                         .and_modify(|peak| *peak = peak.max(usage.utilization))
                         .or_insert(usage.utilization);
@@ -449,11 +486,10 @@ mod tests {
     async fn test_resource_allocation() {
         let pool = ResourcePool::new();
 
-        let guard = pool.allocate(
-            ResourceType::Memory,
-            1024,
-            "test".to_string()
-        ).await.unwrap();
+        let guard = pool
+            .allocate(ResourceType::Memory, 1024, "test".to_string())
+            .await
+            .unwrap();
 
         let usage = pool.get_usage(&ResourceType::Memory).await.unwrap();
         assert_eq!(usage.current, 1024);
@@ -472,17 +508,26 @@ mod tests {
         // Set a small limit for testing
         {
             let mut resources = pool.resources.write().await;
-            resources.get_mut(&ResourceType::FileHandles).unwrap().max_amount = 10;
+            resources
+                .get_mut(&ResourceType::FileHandles)
+                .unwrap()
+                .max_amount = 10;
         }
 
         // Allocate up to limit
-        let _g1 = pool.allocate(ResourceType::FileHandles, 5, "test1".to_string())
-            .await.unwrap();
-        let _g2 = pool.allocate(ResourceType::FileHandles, 5, "test2".to_string())
-            .await.unwrap();
+        let _g1 = pool
+            .allocate(ResourceType::FileHandles, 5, "test1".to_string())
+            .await
+            .unwrap();
+        let _g2 = pool
+            .allocate(ResourceType::FileHandles, 5, "test2".to_string())
+            .await
+            .unwrap();
 
         // This should fail
-        let result = pool.allocate(ResourceType::FileHandles, 1, "test3".to_string()).await;
+        let result = pool
+            .allocate(ResourceType::FileHandles, 1, "test3".to_string())
+            .await;
         assert!(result.is_err());
     }
 }

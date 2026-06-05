@@ -1,5 +1,5 @@
 //! DNS Cache Module
-//! 
+//!
 //! Provides DNS resolution and caching functionality for the crawler.
 
 use std::collections::HashMap;
@@ -7,11 +7,11 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use log::{info, warn, debug};
+use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use trust_dns_resolver::TokioAsyncResolver;
 use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
+use trust_dns_resolver::TokioAsyncResolver;
 
 /// DNS cache entry with TTL
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,10 +39,8 @@ pub struct DnsCache {
 impl DnsCache {
     /// Create a new DNS cache
     pub async fn new() -> Self {
-        let resolver = TokioAsyncResolver::tokio(
-            ResolverConfig::default(),
-            ResolverOpts::default(),
-        );
+        let resolver =
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
         let cache = Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
@@ -129,7 +127,7 @@ impl DnsCache {
                     Ok(ips)
                 }
             }
-            Err(e) => Err(DnsLookupError::ResolutionFailed(e.to_string()))
+            Err(e) => Err(DnsLookupError::ResolutionFailed(e.to_string())),
         }
     }
 
@@ -161,7 +159,7 @@ impl DnsCache {
     /// Persist cache if enough time has passed
     async fn persist_if_needed(&self) {
         let mut last_persist = self.last_persist.write().await;
-        
+
         if last_persist.elapsed() > Duration::from_secs(300) {
             self.persist().await;
             *last_persist = Instant::now();
@@ -178,7 +176,7 @@ impl DnsCache {
     /// Save cache to Redis or file
     async fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let cache = self.cache.read().await;
-        
+
         if let Some(pool) = &self.redis_pool {
             // Save to Redis
             self.save_to_redis(pool, &cache).await?;
@@ -198,11 +196,12 @@ impl DnsCache {
         cache: &HashMap<String, DnsCacheEntry>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         use deadpool_redis::redis::AsyncCommands;
-        
+
         let mut conn = pool.get().await?;
         let cache_json = serde_json::to_string(cache)?;
-        conn.set_ex::<_, _, ()>("sam:dns_cache", cache_json, 3600).await?;
-        
+        conn.set_ex::<_, _, ()>("sam:dns_cache", cache_json, 3600)
+            .await?;
+
         Ok(())
     }
 
@@ -213,11 +212,11 @@ impl DnsCache {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let cache_dir = "/tmp/sam_crawler";
         tokio::fs::create_dir_all(cache_dir).await?;
-        
+
         let cache_file = format!("{}/dns_cache.json", cache_dir);
         let cache_json = serde_json::to_string_pretty(cache)?;
         tokio::fs::write(cache_file, cache_json).await?;
-        
+
         Ok(())
     }
 
@@ -244,10 +243,10 @@ impl DnsCache {
         pool: &deadpool_redis::Pool,
     ) -> Result<HashMap<String, DnsCacheEntry>, Box<dyn std::error::Error>> {
         use deadpool_redis::redis::AsyncCommands;
-        
+
         let mut conn = pool.get().await?;
         let cache_json: Option<String> = conn.get("sam:dns_cache").await?;
-        
+
         if let Some(json) = cache_json {
             Ok(serde_json::from_str(&json)?)
         } else {
@@ -256,9 +255,11 @@ impl DnsCache {
     }
 
     /// Load cache from file
-    async fn load_from_file(&self) -> Result<HashMap<String, DnsCacheEntry>, Box<dyn std::error::Error>> {
+    async fn load_from_file(
+        &self,
+    ) -> Result<HashMap<String, DnsCacheEntry>, Box<dyn std::error::Error>> {
         let cache_file = "/tmp/sam_crawler/dns_cache.json";
-        
+
         if tokio::fs::metadata(cache_file).await.is_err() {
             return Ok(HashMap::new());
         }
@@ -268,14 +269,17 @@ impl DnsCache {
     }
 
     /// Batch lookup multiple domains
-    pub async fn batch_lookup(&self, domains: Vec<String>) -> HashMap<String, Result<Vec<IpAddr>, DnsLookupError>> {
+    pub async fn batch_lookup(
+        &self,
+        domains: Vec<String>,
+    ) -> HashMap<String, Result<Vec<IpAddr>, DnsLookupError>> {
         let mut results = HashMap::new();
-        
+
         for domain in domains {
             let result = self.lookup(&domain).await;
             results.insert(domain, result);
         }
-        
+
         results
     }
 
@@ -324,12 +328,12 @@ mod tests {
     #[tokio::test]
     async fn test_dns_cache_lookup() {
         let cache = DnsCache::new().await;
-        
+
         // Test valid domain
         let result = cache.lookup("google.com").await;
         assert!(result.is_ok());
         assert!(!result.unwrap().is_empty());
-        
+
         // Second lookup should hit cache
         let result2 = cache.lookup("google.com").await;
         assert!(result2.is_ok());
@@ -338,19 +342,21 @@ mod tests {
     #[tokio::test]
     async fn test_dns_cache_invalid_domain() {
         let cache = DnsCache::new().await;
-        
-        let result = cache.lookup("invalid-domain-that-does-not-exist-12345.com").await;
+
+        let result = cache
+            .lookup("invalid-domain-that-does-not-exist-12345.com")
+            .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_cache_stats() {
         let cache = DnsCache::new().await;
-        
+
         // Perform some lookups
         let _ = cache.lookup("google.com").await;
         let _ = cache.lookup("github.com").await;
-        
+
         let stats = cache.get_stats().await;
         assert!(stats.total_entries >= 2);
         assert_eq!(stats.expired_entries, 0);

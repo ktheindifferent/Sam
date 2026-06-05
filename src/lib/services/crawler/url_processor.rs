@@ -3,11 +3,11 @@
 //! This module handles URL validation, filtering, and processing tasks
 //! including search URL detection, MIME type detection, and link extraction.
 
-use std::collections::HashSet;
-use reqwest::Url;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use scraper::{Html, Selector, ElementRef};
+use reqwest::Url;
+use scraper::{ElementRef, Html, Selector};
+use std::collections::HashSet;
 
 /// Static data for common resources
 static COMMON_TLDS: Lazy<Vec<String>> = Lazy::new(|| {
@@ -43,7 +43,10 @@ static DATE_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         Regex::new(r"^\d{1,2}/\d{1,2}/\d{2,4}$").unwrap_or_else(|e| {
             log::error!("Failed to compile date regex pattern: {}", e);
-            sentry::capture_message(&format!("Date regex compilation failed: {}", e), sentry::Level::Warning);
+            sentry::capture_message(
+                &format!("Date regex compilation failed: {}", e),
+                sentry::Level::Warning,
+            );
             Regex::new(r".*").expect("Fallback regex should compile")
         }),
         Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$").expect("Failed to compile date regex pattern"),
@@ -88,7 +91,7 @@ impl UrlProcessor {
         let url_lc = url.to_ascii_lowercase();
         let url_no_query = url_lc.split(&['?', '#'][..]).next().unwrap_or("");
         let path = std::path::Path::new(url_no_query);
-        
+
         if let Some(segment) = path.file_name().and_then(|s| s.to_str()) {
             if segment.contains('.') {
                 if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
@@ -97,7 +100,7 @@ impl UrlProcessor {
                         // It's a TLD, not a file extension, so treat as HTML
                         return "text/html";
                     }
-                    
+
                     // Look up MIME type by extension
                     for (map_ext, mime) in crate::tools::MIME_MAP.iter() {
                         if ext.eq_ignore_ascii_case(map_ext.trim_start_matches('.')) {
@@ -137,7 +140,7 @@ impl UrlProcessor {
     /// Extract links from an HTML document
     pub fn extract_links_from_document(document: &Html, base_url: &str) -> Vec<String> {
         let mut links = Vec::new();
-        
+
         const LINK_SELECTORS: &[(&str, &str)] = &[
             ("a[href]", "href"),
             ("img[src]", "src"),
@@ -184,7 +187,9 @@ impl UrlProcessor {
             }
         };
 
-        let skip_tags = ["script", "style", "noscript", "svg", "canvas", "iframe", "template"];
+        let skip_tags = [
+            "script", "style", "noscript", "svg", "canvas", "iframe", "template",
+        ];
         let skip_selectors: Vec<Selector> = skip_tags
             .iter()
             .filter_map(|tag| Selector::parse(tag).ok())
@@ -262,7 +267,8 @@ impl UrlProcessor {
     fn remove_domain_tokens(tokens: &mut Vec<String>, url: &str) {
         if let Ok(parsed_url) = Url::parse(url) {
             if let Some(domain) = parsed_url.domain() {
-                let domain_tokens: HashSet<_> = domain.split('.').map(|s| s.to_lowercase()).collect();
+                let domain_tokens: HashSet<_> =
+                    domain.split('.').map(|s| s.to_lowercase()).collect();
                 tokens.retain(|token| !domain_tokens.contains(&token.to_lowercase()));
             }
         }
@@ -270,29 +276,35 @@ impl UrlProcessor {
 
     /// Check if URL is supported based on content type
     pub fn is_supported_content_type(mime_type: &str) -> bool {
-        mime_type.starts_with("text/") ||
-        mime_type.starts_with("image/") ||
-        mime_type.starts_with("application/json") ||
-        mime_type.starts_with("application/xml") ||
-        mime_type.starts_with("application/pdf") ||
-        mime_type.starts_with("application/javascript") ||
-        mime_type.starts_with("text/javascript") ||
-        mime_type.starts_with("text/css") ||
-        mime_type.starts_with("application/x-javascript") ||
-        mime_type == "application/octet-stream"
+        mime_type.starts_with("text/")
+            || mime_type.starts_with("image/")
+            || mime_type.starts_with("application/json")
+            || mime_type.starts_with("application/xml")
+            || mime_type.starts_with("application/pdf")
+            || mime_type.starts_with("application/javascript")
+            || mime_type.starts_with("text/javascript")
+            || mime_type.starts_with("text/css")
+            || mime_type.starts_with("application/x-javascript")
+            || mime_type == "application/octet-stream"
     }
 
     /// Check if content type is blocked
     pub fn is_blocked_content_type(mime_type: &str) -> bool {
-        let blocked_types = ["video/", "audio/", "application/zip", "application/x-rar", "application/x-tar"];
+        let blocked_types = [
+            "video/",
+            "audio/",
+            "application/zip",
+            "application/x-rar",
+            "application/x-tar",
+        ];
         blocked_types.iter().any(|bt| mime_type.starts_with(bt))
     }
 
     /// Check if URL represents a document that may contain links
     pub fn is_document_url(url: &str, mime_tokens: &[String]) -> bool {
         let doc_exts = [
-            ".html", ".htm", ".xhtml", ".shtml", ".php", ".asp", ".aspx", ".jsp", ".jspx",
-            ".cgi", ".pl", ".cfm", ".rb", ".py", ".xml", ".json", ".md", ".txt", "/",
+            ".html", ".htm", ".xhtml", ".shtml", ".php", ".asp", ".aspx", ".jsp", ".jspx", ".cgi",
+            ".pl", ".cfm", ".rb", ".py", ".xml", ".json", ".md", ".txt", "/",
         ];
 
         mime_tokens
@@ -309,27 +321,29 @@ impl UrlProcessor {
     /// Normalize URL for comparison
     pub fn normalize_url(url: &str) -> Option<String> {
         let mut parsed = Url::parse(url).ok()?;
-        
+
         // Remove fragment
         parsed.set_fragment(None);
-        
+
         // Sort query parameters
         let mut query_pairs: Vec<_> = parsed.query_pairs().collect();
         query_pairs.sort_by(|a, b| a.0.cmp(&b.0));
-        
+
         // Rebuild query string
         let query_string = if query_pairs.is_empty() {
             None
         } else {
-            Some(query_pairs
-                .iter()
-                .map(|(k, v)| format!("{}={}", k, v))
-                .collect::<Vec<_>>()
-                .join("&"))
+            Some(
+                query_pairs
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<_>>()
+                    .join("&"),
+            )
         };
-        
+
         parsed.set_query(query_string.as_deref());
-        
+
         Some(parsed.to_string())
     }
 }
@@ -363,7 +377,11 @@ impl Default for UrlValidator {
 
 impl UrlValidator {
     /// Create a new URL validator with custom settings
-    pub fn new(allowed_schemes: Vec<String>, blocked_domains: Vec<String>, max_url_length: usize) -> Self {
+    pub fn new(
+        allowed_schemes: Vec<String>,
+        blocked_domains: Vec<String>,
+        max_url_length: usize,
+    ) -> Self {
         Self {
             allowed_schemes: allowed_schemes.into_iter().collect(),
             blocked_domains: blocked_domains.into_iter().collect(),
@@ -391,7 +409,10 @@ impl UrlValidator {
 
         // Check scheme
         if !self.allowed_schemes.contains(parsed_url.scheme()) {
-            return UrlValidationResult::Invalid(format!("Unsupported scheme: {}", parsed_url.scheme()));
+            return UrlValidationResult::Invalid(format!(
+                "Unsupported scheme: {}",
+                parsed_url.scheme()
+            ));
         }
 
         // Check for blocked domains
@@ -432,26 +453,44 @@ mod tests {
     #[test]
     fn test_url_validation() {
         assert!(UrlProcessor::is_valid_url("https://example.com"));
-        assert!(UrlProcessor::is_valid_url("http://subdomain.example.com/path"));
+        assert!(UrlProcessor::is_valid_url(
+            "http://subdomain.example.com/path"
+        ));
         assert!(!UrlProcessor::is_valid_url("not-a-url"));
         assert!(!UrlProcessor::is_valid_url("mailto:test@example.com"));
     }
 
     #[test]
     fn test_search_url_detection() {
-        assert!(UrlProcessor::is_search_url("https://example.com/search?q=test"));
+        assert!(UrlProcessor::is_search_url(
+            "https://example.com/search?q=test"
+        ));
         assert!(UrlProcessor::is_search_url("https://example.com/query"));
-        assert!(UrlProcessor::is_search_url("https://example.com/?search=test"));
+        assert!(UrlProcessor::is_search_url(
+            "https://example.com/?search=test"
+        ));
         assert!(!UrlProcessor::is_search_url("https://example.com/about"));
         assert!(!UrlProcessor::is_search_url("https://example.com/contact"));
     }
 
     #[test]
     fn test_mime_type_detection() {
-        assert_eq!(UrlProcessor::mime_type_from_url("https://example.com/page.html"), "text/html");
-        assert_eq!(UrlProcessor::mime_type_from_url("https://example.com/image.jpg"), "image/jpeg");
-        assert_eq!(UrlProcessor::mime_type_from_url("https://example.com/document.pdf"), "application/pdf");
-        assert_eq!(UrlProcessor::mime_type_from_url("https://example.com/"), "text/unknown");
+        assert_eq!(
+            UrlProcessor::mime_type_from_url("https://example.com/page.html"),
+            "text/html"
+        );
+        assert_eq!(
+            UrlProcessor::mime_type_from_url("https://example.com/image.jpg"),
+            "image/jpeg"
+        );
+        assert_eq!(
+            UrlProcessor::mime_type_from_url("https://example.com/document.pdf"),
+            "application/pdf"
+        );
+        assert_eq!(
+            UrlProcessor::mime_type_from_url("https://example.com/"),
+            "text/unknown"
+        );
     }
 
     #[test]
@@ -474,8 +513,11 @@ mod tests {
     #[test]
     fn test_url_validator() {
         let validator = UrlValidator::default();
-        
-        assert_eq!(validator.validate("https://example.com"), UrlValidationResult::Valid);
+
+        assert_eq!(
+            validator.validate("https://example.com"),
+            UrlValidationResult::Valid
+        );
         assert!(matches!(
             validator.validate("ftp://example.com"),
             UrlValidationResult::Invalid(_)
@@ -488,8 +530,14 @@ mod tests {
 
     #[test]
     fn test_domain_extraction() {
-        assert_eq!(UrlProcessor::get_domain("https://example.com/path"), Some("example.com".to_string()));
-        assert_eq!(UrlProcessor::get_domain("http://sub.example.com"), Some("sub.example.com".to_string()));
+        assert_eq!(
+            UrlProcessor::get_domain("https://example.com/path"),
+            Some("example.com".to_string())
+        );
+        assert_eq!(
+            UrlProcessor::get_domain("http://sub.example.com"),
+            Some("sub.example.com".to_string())
+        );
         assert_eq!(UrlProcessor::get_domain("not-a-url"), None);
     }
 

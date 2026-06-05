@@ -1,11 +1,11 @@
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use log::{debug, info, warn};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, Semaphore, Mutex};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 use tokio::time::{interval, timeout};
-use anyhow::{Result, Context};
-use log::{debug, warn, info};
-use std::collections::VecDeque;
-use async_trait::async_trait;
 
 /// Connection pool for managing database connections
 pub struct ConnectionPool<C: PooledConnection> {
@@ -66,20 +66,20 @@ impl<C> PoolEntry<C> {
             use_count: 0,
         }
     }
-    
+
     fn is_expired(&self, config: &PoolConfig) -> bool {
         let now = Instant::now();
-        
+
         // Check max lifetime
         if now.duration_since(self.created_at) > config.max_lifetime {
             return true;
         }
-        
+
         // Check idle timeout
         if now.duration_since(self.last_used) > config.idle_timeout {
             return true;
         }
-        
+
         false
     }
 }
@@ -115,10 +115,7 @@ pub struct PoolMetrics {
 
 impl<C: PooledConnection> ConnectionPool<C> {
     /// Create a new connection pool
-    pub async fn new(
-        config: PoolConfig,
-        factory: Arc<dyn ConnectionFactory<C>>,
-    ) -> Result<Self> {
+    pub async fn new(config: PoolConfig, factory: Arc<dyn ConnectionFactory<C>>) -> Result<Self> {
         let semaphore = Arc::new(Semaphore::new(config.max_connections));
         let connections = Arc::new(RwLock::new(VecDeque::new()));
         let circuit_breaker = Arc::new(Mutex::new(CircuitBreaker::new(
@@ -126,7 +123,7 @@ impl<C: PooledConnection> ConnectionPool<C> {
             config.circuit_breaker_reset_timeout,
         )));
         let metrics = Arc::new(RwLock::new(PoolMetrics::default()));
-        
+
         let mut pool = ConnectionPool {
             config: config.clone(),
             connections,
@@ -136,24 +133,24 @@ impl<C: PooledConnection> ConnectionPool<C> {
             metrics,
             health_check_handle: None,
         };
-        
+
         // Initialize minimum connections
         for _ in 0..config.min_connections {
             if let Ok(conn) = pool.create_connection().await {
                 pool.return_connection(conn).await;
             }
         }
-        
+
         // Start health check task
         pool.start_health_check().await;
-        
+
         Ok(pool)
     }
-    
+
     /// Get a connection from the pool
     pub async fn get(&self) -> Result<PooledConnectionGuard<C>> {
         let start = Instant::now();
-        
+
         // Check circuit breaker
         if self.config.enable_circuit_breaker {
             let mut breaker = self.circuit_breaker.lock().await;
@@ -161,7 +158,7 @@ impl<C: PooledConnection> ConnectionPool<C> {
                 return Err(anyhow::anyhow!("Circuit breaker is open"));
             }
         }
-        
+
         // Try to get connection with timeout
         let permit = timeout(
             self.config.connection_timeout,
@@ -170,7 +167,7 @@ impl<C: PooledConnection> ConnectionPool<C> {
         .await
         .context("Connection pool timeout")?
         .context("Failed to acquire semaphore")?;
-        
+
         // Try to get existing connection
         let conn = {
             let mut connections = self.connections.write().await;
@@ -179,19 +176,19 @@ impl<C: PooledConnection> ConnectionPool<C> {
                     if !entry.is_expired(&self.config) {
                         entry.last_used = Instant::now();
                         entry.use_count += 1;
-                        
+
                         // Update metrics
                         let mut metrics = self.metrics.write().await;
                         metrics.total_checkouts += 1;
                         metrics.idle_connections = connections.len();
                         metrics.active_connections += 1;
                         metrics.wait_time_ms = start.elapsed().as_millis() as u64;
-                        
+
                         break Some(entry.connection);
                     } else {
                         // Close expired connection
                         entry.connection.close().await;
-                        
+
                         let mut metrics = self.metrics.write().await;
                         metrics.total_closed += 1;
                         metrics.current_size -= 1;
@@ -201,7 +198,7 @@ impl<C: PooledConnection> ConnectionPool<C> {
                 }
             }
         };
-        
+
         // Create new connection if needed
         let conn = match conn {
             Some(c) => c,
@@ -214,29 +211,29 @@ impl<C: PooledConnection> ConnectionPool<C> {
                             let mut breaker = self.circuit_breaker.lock().await;
                             breaker.record_failure();
                         }
-                        
+
                         let mut metrics = self.metrics.write().await;
                         metrics.failed_checkouts += 1;
-                        
+
                         return Err(e);
                     }
                 }
             }
         };
-        
+
         // Record success in circuit breaker
         if self.config.enable_circuit_breaker {
             let mut breaker = self.circuit_breaker.lock().await;
             breaker.record_success();
         }
-        
+
         Ok(PooledConnectionGuard {
             connection: Some(conn),
             pool: self.clone(),
             permit: Some(permit),
         })
     }
-    
+
     /// Create a new connection
     async fn create_connection(&self) -> Result<C> {
         match self.factory.create().await {
@@ -244,102 +241,102 @@ impl<C: PooledConnection> ConnectionPool<C> {
                 let mut metrics = self.metrics.write().await;
                 metrics.total_created += 1;
                 metrics.current_size += 1;
-                
+
                 Ok(conn)
             }
             Err(e) => {
                 let mut metrics = self.metrics.write().await;
                 metrics.failed_creates += 1;
-                
+
                 Err(e)
             }
         }
     }
-    
+
     /// Return a connection to the pool
     async fn return_connection(&self, conn: C) {
         // Validate connection before returning
         if !self.factory.validate(&conn).await {
             conn.close().await;
-            
+
             let mut metrics = self.metrics.write().await;
             metrics.total_closed += 1;
             metrics.current_size -= 1;
             metrics.active_connections -= 1;
-            
+
             return;
         }
-        
+
         let mut connections = self.connections.write().await;
         connections.push_back(PoolEntry::new(conn));
-        
+
         let mut metrics = self.metrics.write().await;
         metrics.total_returns += 1;
         metrics.active_connections -= 1;
         metrics.idle_connections = connections.len();
     }
-    
+
     /// Start health check task
     async fn start_health_check(&mut self) {
         let connections = self.connections.clone();
         let factory = self.factory.clone();
         let config = self.config.clone();
         let metrics = self.metrics.clone();
-        
+
         let handle = tokio::spawn(async move {
             let mut interval = interval(config.health_check_interval);
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let mut to_remove = Vec::new();
                 let mut connections = connections.write().await;
-                
+
                 for (i, entry) in connections.iter().enumerate() {
                     if entry.is_expired(&config) || !factory.validate(&entry.connection).await {
                         to_remove.push(i);
                     }
                 }
-                
+
                 // Remove invalid connections
                 for i in to_remove.iter().rev() {
                     if let Some(entry) = connections.remove(*i) {
                         entry.connection.close().await;
-                        
+
                         let mut metrics = metrics.write().await;
                         metrics.total_closed += 1;
                         metrics.current_size -= 1;
                     }
                 }
-                
+
                 if !to_remove.is_empty() {
                     debug!("Health check removed {} connections", to_remove.len());
                 }
             }
         });
-        
+
         self.health_check_handle = Some(handle);
         info!("Started connection pool health check");
     }
-    
+
     /// Get pool metrics
     pub async fn get_metrics(&self) -> PoolMetrics {
         (*self.metrics.read().await).clone()
     }
-    
+
     /// Close all connections and shutdown pool
     pub async fn shutdown(mut self) {
         // Stop health check
         if let Some(handle) = self.health_check_handle.take() {
             handle.abort();
         }
-        
+
         // Close all connections
         let mut connections = self.connections.write().await;
         while let Some(entry) = connections.pop_front() {
             entry.connection.close().await;
         }
-        
+
         info!("Connection pool shutdown complete");
     }
 }
@@ -370,7 +367,7 @@ impl<C: PooledConnection> PooledConnectionGuard<C> {
     pub fn get(&self) -> &C {
         self.connection.as_ref().expect("Connection already taken")
     }
-    
+
     /// Take the connection without returning to pool
     pub fn take(mut self) -> C {
         self.permit = None; // Release permit
@@ -382,7 +379,7 @@ impl<C: PooledConnection> Drop for PooledConnectionGuard<C> {
     fn drop(&mut self) {
         if let Some(conn) = self.connection.take() {
             let pool = self.pool.clone();
-            
+
             // Return connection to pool asynchronously
             tokio::spawn(async move {
                 pool.return_connection(conn).await;
@@ -393,7 +390,7 @@ impl<C: PooledConnection> Drop for PooledConnectionGuard<C> {
 
 impl<C: PooledConnection> std::ops::Deref for PooledConnectionGuard<C> {
     type Target = C;
-    
+
     fn deref(&self) -> &Self::Target {
         self.get()
     }
@@ -427,7 +424,7 @@ impl CircuitBreaker {
             reset_timeout,
         }
     }
-    
+
     fn is_open(&mut self) -> bool {
         match self.state {
             CircuitBreakerState::Open => {
@@ -449,7 +446,7 @@ impl CircuitBreaker {
             _ => false,
         }
     }
-    
+
     fn record_success(&mut self) {
         match self.state {
             CircuitBreakerState::HalfOpen => {
@@ -466,16 +463,19 @@ impl CircuitBreaker {
             _ => {}
         }
     }
-    
+
     fn record_failure(&mut self) {
         self.failure_count += 1;
         self.last_failure = Some(Instant::now());
-        
+
         match self.state {
             CircuitBreakerState::Closed => {
                 if self.failure_count >= self.threshold {
                     self.state = CircuitBreakerState::Open;
-                    warn!("Circuit breaker opened after {} failures", self.failure_count);
+                    warn!(
+                        "Circuit breaker opened after {} failures",
+                        self.failure_count
+                    );
                 }
             }
             CircuitBreakerState::HalfOpen => {
@@ -502,7 +502,7 @@ mod tests {
         async fn is_valid(&self) -> bool {
             *self.valid.read().await
         }
-        
+
         async fn close(self) {
             // No-op for testing
         }
@@ -517,13 +517,13 @@ mod tests {
         async fn create(&self) -> Result<MockConnection> {
             let mut counter = self.counter.write().await;
             *counter += 1;
-            
+
             Ok(MockConnection {
                 id: *counter,
                 valid: Arc::new(RwLock::new(true)),
             })
         }
-        
+
         async fn validate(&self, conn: &MockConnection) -> bool {
             conn.is_valid().await
         }
@@ -536,27 +536,27 @@ mod tests {
             min_connections: 1,
             ..Default::default()
         };
-        
+
         let factory = Arc::new(MockFactory {
             counter: Arc::new(RwLock::new(0)),
         });
-        
+
         let pool = ConnectionPool::new(config, factory).await.unwrap();
-        
+
         // Get connection
         let conn1 = pool.get().await.unwrap();
         assert_eq!(conn1.id, 1);
-        
+
         // Get another connection
         let conn2 = pool.get().await.unwrap();
         assert_eq!(conn2.id, 2);
-        
+
         // Return first connection
         drop(conn1);
-        
+
         // Wait a bit for async return
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         // Get connection again - should reuse returned one
         let conn3 = pool.get().await.unwrap();
         assert_eq!(conn3.id, 1); // Reused connection
@@ -565,17 +565,17 @@ mod tests {
     #[test]
     fn test_circuit_breaker() {
         let mut breaker = CircuitBreaker::new(3, Duration::from_secs(1));
-        
+
         assert!(!breaker.is_open());
-        
+
         // Record failures
         breaker.record_failure();
         breaker.record_failure();
         assert!(!breaker.is_open());
-        
+
         breaker.record_failure();
         assert!(breaker.is_open());
-        
+
         // Record success doesn't close when open
         breaker.record_success();
         assert!(breaker.is_open());

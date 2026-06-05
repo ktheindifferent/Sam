@@ -1,14 +1,13 @@
 //! OpenAI provider implementation
 
+use super::UnifiedProvider;
+use crate::services::coding::agent::traits::provider::{
+    FinishReason, GenerateRequest, GenerateResponse, Model, ModelCapability, ProviderInfo,
+    ProviderMetrics, ProviderType, TokenUsage,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::any::Any;
-use super::UnifiedProvider;
-use crate::services::coding::agent::traits::provider::{
-    GenerateRequest, GenerateResponse, Model, ProviderInfo,
-    ProviderMetrics, ProviderType, TokenUsage, FinishReason,
-    ModelCapability,
-};
 
 /// OpenAI provider for GPT models
 pub struct OpenAIProvider {

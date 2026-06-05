@@ -1,14 +1,14 @@
 //! # SAM Services Module
-//! 
+//!
 //! This module provides a collection of services for the SAM system, including:
 //! - External API integrations (OpenAI, GitHub, Dropbox, etc.)
 //! - Media services (YouTube, Spotify, image processing)
 //! - Communication services (SMS, notifications)
 //! - Infrastructure services (Docker, SSH, database connections)
 //! - Home automation (LIFX, Matter protocol)
-//! 
+//!
 //! ## Architecture
-//! 
+//!
 //! Services follow a consistent pattern:
 //! - Trait-based abstractions for testability
 //! - Configuration management through centralized config system
@@ -62,8 +62,8 @@ pub mod restart_test;
 // SeaweedFS moved to fs/ submodule
 pub mod p2p;
 pub mod password_manager;
-pub mod plugins;
 pub mod pg;
+pub mod plugins;
 pub mod redis;
 pub mod rivescript;
 pub mod rtsp;
@@ -97,7 +97,7 @@ pub use traits::{Service, ServiceFactory, ServiceHealth, ServiceRegistry};
 pub use validation::{ConfigValidator, ValidationError, Validator};
 
 // Re-export LLM services for convenience
-pub use llms::{LlamaService, OllamaService, OllamaConfig, OpenAIClient};
+pub use llms::{LlamaService, OllamaConfig, OllamaService, OpenAIClient};
 
 // Re-export coding agent for convenience
-pub use coding::{CodingAgentService, CodingAgentExecutor, CodingAgentConfig};
+pub use coding::{CodingAgentConfig, CodingAgentExecutor, CodingAgentService};

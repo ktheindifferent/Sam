@@ -4,4 +4,4 @@
 pub mod agent;
 
 // Re-export the main coding agent functionality
-pub use agent::{CodingAgentService, CodingAgentExecutor, CodingAgentConfig};
+pub use agent::{CodingAgentConfig, CodingAgentExecutor, CodingAgentService};

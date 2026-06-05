@@ -1,11 +1,11 @@
 //! Modern async file I/O and path handling
 
-use std::path::{Path, PathBuf};
-use anyhow::{Result, Context};
-use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncBufReadExt, BufReader};
+use anyhow::{Context, Result};
 use futures::stream::{Stream, StreamExt};
-use log::{info, debug, warn, error};
+use log::{debug, error, info, warn};
+use std::path::{Path, PathBuf};
+use tokio::fs;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 // TODO: Implement these modules
 // pub mod cache;
@@ -109,9 +109,7 @@ impl AsyncFileOps {
     }
 
     /// Stream file lines
-    pub async fn stream_lines(
-        path: &Path,
-    ) -> Result<impl Stream<Item = Result<String>>> {
+    pub async fn stream_lines(path: &Path) -> Result<impl Stream<Item = Result<String>>> {
         let file = fs::File::open(path)
             .await
             .with_context(|| format!("Failed to open {:?}", path))?;
@@ -130,11 +128,7 @@ impl AsyncFileOps {
     }
 
     /// Copy with progress
-    pub async fn copy_with_progress<F>(
-        from: &Path,
-        to: &Path,
-        mut progress: F,
-    ) -> Result<u64>
+    pub async fn copy_with_progress<F>(from: &Path, to: &Path, mut progress: F) -> Result<u64>
     where
         F: FnMut(u64) + Send,
     {
@@ -206,8 +200,8 @@ impl AsyncFileOps {
     ) -> Result<Vec<PathBuf>> {
         use glob::Pattern;
 
-        let pattern = Pattern::new(pattern)
-            .with_context(|| format!("Invalid pattern: {}", pattern))?;
+        let pattern =
+            Pattern::new(pattern).with_context(|| format!("Invalid pattern: {}", pattern))?;
 
         let mut files = Vec::new();
         let mut stack = vec![(root.to_path_buf(), 0)];
@@ -327,14 +321,9 @@ impl PathUtils {
             return path.to_path_buf();
         }
 
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("file");
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
 
-        let extension = path
-            .extension()
-            .and_then(|s| s.to_str());
+        let extension = path.extension().and_then(|s| s.to_str());
 
         let parent = path.parent().unwrap_or(Path::new("."));
 
@@ -379,9 +368,7 @@ mod tests {
             .unwrap();
 
         // Read
-        let content = AsyncFileOps::read_file(&file_path, None)
-            .await
-            .unwrap();
+        let content = AsyncFileOps::read_file(&file_path, None).await.unwrap();
 
         assert_eq!(content, "Hello, World!");
     }

@@ -1,14 +1,14 @@
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, BTreeMap, HashSet};
-use std::time::{Duration, Instant};
-use std::path::PathBuf;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use crate::services::coding::agent::{
-    errors::{CodingAgentError, CodingAgentResult},
     code_intelligence::CodeIntelligence,
     code_review::CodeLocation,
+    errors::{CodingAgentError, CodingAgentResult},
 };
 
 /// Performance optimizer with runtime profiling and optimization suggestions
@@ -424,7 +424,11 @@ impl RuntimeProfiler {
         }
     }
 
-    pub async fn profile_execution<F, R>(&mut self, f: F, duration: Duration) -> CodingAgentResult<(R, PerformanceProfile)>
+    pub async fn profile_execution<F, R>(
+        &mut self,
+        f: F,
+        duration: Duration,
+    ) -> CodingAgentResult<(R, PerformanceProfile)>
     where
         F: FnOnce() -> R,
     {
@@ -456,7 +460,10 @@ impl RuntimeProfiler {
         }
     }
 
-    async fn analyze_profile(&self, execution_time: Duration) -> CodingAgentResult<PerformanceProfile> {
+    async fn analyze_profile(
+        &self,
+        execution_time: Duration,
+    ) -> CodingAgentResult<PerformanceProfile> {
         Ok(PerformanceProfile {
             execution_time,
             cpu_usage: CpuProfile {
@@ -554,17 +561,16 @@ impl PerformanceAnalyzer {
     }
 
     fn init_patterns() -> Vec<PerformancePattern> {
-        vec![
-            PerformancePattern {
-                name: "Nested Loop".to_string(),
-                pattern_type: PatternType::NestedLoop,
-                detection_criteria: DetectionCriteria {
-                    min_occurrences: 1,
-                    min_impact_percentage: 10.0,
-                },
-                optimization_suggestion: "Consider using more efficient data structures or algorithms".to_string(),
+        vec![PerformancePattern {
+            name: "Nested Loop".to_string(),
+            pattern_type: PatternType::NestedLoop,
+            detection_criteria: DetectionCriteria {
+                min_occurrences: 1,
+                min_impact_percentage: 10.0,
             },
-        ]
+            optimization_suggestion: "Consider using more efficient data structures or algorithms"
+                .to_string(),
+        }]
     }
 
     pub async fn analyze(&self, profile: &PerformanceProfile) -> Vec<PerformanceIssue> {
@@ -581,8 +587,10 @@ impl PerformanceAnalyzer {
                         Severity::High
                     },
                     location: hotspot.location.clone(),
-                    description: format!("Function {} takes {:.1}% of execution time",
-                        hotspot.function_name, hotspot.percentage_of_total),
+                    description: format!(
+                        "Function {} takes {:.1}% of execution time",
+                        hotspot.function_name, hotspot.percentage_of_total
+                    ),
                     suggested_fixes: vec![
                         "Optimize algorithm".to_string(),
                         "Add caching".to_string(),
@@ -603,8 +611,10 @@ impl PerformanceAnalyzer {
                     column: None,
                     context: None,
                 },
-                description: format!("High heap fragmentation: {:.1}%",
-                    profile.memory_usage.heap_fragmentation * 100.0),
+                description: format!(
+                    "High heap fragmentation: {:.1}%",
+                    profile.memory_usage.heap_fragmentation * 100.0
+                ),
                 suggested_fixes: vec![
                     "Use memory pools".to_string(),
                     "Reduce allocation frequency".to_string(),
@@ -663,7 +673,12 @@ impl OptimizationEngine {
         }
     }
 
-    pub async fn optimize(&self, code: &str, profile: &PerformanceProfile, techniques: &[OptimizationTechnique]) -> CodingAgentResult<Vec<AppliedOptimization>> {
+    pub async fn optimize(
+        &self,
+        code: &str,
+        profile: &PerformanceProfile,
+        techniques: &[OptimizationTechnique],
+    ) -> CodingAgentResult<Vec<AppliedOptimization>> {
         let mut optimizations = Vec::new();
 
         for technique in techniques {
@@ -710,6 +725,12 @@ impl BenchmarkRunner {
     where
         F: Fn() + Clone,
     {
+        if self.iterations == 0 {
+            return Err(CodingAgentError::ConfigError {
+                message: "Benchmark iterations must be greater than zero".to_string(),
+            });
+        }
+
         // Warmup
         for _ in 0..self.warmup_iterations {
             f();
@@ -752,12 +773,14 @@ impl BenchmarkRunner {
 
     fn calculate_std_dev(&self, times: &[Duration], mean: Duration) -> Duration {
         let mean_secs = mean.as_secs_f64();
-        let variance = times.iter()
+        let variance = times
+            .iter()
             .map(|t| {
                 let diff = t.as_secs_f64() - mean_secs;
                 diff * diff
             })
-            .sum::<f64>() / times.len() as f64;
+            .sum::<f64>()
+            / times.len() as f64;
 
         Duration::from_secs_f64(variance.sqrt())
     }
@@ -843,17 +866,23 @@ impl PerformanceOptimizer {
         }
     }
 
-    pub async fn optimize_performance(&mut self, request: OptimizationRequest) -> CodingAgentResult<OptimizationResult> {
+    pub async fn optimize_performance(
+        &mut self,
+        request: OptimizationRequest,
+    ) -> CodingAgentResult<OptimizationResult> {
         // Read target code
         let code = self.read_target(&request.target).await?;
 
         // Profile baseline performance
-        let (_, baseline_profile) = self.profiler.profile_execution(
-            || {
-                // Execute code
-            },
-            request.profile_duration,
-        ).await?;
+        let (_, baseline_profile) = self
+            .profiler
+            .profile_execution(
+                || {
+                    // Execute code
+                },
+                request.profile_duration,
+            )
+            .await?;
 
         // Analyze performance issues
         let issues = self.analyzer.analyze(&baseline_profile).await;
@@ -865,20 +894,29 @@ impl PerformanceOptimizer {
         }
 
         // Apply optimizations
-        let optimizations = self.optimizer.optimize(
-            &code,
-            &baseline_profile,
-            &request.constraints.allowed_techniques,
-        ).await?;
+        let optimizations = self
+            .optimizer
+            .optimize(
+                &code,
+                &baseline_profile,
+                &request.constraints.allowed_techniques,
+            )
+            .await?;
 
         // Benchmark improvements
-        let before = self.benchmark_runner.benchmark(|| {
-            // Run original code
-        }).await?;
+        let before = self
+            .benchmark_runner
+            .benchmark(|| {
+                // Run original code
+            })
+            .await?;
 
-        let after = self.benchmark_runner.benchmark(|| {
-            // Run optimized code
-        }).await?;
+        let after = self
+            .benchmark_runner
+            .benchmark(|| {
+                // Run optimized code
+            })
+            .await?;
 
         let improvement = ImprovementMetrics {
             speed_up: before.mean_time.as_secs_f64() / after.mean_time.as_secs_f64(),
@@ -909,17 +947,22 @@ impl PerformanceOptimizer {
     async fn read_target(&self, target: &OptimizationTarget) -> CodingAgentResult<String> {
         match target {
             OptimizationTarget::Module(path) => {
-                tokio::fs::read_to_string(path).await
+                tokio::fs::read_to_string(path)
+                    .await
                     .map_err(|e| CodingAgentError::IoError {
                         message: e.to_string(),
-                        path: None
+                        path: None,
                     })
             }
             _ => Ok(String::new()),
         }
     }
 
-    fn generate_recommendation(&self, issue: &PerformanceIssue, _profile: &PerformanceProfile) -> OptimizationRecommendation {
+    fn generate_recommendation(
+        &self,
+        issue: &PerformanceIssue,
+        _profile: &PerformanceProfile,
+    ) -> OptimizationRecommendation {
         OptimizationRecommendation {
             priority: match issue.severity {
                 Severity::Critical => Priority::Critical,
@@ -941,7 +984,11 @@ impl PerformanceOptimizer {
         }
     }
 
-    fn generate_code_changes(&self, original: &str, optimizations: &[AppliedOptimization]) -> Vec<CodeChange> {
+    fn generate_code_changes(
+        &self,
+        original: &str,
+        optimizations: &[AppliedOptimization],
+    ) -> Vec<CodeChange> {
         vec![CodeChange {
             file_path: PathBuf::from("optimized.rs"),
             original_code: original.to_string(),

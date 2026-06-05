@@ -1,15 +1,15 @@
+use anyhow::{Context, Result};
+use log::{debug, error, info, warn};
+use petgraph::algo::toposort;
+use petgraph::graph::DiGraph;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::{sleep, interval};
-use log::{info, warn, error, debug};
-use serde::{Deserialize, Serialize};
-use anyhow::{Result, Context};
-use petgraph::graph::DiGraph;
-use petgraph::algo::toposort;
+use tokio::time::{interval, sleep};
 
-use super::restart::{RestartManager, RestartConfig, RestartStrategy};
+use super::restart::{RestartConfig, RestartManager, RestartStrategy};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ServiceName {
@@ -17,47 +17,47 @@ pub enum ServiceName {
     PostgreSQL,
     Redis,
     Docker,
-    
+
     // Security Services
     ClamAV,
     VulnerabilityScanner,
-    
+
     // AI/ML Services
     Whisper,
     Llama,
     OpenAI,
     Copilot,
-    
+
     // Communication Services
     Voice,
     SMS,
     Notifications,
     P2P,
-    
+
     // Storage Services
     FileStorage,
     Backup,
     Dropbox,
-    
+
     // Development Services
     Git,
     GitHub,
     SSH,
-    
+
     // Smart Home
     Lifx,
     Matter,
-    
+
     // Media Services
     Media,
     Spotify,
     Snapcast,
-    
+
     // Web Services
     Crawler,
     MDNS,
     WebSocket,
-    
+
     // Other Services
     PasswordManager,
     RiveScript,
@@ -158,7 +158,7 @@ impl ServiceOrchestrator {
 
     pub fn register_service(&self, config: ServiceConfig) -> Result<()> {
         let name = config.name.clone();
-        
+
         // Configure restart behavior
         let restart_config = RestartConfig {
             strategy: RestartStrategy::ExponentialBackoff {
@@ -176,51 +176,57 @@ impl ServiceOrchestrator {
             notify_on_restart: true,
             notify_on_failure: true,
         };
-        
-        self.restart_manager.register_config(name.clone(), restart_config);
-        
-        self.configs.write()
+
+        self.restart_manager
+            .register_config(name.clone(), restart_config)?;
+
+        self.configs
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire configs write lock: {}", e))?
             .insert(name.clone(), config);
-        self.services.write()
+        self.services
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?
             .insert(name.clone(), ServiceHealth::default());
-        
+
         info!("Registered service: {:?}", name);
         Ok(())
     }
 
     pub async fn start_all(&mut self) -> Result<()> {
         info!("Starting all services...");
-        
+
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
         self.shutdown_tx = Some(shutdown_tx);
-        
+
         // Get dependency order
         let start_order = self.get_startup_order()?;
-        
+
         // Start services in order
         for service_name in start_order {
             if let Err(e) = self.start_service(&service_name).await {
                 error!("Failed to start {:?}: {}", service_name, e);
-                
+
                 // Check if this is a critical service
                 if self.is_critical_service(&service_name) {
-                    return Err(anyhow::anyhow!("Critical service {:?} failed to start", service_name));
+                    return Err(anyhow::anyhow!(
+                        "Critical service {:?} failed to start",
+                        service_name
+                    ));
                 }
             }
         }
-        
+
         // Start health monitoring
         let services = self.services.clone();
         let configs = self.configs.clone();
-        
+
         {
             let services = services.clone();
             let configs = configs.clone();
             tokio::spawn(async move {
                 let mut health_interval = interval(Duration::from_secs(10));
-                
+
                 loop {
                     tokio::select! {
                         _ = health_interval.tick() => {
@@ -235,46 +241,48 @@ impl ServiceOrchestrator {
                 }
             });
         }
-        
+
         info!("All services started successfully");
         Ok(())
     }
 
     pub async fn stop_all(&mut self) -> Result<()> {
         info!("Stopping all services...");
-        
+
         // Signal health monitor to stop
         if let Some(tx) = &self.shutdown_tx {
             let _ = tx.send(()).await;
         }
-        
+
         // Get shutdown order (reverse of startup)
         let mut stop_order = self.get_startup_order()?;
         stop_order.reverse();
-        
+
         // Stop services in order
         for service_name in stop_order {
             if let Err(e) = self.stop_service(&service_name).await {
                 warn!("Error stopping {:?}: {}", service_name, e);
             }
         }
-        
+
         info!("All services stopped");
         Ok(())
     }
 
     async fn start_service(&self, name: &ServiceName) -> Result<()> {
         info!("Starting service: {:?}", name);
-        
+
         // Update status
         {
-            let mut services = self.services.write()
+            let mut services = self
+                .services
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
             if let Some(health) = services.get_mut(name) {
                 health.status = ServiceStatus::Starting;
             }
         }
-        
+
         // Start the actual service
         let result = match name {
             ServiceName::PostgreSQL => self.start_postgresql().await,
@@ -297,10 +305,12 @@ impl ServiceOrchestrator {
                 Ok(())
             }
         };
-        
+
         // Update status based on result
         {
-            let mut services = self.services.write()
+            let mut services = self
+                .services
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
             if let Some(health) = services.get_mut(name) {
                 match result {
@@ -317,22 +327,24 @@ impl ServiceOrchestrator {
                 }
             }
         }
-        
+
         result
     }
 
     async fn stop_service(&self, name: &ServiceName) -> Result<()> {
         info!("Stopping service: {:?}", name);
-        
+
         // Update status
         {
-            let mut services = self.services.write()
+            let mut services = self
+                .services
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
             if let Some(health) = services.get_mut(name) {
                 health.status = ServiceStatus::Stopping;
             }
         }
-        
+
         // Stop the actual service
         let result = match name {
             ServiceName::PostgreSQL => self.stop_postgresql().await,
@@ -343,16 +355,18 @@ impl ServiceOrchestrator {
             ServiceName::WebSocket => self.stop_websocket().await,
             _ => Ok(()),
         };
-        
+
         // Update status
         {
-            let mut services = self.services.write()
+            let mut services = self
+                .services
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
             if let Some(health) = services.get_mut(name) {
                 health.status = ServiceStatus::Stopped;
             }
         }
-        
+
         result
     }
 
@@ -369,7 +383,8 @@ impl ServiceOrchestrator {
                 if let Ok(_) = crate::services::docker::is_running_async().await {
                     // Start PostgreSQL container
                     info!("Starting PostgreSQL via Docker");
-                    crate::services::docker::start_postgres().await
+                    crate::services::docker::start_postgres()
+                        .await
                         .context("Failed to start PostgreSQL container")?;
                 } else {
                     // Try system service
@@ -390,7 +405,8 @@ impl ServiceOrchestrator {
             Err(_) => {
                 if let Ok(_) = crate::services::docker::is_running_async().await {
                     info!("Starting Redis via Docker");
-                    crate::services::docker::start_redis().await
+                    crate::services::docker::start_redis()
+                        .await
                         .context("Failed to start Redis container")?;
                 } else {
                     warn!("Docker not available, attempting system Redis");
@@ -401,19 +417,22 @@ impl ServiceOrchestrator {
     }
 
     async fn start_docker(&self) -> Result<()> {
-        crate::services::docker::ensure_running().await
+        crate::services::docker::ensure_running()
+            .await
             .context("Failed to ensure Docker is running")
     }
 
     async fn start_file_storage(&self) -> Result<()> {
         info!("Initializing file storage service");
-        crate::services::fs::initialize().await
+        crate::services::fs::initialize()
+            .await
             .context("Failed to initialize file storage")
     }
 
     async fn start_backup(&self) -> Result<()> {
         info!("Starting backup service");
-        crate::services::backup::start_scheduler().await
+        crate::services::backup::start_scheduler()
+            .await
             .context("Failed to start backup scheduler")
     }
 
@@ -431,13 +450,15 @@ impl ServiceOrchestrator {
 
     async fn start_voice(&self) -> Result<()> {
         info!("Starting voice service");
-        crate::services::voice::initialize().await
+        crate::services::voice::initialize()
+            .await
             .context("Failed to initialize voice service")
     }
 
     async fn start_p2p(&self) -> Result<()> {
         info!("Starting P2P service");
-        crate::services::p2p::start_network().await
+        crate::services::p2p::start_network()
+            .await
             .context("Failed to start P2P network")
     }
 
@@ -449,25 +470,29 @@ impl ServiceOrchestrator {
 
     async fn start_whisper(&self) -> Result<()> {
         info!("Loading Whisper models");
-        crate::services::stt::whisper_enhanced::initialize().await
+        crate::services::stt::whisper_enhanced::initialize()
+            .await
             .context("Failed to initialize Whisper")
     }
 
     async fn start_lifx(&self) -> Result<()> {
         info!("Starting Lifx service");
-        crate::services::lifx::start_server().await
+        crate::services::lifx::start_server()
+            .await
             .context("Failed to start Lifx server")
     }
 
     async fn start_media(&self) -> Result<()> {
         info!("Starting media service");
-        crate::services::media::initialize().await
+        crate::services::media::initialize()
+            .await
             .context("Failed to initialize media service")
     }
 
     async fn start_websocket(&self) -> Result<()> {
         info!("Starting WebSocket server");
-        crate::websocket::start_server().await
+        crate::websocket::start_server()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to start WebSocket server: {}", e))
     }
 
@@ -508,24 +533,27 @@ impl ServiceOrchestrator {
     }
 
     async fn stop_websocket(&self) -> Result<()> {
-        crate::websocket::stop_server().await
+        crate::websocket::stop_server()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to stop WebSocket server: {}", e))
     }
 
     // Helper methods
     fn get_startup_order(&self) -> Result<Vec<ServiceName>> {
-        let configs = self.configs.read()
+        let configs = self
+            .configs
+            .read()
             .map_err(|e| anyhow::anyhow!("Failed to acquire configs read lock: {}", e))?;
         let mut order = Vec::new();
         let mut visited = HashSet::new();
         let mut visiting = HashSet::new();
-        
+
         for (name, config) in configs.iter() {
             if config.enabled {
                 self.topological_sort(name, &configs, &mut visited, &mut visiting, &mut order)?;
             }
         }
-        
+
         Ok(order)
     }
 
@@ -540,23 +568,26 @@ impl ServiceOrchestrator {
         if visited.contains(name) {
             return Ok(());
         }
-        
+
         if visiting.contains(name) {
-            return Err(anyhow::anyhow!("Circular dependency detected for {:?}", name));
+            return Err(anyhow::anyhow!(
+                "Circular dependency detected for {:?}",
+                name
+            ));
         }
-        
+
         visiting.insert(name.clone());
-        
+
         if let Some(config) = configs.get(name) {
             for dep in &config.dependencies {
                 self.topological_sort(dep, configs, visited, visiting, order)?;
             }
         }
-        
+
         visiting.remove(name);
         visited.insert(name.clone());
         order.push(name.clone());
-        
+
         Ok(())
     }
 
@@ -577,7 +608,7 @@ impl ServiceOrchestrator {
                 }
             }
         };
-        
+
         for name in service_names {
             if let Err(e) = Self::check_service_health(&name, services, configs).await {
                 warn!("Health check failed for {:?}: {}", name, e);
@@ -591,58 +622,61 @@ impl ServiceOrchestrator {
         configs: &Arc<RwLock<HashMap<ServiceName, ServiceConfig>>>,
     ) -> Result<()> {
         let healthy = match name {
-            ServiceName::PostgreSQL => {
-                crate::services::pg::health_check().await.is_ok()
-            }
-            ServiceName::Redis => {
-                crate::services::redis::health_check().await.is_ok()
-            }
-            ServiceName::Docker => {
-                crate::services::docker::is_running_async().await.is_ok()
-            }
+            ServiceName::PostgreSQL => crate::services::pg::health_check().await.is_ok(),
+            ServiceName::Redis => crate::services::redis::health_check().await.is_ok(),
+            ServiceName::Docker => crate::services::docker::is_running_async().await.is_ok(),
             _ => true, // Default to healthy for unimplemented checks
         };
-        
+
         // Clone the Arc parameters before acquiring locks (for potential restart task)
         let services_arc = services.clone();
         let configs_arc = configs.clone();
-        
-        let mut services_guard = services.write()
+
+        let mut services_guard = services
+            .write()
             .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?;
         if let Some(health) = services_guard.get_mut(name) {
             health.last_check = Instant::now();
-            
+
             if !healthy && matches!(health.status, ServiceStatus::Running) {
                 health.status = ServiceStatus::Degraded("Health check failed".to_string());
                 health.error_count += 1;
-                
+
                 // Check if we should restart
                 let should_restart = {
-                    let configs = configs.read()
-                        .map_err(|e| anyhow::anyhow!("Failed to acquire configs read lock: {}", e))?;
-                    configs.get(name)
+                    let configs = configs.read().map_err(|e| {
+                        anyhow::anyhow!("Failed to acquire configs read lock: {}", e)
+                    })?;
+                    configs
+                        .get(name)
                         .map(|c| c.auto_restart && health.restart_count < c.max_restarts)
                         .unwrap_or(false)
                 };
-                
+
                 if should_restart {
                     health.restart_count += 1;
-                    warn!("Scheduling restart for unhealthy service {:?} (attempt {})", name, health.restart_count);
-                    
+                    warn!(
+                        "Scheduling restart for unhealthy service {:?} (attempt {})",
+                        name, health.restart_count
+                    );
+
                     // Drop the write lock before spawning the restart task
                     let service_name = name.clone();
                     let services_clone = services_arc.clone();
                     let configs_clone = configs_arc.clone();
-                    
+
                     // Spawn restart task (simplified to avoid Send issues)
                     tokio::spawn(async move {
                         // TODO: Implement proper service restart when Send issues are resolved
-                        warn!("Service {:?} requires restart but implementation is stubbed", service_name);
+                        warn!(
+                            "Service {:?} requires restart but implementation is stubbed",
+                            service_name
+                        );
                     });
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -688,34 +722,40 @@ impl ServiceOrchestrator {
     ) -> Result<()> {
         let start_time = Instant::now();
         info!("Initiating service restart for {:?}: {}", name, reason);
-        
+
         // Check dependencies first
         if let Err(e) = Self::check_dependencies_ready(name, services, configs).await {
             error!("Dependency check failed for {:?}: {}", name, e);
             return Err(e);
         }
-        
+
         // Stop the service
         if let Err(e) = Self::stop_service_internal(name, services).await {
             warn!("Error stopping service {:?} before restart: {}", name, e);
         }
-        
+
         // Wait before restarting (exponential backoff is handled by RestartManager)
         sleep(Duration::from_secs(2)).await;
-        
+
         // Start the service
         match Self::start_service_internal(name, services, configs).await {
             Ok(_) => {
                 info!("Service {:?} restarted successfully", name);
-                
+
                 // Perform health check
                 if let Err(e) = Self::validate_service_health(name, services).await {
-                    error!("Health validation failed after restart for {:?}: {}", name, e);
+                    error!(
+                        "Health validation failed after restart for {:?}: {}",
+                        name, e
+                    );
                     return Err(e);
                 }
-                
+
                 let duration = start_time.elapsed();
-                info!("Service {:?} fully operational after restart (took {:?})", name, duration);
+                info!(
+                    "Service {:?} fully operational after restart (took {:?})",
+                    name, duration
+                );
                 Ok(())
             }
             Err(e) => {
@@ -732,19 +772,21 @@ impl ServiceOrchestrator {
         configs: &Arc<RwLock<HashMap<ServiceName, ServiceConfig>>>,
     ) -> Result<()> {
         let dependencies = {
-            configs.read()
+            configs
+                .read()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire configs read lock: {}", e))?
                 .get(name)
                 .map(|c| c.dependencies.clone())
                 .unwrap_or_default()
         };
-        
+
         let mut missing_deps = Vec::new();
-        
+
         {
-            let services_guard = services.read()
+            let services_guard = services
+                .read()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services read lock: {}", e))?;
-            
+
             for dep in &dependencies {
                 if let Some(health) = services_guard.get(dep) {
                     match &health.status {
@@ -760,7 +802,7 @@ impl ServiceOrchestrator {
                 }
             }
         }
-        
+
         if !missing_deps.is_empty() {
             return Err(anyhow::anyhow!(
                 "Cannot restart {:?}: dependencies not ready: {:?}",
@@ -768,7 +810,7 @@ impl ServiceOrchestrator {
                 missing_deps
             ));
         }
-        
+
         Ok(())
     }
 
@@ -779,51 +821,53 @@ impl ServiceOrchestrator {
     ) -> Result<()> {
         let max_retries = 5;
         let retry_delay = Duration::from_secs(2);
-        
+
         for attempt in 1..=max_retries {
             debug!("Health check attempt {} for {:?}", attempt, name);
-            
+
             // Perform service-specific health check
             let healthy = match name {
-                ServiceName::PostgreSQL => {
-                    crate::services::pg::health_check().await.is_ok()
-                }
-                ServiceName::Redis => {
-                    crate::services::redis::health_check().await.is_ok()
-                }
-                ServiceName::Docker => {
-                    crate::services::docker::is_running_async().await.is_ok()
-                }
+                ServiceName::PostgreSQL => crate::services::pg::health_check().await.is_ok(),
+                ServiceName::Redis => crate::services::redis::health_check().await.is_ok(),
+                ServiceName::Docker => crate::services::docker::is_running_async().await.is_ok(),
                 _ => {
                     // For services without specific health checks, check status
-                    let status = services.read()
-                        .map_err(|e| anyhow::anyhow!("Failed to acquire services read lock: {}", e))?
+                    let status = services
+                        .read()
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to acquire services read lock: {}", e)
+                        })?
                         .get(name)
                         .map(|h| h.status.clone());
-                    
+
                     matches!(status, Some(ServiceStatus::Running))
                 }
             };
-            
+
             if healthy {
                 // Update service health
-                services.write()
+                services
+                    .write()
                     .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?
                     .get_mut(name)
                     .map(|h| {
                         h.status = ServiceStatus::Running;
                         h.error_count = 0;
                     });
-                
+
                 return Ok(());
             }
-            
+
             if attempt < max_retries {
                 sleep(retry_delay).await;
             }
         }
-        
-        Err(anyhow::anyhow!("Service {:?} failed health validation after {} attempts", name, max_retries))
+
+        Err(anyhow::anyhow!(
+            "Service {:?} failed health validation after {} attempts",
+            name,
+            max_retries
+        ))
     }
 
     /// Internal method to stop a service
@@ -832,15 +876,16 @@ impl ServiceOrchestrator {
         services: &Arc<RwLock<HashMap<ServiceName, ServiceHealth>>>,
     ) -> Result<()> {
         info!("Stopping service: {:?}", name);
-        
+
         // Update status
         {
-            services.write()
+            services
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?
                 .get_mut(name)
                 .map(|h| h.status = ServiceStatus::Stopping);
         }
-        
+
         // Stop the actual service
         let result = match name {
             ServiceName::PostgreSQL => {
@@ -861,26 +906,25 @@ impl ServiceOrchestrator {
             ServiceName::Crawler => {
                 crate::services::crawler::stop_service();
                 Ok(())
-            },
-            ServiceName::P2P => {
-                crate::services::p2p::stop_network().await
-                    .map_err(|e| anyhow::anyhow!("Failed to stop P2P network: {}", e))
-            },
-            ServiceName::WebSocket => {
-                crate::websocket::stop_server().await
-                    .map_err(|e| anyhow::anyhow!("Failed to stop WebSocket server: {}", e))
-            },
+            }
+            ServiceName::P2P => crate::services::p2p::stop_network()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to stop P2P network: {}", e)),
+            ServiceName::WebSocket => crate::websocket::stop_server()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to stop WebSocket server: {}", e)),
             _ => Ok(()),
         };
-        
+
         // Update status
         {
-            services.write()
+            services
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?
                 .get_mut(name)
                 .map(|h| h.status = ServiceStatus::Stopped);
         }
-        
+
         result
     }
 
@@ -891,49 +935,46 @@ impl ServiceOrchestrator {
         configs: &Arc<RwLock<HashMap<ServiceName, ServiceConfig>>>,
     ) -> Result<()> {
         info!("Starting service: {:?}", name);
-        
+
         // Update status
         {
-            services.write()
+            services
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?
                 .get_mut(name)
                 .map(|h| h.status = ServiceStatus::Starting);
         }
-        
+
         // Start the actual service
         let result = match name {
-            ServiceName::PostgreSQL => {
-                match crate::services::pg::connect().await {
-                    Ok(_) => {
-                        info!("PostgreSQL is already running");
-                        Ok(())
-                    }
-                    Err(_) => {
-                        if let Ok(_) = crate::services::docker::is_running_async().await {
-                            info!("Starting PostgreSQL via Docker");
-                            crate::services::docker::start_postgres().await
-                        } else {
-                            Err(anyhow::anyhow!("Docker not available to start PostgreSQL"))
-                        }
+            ServiceName::PostgreSQL => match crate::services::pg::connect().await {
+                Ok(_) => {
+                    info!("PostgreSQL is already running");
+                    Ok(())
+                }
+                Err(_) => {
+                    if let Ok(_) = crate::services::docker::is_running_async().await {
+                        info!("Starting PostgreSQL via Docker");
+                        crate::services::docker::start_postgres().await
+                    } else {
+                        Err(anyhow::anyhow!("Docker not available to start PostgreSQL"))
                     }
                 }
-            }
-            ServiceName::Redis => {
-                match crate::services::redis::connect().await {
-                    Ok(_) => {
-                        info!("Redis is already running");
-                        Ok(())
-                    }
-                    Err(_) => {
-                        if let Ok(_) = crate::services::docker::is_running_async().await {
-                            info!("Starting Redis via Docker");
-                            crate::services::docker::start_redis().await
-                        } else {
-                            Err(anyhow::anyhow!("Docker not available to start Redis"))
-                        }
+            },
+            ServiceName::Redis => match crate::services::redis::connect().await {
+                Ok(_) => {
+                    info!("Redis is already running");
+                    Ok(())
+                }
+                Err(_) => {
+                    if let Ok(_) = crate::services::docker::is_running_async().await {
+                        info!("Starting Redis via Docker");
+                        crate::services::docker::start_redis().await
+                    } else {
+                        Err(anyhow::anyhow!("Docker not available to start Redis"))
                     }
                 }
-            }
+            },
             ServiceName::Docker => crate::services::docker::ensure_running().await,
             ServiceName::FileStorage => crate::services::fs::initialize().await,
             ServiceName::Backup => crate::services::backup::start_scheduler().await,
@@ -941,20 +982,18 @@ impl ServiceOrchestrator {
             ServiceName::Crawler => {
                 crate::services::crawler::start_service_async().await;
                 Ok(())
-            },
+            }
             ServiceName::Voice => crate::services::voice::initialize().await,
-            ServiceName::P2P => {
-                crate::services::p2p::start_network().await
-                    .map_err(|e| anyhow::anyhow!("Failed to start P2P network: {}", e))
-            },
+            ServiceName::P2P => crate::services::p2p::start_network()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to start P2P network: {}", e)),
             ServiceName::VulnerabilityScanner => Ok(()),
             ServiceName::Whisper => crate::services::stt::whisper_enhanced::initialize().await,
             ServiceName::Lifx => crate::services::lifx::start_server().await,
             ServiceName::Media => crate::services::media::initialize().await,
-            ServiceName::WebSocket => {
-                crate::websocket::start_server().await
-                    .map_err(|e| anyhow::anyhow!("Failed to start WebSocket server: {}", e))
-            },
+            ServiceName::WebSocket => crate::websocket::start_server()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to start WebSocket server: {}", e)),
             ServiceName::MDNS => {
                 let output_lines = Arc::new(tokio::sync::Mutex::new(Vec::new()));
                 crate::services::mdns::start_discovery(output_lines).await;
@@ -965,28 +1004,27 @@ impl ServiceOrchestrator {
                 Ok(())
             }
         };
-        
+
         // Update status based on result
         {
-            services.write()
+            services
+                .write()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire services write lock: {}", e))?
                 .get_mut(name)
-                .map(|h| {
-                    match &result {
-                        Ok(_) => {
-                            h.status = ServiceStatus::Running;
-                            h.uptime = Duration::from_secs(0);
-                            info!("Service {:?} started successfully", name);
-                        }
-                        Err(e) => {
-                            h.status = ServiceStatus::Failed(e.to_string());
-                            h.error_count += 1;
-                            error!("Service {:?} failed to start: {}", name, e);
-                        }
+                .map(|h| match &result {
+                    Ok(_) => {
+                        h.status = ServiceStatus::Running;
+                        h.uptime = Duration::from_secs(0);
+                        info!("Service {:?} started successfully", name);
+                    }
+                    Err(e) => {
+                        h.status = ServiceStatus::Failed(e.to_string());
+                        h.error_count += 1;
+                        error!("Service {:?} failed to start: {}", name, e);
                     }
                 });
         }
-        
+
         result
     }
 
@@ -996,13 +1034,16 @@ impl ServiceOrchestrator {
     }
 
     /// Get restart metrics for a specific service
-    pub fn get_service_restart_metrics(&self, name: &ServiceName) -> Option<super::restart::RestartMetrics> {
+    pub fn get_service_restart_metrics(
+        &self,
+        name: &ServiceName,
+    ) -> Option<super::restart::RestartMetrics> {
         self.restart_manager.get_metrics(name)
     }
 
     /// Reset restart metrics for a service
-    pub fn reset_restart_metrics(&self, name: &ServiceName) {
-        self.restart_manager.reset_metrics(name);
+    pub fn reset_restart_metrics(&self, name: &ServiceName) -> Result<()> {
+        self.restart_manager.reset_metrics(name)
     }
 }
 
@@ -1187,7 +1228,7 @@ mod tests {
             name: ServiceName::Redis,
             ..Default::default()
         };
-        
+
         assert!(orchestrator.register_service(config).is_ok());
         assert!(orchestrator.get_health(&ServiceName::Redis).is_some());
     }
@@ -1195,39 +1236,53 @@ mod tests {
     #[tokio::test]
     async fn test_dependency_resolution() {
         let orchestrator = ServiceOrchestrator::new();
-        
+
         // Register services with dependencies
-        orchestrator.register_service(ServiceConfig {
-            name: ServiceName::PostgreSQL,
-            enabled: true,
-            dependencies: vec![],
-            ..Default::default()
-        }).expect("Failed to register service");
-        
-        orchestrator.register_service(ServiceConfig {
-            name: ServiceName::FileStorage,
-            enabled: true,
-            dependencies: vec![ServiceName::PostgreSQL],
-            ..Default::default()
-        }).expect("Failed to register service");
-        
-        orchestrator.register_service(ServiceConfig {
-            name: ServiceName::Backup,
-            enabled: true,
-            dependencies: vec![ServiceName::FileStorage],
-            ..Default::default()
-        }).expect("Failed to register service");
-        
-        let order = orchestrator.get_startup_order().expect("Failed to get startup order");
-        
+        orchestrator
+            .register_service(ServiceConfig {
+                name: ServiceName::PostgreSQL,
+                enabled: true,
+                dependencies: vec![],
+                ..Default::default()
+            })
+            .expect("Failed to register service");
+
+        orchestrator
+            .register_service(ServiceConfig {
+                name: ServiceName::FileStorage,
+                enabled: true,
+                dependencies: vec![ServiceName::PostgreSQL],
+                ..Default::default()
+            })
+            .expect("Failed to register service");
+
+        orchestrator
+            .register_service(ServiceConfig {
+                name: ServiceName::Backup,
+                enabled: true,
+                dependencies: vec![ServiceName::FileStorage],
+                ..Default::default()
+            })
+            .expect("Failed to register service");
+
+        let order = orchestrator
+            .get_startup_order()
+            .expect("Failed to get startup order");
+
         // PostgreSQL should start before FileStorage
-        let pg_index = order.iter().position(|s| *s == ServiceName::PostgreSQL)
+        let pg_index = order
+            .iter()
+            .position(|s| *s == ServiceName::PostgreSQL)
             .expect("PostgreSQL not found in startup order");
-        let fs_index = order.iter().position(|s| *s == ServiceName::FileStorage)
+        let fs_index = order
+            .iter()
+            .position(|s| *s == ServiceName::FileStorage)
             .expect("FileStorage not found in startup order");
-        let backup_index = order.iter().position(|s| *s == ServiceName::Backup)
+        let backup_index = order
+            .iter()
+            .position(|s| *s == ServiceName::Backup)
             .expect("Backup not found in startup order");
-        
+
         assert!(pg_index < fs_index);
         assert!(fs_index < backup_index);
     }
@@ -1235,22 +1290,26 @@ mod tests {
     #[tokio::test]
     async fn test_circular_dependency_detection() {
         let orchestrator = ServiceOrchestrator::new();
-        
+
         // Create circular dependency
-        orchestrator.register_service(ServiceConfig {
-            name: ServiceName::Redis,
-            enabled: true,
-            dependencies: vec![ServiceName::PostgreSQL],
-            ..Default::default()
-        }).expect("Failed to register service");
-        
-        orchestrator.register_service(ServiceConfig {
-            name: ServiceName::PostgreSQL,
-            enabled: true,
-            dependencies: vec![ServiceName::Redis],
-            ..Default::default()
-        }).expect("Failed to register service");
-        
+        orchestrator
+            .register_service(ServiceConfig {
+                name: ServiceName::Redis,
+                enabled: true,
+                dependencies: vec![ServiceName::PostgreSQL],
+                ..Default::default()
+            })
+            .expect("Failed to register service");
+
+        orchestrator
+            .register_service(ServiceConfig {
+                name: ServiceName::PostgreSQL,
+                enabled: true,
+                dependencies: vec![ServiceName::Redis],
+                ..Default::default()
+            })
+            .expect("Failed to register service");
+
         assert!(orchestrator.get_startup_order().is_err());
     }
 
@@ -1280,9 +1339,15 @@ mod tests {
         let graph = ServiceDependencyGraph::from_configs(&configs);
         let order = graph.startup_order().expect("Should produce valid order");
 
-        let pg_pos = order.iter().position(|s| *s == ServiceName::PostgreSQL).unwrap();
+        let pg_pos = order
+            .iter()
+            .position(|s| *s == ServiceName::PostgreSQL)
+            .unwrap();
         let redis_pos = order.iter().position(|s| *s == ServiceName::Redis).unwrap();
-        let crawler_pos = order.iter().position(|s| *s == ServiceName::Crawler).unwrap();
+        let crawler_pos = order
+            .iter()
+            .position(|s| *s == ServiceName::Crawler)
+            .unwrap();
 
         assert!(pg_pos < crawler_pos);
         assert!(redis_pos < crawler_pos);
@@ -1337,4 +1402,3 @@ mod tests {
         assert_eq!(dependents.len(), 2);
     }
 }
-

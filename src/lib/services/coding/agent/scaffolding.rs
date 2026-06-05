@@ -1,9 +1,9 @@
+use async_trait::async_trait;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
 use tokio::fs;
-use regex::Regex;
 
 use super::errors::CodingAgentError as ServiceError;
 
@@ -149,14 +149,12 @@ impl ScaffoldingEngine {
                             name: "src".to_string(),
                             path: PathBuf::from("src"),
                             purpose: "Source code".to_string(),
-                            subdirectories: vec![
-                                Directory {
-                                    name: "commands".to_string(),
-                                    path: PathBuf::from("src/commands"),
-                                    purpose: "CLI commands".to_string(),
-                                    subdirectories: vec![],
-                                },
-                            ],
+                            subdirectories: vec![Directory {
+                                name: "commands".to_string(),
+                                path: PathBuf::from("src/commands"),
+                                purpose: "CLI commands".to_string(),
+                                subdirectories: vec![],
+                            }],
                         },
                         Directory {
                             name: "tests".to_string(),
@@ -172,14 +170,12 @@ impl ScaffoldingEngine {
                         content: RUST_CLI_CARGO_TOML.to_string(),
                         file_type: FileType::Config,
                         is_required: true,
-                        variables: vec![
-                            TemplateVariable {
-                                name: "project_name".to_string(),
-                                description: "Name of the project".to_string(),
-                                default_value: None,
-                                validation_pattern: Some(r"^[a-z][a-z0-9_-]*$".to_string()),
-                            },
-                        ],
+                        variables: vec![TemplateVariable {
+                            name: "project_name".to_string(),
+                            description: "Name of the project".to_string(),
+                            default_value: None,
+                            validation_pattern: Some(r"^[a-z][a-z0-9_-]*$".to_string()),
+                        }],
                     },
                     FileTemplate {
                         path: PathBuf::from("src/main.rs"),
@@ -275,14 +271,12 @@ impl ScaffoldingEngine {
                         content: REACT_PACKAGE_JSON.to_string(),
                         file_type: FileType::Config,
                         is_required: true,
-                        variables: vec![
-                            TemplateVariable {
-                                name: "project_name".to_string(),
-                                description: "Name of the project".to_string(),
-                                default_value: None,
-                                validation_pattern: Some(r"^[a-z][a-z0-9-]*$".to_string()),
-                            },
-                        ],
+                        variables: vec![TemplateVariable {
+                            name: "project_name".to_string(),
+                            description: "Name of the project".to_string(),
+                            default_value: None,
+                            validation_pattern: Some(r"^[a-z][a-z0-9-]*$".to_string()),
+                        }],
                     },
                     FileTemplate {
                         path: PathBuf::from("tsconfig.json"),
@@ -318,14 +312,12 @@ impl ScaffoldingEngine {
                     ("build".to_string(), "tsc && vite build".to_string()),
                     ("test".to_string(), "vitest".to_string()),
                 ]),
-                environment_variables: vec![
-                    EnvVariable {
-                        name: "VITE_API_URL".to_string(),
-                        description: "API endpoint URL".to_string(),
-                        default_value: Some("http://localhost:3000".to_string()),
-                        is_secret: false,
-                    },
-                ],
+                environment_variables: vec![EnvVariable {
+                    name: "VITE_API_URL".to_string(),
+                    description: "API endpoint URL".to_string(),
+                    default_value: Some("http://localhost:3000".to_string()),
+                    is_secret: false,
+                }],
                 documentation: DocumentationTemplate {
                     readme_template: README_TEMPLATE.to_string(),
                     contributing_guide: None,
@@ -422,7 +414,10 @@ impl ScaffoldingEngine {
                 },
             ],
             scripts: HashMap::from([
-                ("dev".to_string(), "uvicorn app.main:app --reload".to_string()),
+                (
+                    "dev".to_string(),
+                    "uvicorn app.main:app --reload".to_string(),
+                ),
                 ("test".to_string(), "pytest".to_string()),
             ]),
             environment_variables: vec![],
@@ -471,14 +466,12 @@ impl ScaffoldingEngine {
                     content: GO_MOD.to_string(),
                     file_type: FileType::Config,
                     is_required: true,
-                    variables: vec![
-                        TemplateVariable {
-                            name: "module_name".to_string(),
-                            description: "Go module name".to_string(),
-                            default_value: None,
-                            validation_pattern: None,
-                        },
-                    ],
+                    variables: vec![TemplateVariable {
+                        name: "module_name".to_string(),
+                        description: "Go module name".to_string(),
+                        default_value: None,
+                        validation_pattern: None,
+                    }],
                 },
                 FileTemplate {
                     path: PathBuf::from("cmd/server/main.go"),
@@ -490,7 +483,10 @@ impl ScaffoldingEngine {
             ],
             dependencies: vec![],
             scripts: HashMap::from([
-                ("build".to_string(), "go build -o bin/server cmd/server/main.go".to_string()),
+                (
+                    "build".to_string(),
+                    "go build -o bin/server cmd/server/main.go".to_string(),
+                ),
                 ("run".to_string(), "go run cmd/server/main.go".to_string()),
                 ("test".to_string(), "go test ./...".to_string()),
             ]),
@@ -505,22 +501,14 @@ impl ScaffoldingEngine {
     }
 
     fn register_generators(&mut self) {
-        self.generators.insert(
-            "crud".to_string(),
-            Box::new(CrudGenerator::new()),
-        );
-        self.generators.insert(
-            "rest_api".to_string(),
-            Box::new(RestApiGenerator::new()),
-        );
-        self.generators.insert(
-            "graphql".to_string(),
-            Box::new(GraphQLGenerator::new()),
-        );
-        self.generators.insert(
-            "auth".to_string(),
-            Box::new(AuthGenerator::new()),
-        );
+        self.generators
+            .insert("crud".to_string(), Box::new(CrudGenerator::new()));
+        self.generators
+            .insert("rest_api".to_string(), Box::new(RestApiGenerator::new()));
+        self.generators
+            .insert("graphql".to_string(), Box::new(GraphQLGenerator::new()));
+        self.generators
+            .insert("auth".to_string(), Box::new(AuthGenerator::new()));
     }
 
     pub async fn scaffold_project(
@@ -529,51 +517,69 @@ impl ScaffoldingEngine {
         target_dir: &Path,
         variables: HashMap<String, String>,
     ) -> Result<ScaffoldResult, ServiceError> {
-        let template = self.templates.get(template_name)
+        let template = self
+            .templates
+            .get(template_name)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "template".to_string(),
                 id: template_name.to_string(),
             })?;
 
-        // Validate variables
-        self.validate_variables(template, &variables)?;
+        // Validate variables and fill template-provided defaults.
+        let variables = self.resolve_variables(template, variables)?;
 
         // Create directory structure
-        self.create_directory_structure(target_dir, &template.structure, &variables).await?;
+        let project_dir = self
+            .create_directory_structure(target_dir, &template.structure, &variables)
+            .await?;
 
         // Generate files
         let mut files_created = Vec::new();
         for file_template in &template.files {
-            let file_path = self.generate_file(target_dir, file_template, &variables).await?;
+            let file_path = self
+                .generate_file(&project_dir, file_template, &variables)
+                .await?;
             files_created.push(file_path);
         }
 
         // Generate documentation
-        self.generate_documentation(target_dir, &template.documentation, &variables).await?;
+        self.generate_documentation(&project_dir, &template.documentation, &variables)
+            .await?;
 
         // Initialize version control
-        self.initialize_git(target_dir).await?;
+        self.initialize_git(&project_dir).await?;
 
         // Install dependencies
-        let dependencies_installed = self.install_dependencies(target_dir, template).await?;
+        let dependencies_installed = self.install_dependencies(&project_dir, template).await?;
 
         Ok(ScaffoldResult {
-            project_path: target_dir.to_path_buf(),
+            project_path: project_dir,
             files_created,
             directories_created: self.count_directories(&template.structure),
             dependencies_installed,
-            next_steps: self.generate_next_steps(template),
+            next_steps: self.generate_next_steps(template, &variables),
         })
     }
 
-    fn validate_variables(
+    fn resolve_variables(
         &self,
         template: &ProjectTemplate,
-        variables: &HashMap<String, String>,
-    ) -> Result<(), ServiceError> {
+        variables: HashMap<String, String>,
+    ) -> Result<HashMap<String, String>, ServiceError> {
+        let mut resolved = variables;
+        resolved
+            .entry("description".to_string())
+            .or_insert_with(|| template.description.clone());
+
         for file in &template.files {
             for var in &file.variables {
-                if !variables.contains_key(&var.name) && var.default_value.is_none() {
+                if !resolved.contains_key(&var.name) {
+                    if let Some(default_value) = &var.default_value {
+                        resolved.insert(var.name.clone(), default_value.clone());
+                    }
+                }
+
+                if !resolved.contains_key(&var.name) {
                     return Err(ServiceError::ValidationError {
                         field: var.name.clone(),
                         message: format!("Required variable '{}' is missing", var.name),
@@ -581,16 +587,18 @@ impl ScaffoldingEngine {
                 }
 
                 if let Some(pattern) = &var.validation_pattern {
-                    if let Some(value) = variables.get(&var.name) {
-                        let re = Regex::new(pattern)
-                            .map_err(|e| ServiceError::ConfigError {
-                                message: format!("Invalid regex pattern: {}", e),
-                            })?;
+                    if let Some(value) = resolved.get(&var.name) {
+                        let re = Regex::new(pattern).map_err(|e| ServiceError::ConfigError {
+                            message: format!("Invalid regex pattern: {}", e),
+                        })?;
 
                         if !re.is_match(value) {
                             return Err(ServiceError::ValidationError {
                                 field: var.name.clone(),
-                                message: format!("Value '{}' doesn't match required pattern", value),
+                                message: format!(
+                                    "Value '{}' doesn't match required pattern",
+                                    value
+                                ),
                             });
                         }
                     }
@@ -598,7 +606,84 @@ impl ScaffoldingEngine {
             }
         }
 
-        Ok(())
+        for placeholder in self.collect_placeholders(template)? {
+            if !resolved.contains_key(&placeholder) {
+                return Err(ServiceError::ValidationError {
+                    field: placeholder.clone(),
+                    message: format!("Required template variable '{}' is missing", placeholder),
+                });
+            }
+        }
+
+        Ok(resolved)
+    }
+
+    fn collect_placeholders(
+        &self,
+        template: &ProjectTemplate,
+    ) -> Result<Vec<String>, ServiceError> {
+        let re = Regex::new(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}").map_err(|e| {
+            ServiceError::ConfigError {
+                message: format!("Invalid placeholder regex: {}", e),
+            }
+        })?;
+        let mut placeholders = Vec::new();
+
+        self.collect_placeholders_from_text(&template.structure.root_name, &re, &mut placeholders);
+        for directory in &template.structure.directories {
+            self.collect_directory_placeholders(directory, &re, &mut placeholders);
+        }
+        for file in &template.files {
+            self.collect_placeholders_from_text(
+                &file.path.to_string_lossy(),
+                &re,
+                &mut placeholders,
+            );
+            self.collect_placeholders_from_text(&file.content, &re, &mut placeholders);
+        }
+        self.collect_placeholders_from_text(
+            &template.documentation.readme_template,
+            &re,
+            &mut placeholders,
+        );
+        if let Some(contributing_guide) = &template.documentation.contributing_guide {
+            self.collect_placeholders_from_text(contributing_guide, &re, &mut placeholders);
+        }
+        if let Some(changelog_template) = &template.documentation.changelog_template {
+            self.collect_placeholders_from_text(changelog_template, &re, &mut placeholders);
+        }
+
+        placeholders.sort();
+        placeholders.dedup();
+        Ok(placeholders)
+    }
+
+    fn collect_directory_placeholders(
+        &self,
+        directory: &Directory,
+        re: &Regex,
+        placeholders: &mut Vec<String>,
+    ) {
+        self.collect_placeholders_from_text(&directory.name, re, placeholders);
+        self.collect_placeholders_from_text(&directory.path.to_string_lossy(), re, placeholders);
+        self.collect_placeholders_from_text(&directory.purpose, re, placeholders);
+
+        for subdirectory in &directory.subdirectories {
+            self.collect_directory_placeholders(subdirectory, re, placeholders);
+        }
+    }
+
+    fn collect_placeholders_from_text(
+        &self,
+        text: &str,
+        re: &Regex,
+        placeholders: &mut Vec<String>,
+    ) {
+        placeholders.extend(
+            re.captures_iter(text)
+                .filter_map(|capture| capture.get(1))
+                .map(|match_| match_.as_str().to_string()),
+        );
     }
 
     async fn create_directory_structure(
@@ -606,38 +691,44 @@ impl ScaffoldingEngine {
         base_dir: &Path,
         structure: &DirectoryStructure,
         variables: &HashMap<String, String>,
-    ) -> Result<(), ServiceError> {
+    ) -> Result<PathBuf, ServiceError> {
         let root_name = self.replace_variables(&structure.root_name, variables);
         let root_path = base_dir.join(root_name);
 
-        fs::create_dir_all(&root_path).await
+        fs::create_dir_all(&root_path)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(root_path.clone()),
             })?;
 
         for dir in &structure.directories {
-            self.create_directory_recursive(&root_path, dir).await?;
+            self.create_directory_recursive(&root_path, dir, variables)
+                .await?;
         }
 
-        Ok(())
+        Ok(root_path)
     }
 
     async fn create_directory_recursive(
         &self,
         base_dir: &Path,
         dir: &Directory,
+        variables: &HashMap<String, String>,
     ) -> Result<(), ServiceError> {
-        let dir_path = base_dir.join(&dir.path);
+        let dir_path = base_dir.join(PathBuf::from(
+            self.replace_variables(&dir.path.to_string_lossy(), variables),
+        ));
 
-        fs::create_dir_all(&dir_path).await
+        fs::create_dir_all(&dir_path)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(dir_path.clone()),
             })?;
 
         for subdir in &dir.subdirectories {
-            Box::pin(self.create_directory_recursive(base_dir, subdir)).await?;
+            Box::pin(self.create_directory_recursive(base_dir, subdir, variables)).await?;
         }
 
         Ok(())
@@ -650,17 +741,21 @@ impl ScaffoldingEngine {
         variables: &HashMap<String, String>,
     ) -> Result<PathBuf, ServiceError> {
         let content = self.replace_variables(&template.content, variables);
-        let file_path = base_dir.join(&template.path);
+        let file_path = base_dir.join(PathBuf::from(
+            self.replace_variables(&template.path.to_string_lossy(), variables),
+        ));
 
         if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent).await
+            fs::create_dir_all(parent)
+                .await
                 .map_err(|e| ServiceError::IoError {
                     message: e.to_string(),
                     path: Some(parent.to_path_buf()),
                 })?;
         }
 
-        fs::write(&file_path, content).await
+        fs::write(&file_path, content)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(file_path.clone()),
@@ -689,7 +784,8 @@ impl ScaffoldingEngine {
         // Generate README
         let readme_content = self.replace_variables(&doc_template.readme_template, variables);
         let readme_path = base_dir.join("README.md");
-        fs::write(&readme_path, readme_content).await
+        fs::write(&readme_path, readme_content)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(readme_path),
@@ -699,7 +795,8 @@ impl ScaffoldingEngine {
         if let Some(ref contributing) = doc_template.contributing_guide {
             let content = self.replace_variables(contributing, variables);
             let path = base_dir.join("CONTRIBUTING.md");
-            fs::write(&path, content).await
+            fs::write(&path, content)
+                .await
                 .map_err(|e| ServiceError::IoError {
                     message: e.to_string(),
                     path: Some(path),
@@ -708,7 +805,8 @@ impl ScaffoldingEngine {
 
         // Generate LICENSE
         let license_path = base_dir.join("LICENSE");
-        fs::write(&license_path, &doc_template.license).await
+        fs::write(&license_path, &doc_template.license)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(license_path),
@@ -729,7 +827,8 @@ impl ScaffoldingEngine {
         // Create .gitignore
         let gitignore_content = self.generate_gitignore();
         let gitignore_path = project_dir.join(".gitignore");
-        fs::write(&gitignore_path, gitignore_content).await
+        fs::write(&gitignore_path, gitignore_content)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(gitignore_path),
@@ -811,10 +910,17 @@ impl ScaffoldingEngine {
         count
     }
 
-    fn generate_next_steps(&self, template: &ProjectTemplate) -> Vec<String> {
+    fn generate_next_steps(
+        &self,
+        template: &ProjectTemplate,
+        variables: &HashMap<String, String>,
+    ) -> Vec<String> {
         let mut steps = Vec::new();
 
-        steps.push(format!("cd {{{{project_name}}}}"));
+        steps.push(format!(
+            "cd {}",
+            self.replace_variables(&template.structure.root_name, variables)
+        ));
 
         if !template.dependencies.is_empty() {
             match template.language.as_str() {
@@ -842,11 +948,13 @@ impl ScaffoldingEngine {
         generator_name: &str,
         context: GeneratorContext,
     ) -> Result<Vec<GeneratedFile>, ServiceError> {
-        let generator = self.generators.get(generator_name)
-            .ok_or_else(|| ServiceError::NotFound {
-                resource: "generator".to_string(),
-                id: generator_name.to_string(),
-            })?;
+        let generator =
+            self.generators
+                .get(generator_name)
+                .ok_or_else(|| ServiceError::NotFound {
+                    resource: "generator".to_string(),
+                    id: generator_name.to_string(),
+                })?;
 
         generator.generate(&context).await
     }
@@ -885,7 +993,10 @@ pub struct GeneratedFile {
 
 #[async_trait]
 trait CodeGenerator: Send + Sync {
-    async fn generate(&self, context: &GeneratorContext) -> Result<Vec<GeneratedFile>, ServiceError>;
+    async fn generate(
+        &self,
+        context: &GeneratorContext,
+    ) -> Result<Vec<GeneratedFile>, ServiceError>;
     fn supported_languages(&self) -> Vec<String>;
 }
 
@@ -906,7 +1017,10 @@ impl CrudGenerator {
 
 #[async_trait]
 impl CodeGenerator for CrudGenerator {
-    async fn generate(&self, context: &GeneratorContext) -> Result<Vec<GeneratedFile>, ServiceError> {
+    async fn generate(
+        &self,
+        context: &GeneratorContext,
+    ) -> Result<Vec<GeneratedFile>, ServiceError> {
         let mut files = Vec::new();
 
         // Generate model
@@ -917,19 +1031,28 @@ impl CodeGenerator for CrudGenerator {
 
         // Generate repository
         files.push(GeneratedFile {
-            path: PathBuf::from(format!("repositories/{}_repository.rs", context.entity_name.to_lowercase())),
+            path: PathBuf::from(format!(
+                "repositories/{}_repository.rs",
+                context.entity_name.to_lowercase()
+            )),
             content: self.generate_repository(context),
         });
 
         // Generate service
         files.push(GeneratedFile {
-            path: PathBuf::from(format!("services/{}_service.rs", context.entity_name.to_lowercase())),
+            path: PathBuf::from(format!(
+                "services/{}_service.rs",
+                context.entity_name.to_lowercase()
+            )),
             content: self.generate_service(context),
         });
 
         // Generate controller
         files.push(GeneratedFile {
-            path: PathBuf::from(format!("controllers/{}_controller.rs", context.entity_name.to_lowercase())),
+            path: PathBuf::from(format!(
+                "controllers/{}_controller.rs",
+                context.entity_name.to_lowercase()
+            )),
             content: self.generate_controller(context),
         });
 
@@ -937,7 +1060,11 @@ impl CodeGenerator for CrudGenerator {
     }
 
     fn supported_languages(&self) -> Vec<String> {
-        vec!["rust".to_string(), "typescript".to_string(), "python".to_string()]
+        vec![
+            "rust".to_string(),
+            "typescript".to_string(),
+            "python".to_string(),
+        ]
     }
 }
 
@@ -1006,7 +1133,10 @@ impl RestApiGenerator {
 
 #[async_trait]
 impl CodeGenerator for RestApiGenerator {
-    async fn generate(&self, _context: &GeneratorContext) -> Result<Vec<GeneratedFile>, ServiceError> {
+    async fn generate(
+        &self,
+        _context: &GeneratorContext,
+    ) -> Result<Vec<GeneratedFile>, ServiceError> {
         Ok(vec![])
     }
 
@@ -1025,7 +1155,10 @@ impl GraphQLGenerator {
 
 #[async_trait]
 impl CodeGenerator for GraphQLGenerator {
-    async fn generate(&self, _context: &GeneratorContext) -> Result<Vec<GeneratedFile>, ServiceError> {
+    async fn generate(
+        &self,
+        _context: &GeneratorContext,
+    ) -> Result<Vec<GeneratedFile>, ServiceError> {
         Ok(vec![])
     }
 
@@ -1044,12 +1177,19 @@ impl AuthGenerator {
 
 #[async_trait]
 impl CodeGenerator for AuthGenerator {
-    async fn generate(&self, _context: &GeneratorContext) -> Result<Vec<GeneratedFile>, ServiceError> {
+    async fn generate(
+        &self,
+        _context: &GeneratorContext,
+    ) -> Result<Vec<GeneratedFile>, ServiceError> {
         Ok(vec![])
     }
 
     fn supported_languages(&self) -> Vec<String> {
-        vec!["rust".to_string(), "typescript".to_string(), "python".to_string()]
+        vec![
+            "rust".to_string(),
+            "typescript".to_string(),
+            "python".to_string(),
+        ]
     }
 }
 
@@ -1263,3 +1403,79 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn scaffold_project_writes_everything_under_project_root() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let engine = ScaffoldingEngine::new();
+        let variables = HashMap::from([("project_name".to_string(), "sam-tool".to_string())]);
+
+        let result = engine
+            .scaffold_project("rust-cli", temp_dir.path(), variables)
+            .await
+            .expect("scaffold rust cli");
+
+        let project_dir = temp_dir.path().join("sam-tool");
+        assert_eq!(result.project_path, project_dir);
+        assert!(project_dir.join("Cargo.toml").is_file());
+        assert!(project_dir.join("src/main.rs").is_file());
+        assert!(project_dir.join("README.md").is_file());
+        assert!(project_dir.join("LICENSE").is_file());
+        assert!(project_dir.join(".gitignore").is_file());
+        assert!(project_dir.join(".git").is_dir());
+        assert!(!temp_dir.path().join("Cargo.toml").exists());
+        assert!(result
+            .files_created
+            .iter()
+            .all(|path| path.starts_with(&project_dir)));
+    }
+
+    #[tokio::test]
+    async fn scaffold_project_resolves_readme_and_next_steps() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let engine = ScaffoldingEngine::new();
+        let variables = HashMap::from([("project_name".to_string(), "sam-tool".to_string())]);
+
+        let result = engine
+            .scaffold_project("rust-cli", temp_dir.path(), variables)
+            .await
+            .expect("scaffold rust cli");
+
+        let readme = fs::read_to_string(result.project_path.join("README.md"))
+            .await
+            .expect("read readme");
+
+        assert!(readme.contains("# sam-tool"));
+        assert!(readme.contains("A command-line application written in Rust"));
+        assert!(!readme.contains("{{"));
+        assert_eq!(result.next_steps[0], "cd sam-tool");
+    }
+
+    #[tokio::test]
+    async fn scaffold_project_rejects_unresolved_placeholders() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let engine = ScaffoldingEngine::new();
+        let variables = HashMap::from([("module_name".to_string(), "example.com/sam".to_string())]);
+
+        let error = engine
+            .scaffold_project("go-microservice", temp_dir.path(), variables)
+            .await
+            .expect_err("missing project_name should fail validation");
+
+        match error {
+            ServiceError::ValidationError { field, .. } => assert_eq!(field, "project_name"),
+            other => panic!("expected validation error, got {other:?}"),
+        }
+        assert!(temp_dir
+            .path()
+            .read_dir()
+            .expect("read temp dir")
+            .next()
+            .is_none());
+    }
+}

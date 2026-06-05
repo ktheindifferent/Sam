@@ -20,7 +20,10 @@ pub fn handle(
     }
 
     if request.url().contains("/api/services/lifx") {
-        return Ok(crate::services::lifx::handle(Some(current_session.sid.clone()), request));
+        return Ok(crate::services::lifx::handle(
+            Some(current_session.sid.clone()),
+            request,
+        ));
     }
 
     if request.url().contains("/api/services/notifications") {
@@ -40,7 +43,10 @@ pub fn handle(
     }
 
     if request.url().contains("/api/services/stt") {
-        return Ok(crate::services::stt::handle(Some(current_session.sid.clone()), request));
+        return Ok(crate::services::stt::handle(
+            Some(current_session.sid.clone()),
+            request,
+        ));
     }
 
     if request.url().contains("/api/services/jupiter") {
@@ -93,11 +99,10 @@ pub fn handle(
                 .queries
                 .push(crate::memory::PGCol::String(service.oid.clone()));
             pg_query.query_columns.push("oid =".to_string());
-            let objects =
-                crate::memory::config::Service::select(None, None, None, Some(pg_query))?;
-            if !objects.is_empty() {
+            let objects = crate::memory::config::Service::select(None, None, None, Some(pg_query))?;
+            if let Some(service) = objects.first() {
                 if request.url().contains(".json") {
-                    return Ok(Response::json(&objects[0]));
+                    return Ok(Response::json(service));
                 } else {
                     let response = Response::redirect_302("/services.html");
                     return Ok(response);

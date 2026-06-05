@@ -1,11 +1,11 @@
+use super::execution_context::{ContextCommand, ExecutionContext, ExecutionContextManager};
+use super::service::CodingAgentService;
+use anyhow::Result;
+use log;
 use std::path::PathBuf;
 use std::sync::Arc;
-use anyhow::Result;
-use tokio::time::{sleep, Duration};
 use std::time::SystemTime;
-use log;
-use super::service::CodingAgentService;
-use super::execution_context::{ExecutionContext, ContextCommand, ExecutionContextManager};
+use tokio::time::{sleep, Duration};
 
 /// Command executor for safe command execution with context management
 #[derive(Debug)]
@@ -23,7 +23,10 @@ impl CommandExecutor {
     }
 
     /// Create with existing context manager
-    pub fn with_context_manager(coding_agent: Arc<CodingAgentService>, context_manager: Arc<ExecutionContextManager>) -> Self {
+    pub fn with_context_manager(
+        coding_agent: Arc<CodingAgentService>,
+        context_manager: Arc<ExecutionContextManager>,
+    ) -> Self {
         Self {
             coding_agent,
             context_manager,
@@ -37,20 +40,29 @@ impl CommandExecutor {
             ctx
         } else {
             // Create default context
-            self.context_manager.create_context("default".to_string()).await
+            self.context_manager
+                .create_context("default".to_string())
+                .await
         };
 
         // Use context-aware execution
-        self.execute_command_with_context(command, current_dir, &context, 3).await
+        self.execute_command_with_context(command, current_dir, &context, 3)
+            .await
     }
 
     /// Execute command with legacy interface (no context)
     pub async fn execute_command_simple(&self, command: &str, current_dir: &PathBuf) -> String {
-        self.execute_command_with_retry(command, current_dir, 3).await
+        self.execute_command_with_retry(command, current_dir, 3)
+            .await
     }
 
     /// Execute a single command with configurable retry attempts
-    async fn execute_command_with_retry(&self, command: &str, current_dir: &PathBuf, max_retries: u32) -> String {
+    async fn execute_command_with_retry(
+        &self,
+        command: &str,
+        current_dir: &PathBuf,
+        max_retries: u32,
+    ) -> String {
         // Validate command before execution
         if let Err(validation_error) = self.validate_command(command) {
             return format!("Command validation failed: {}", validation_error);
@@ -62,7 +74,11 @@ impl CommandExecutor {
         }
 
         // Handle heredoc commands specially
-        if command.contains("<<") && (command.contains("'EOF'") || command.contains("\"EOF\"") || command.contains("<< EOF")) {
+        if command.contains("<<")
+            && (command.contains("'EOF'")
+                || command.contains("\"EOF\"")
+                || command.contains("<< EOF"))
+        {
             return self.handle_heredoc_command(command, current_dir).await;
         }
 
@@ -72,7 +88,11 @@ impl CommandExecutor {
             // Sanitize command before execution
             let sanitized_command = self.sanitize_command(command);
 
-            match self.coding_agent.execute_command_in_dir(&sanitized_command, current_dir, false).await {
+            match self
+                .coding_agent
+                .execute_command_in_dir(&sanitized_command, current_dir, false)
+                .await
+            {
                 Ok(output) => {
                     // Check if the output indicates a failure even though the command "succeeded"
                     if self.output_indicates_failure(&output, command) {
@@ -88,11 +108,7 @@ impl CommandExecutor {
 
                     // If previous attempts failed but this one succeeded, note the recovery
                     if attempt > 0 {
-                        return format!(
-                            "[Recovered after {} attempts]\n{}",
-                            attempt + 1,
-                            output
-                        );
+                        return format!("[Recovered after {} attempts]\n{}", attempt + 1, output);
                     }
                     return output;
                 }
@@ -114,7 +130,10 @@ impl CommandExecutor {
         }
 
         // All attempts failed
-        format!("{}\n[Command failed after {} attempts]", last_error, max_retries)
+        format!(
+            "{}\n[Command failed after {} attempts]",
+            last_error, max_retries
+        )
     }
 
     /// Execute command with execution context
@@ -143,9 +162,12 @@ impl CommandExecutor {
                     current_dir.join(new_dir)
                 };
 
-                let _ = self.context_manager.update_active_context(|ctx| {
-                    let _ = ctx.set_working_directory(new_path);
-                }).await;
+                let _ = self
+                    .context_manager
+                    .update_active_context(|ctx| {
+                        let _ = ctx.set_working_directory(new_path);
+                    })
+                    .await;
             }
 
             return result;
@@ -164,10 +186,16 @@ impl CommandExecutor {
         for attempt in 0..max_retries {
             let sanitized_command = self.sanitize_command(&final_command);
 
-            match self.coding_agent.execute_command_in_dir(&sanitized_command, current_dir, false).await {
+            match self
+                .coding_agent
+                .execute_command_in_dir(&sanitized_command, current_dir, false)
+                .await
+            {
                 Ok(output) => {
                     // Record in context history
-                    let duration = SystemTime::now().duration_since(start_time).unwrap_or_default();
+                    let duration = SystemTime::now()
+                        .duration_since(start_time)
+                        .unwrap_or_default();
                     let cmd_record = ContextCommand {
                         command: command.to_string(),
                         executed_at: SystemTime::now(),
@@ -178,9 +206,12 @@ impl CommandExecutor {
                         duration,
                     };
 
-                    let _ = self.context_manager.update_active_context(|ctx| {
-                        ctx.add_command(cmd_record);
-                    }).await;
+                    let _ = self
+                        .context_manager
+                        .update_active_context(|ctx| {
+                            ctx.add_command(cmd_record);
+                        })
+                        .await;
 
                     if self.output_indicates_failure(&output, command) {
                         // Only retry for actual failures, not expected errors
@@ -202,7 +233,9 @@ impl CommandExecutor {
                     last_error = format!("Error: {}", e);
 
                     // Record failure in context
-                    let duration = SystemTime::now().duration_since(start_time).unwrap_or_default();
+                    let duration = SystemTime::now()
+                        .duration_since(start_time)
+                        .unwrap_or_default();
                     let cmd_record = ContextCommand {
                         command: command.to_string(),
                         executed_at: SystemTime::now(),
@@ -213,9 +246,12 @@ impl CommandExecutor {
                         duration,
                     };
 
-                    let _ = self.context_manager.update_active_context(|ctx| {
-                        ctx.add_command(cmd_record);
-                    }).await;
+                    let _ = self
+                        .context_manager
+                        .update_active_context(|ctx| {
+                            ctx.add_command(cmd_record);
+                        })
+                        .await;
 
                     if self.is_non_retryable_error(&last_error) {
                         break;
@@ -229,24 +265,67 @@ impl CommandExecutor {
             }
         }
 
-        format!("{}\n[Command failed after {} attempts]", last_error, max_retries)
+        format!(
+            "{}\n[Command failed after {} attempts]",
+            last_error, max_retries
+        )
     }
 
     /// Check if command is a GUI application
     fn is_gui_command(&self, command: &str) -> bool {
         let gui_indicators = [
-            "firefox", "chrome", "chromium", "code", "vscode", "subl", "sublime",
-            "atom", "idea", "pycharm", "webstorm", "gimp", "inkscape", "blender",
-            "vlc", "mpv", "spotify", "slack", "discord", "telegram", "zoom",
-            "xterm", "gnome-terminal", "konsole", "kitty", "alacritty",
-            "nautilus", "dolphin", "thunar", "pcmanfm", "nemo",
-            "gedit", "kate", "mousepad", "leafpad", "pluma",
-            "eog", "gwenview", "feh", "ristretto", "viewnior",
-            "evince", "okular", "zathura", "mupdf", "xpdf"
+            "firefox",
+            "chrome",
+            "chromium",
+            "code",
+            "vscode",
+            "subl",
+            "sublime",
+            "atom",
+            "idea",
+            "pycharm",
+            "webstorm",
+            "gimp",
+            "inkscape",
+            "blender",
+            "vlc",
+            "mpv",
+            "spotify",
+            "slack",
+            "discord",
+            "telegram",
+            "zoom",
+            "xterm",
+            "gnome-terminal",
+            "konsole",
+            "kitty",
+            "alacritty",
+            "nautilus",
+            "dolphin",
+            "thunar",
+            "pcmanfm",
+            "nemo",
+            "gedit",
+            "kate",
+            "mousepad",
+            "leafpad",
+            "pluma",
+            "eog",
+            "gwenview",
+            "feh",
+            "ristretto",
+            "viewnior",
+            "evince",
+            "okular",
+            "zathura",
+            "mupdf",
+            "xpdf",
         ];
 
         let cmd_lower = command.to_lowercase();
-        gui_indicators.iter().any(|&indicator| cmd_lower.contains(indicator))
+        gui_indicators
+            .iter()
+            .any(|&indicator| cmd_lower.contains(indicator))
     }
 
     /// Sanitize command to prevent shell injection and fix common issues
@@ -255,11 +334,11 @@ impl CommandExecutor {
 
         // Remove potentially dangerous characters and patterns
         let sanitized = command
-            .replace("''", "'")  // Fix double quotes
-            .replace("\"\"", "\"")  // Fix double quotes
-            .replace(";;", ";")  // Fix double semicolons
-            .replace("&&", " && ")  // Ensure spaces around &&
-            .replace(";", " ; ")  // Ensure spaces around ;
+            .replace("''", "'") // Fix double quotes
+            .replace("\"\"", "\"") // Fix double quotes
+            .replace(";;", ";") // Fix double semicolons
+            .replace("&&", " && ") // Ensure spaces around &&
+            .replace(";", " ; ") // Ensure spaces around ;
             .trim()
             .to_string();
 
@@ -302,16 +381,29 @@ impl CommandExecutor {
 
         // Skip "Command failed:" prefix check since that's added by our code
         let clean_output = if output_lower.starts_with("command failed:") {
-            output_lower.strip_prefix("command failed:").unwrap_or(&output_lower).trim()
+            output_lower
+                .strip_prefix("command failed:")
+                .unwrap_or(&output_lower)
+                .trim()
         } else {
             &output_lower
         };
 
         // Common error indicators
         let error_patterns = [
-            "error:", "failed:", "cannot", "no such file", "permission denied",
-            "command not found", "syntax error", "parse error", "invalid",
-            "unexpected eof", "line 0:", "line 1:", "unexpected end of file"
+            "error:",
+            "failed:",
+            "cannot",
+            "no such file",
+            "permission denied",
+            "command not found",
+            "syntax error",
+            "parse error",
+            "invalid",
+            "unexpected eof",
+            "line 0:",
+            "line 1:",
+            "unexpected end of file",
         ];
 
         for pattern in &error_patterns {
@@ -326,16 +418,16 @@ impl CommandExecutor {
 
         // Check for command-specific failure patterns
         if command.starts_with("cargo") {
-            if clean_output.contains("compilation failed") ||
-               clean_output.contains("build failed") ||
-               clean_output.contains("could not compile") {
+            if clean_output.contains("compilation failed")
+                || clean_output.contains("build failed")
+                || clean_output.contains("could not compile")
+            {
                 return true;
             }
         }
 
         if command.starts_with("git") {
-            if clean_output.contains("fatal:") ||
-               clean_output.contains("not a git repository") {
+            if clean_output.contains("fatal:") || clean_output.contains("not a git repository") {
                 return true;
             }
         }
@@ -356,9 +448,12 @@ impl CommandExecutor {
             Ok(dir) => {
                 log::info!("Current working directory: {:?}", dir);
                 dir
-            },
+            }
             Err(_) => {
-                log::info!("Failed to get current working directory, using provided: {:?}", current_dir);
+                log::info!(
+                    "Failed to get current working directory, using provided: {:?}",
+                    current_dir
+                );
                 current_dir.clone()
             }
         };
@@ -418,7 +513,7 @@ impl CommandExecutor {
         // Extract the file path
         let file_path = if let Some(start) = first_line.find('>') {
             let end = first_line.find("<<").unwrap_or(first_line.len());
-            first_line[start+1..end].trim()
+            first_line[start + 1..end].trim()
         } else {
             return "Invalid heredoc syntax: missing >".to_string();
         };
@@ -455,9 +550,12 @@ impl CommandExecutor {
             Ok(dir) => {
                 log::info!("Using current working directory: {:?}", dir);
                 dir
-            },
+            }
             Err(_) => {
-                log::info!("Failed to get current working directory, using provided: {:?}", current_dir);
+                log::info!(
+                    "Failed to get current working directory, using provided: {:?}",
+                    current_dir
+                );
                 current_dir.clone()
             }
         };
@@ -478,7 +576,7 @@ impl CommandExecutor {
             Ok(_) => {
                 log::info!("Successfully wrote to {}", full_path.display());
                 format!("Successfully wrote to {}", file_path)
-            },
+            }
             Err(e) => {
                 log::error!("Failed to write to {}: {}", full_path.display(), e);
                 format!("Failed to write to {}: {}", file_path, e)
@@ -501,7 +599,9 @@ impl CommandExecutor {
             "command not found",
         ];
 
-        non_retryable_patterns.iter().any(|pattern| error_msg.to_lowercase().contains(&pattern.to_lowercase()))
+        non_retryable_patterns
+            .iter()
+            .any(|pattern| error_msg.to_lowercase().contains(&pattern.to_lowercase()))
     }
 
     /// Check if a command is critical (failure should stop execution)
@@ -515,8 +615,9 @@ impl CommandExecutor {
         // Only project creation commands are truly critical
         if cmd_parts[0] == "cargo" {
             match cmd_parts.get(1) {
-                Some(&"new") | Some(&"init") => true,  // Project creation is critical
-                Some(&"check") | Some(&"test") | Some(&"clippy") | Some(&"build") | Some(&"run") => false, // Diagnostic commands are not critical
+                Some(&"new") | Some(&"init") => true, // Project creation is critical
+                Some(&"check") | Some(&"test") | Some(&"clippy") | Some(&"build")
+                | Some(&"run") => false, // Diagnostic commands are not critical
                 _ => false,
             }
         } else if cmd_parts[0] == "mkdir" {
@@ -539,7 +640,10 @@ impl CommandExecutor {
 
         // Check if command is safe
         if !self.coding_agent.is_safe_command(command) {
-            return Err(format!("Command '{}' is not in the safe command list", cmd_parts[0]));
+            return Err(format!(
+                "Command '{}' is not in the safe command list",
+                cmd_parts[0]
+            ));
         }
 
         // Additional validation for specific commands
@@ -564,7 +668,11 @@ impl CommandExecutor {
     }
 
     /// Execute command with validation and safety checks
-    pub async fn execute_validated_command(&self, command: &str, current_dir: &PathBuf) -> Result<String, String> {
+    pub async fn execute_validated_command(
+        &self,
+        command: &str,
+        current_dir: &PathBuf,
+    ) -> Result<String, String> {
         // Validate command first
         self.validate_command(command)?;
 
@@ -593,7 +701,8 @@ impl CommandExecutor {
             let mut important_lines = Vec::new();
             let mut in_error = false;
 
-            for line in lines.iter().take(50) {  // Limit to first 50 lines
+            for line in lines.iter().take(50) {
+                // Limit to first 50 lines
                 if line.contains("error:") || line.contains("Error:") {
                     in_error = true;
                     important_lines.push(*line);
@@ -612,7 +721,11 @@ impl CommandExecutor {
         }
 
         // For other commands, just truncate
-        format!("{}... (truncated from {} characters)", &output[..500], output.len())
+        format!(
+            "{}... (truncated from {} characters)",
+            &output[..500],
+            output.len()
+        )
     }
 
     /// Get command timeout based on command type
@@ -633,7 +746,7 @@ impl CommandExecutor {
             "npm" | "yarn" => {
                 match cmd_parts.get(1) {
                     Some(&"install") => Duration::from_secs(300), // 5 minutes for npm install
-                    Some(&"run") => Duration::from_secs(180), // 3 minutes for npm run
+                    Some(&"run") => Duration::from_secs(180),     // 3 minutes for npm run
                     _ => Duration::from_secs(60),
                 }
             }
@@ -647,7 +760,7 @@ impl CommandExecutor {
             "docker" => Duration::from_secs(300), // 5 minutes for docker operations
             "make" | "cmake" => Duration::from_secs(300), // 5 minutes for builds
             "find" | "grep" => Duration::from_secs(60), // 1 minute for search operations
-            _ => Duration::from_secs(30), // Default 30 seconds
+            _ => Duration::from_secs(30),         // Default 30 seconds
         }
     }
 
@@ -655,20 +768,20 @@ impl CommandExecutor {
     pub fn is_streaming_command(&self, command: &str) -> bool {
         let streaming_commands = ["tail", "watch", "top", "htop", "ping", "docker logs"];
         let cmd_parts: Vec<&str> = command.split_whitespace().collect();
-        
+
         if cmd_parts.is_empty() {
             return false;
         }
 
-        streaming_commands.contains(&cmd_parts[0]) ||
-        (cmd_parts[0] == "tail" && cmd_parts.contains(&"-f"))
+        streaming_commands.contains(&cmd_parts[0])
+            || (cmd_parts[0] == "tail" && cmd_parts.contains(&"-f"))
     }
 
     /// Suggest alternative commands for failed commands
     pub fn suggest_alternatives(&self, failed_command: &str, error_output: &str) -> Vec<String> {
         let mut suggestions = Vec::new();
         let cmd_parts: Vec<&str> = failed_command.split_whitespace().collect();
-        
+
         if cmd_parts.is_empty() {
             return suggestions;
         }

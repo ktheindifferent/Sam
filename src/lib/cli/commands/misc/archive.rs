@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 /// Handle the tar command - create and extract archives
 pub async fn handle_tar(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &PathBuf) {
     let args: Vec<&str> = cmd.split_whitespace().collect();
-    
+
     if args.len() < 2 {
         let mut out = output_lines.lock().await;
         out.push("Usage: tar [options] [archive] [files...]".to_string());
@@ -23,7 +23,7 @@ pub async fn handle_tar(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curre
         out.push("  tar -tf archive.tar                # List contents".to_string());
         return;
     }
-    
+
     let mut create = false;
     let mut extract = false;
     let mut list = false;
@@ -32,7 +32,7 @@ pub async fn handle_tar(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curre
     let mut archive_file = None;
     let mut file_args = Vec::new();
     let mut i = 1;
-    
+
     // Parse arguments
     while i < args.len() {
         let arg = args[i];
@@ -64,7 +64,9 @@ pub async fn handle_tar(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curre
             }
         } else {
             // If no archive file set yet and this looks like one, use it
-            if archive_file.is_none() && (arg.ends_with(".tar") || arg.ends_with(".tar.gz") || arg.ends_with(".tgz")) {
+            if archive_file.is_none()
+                && (arg.ends_with(".tar") || arg.ends_with(".tar.gz") || arg.ends_with(".tgz"))
+            {
                 archive_file = Some(arg);
             } else {
                 file_args.push(arg);
@@ -72,7 +74,7 @@ pub async fn handle_tar(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curre
         }
         i += 1;
     }
-    
+
     // Validate arguments
     let mode_count = [create, extract, list].iter().filter(|&&x| x).count();
     if mode_count == 0 {
@@ -85,17 +87,25 @@ pub async fn handle_tar(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curre
         out.push("tar: cannot specify more than one of -c, -x, or -t".to_string());
         return;
     }
-    
+
     let Some(archive_name) = archive_file else {
         let mut out = output_lines.lock().await;
         out.push("tar: must specify archive filename with -f".to_string());
         return;
     };
-    
+
     let archive_path = resolve_path(archive_name, current_dir);
-    
+
     if create {
-        create_tar_archive(&archive_path, &file_args, current_dir, verbose, use_gzip, output_lines).await;
+        create_tar_archive(
+            &archive_path,
+            &file_args,
+            current_dir,
+            verbose,
+            use_gzip,
+            output_lines,
+        )
+        .await;
     } else if extract {
         extract_tar_archive(&archive_path, current_dir, verbose, use_gzip, output_lines).await;
     } else if list {
@@ -113,21 +123,25 @@ async fn create_tar_archive(
     output_lines: &Arc<Mutex<Vec<String>>>,
 ) {
     let mut out = output_lines.lock().await;
-    
+
     if files.is_empty() {
         out.push("tar: no files specified to archive".to_string());
         return;
     }
-    
+
     // Simple tar implementation - create a list of files with their contents
     match create_simple_archive(archive_path, files, current_dir, use_gzip) {
         Ok(file_count) => {
             if verbose {
-                out.push(format!("tar: created archive {} with {} files", archive_path.display(), file_count));
+                out.push(format!(
+                    "tar: created archive {} with {} files",
+                    archive_path.display(),
+                    file_count
+                ));
             } else {
                 out.push(format!("Created archive: {}", archive_path.display()));
             }
-            
+
             if verbose {
                 for file in files {
                     out.push(format!("  added: {}", file));
@@ -149,21 +163,32 @@ async fn extract_tar_archive(
     output_lines: &Arc<Mutex<Vec<String>>>,
 ) {
     let mut out = output_lines.lock().await;
-    
+
     if !archive_path.exists() {
-        out.push(format!("tar: {}: No such file or directory", archive_path.display()));
+        out.push(format!(
+            "tar: {}: No such file or directory",
+            archive_path.display()
+        ));
         return;
     }
-    
+
     match extract_simple_archive(archive_path, current_dir, use_gzip) {
         Ok(files) => {
             if verbose {
-                out.push(format!("tar: extracted {} files from {}", files.len(), archive_path.display()));
+                out.push(format!(
+                    "tar: extracted {} files from {}",
+                    files.len(),
+                    archive_path.display()
+                ));
                 for file in &files {
                     out.push(format!("  extracted: {}", file));
                 }
             } else {
-                out.push(format!("Extracted {} files from: {}", files.len(), archive_path.display()));
+                out.push(format!(
+                    "Extracted {} files from: {}",
+                    files.len(),
+                    archive_path.display()
+                ));
             }
         }
         Err(e) => {
@@ -180,12 +205,15 @@ async fn list_tar_archive(
     output_lines: &Arc<Mutex<Vec<String>>>,
 ) {
     let mut out = output_lines.lock().await;
-    
+
     if !archive_path.exists() {
-        out.push(format!("tar: {}: No such file or directory", archive_path.display()));
+        out.push(format!(
+            "tar: {}: No such file or directory",
+            archive_path.display()
+        ));
         return;
     }
-    
+
     match list_simple_archive(archive_path, use_gzip) {
         Ok(files) => {
             if verbose {
@@ -210,14 +238,14 @@ fn create_simple_archive(
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let mut archive_content = String::new();
     let mut file_count = 0;
-    
+
     for file_name in files {
         let file_path = resolve_path(file_name, current_dir);
-        
+
         if !file_path.exists() {
             continue; // Skip non-existent files
         }
-        
+
         if file_path.is_file() {
             let content = std::fs::read_to_string(&file_path)?;
             archive_content.push_str(&format!("{}:{}\n{}\n", file_name, content.len(), content));
@@ -229,8 +257,14 @@ fn create_simple_archive(
                     let entry_path = entry.path();
                     if entry_path.is_file() {
                         if let Ok(content) = std::fs::read_to_string(&entry_path) {
-                            let relative_name = format!("{}/{}", file_name, entry.file_name().to_string_lossy());
-                            archive_content.push_str(&format!("{}:{}\n{}\n", relative_name, content.len(), content));
+                            let relative_name =
+                                format!("{}/{}", file_name, entry.file_name().to_string_lossy());
+                            archive_content.push_str(&format!(
+                                "{}:{}\n{}\n",
+                                relative_name,
+                                content.len(),
+                                content
+                            ));
                             file_count += 1;
                         }
                     }
@@ -238,13 +272,13 @@ fn create_simple_archive(
             }
         }
     }
-    
+
     let final_content = if use_gzip {
         compress_content(&archive_content)?
     } else {
         archive_content.into_bytes()
     };
-    
+
     std::fs::write(archive_path, final_content)?;
     Ok(file_count)
 }
@@ -255,25 +289,25 @@ fn extract_simple_archive(
     use_gzip: bool,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let archive_bytes = std::fs::read(archive_path)?;
-    
+
     let content = if use_gzip {
         decompress_content(&archive_bytes)?
     } else {
         String::from_utf8(archive_bytes)?
     };
-    
+
     let mut extracted_files = Vec::new();
     let mut lines = content.lines();
-    
+
     while let Some(header) = lines.next() {
         if let Some(colon_pos) = header.find(':') {
             let filename = &header[..colon_pos];
             let length: usize = header[colon_pos + 1..].parse().unwrap_or(0);
-            
+
             // Read the file content (next 'length' characters)
             let mut file_content = String::new();
             let mut chars_read = 0;
-            
+
             while chars_read < length {
                 if let Some(line) = lines.next() {
                     if chars_read > 0 {
@@ -286,20 +320,20 @@ fn extract_simple_archive(
                     break;
                 }
             }
-            
+
             // Create file
             let file_path = resolve_path(filename, current_dir);
-            
+
             // Create directories if needed
             if let Some(parent) = file_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            
+
             std::fs::write(&file_path, file_content)?;
             extracted_files.push(filename.to_string());
         }
     }
-    
+
     Ok(extracted_files)
 }
 
@@ -308,15 +342,15 @@ fn list_simple_archive(
     use_gzip: bool,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let archive_bytes = std::fs::read(archive_path)?;
-    
+
     let content = if use_gzip {
         decompress_content(&archive_bytes)?
     } else {
         String::from_utf8(archive_bytes)?
     };
-    
+
     let mut files = Vec::new();
-    
+
     for line in content.lines() {
         if let Some(colon_pos) = line.find(':') {
             let filename = &line[..colon_pos];
@@ -325,14 +359,14 @@ fn list_simple_archive(
             }
         }
     }
-    
+
     Ok(files)
 }
 
 /// Handle the gzip command - compress files
 pub async fn handle_gzip(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &PathBuf) {
     let args: Vec<&str> = cmd.split_whitespace().collect();
-    
+
     if args.len() < 2 {
         let mut out = output_lines.lock().await;
         out.push("Usage: gzip [-d] [-c] [-f] [-v] <file>...".to_string());
@@ -343,14 +377,14 @@ pub async fn handle_gzip(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curr
         out.push("  -v, --verbose     Verbose output".to_string());
         return;
     }
-    
+
     let mut decompress = false;
     let mut to_stdout = false;
     let mut force = false;
     let mut verbose = false;
     let mut file_args = Vec::new();
     let mut i = 1;
-    
+
     // Parse arguments
     while i < args.len() {
         match args[i] {
@@ -378,23 +412,23 @@ pub async fn handle_gzip(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curr
         }
         i += 1;
     }
-    
+
     if file_args.is_empty() {
         let mut out = output_lines.lock().await;
         out.push("gzip: no files specified".to_string());
         return;
     }
-    
+
     let mut out = output_lines.lock().await;
-    
+
     for file_name in file_args {
         let file_path = resolve_path(file_name, current_dir);
-        
+
         if !file_path.exists() {
             out.push(format!("gzip: {}: No such file or directory", file_name));
             continue;
         }
-        
+
         if decompress {
             // Decompress
             let output_path = if file_name.ends_with(".gz") {
@@ -402,16 +436,23 @@ pub async fn handle_gzip(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curr
             } else {
                 file_path.with_extension("decompressed")
             };
-            
+
             if output_path.exists() && !force {
-                out.push(format!("gzip: {}: already exists (use -f to force)", output_path.display()));
+                out.push(format!(
+                    "gzip: {}: already exists (use -f to force)",
+                    output_path.display()
+                ));
                 continue;
             }
-            
+
             match decompress_file(&file_path, &output_path, to_stdout) {
                 Ok(()) => {
                     if verbose {
-                        out.push(format!("gzip: decompressed {} -> {}", file_name, output_path.display()));
+                        out.push(format!(
+                            "gzip: decompressed {} -> {}",
+                            file_name,
+                            output_path.display()
+                        ));
                     }
                     if !to_stdout {
                         // Remove original compressed file
@@ -425,16 +466,23 @@ pub async fn handle_gzip(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curr
         } else {
             // Compress
             let output_path = file_path.with_extension("gz");
-            
+
             if output_path.exists() && !force {
-                out.push(format!("gzip: {}: already exists (use -f to force)", output_path.display()));
+                out.push(format!(
+                    "gzip: {}: already exists (use -f to force)",
+                    output_path.display()
+                ));
                 continue;
             }
-            
+
             match compress_file(&file_path, &output_path, to_stdout) {
                 Ok(()) => {
                     if verbose {
-                        out.push(format!("gzip: compressed {} -> {}", file_name, output_path.display()));
+                        out.push(format!(
+                            "gzip: compressed {} -> {}",
+                            file_name,
+                            output_path.display()
+                        ));
                     }
                     if !to_stdout {
                         // Remove original file
@@ -450,7 +498,11 @@ pub async fn handle_gzip(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, curr
 }
 
 /// Handle the gunzip command - decompress gzip files
-pub async fn handle_gunzip(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>, current_dir: &PathBuf) {
+pub async fn handle_gunzip(
+    cmd: &str,
+    output_lines: &Arc<Mutex<Vec<String>>>,
+    current_dir: &PathBuf,
+) {
     // gunzip is equivalent to gzip -d
     let modified_cmd = cmd.replacen("gunzip", "gzip -d", 1);
     handle_gzip(&modified_cmd, output_lines, current_dir).await;
@@ -464,13 +516,13 @@ fn compress_file(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(input_path)?;
     let compressed = compress_content(&content)?;
-    
+
     if to_stdout {
         // In a real implementation, this would write to stdout
         // For CLI purposes, we'll indicate this
         return Ok(());
     }
-    
+
     std::fs::write(output_path, compressed)?;
     Ok(())
 }
@@ -483,13 +535,13 @@ fn decompress_file(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let compressed_content = std::fs::read(input_path)?;
     let decompressed = decompress_content(&compressed_content)?;
-    
+
     if to_stdout {
         // In a real implementation, this would write to stdout
         // For CLI purposes, we'll indicate this
         return Ok(());
     }
-    
+
     std::fs::write(output_path, decompressed)?;
     Ok(())
 }
@@ -500,20 +552,20 @@ fn compress_content(content: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>
     // Very simple run-length encoding for demonstration
     let bytes = content.as_bytes();
     let mut compressed = Vec::new();
-    
+
     // Add magic header
     compressed.extend_from_slice(b"SGZIP");
-    
+
     let mut i = 0;
     while i < bytes.len() {
         let current_byte = bytes[i];
         let mut count = 1;
-        
+
         // Count consecutive identical bytes
         while i + count < bytes.len() && bytes[i + count] == current_byte && count < 255 {
             count += 1;
         }
-        
+
         if count > 3 || current_byte == 0 {
             // Use RLE for runs of 4+ or null bytes
             compressed.push(0); // Escape byte
@@ -531,10 +583,10 @@ fn compress_content(content: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>
                 }
             }
         }
-        
+
         i += count;
     }
-    
+
     Ok(compressed)
 }
 
@@ -544,16 +596,16 @@ fn decompress_content(compressed: &[u8]) -> Result<String, Box<dyn std::error::E
     if compressed.len() < 5 || &compressed[0..5] != b"SGZIP" {
         return Err("Invalid compressed format".into());
     }
-    
+
     let mut decompressed = Vec::new();
     let mut i = 5; // Skip magic header
-    
+
     while i < compressed.len() {
         if compressed[i] == 0 && i + 2 < compressed.len() {
             // RLE sequence
             let count = compressed[i + 1] as usize;
             let byte_val = compressed[i + 2];
-            
+
             for _ in 0..count {
                 decompressed.push(byte_val);
             }
@@ -564,13 +616,15 @@ fn decompress_content(compressed: &[u8]) -> Result<String, Box<dyn std::error::E
             i += 1;
         }
     }
-    
+
     String::from_utf8(decompressed).map_err(|e| e.into())
 }
 
 /// Helper function to resolve relative/absolute paths
 fn resolve_path(path: &str, current_dir: &PathBuf) -> PathBuf {
-    if path.starts_with('/') || (cfg!(windows) && path.len() > 1 && path.chars().nth(1) == Some(':')) {
+    if path.starts_with('/')
+        || (cfg!(windows) && path.len() > 1 && path.chars().nth(1) == Some(':'))
+    {
         PathBuf::from(path)
     } else {
         current_dir.join(path)
@@ -580,22 +634,22 @@ fn resolve_path(path: &str, current_dir: &PathBuf) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_compress_decompress() {
         let original = "Hello world! This is a test string with repeated characters: aaaaaabbbbbb";
         let compressed = compress_content(original).unwrap();
         let decompressed = decompress_content(&compressed).unwrap();
-        
+
         assert_eq!(original, decompressed);
     }
-    
+
     #[test]
     fn test_compress_empty() {
         let original = "";
         let compressed = compress_content(original).unwrap();
         let decompressed = decompress_content(&compressed).unwrap();
-        
+
         assert_eq!(original, decompressed);
     }
 }

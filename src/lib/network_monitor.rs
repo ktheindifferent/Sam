@@ -1,17 +1,17 @@
 // Network Speed and Latency Monitoring Module
 // Provides real-time network metrics including bandwidth, latency, and connection statistics
 
+use crate::network_config::NetworkMonitorConfig;
+use anyhow::{Context, Result};
+use log::info;
+use log::{debug, error, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use log::info;
-use serde::{Deserialize, Serialize};
-use anyhow::{Result, Context};
-use log::{debug, error, warn};
-use crate::network_config::NetworkMonitorConfig;
 
 // ==================== Network Statistics ====================
 
@@ -93,7 +93,7 @@ impl NetworkMonitor {
             update_interval,
         }
     }
-    
+
     pub fn from_config(config: NetworkMonitorConfig) -> Self {
         Self {
             interfaces: Arc::new(RwLock::new(HashMap::new())),
@@ -112,9 +112,8 @@ impl NetworkMonitor {
             // Return empty stats for non-Linux systems
             return Ok(HashMap::new());
         }
-        
-        let file = File::open("/proc/net/dev")
-            .context("Failed to open /proc/net/dev")?;
+
+        let file = File::open("/proc/net/dev").context("Failed to open /proc/net/dev")?;
         let reader = BufReader::new(file);
         let mut interfaces = HashMap::new();
 
@@ -126,14 +125,14 @@ impl NetworkMonitor {
 
             let line = line.context("Failed to read line from /proc/net/dev")?;
             let parts: Vec<&str> = line.split_whitespace().collect();
-            
+
             if parts.len() < 17 {
                 continue;
             }
 
             // Interface name is the first field (remove trailing colon)
             let interface_name = parts[0].trim_end_matches(':').to_string();
-            
+
             // Skip loopback interface for speed calculations
             if interface_name == "lo" {
                 continue;
@@ -164,7 +163,7 @@ impl NetworkMonitor {
         let last_update = *self.last_update.read().await;
         let now = Instant::now();
         let time_delta = now.duration_since(last_update).as_secs_f64();
-        
+
         let mut speeds = HashMap::new();
 
         if time_delta > 0.0 {
@@ -172,14 +171,14 @@ impl NetworkMonitor {
                 if let Some(previous) = previous_interfaces.get(name) {
                     let rx_delta = current.rx_bytes.saturating_sub(previous.rx_bytes) as f64;
                     let tx_delta = current.tx_bytes.saturating_sub(previous.tx_bytes) as f64;
-                    
+
                     let download_speed_bps = rx_delta / time_delta;
                     let upload_speed_bps = tx_delta / time_delta;
-                    
+
                     // Convert to Mbps (megabits per second)
                     let download_speed_mbps = (download_speed_bps * 8.0) / 1_000_000.0;
                     let upload_speed_mbps = (upload_speed_bps * 8.0) / 1_000_000.0;
-                    
+
                     let speed = NetworkSpeed {
                         interface: name.clone(),
                         download_speed_bps,
@@ -189,7 +188,7 @@ impl NetworkMonitor {
                         total_speed_mbps: download_speed_mbps + upload_speed_mbps,
                         timestamp: now,
                     };
-                    
+
                     speeds.insert(name.clone(), speed);
                 }
             }
@@ -198,13 +197,13 @@ impl NetworkMonitor {
         // Update stored interfaces and timestamp
         *previous_interfaces = current_stats;
         *self.last_update.write().await = now;
-        
+
         // Update speed history
         let mut history = self.speed_history.write().await;
         for (name, speed) in &speeds {
             let interface_history = history.entry(name.clone()).or_insert_with(VecDeque::new);
             interface_history.push_back(speed.clone());
-            
+
             // Keep only recent history
             while interface_history.len() > self.history_size {
                 interface_history.pop_front();
@@ -225,20 +224,27 @@ impl NetworkMonitor {
             }
 
             let count = speeds.len() as f64;
-            let avg_download_bps: f64 = speeds.iter().map(|s| s.download_speed_bps).sum::<f64>() / count;
-            let avg_upload_bps: f64 = speeds.iter().map(|s| s.upload_speed_bps).sum::<f64>() / count;
-            let avg_download_mbps: f64 = speeds.iter().map(|s| s.download_speed_mbps).sum::<f64>() / count;
-            let avg_upload_mbps: f64 = speeds.iter().map(|s| s.upload_speed_mbps).sum::<f64>() / count;
+            let avg_download_bps: f64 =
+                speeds.iter().map(|s| s.download_speed_bps).sum::<f64>() / count;
+            let avg_upload_bps: f64 =
+                speeds.iter().map(|s| s.upload_speed_bps).sum::<f64>() / count;
+            let avg_download_mbps: f64 =
+                speeds.iter().map(|s| s.download_speed_mbps).sum::<f64>() / count;
+            let avg_upload_mbps: f64 =
+                speeds.iter().map(|s| s.upload_speed_mbps).sum::<f64>() / count;
 
-            averages.insert(interface.clone(), NetworkSpeed {
-                interface: interface.clone(),
-                download_speed_bps: avg_download_bps,
-                upload_speed_bps: avg_upload_bps,
-                download_speed_mbps: avg_download_mbps,
-                upload_speed_mbps: avg_upload_mbps,
-                total_speed_mbps: avg_download_mbps + avg_upload_mbps,
-                timestamp: Instant::now(),
-            });
+            averages.insert(
+                interface.clone(),
+                NetworkSpeed {
+                    interface: interface.clone(),
+                    download_speed_bps: avg_download_bps,
+                    upload_speed_bps: avg_upload_bps,
+                    download_speed_mbps: avg_download_mbps,
+                    upload_speed_mbps: avg_upload_mbps,
+                    total_speed_mbps: avg_download_mbps + avg_upload_mbps,
+                    timestamp: Instant::now(),
+                },
+            );
         }
 
         averages
@@ -247,26 +253,26 @@ impl NetworkMonitor {
     // Measure network latency using ping
     pub async fn measure_latency(&self, host: &str) -> Result<NetworkLatency> {
         let start = Instant::now();
-        
+
         // Execute ping command (4 packets)
         let output = tokio::process::Command::new("ping")
             .arg("-c")
             .arg("4")
             .arg("-W")
-            .arg("1")  // 1 second timeout
+            .arg("1") // 1 second timeout
             .arg(host)
             .output()
             .await
             .context("Failed to execute ping command")?;
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
+
         // Parse ping output for statistics
         let mut latency_ms = 0.0;
         let mut packet_loss = 0.0;
         let mut min_rtt = 0.0;
         let mut max_rtt = 0.0;
-        
+
         for line in stdout.lines() {
             // Parse packet loss: "4 packets transmitted, 3 received, 25% packet loss"
             if line.contains("packet loss") {
@@ -276,7 +282,7 @@ impl NetworkMonitor {
                     }
                 }
             }
-            
+
             // Parse RTT stats: "rtt min/avg/max/mdev = 1.234/5.678/9.012/2.345 ms"
             if line.starts_with("rtt min/avg/max") {
                 if let Some(stats) = line.split('=').nth(1) {
@@ -289,14 +295,14 @@ impl NetworkMonitor {
                 }
             }
         }
-        
+
         // Calculate jitter (variation in latency)
         let jitter_ms = if max_rtt > 0.0 && min_rtt > 0.0 {
             max_rtt - min_rtt
         } else {
             0.0
         };
-        
+
         let latency = NetworkLatency {
             host: host.to_string(),
             latency_ms,
@@ -304,23 +310,23 @@ impl NetworkMonitor {
             jitter_ms,
             timestamp: start,
         };
-        
+
         // Update latency history
         let mut history = self.latency_history.write().await;
         history.push_back(latency.clone());
-        
+
         // Keep only recent history
         while history.len() > self.history_size {
             history.pop_front();
         }
-        
+
         Ok(latency)
     }
 
     // Measure latency to multiple hosts
     pub async fn measure_multiple_latencies(&self, hosts: &[&str]) -> Vec<NetworkLatency> {
         let mut latencies = Vec::new();
-        
+
         for host in hosts {
             match self.measure_latency(host).await {
                 Ok(latency) => latencies.push(latency),
@@ -337,7 +343,7 @@ impl NetworkMonitor {
                 }
             }
         }
-        
+
         latencies
     }
 
@@ -345,22 +351,22 @@ impl NetworkMonitor {
     pub async fn get_metrics(&self) -> Result<NetworkMetrics> {
         let speeds = self.calculate_speeds().await?;
         let average_speeds = self.get_average_speeds().await;
-        
+
         // Calculate totals
         let total_download_mbps: f64 = speeds.values().map(|s| s.download_speed_mbps).sum();
         let total_upload_mbps: f64 = speeds.values().map(|s| s.upload_speed_mbps).sum();
-        
+
         // Get latency metrics
         let latency_history = self.latency_history.read().await;
         let latencies: Vec<NetworkLatency> = latency_history.iter().cloned().collect();
-        
+
         let average_latency_ms = if !latencies.is_empty() {
             let valid_latencies: Vec<f64> = latencies
                 .iter()
                 .filter(|l| l.latency_ms >= 0.0)
                 .map(|l| l.latency_ms)
                 .collect();
-            
+
             if !valid_latencies.is_empty() {
                 valid_latencies.iter().sum::<f64>() / valid_latencies.len() as f64
             } else {
@@ -369,13 +375,13 @@ impl NetworkMonitor {
         } else {
             0.0
         };
-        
+
         let packet_loss_percent = if !latencies.is_empty() {
             latencies.iter().map(|l| l.packet_loss).sum::<f64>() / latencies.len() as f64
         } else {
             0.0
         };
-        
+
         Ok(NetworkMetrics {
             speeds: average_speeds,
             latencies,
@@ -398,7 +404,7 @@ impl NetworkMonitor {
             debug!("Network monitoring is disabled");
             return;
         }
-        
+
         // Start speed monitoring task
         let speed_monitor = self.clone();
         let update_interval = config.update_interval();
@@ -407,11 +413,11 @@ impl NetworkMonitor {
                 if let Err(e) = speed_monitor.calculate_speeds().await {
                     error!("Failed to calculate network speeds: {}", e);
                 }
-                
+
                 tokio::time::sleep(update_interval).await;
             }
         });
-        
+
         // Start latency monitoring task
         let latency_monitor = self.clone();
         let latency_hosts = config.latency_check_hosts.clone();
@@ -420,14 +426,17 @@ impl NetworkMonitor {
             loop {
                 let hosts: Vec<&str> = latency_hosts.iter().map(|s| s.as_str()).collect();
                 let _ = latency_monitor.measure_multiple_latencies(&hosts).await;
-                
+
                 tokio::time::sleep(latency_interval).await;
             }
         });
-        
-        info!("Network monitoring started with update interval: {:?}", update_interval);
+
+        info!(
+            "Network monitoring started with update interval: {:?}",
+            update_interval
+        );
     }
-    
+
     // Start continuous monitoring with defaults
     pub async fn start_monitoring(&self) {
         let config = NetworkMonitorConfig::default();
@@ -466,7 +475,7 @@ impl ConnectionStats {
             .output()
             .await
             .context("Failed to execute ss command")?;
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout);
         let mut stats = ConnectionStats {
             tcp_established: 0,
@@ -475,7 +484,7 @@ impl ConnectionStats {
             udp_connections: 0,
             total_connections: 0,
         };
-        
+
         for line in stdout.lines() {
             if line.contains("TCP:") {
                 // Parse TCP connection counts
@@ -485,7 +494,7 @@ impl ConnectionStats {
                     }
                 }
             }
-            
+
             // Parse specific states
             if line.contains("ESTAB") {
                 if let Some(num) = extract_number_from_line(line) {
@@ -501,14 +510,13 @@ impl ConnectionStats {
                 }
             }
         }
-        
+
         Ok(stats)
     }
 }
 
 fn extract_number_from_line(line: &str) -> Option<u32> {
-    line.split_whitespace()
-        .find_map(|part| part.parse().ok())
+    line.split_whitespace().find_map(|part| part.parse().ok())
 }
 
 impl Default for NetworkSpeed {
@@ -539,7 +547,7 @@ impl<'de> serde::Deserialize<'de> for NetworkSpeed {
             upload_speed_mbps: f64,
             total_speed_mbps: f64,
         }
-        
+
         let data = NetworkSpeedData::deserialize(deserializer)?;
         Ok(NetworkSpeed {
             interface: data.interface,
@@ -577,7 +585,7 @@ impl<'de> serde::Deserialize<'de> for NetworkLatency {
             packet_loss: f64,
             jitter_ms: f64,
         }
-        
+
         let data = NetworkLatencyData::deserialize(deserializer)?;
         Ok(NetworkLatency {
             host: data.host,
@@ -600,7 +608,7 @@ mod tests {
         let monitor = NetworkMonitor::new();
         assert!(monitor.history_size > 0);
     }
-    
+
     #[tokio::test]
     async fn test_network_monitor_from_config() {
         let config = NetworkMonitorConfig {
@@ -612,7 +620,7 @@ mod tests {
             interfaces_to_monitor: vec![],
             alert_thresholds: crate::network_config::AlertThresholds::default(),
         };
-        
+
         let monitor = NetworkMonitor::from_config(config);
         assert_eq!(monitor.history_size, 30);
         assert_eq!(monitor.update_interval, Duration::from_millis(500));
@@ -621,16 +629,16 @@ mod tests {
     #[tokio::test]
     async fn test_network_stats_reading() {
         let monitor = NetworkMonitor::new();
-        
+
         // This test will only work on Linux systems with /proc/net/dev
         if std::path::Path::new("/proc/net/dev").exists() {
             let stats = monitor.read_network_stats().await;
             assert!(stats.is_ok());
-            
+
             let interfaces = stats.unwrap();
             // Most Linux systems have at least one network interface
             assert!(!interfaces.is_empty());
-            
+
             // Check that we parsed the interface data correctly
             for (name, interface) in interfaces {
                 assert!(!name.is_empty());
@@ -643,18 +651,18 @@ mod tests {
     #[tokio::test]
     async fn test_speed_calculation() {
         let monitor = NetworkMonitor::new();
-        
+
         if std::path::Path::new("/proc/net/dev").exists() {
             // First reading to establish baseline
             let _ = monitor.read_network_stats().await;
-            
+
             // Wait a bit for some network activity
             tokio::time::sleep(Duration::from_millis(100)).await;
-            
+
             // Calculate speeds
             let speeds = monitor.calculate_speeds().await;
             assert!(speeds.is_ok());
-            
+
             let speed_map = speeds.unwrap();
             for (_, speed) in speed_map {
                 assert!(speed.download_speed_bps >= 0.0);
@@ -668,16 +676,16 @@ mod tests {
     #[tokio::test]
     async fn test_moving_average() {
         let monitor = NetworkMonitor::with_config(5, Duration::from_millis(100));
-        
+
         if std::path::Path::new("/proc/net/dev").exists() {
             // Take multiple measurements
             for _ in 0..3 {
                 let _ = monitor.calculate_speeds().await;
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
-            
+
             let averages = monitor.get_average_speeds().await;
-            
+
             // Check that averages are calculated correctly
             for (_, avg_speed) in averages {
                 assert!(avg_speed.download_speed_bps >= 0.0);
@@ -685,14 +693,14 @@ mod tests {
             }
         }
     }
-    
+
     #[tokio::test]
     async fn test_latency_measurement() {
         let monitor = NetworkMonitor::new();
-        
+
         // Test with localhost (should always work)
         let result = monitor.measure_latency("127.0.0.1").await;
-        
+
         if result.is_ok() {
             let latency = result.unwrap();
             assert_eq!(latency.host, "127.0.0.1");
@@ -701,33 +709,33 @@ mod tests {
             assert!(latency.packet_loss >= 0.0);
         }
     }
-    
+
     #[tokio::test]
     async fn test_multiple_latency_measurements() {
         let monitor = NetworkMonitor::new();
-        
+
         let hosts = vec!["127.0.0.1", "localhost"];
         let latencies = monitor.measure_multiple_latencies(&hosts).await;
-        
+
         assert_eq!(latencies.len(), 2);
         for latency in latencies {
             assert!(hosts.contains(&latency.host.as_str()));
         }
     }
-    
+
     #[tokio::test]
     async fn test_comprehensive_metrics() {
         let monitor = NetworkMonitor::new();
-        
+
         if std::path::Path::new("/proc/net/dev").exists() {
             // Initialize with some data
             let _ = monitor.calculate_speeds().await;
             tokio::time::sleep(Duration::from_millis(100)).await;
             let _ = monitor.calculate_speeds().await;
-            
+
             let metrics = monitor.get_metrics().await;
             assert!(metrics.is_ok());
-            
+
             let network_metrics = metrics.unwrap();
             assert!(network_metrics.total_download_mbps >= 0.0);
             assert!(network_metrics.total_upload_mbps >= 0.0);
@@ -735,12 +743,12 @@ mod tests {
             assert!(network_metrics.packet_loss_percent >= 0.0);
         }
     }
-    
+
     #[tokio::test]
     async fn test_connection_stats() {
         // This test requires ss command to be available
         let stats_result = ConnectionStats::gather().await;
-        
+
         if stats_result.is_ok() {
             let stats = stats_result.unwrap();
             assert!(stats.tcp_established >= 0);

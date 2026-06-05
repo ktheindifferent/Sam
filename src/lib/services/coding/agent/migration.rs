@@ -1,8 +1,8 @@
+use async_trait::async_trait;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use regex::Regex;
 use tokio::fs;
 
 use super::errors::CodingAgentError as ServiceError;
@@ -66,7 +66,11 @@ pub struct MigrationStatistics {
 
 #[async_trait]
 pub trait LanguageConverter: Send + Sync {
-    async fn convert(&self, source_code: &str, config: &MigrationConfig) -> Result<String, ServiceError>;
+    async fn convert(
+        &self,
+        source_code: &str,
+        config: &MigrationConfig,
+    ) -> Result<String, ServiceError>;
     fn source_language(&self) -> &str;
     fn target_language(&self) -> &str;
     fn supported_features(&self) -> Vec<String>;
@@ -147,19 +151,32 @@ impl CodeMigrationEngine {
         };
 
         // Find all source files
-        let source_files = self.find_source_files(project_path, &config.source_language).await?;
+        let source_files = self
+            .find_source_files(project_path, &config.source_language)
+            .await?;
         result.statistics.total_files = source_files.len();
 
         // Get appropriate converter
-        let converter_key = (config.source_language.clone(), config.target_language.clone());
-        let converter = self.converters.get(&converter_key)
-            .ok_or_else(|| ServiceError::ConfigError {
-                message: format!("No converter available for {} to {}", config.source_language, config.target_language)
-            })?;
+        let converter_key = (
+            config.source_language.clone(),
+            config.target_language.clone(),
+        );
+        let converter =
+            self.converters
+                .get(&converter_key)
+                .ok_or_else(|| ServiceError::ConfigError {
+                    message: format!(
+                        "No converter available for {} to {}",
+                        config.source_language, config.target_language
+                    ),
+                })?;
 
         // Process each file
         for source_file in source_files {
-            match self.migrate_file(&source_file, &config, converter.as_ref()).await {
+            match self
+                .migrate_file(&source_file, &config, converter.as_ref())
+                .await
+            {
                 Ok((target_file, lines)) => {
                     result.files_migrated += 1;
                     result.lines_converted += lines;
@@ -167,7 +184,9 @@ impl CodeMigrationEngine {
                     result.statistics.successful_conversions += 1;
                 }
                 Err(e) => {
-                    result.errors.push(format!("{}: {}", source_file.display(), e));
+                    result
+                        .errors
+                        .push(format!("{}: {}", source_file.display(), e));
                     result.statistics.failed_conversions += 1;
                     result.success = false;
                 }
@@ -185,8 +204,13 @@ impl CodeMigrationEngine {
         converter: &dyn LanguageConverter,
     ) -> Result<(PathBuf, usize), ServiceError> {
         // Read source file
-        let source_code = fs::read_to_string(source_file).await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+        let source_code =
+            fs::read_to_string(source_file)
+                .await
+                .map_err(|e| ServiceError::IoError {
+                    message: e.to_string(),
+                    path: None,
+                })?;
 
         // Convert code
         let converted_code = converter.convert(&source_code, config).await?;
@@ -196,13 +220,21 @@ impl CodeMigrationEngine {
 
         // Create target directory if needed
         if let Some(parent) = target_file.parent() {
-            fs::create_dir_all(parent).await
-                .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ServiceError::IoError {
+                    message: e.to_string(),
+                    path: None,
+                })?;
         }
 
         // Write converted code
-        fs::write(&target_file, &converted_code).await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: None })?;
+        fs::write(&target_file, &converted_code)
+            .await
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: None,
+            })?;
 
         let lines = converted_code.lines().count();
         Ok((target_file, lines))
@@ -216,7 +248,8 @@ impl CodeMigrationEngine {
         let extensions = self.get_language_extensions(language);
         let mut files = Vec::new();
 
-        self.walk_directory(project_path, &extensions, &mut files).await?;
+        self.walk_directory(project_path, &extensions, &mut files)
+            .await?;
 
         Ok(files)
     }
@@ -227,21 +260,30 @@ impl CodeMigrationEngine {
         extensions: &[&str],
         files: &mut Vec<PathBuf>,
     ) -> Result<(), ServiceError> {
-        let mut entries = fs::read_dir(dir).await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: Some(dir.to_path_buf()) })?;
+        let mut entries = fs::read_dir(dir).await.map_err(|e| ServiceError::IoError {
+            message: e.to_string(),
+            path: Some(dir.to_path_buf()),
+        })?;
 
-        while let Some(entry) = entries.next_entry().await
-            .map_err(|e| ServiceError::IoError { message: e.to_string(), path: Some(dir.to_path_buf()) })? {
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: Some(dir.to_path_buf()),
+            })?
+        {
             let path = entry.path();
-            let file_type = entry.file_type().await
-                .map_err(|e| ServiceError::IoError { message: e.to_string(), path: Some(path.clone()) })?;
+            let file_type = entry.file_type().await.map_err(|e| ServiceError::IoError {
+                message: e.to_string(),
+                path: Some(path.clone()),
+            })?;
 
             if file_type.is_dir() {
                 // Skip common directories
-                let dir_name = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                if !dir_name.starts_with('.') && dir_name != "node_modules" && dir_name != "target" {
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !dir_name.starts_with('.') && dir_name != "node_modules" && dir_name != "target"
+                {
                     Box::pin(self.walk_directory(&path, extensions, files)).await?;
                 }
             } else if file_type.is_file() {
@@ -274,7 +316,11 @@ impl CodeMigrationEngine {
         }
     }
 
-    fn get_target_file_path(&self, source_file: &Path, target_language: &str) -> Result<PathBuf, ServiceError> {
+    fn get_target_file_path(
+        &self,
+        source_file: &Path,
+        target_language: &str,
+    ) -> Result<PathBuf, ServiceError> {
         let mut target = source_file.to_path_buf();
 
         // Get appropriate extension for target language
@@ -283,7 +329,11 @@ impl CodeMigrationEngine {
             "python3" => "py",
             "kotlin" => "kt",
             "rust" => "rs",
-            _ => return Err(ServiceError::ConfigError { message: format!("Unknown target language: {}", target_language) }),
+            _ => {
+                return Err(ServiceError::ConfigError {
+                    message: format!("Unknown target language: {}", target_language),
+                })
+            }
         };
 
         target.set_extension(new_extension);
@@ -307,7 +357,11 @@ impl JsToTsConverter {
 
 #[async_trait]
 impl LanguageConverter for JsToTsConverter {
-    async fn convert(&self, source_code: &str, config: &MigrationConfig) -> Result<String, ServiceError> {
+    async fn convert(
+        &self,
+        source_code: &str,
+        config: &MigrationConfig,
+    ) -> Result<String, ServiceError> {
         let mut converted = source_code.to_string();
 
         // Add type annotations
@@ -327,8 +381,12 @@ impl LanguageConverter for JsToTsConverter {
         Ok(converted)
     }
 
-    fn source_language(&self) -> &str { "javascript" }
-    fn target_language(&self) -> &str { "typescript" }
+    fn source_language(&self) -> &str {
+        "javascript"
+    }
+    fn target_language(&self) -> &str {
+        "typescript"
+    }
     fn supported_features(&self) -> Vec<String> {
         vec![
             "type_inference".to_string(),
@@ -350,8 +408,7 @@ impl JsToTsConverter {
             // Variable declarations
             else if line.contains("let") || line.contains("const") || line.contains("var") {
                 result.push_str(&self.annotate_variable(line)?);
-            }
-            else {
+            } else {
                 result.push_str(line);
             }
             result.push('\n');
@@ -409,7 +466,9 @@ impl JsToTsConverter {
 
         // Convert prototype-based classes to ES6 classes
         let prototype_regex = Regex::new(r"(\w+)\.prototype\.(\w+)\s*=\s*function").unwrap();
-        result = prototype_regex.replace_all(&result, "class $1 {\n  $2").to_string();
+        result = prototype_regex
+            .replace_all(&result, "class $1 {\n  $2")
+            .to_string();
 
         Ok(result)
     }
@@ -425,7 +484,11 @@ impl Py2ToPy3Converter {
 
 #[async_trait]
 impl LanguageConverter for Py2ToPy3Converter {
-    async fn convert(&self, source_code: &str, _config: &MigrationConfig) -> Result<String, ServiceError> {
+    async fn convert(
+        &self,
+        source_code: &str,
+        _config: &MigrationConfig,
+    ) -> Result<String, ServiceError> {
         let mut converted = source_code.to_string();
 
         // print statement to function
@@ -455,8 +518,12 @@ impl LanguageConverter for Py2ToPy3Converter {
         Ok(converted)
     }
 
-    fn source_language(&self) -> &str { "python2" }
-    fn target_language(&self) -> &str { "python3" }
+    fn source_language(&self) -> &str {
+        "python2"
+    }
+    fn target_language(&self) -> &str {
+        "python3"
+    }
     fn supported_features(&self) -> Vec<String> {
         vec!["syntax_conversion".to_string(), "api_updates".to_string()]
     }
@@ -472,7 +539,11 @@ impl JavaToKotlinConverter {
 
 #[async_trait]
 impl LanguageConverter for JavaToKotlinConverter {
-    async fn convert(&self, source_code: &str, _config: &MigrationConfig) -> Result<String, ServiceError> {
+    async fn convert(
+        &self,
+        source_code: &str,
+        _config: &MigrationConfig,
+    ) -> Result<String, ServiceError> {
         let mut converted = source_code.to_string();
 
         // Remove semicolons
@@ -500,8 +571,12 @@ impl LanguageConverter for JavaToKotlinConverter {
         Ok(converted)
     }
 
-    fn source_language(&self) -> &str { "java" }
-    fn target_language(&self) -> &str { "kotlin" }
+    fn source_language(&self) -> &str {
+        "java"
+    }
+    fn target_language(&self) -> &str {
+        "kotlin"
+    }
     fn supported_features(&self) -> Vec<String> {
         vec!["null_safety".to_string(), "data_classes".to_string()]
     }
@@ -517,7 +592,11 @@ impl CToRustConverter {
 
 #[async_trait]
 impl LanguageConverter for CToRustConverter {
-    async fn convert(&self, source_code: &str, _config: &MigrationConfig) -> Result<String, ServiceError> {
+    async fn convert(
+        &self,
+        source_code: &str,
+        _config: &MigrationConfig,
+    ) -> Result<String, ServiceError> {
         let mut converted = source_code.to_string();
 
         // Basic type conversions
@@ -532,7 +611,8 @@ impl LanguageConverter for CToRustConverter {
 
         // malloc to Vec
         if converted.contains("malloc") {
-            converted = converted.replace("malloc", "// TODO: Replace with Vec::new() or Box::new()");
+            converted =
+                converted.replace("malloc", "// TODO: Replace with Vec::new() or Box::new()");
         }
 
         // free to drop
@@ -550,8 +630,12 @@ impl LanguageConverter for CToRustConverter {
         Ok(converted)
     }
 
-    fn source_language(&self) -> &str { "c" }
-    fn target_language(&self) -> &str { "rust" }
+    fn source_language(&self) -> &str {
+        "c"
+    }
+    fn target_language(&self) -> &str {
+        "rust"
+    }
     fn supported_features(&self) -> Vec<String> {
         vec!["memory_safety".to_string(), "ownership".to_string()]
     }
@@ -567,7 +651,11 @@ impl CoffeeToTsConverter {
 
 #[async_trait]
 impl LanguageConverter for CoffeeToTsConverter {
-    async fn convert(&self, source_code: &str, _config: &MigrationConfig) -> Result<String, ServiceError> {
+    async fn convert(
+        &self,
+        source_code: &str,
+        _config: &MigrationConfig,
+    ) -> Result<String, ServiceError> {
         let mut converted = source_code.to_string();
 
         // Arrow functions
@@ -579,13 +667,19 @@ impl LanguageConverter for CoffeeToTsConverter {
 
         // String interpolation
         let interpolation_regex = Regex::new(r"#\{([^}]+)\}").unwrap();
-        converted = interpolation_regex.replace_all(&converted, "${$1}").to_string();
+        converted = interpolation_regex
+            .replace_all(&converted, "${$1}")
+            .to_string();
 
         Ok(converted)
     }
 
-    fn source_language(&self) -> &str { "coffeescript" }
-    fn target_language(&self) -> &str { "typescript" }
+    fn source_language(&self) -> &str {
+        "coffeescript"
+    }
+    fn target_language(&self) -> &str {
+        "typescript"
+    }
     fn supported_features(&self) -> Vec<String> {
         vec!["type_annotations".to_string(), "modern_syntax".to_string()]
     }
@@ -682,9 +776,11 @@ impl FrameworkMigrator {
     ) -> Result<(), ServiceError> {
         let key = (source.to_string(), target.to_string());
 
-        let migration = self.migrations.get(&key)
+        let migration = self
+            .migrations
+            .get(&key)
             .ok_or_else(|| ServiceError::ConfigError {
-                message: format!("No migration available from {} to {}", source, target)
+                message: format!("No migration available from {} to {}", source, target),
             })?;
 
         migration.migrate(project_path).await
@@ -700,8 +796,12 @@ impl FrameworkMigration for ReactToVueMigration {
         Ok(())
     }
 
-    fn source_framework(&self) -> &str { "react" }
-    fn target_framework(&self) -> &str { "vue" }
+    fn source_framework(&self) -> &str {
+        "react"
+    }
+    fn target_framework(&self) -> &str {
+        "vue"
+    }
 }
 
 struct AngularToReactMigration;
@@ -713,8 +813,12 @@ impl FrameworkMigration for AngularToReactMigration {
         Ok(())
     }
 
-    fn source_framework(&self) -> &str { "angular" }
-    fn target_framework(&self) -> &str { "react" }
+    fn source_framework(&self) -> &str {
+        "angular"
+    }
+    fn target_framework(&self) -> &str {
+        "react"
+    }
 }
 
 struct ExpressToFastifyMigration;
@@ -726,8 +830,12 @@ impl FrameworkMigration for ExpressToFastifyMigration {
         Ok(())
     }
 
-    fn source_framework(&self) -> &str { "express" }
-    fn target_framework(&self) -> &str { "fastify" }
+    fn source_framework(&self) -> &str {
+        "express"
+    }
+    fn target_framework(&self) -> &str {
+        "fastify"
+    }
 }
 
 // Database migration
@@ -771,9 +879,11 @@ impl DatabaseMigrator {
     ) -> Result<String, ServiceError> {
         let key = (source_db.to_string(), target_db.to_string());
 
-        let converter = self.converters.get(&key)
+        let converter = self
+            .converters
+            .get(&key)
             .ok_or_else(|| ServiceError::ConfigError {
-                message: format!("No converter available from {} to {}", source_db, target_db)
+                message: format!("No converter available from {} to {}", source_db, target_db),
             })?;
 
         converter.convert_schema(schema).await

@@ -17,7 +17,7 @@ impl ObservationObjects {
             location: None,
         }
     }
-    
+
     pub fn with_location(name: String, confidence: f32, location: String) -> Self {
         Self {
             name,

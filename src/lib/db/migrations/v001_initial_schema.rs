@@ -9,17 +9,18 @@ impl super::Migration for Migration {
     fn version(&self) -> i64 {
         1
     }
-    
+
     fn name(&self) -> &str {
         "initial_schema"
     }
-    
+
     fn description(&self) -> &str {
         "Create initial database schema with core tables"
     }
-    
+
     async fn up(&self, tx: &Transaction<'_>) -> Result<()> {
-        tx.batch_execute(r#"
+        tx.batch_execute(
+            r#"
             -- Crawler tables
             CREATE TABLE IF NOT EXISTS crawl_jobs (
                 id SERIAL PRIMARY KEY,
@@ -101,13 +102,16 @@ impl super::Migration for Migration {
                 custom_metrics JSONB,
                 checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-        "#).await?;
-        
+        "#,
+        )
+        .await?;
+
         Ok(())
     }
-    
+
     async fn down(&self, tx: &Transaction<'_>) -> Result<()> {
-        tx.batch_execute(r#"
+        tx.batch_execute(
+            r#"
             DROP TABLE IF EXISTS service_health CASCADE;
             DROP TABLE IF EXISTS user_sessions CASCADE;
             DROP TABLE IF EXISTS backups CASCADE;
@@ -115,8 +119,10 @@ impl super::Migration for Migration {
             DROP TABLE IF EXISTS files CASCADE;
             DROP TABLE IF EXISTS crawl_pages CASCADE;
             DROP TABLE IF EXISTS crawl_jobs CASCADE;
-        "#).await?;
-        
+        "#,
+        )
+        .await?;
+
         Ok(())
     }
 }

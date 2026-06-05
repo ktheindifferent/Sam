@@ -1,5 +1,5 @@
-use crate::cli::commands::*;
 use super::CommandContext;
+use crate::cli::commands::*;
 
 pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
     // Check for pipe operations first
@@ -7,7 +7,7 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         handle_pipe_command(cmd, ctx).await;
         return;
     }
-    
+
     match cmd {
         // Direct commands
         "help" => help::handle_help(ctx.output_lines).await,
@@ -17,17 +17,17 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         "pwd" => misc::handle_pwd(ctx.output_lines, ctx.current_dir).await,
         "version" => misc::handle_version(ctx.output_lines).await,
         "status" => status::handle_status(ctx.output_lines, ctx.current_dir, ctx.human_name).await,
-        
+
         // System Information Commands
         "whoami" => misc::handle_whoami(ctx.output_lines).await,
         "date" => misc::handle_date(cmd, ctx.output_lines).await,
         "top" => misc::handle_top(ctx.output_lines).await,
-        
+
         // Text Processing Commands
         "echo" => misc::handle_echo("echo", ctx.output_lines).await,
         "sort" => misc::handle_sort("sort", ctx.output_lines, ctx.current_dir).await,
         "wc" => misc::handle_wc("wc", ctx.output_lines, ctx.current_dir).await,
-        
+
         // Service commands (exact matches)
         _ if is_crawler_command(cmd) => crawler::handle_crawler(cmd, ctx.output_lines).await,
         _ if is_redis_command(cmd) => redis::handle_redis(cmd, ctx.output_lines).await,
@@ -37,18 +37,23 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if is_lifx_command(cmd) => lifx::handle_lifx(cmd, ctx.output_lines).await,
         _ if is_sms_command(cmd) => sms::handle_sms(cmd, ctx.output_lines).await,
         _ if is_ollama_command(cmd) => ollama::handle_ollama(cmd, ctx.output_lines).await,
-        
+
         // Migrate command (special handling)
         _ if is_migrate_command(cmd) => {
-            let args = cmd.trim_start_matches("migrate").split_whitespace()
-                .map(String::from).collect();
+            let args = cmd
+                .trim_start_matches("migrate")
+                .split_whitespace()
+                .map(String::from)
+                .collect();
             migrate::handle_migrate(args, ctx.output_lines).await;
-        },
-        
+        }
+
         // Prefix commands
         _ if cmd.starts_with("p2p ") => p2p::handle_p2p(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("cd ") => cd::handle_cd(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("cat ") => misc::handle_cat(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("cat ") => {
+            misc::handle_cat(cmd, ctx.output_lines, ctx.current_dir).await
+        }
         _ if cmd.starts_with("uname") => misc::handle_uname(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("date ") => misc::handle_date(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("df") => misc::handle_df(cmd, ctx.output_lines).await,
@@ -56,19 +61,52 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if cmd.starts_with("ps") => misc::handle_ps(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("kill ") => misc::handle_kill(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("man ") => misc::handle_man(cmd, ctx.output_lines).await,
-        _ if cmd.starts_with("mkdir ") => misc::handle_mkdir(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("rmdir ") => misc::handle_rmdir(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("cp ") => misc::handle_cp(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("mv ") => misc::handle_mv(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("rm ") => misc::handle_rm(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("less ") => misc::handle_less(cmd, ctx.output_lines, ctx.current_dir, ctx.output_height, ctx.scroll_offset).await,
-        _ if cmd.starts_with("grep ") => misc::handle_grep(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("touch ") => misc::handle_touch(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("head ") => misc::handle_head(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("tail ") => misc::handle_tail(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("find ") => misc::handle_find(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("chmod ") => misc::handle_chmod(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("chown ") => misc::handle_chown(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("mkdir ") => {
+            misc::handle_mkdir(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("rmdir ") => {
+            misc::handle_rmdir(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("cp ") => {
+            misc::handle_cp(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("mv ") => {
+            misc::handle_mv(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("rm ") => {
+            misc::handle_rm(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("less ") => {
+            misc::handle_less(
+                cmd,
+                ctx.output_lines,
+                ctx.current_dir,
+                ctx.output_height,
+                ctx.scroll_offset,
+            )
+            .await
+        }
+        _ if cmd.starts_with("grep ") => {
+            misc::handle_grep(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("touch ") => {
+            misc::handle_touch(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("head ") => {
+            misc::handle_head(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("tail ") => {
+            misc::handle_tail(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("find ") => {
+            misc::handle_find(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("chmod ") => {
+            misc::handle_chmod(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("chown ") => {
+            misc::handle_chown(cmd, ctx.output_lines, ctx.current_dir).await
+        }
         _ if cmd.starts_with("darknet ") => darknet::handle_darknet(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("tts ") => tts::handle_tts(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("llama") => llama::handle_llama(cmd, ctx.output_lines).await,
@@ -80,18 +118,28 @@ pub async fn route_command(cmd: &str, ctx: &mut CommandContext<'_>) {
                     let mut lines = ctx.output_lines.blocking_lock();
                     lines.push(format!("crawl search error: {}", e));
                 });
-        },
+        }
         _ if cmd.starts_with("mdns ") => mdns::handle_mdns(cmd, ctx.output_lines.clone()).await,
         _ if cmd.starts_with("ssh ") => ssh::handle_ssh_command(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("plugin") => plugin::handle_plugin(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("nano") => nano::handle_nano(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("echo ") => misc::handle_echo(cmd, ctx.output_lines).await,
-        _ if cmd.starts_with("sort ") => misc::handle_sort(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("wc ") => misc::handle_wc(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("tar ") => misc::handle_tar(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("gzip ") => misc::handle_gzip(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("gunzip ") => misc::handle_gunzip(cmd, ctx.output_lines, ctx.current_dir).await,
-        
+        _ if cmd.starts_with("sort ") => {
+            misc::handle_sort(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("wc ") => {
+            misc::handle_wc(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("tar ") => {
+            misc::handle_tar(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("gzip ") => {
+            misc::handle_gzip(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("gunzip ") => {
+            misc::handle_gunzip(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+
         // Default fallback
         _ => misc::handle_default(cmd, ctx.output_lines).await,
     }
@@ -148,19 +196,19 @@ fn is_ollama_command(cmd: &str) -> bool {
 // Handle piped commands
 async fn handle_pipe_command(cmd: &str, ctx: &mut CommandContext<'_>) {
     let pipe_parts: Vec<&str> = cmd.split(" | ").collect();
-    
+
     if pipe_parts.len() < 2 {
         let mut out = ctx.output_lines.lock().await;
         out.push("Invalid pipe syntax".to_string());
         return;
     }
-    
+
     // Create a temporary buffer to store intermediate results
     let intermediate_output = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<String>::new()));
-    
+
     // Execute the first command
     let first_cmd = pipe_parts[0].trim();
-    
+
     // Create a new context for the first command
     let mut first_ctx = CommandContext {
         output_lines: &intermediate_output,
@@ -169,34 +217,34 @@ async fn handle_pipe_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         output_height: ctx.output_height,
         scroll_offset: ctx.scroll_offset,
     };
-    
+
     // Execute first command (but route it back to avoid infinite recursion)
     execute_single_command(first_cmd, &mut first_ctx).await;
-    
+
     // Get the output from the first command
     let first_output = {
         let output = intermediate_output.lock().await;
         output.clone()
     };
-    
+
     // Process through the pipe chain
     let mut current_input = first_output;
-    
+
     for (i, pipe_cmd) in pipe_parts.iter().skip(1).enumerate() {
         let pipe_cmd = pipe_cmd.trim();
-        
+
         // Create intermediate output for this stage
         let stage_output = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<String>::new()));
-        
+
         // Execute the piped command with the input from previous stage
         execute_piped_command(pipe_cmd, &current_input, &stage_output, ctx.current_dir).await;
-        
+
         // Get the output for next stage or final result
         current_input = {
             let output = stage_output.lock().await;
             output.clone()
         };
-        
+
         // If this is the last command, put results in main output
         if i == pipe_parts.len() - 2 {
             let mut out = ctx.output_lines.lock().await;
@@ -216,7 +264,7 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         "pwd" => misc::handle_pwd(ctx.output_lines, ctx.current_dir).await,
         "version" => misc::handle_version(ctx.output_lines).await,
         "status" => status::handle_status(ctx.output_lines, ctx.current_dir, ctx.human_name).await,
-        
+
         // Service commands (exact matches)
         _ if is_crawler_command(cmd) => crawler::handle_crawler(cmd, ctx.output_lines).await,
         _ if is_redis_command(cmd) => redis::handle_redis(cmd, ctx.output_lines).await,
@@ -226,18 +274,23 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if is_lifx_command(cmd) => lifx::handle_lifx(cmd, ctx.output_lines).await,
         _ if is_sms_command(cmd) => sms::handle_sms(cmd, ctx.output_lines).await,
         _ if is_ollama_command(cmd) => ollama::handle_ollama(cmd, ctx.output_lines).await,
-        
+
         // Migrate command (special handling)
         _ if is_migrate_command(cmd) => {
-            let args = cmd.trim_start_matches("migrate").split_whitespace()
-                .map(String::from).collect();
+            let args = cmd
+                .trim_start_matches("migrate")
+                .split_whitespace()
+                .map(String::from)
+                .collect();
             migrate::handle_migrate(args, ctx.output_lines).await;
-        },
-        
+        }
+
         // Prefix commands
         _ if cmd.starts_with("p2p ") => p2p::handle_p2p(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("cd ") => cd::handle_cd(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("cat ") => misc::handle_cat(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("cat ") => {
+            misc::handle_cat(cmd, ctx.output_lines, ctx.current_dir).await
+        }
         _ if cmd.starts_with("uname") => misc::handle_uname(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("date ") => misc::handle_date(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("df") => misc::handle_df(cmd, ctx.output_lines).await,
@@ -245,19 +298,52 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
         _ if cmd.starts_with("ps") => misc::handle_ps(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("kill ") => misc::handle_kill(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("man ") => misc::handle_man(cmd, ctx.output_lines).await,
-        _ if cmd.starts_with("mkdir ") => misc::handle_mkdir(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("rmdir ") => misc::handle_rmdir(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("cp ") => misc::handle_cp(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("mv ") => misc::handle_mv(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("rm ") => misc::handle_rm(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("less ") => misc::handle_less(cmd, ctx.output_lines, ctx.current_dir, ctx.output_height, ctx.scroll_offset).await,
-        _ if cmd.starts_with("grep ") => misc::handle_grep(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("touch ") => misc::handle_touch(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("head ") => misc::handle_head(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("tail ") => misc::handle_tail(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("find ") => misc::handle_find(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("chmod ") => misc::handle_chmod(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("chown ") => misc::handle_chown(cmd, ctx.output_lines, ctx.current_dir).await,
+        _ if cmd.starts_with("mkdir ") => {
+            misc::handle_mkdir(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("rmdir ") => {
+            misc::handle_rmdir(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("cp ") => {
+            misc::handle_cp(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("mv ") => {
+            misc::handle_mv(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("rm ") => {
+            misc::handle_rm(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("less ") => {
+            misc::handle_less(
+                cmd,
+                ctx.output_lines,
+                ctx.current_dir,
+                ctx.output_height,
+                ctx.scroll_offset,
+            )
+            .await
+        }
+        _ if cmd.starts_with("grep ") => {
+            misc::handle_grep(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("touch ") => {
+            misc::handle_touch(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("head ") => {
+            misc::handle_head(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("tail ") => {
+            misc::handle_tail(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("find ") => {
+            misc::handle_find(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("chmod ") => {
+            misc::handle_chmod(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("chown ") => {
+            misc::handle_chown(cmd, ctx.output_lines, ctx.current_dir).await
+        }
         _ if cmd.starts_with("darknet ") => darknet::handle_darknet(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("tts ") => tts::handle_tts(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("llama") => llama::handle_llama(cmd, ctx.output_lines).await,
@@ -269,18 +355,28 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
                     let mut lines = ctx.output_lines.blocking_lock();
                     lines.push(format!("crawl search error: {}", e));
                 });
-        },
+        }
         _ if cmd.starts_with("mdns ") => mdns::handle_mdns(cmd, ctx.output_lines.clone()).await,
         _ if cmd.starts_with("ssh ") => ssh::handle_ssh_command(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("plugin") => plugin::handle_plugin(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("nano") => nano::handle_nano(cmd, ctx.output_lines).await,
         _ if cmd.starts_with("echo ") => misc::handle_echo(cmd, ctx.output_lines).await,
-        _ if cmd.starts_with("sort ") => misc::handle_sort(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("wc ") => misc::handle_wc(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("tar ") => misc::handle_tar(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("gzip ") => misc::handle_gzip(cmd, ctx.output_lines, ctx.current_dir).await,
-        _ if cmd.starts_with("gunzip ") => misc::handle_gunzip(cmd, ctx.output_lines, ctx.current_dir).await,
-        
+        _ if cmd.starts_with("sort ") => {
+            misc::handle_sort(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("wc ") => {
+            misc::handle_wc(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("tar ") => {
+            misc::handle_tar(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("gzip ") => {
+            misc::handle_gzip(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+        _ if cmd.starts_with("gunzip ") => {
+            misc::handle_gunzip(cmd, ctx.output_lines, ctx.current_dir).await
+        }
+
         // Default fallback
         _ => misc::handle_default(cmd, ctx.output_lines).await,
     }
@@ -288,31 +384,31 @@ async fn execute_single_command(cmd: &str, ctx: &mut CommandContext<'_>) {
 
 // Execute a command in a pipe context (with stdin input)
 async fn execute_piped_command(
-    cmd: &str, 
-    input_lines: &[String], 
-    output_lines: &std::sync::Arc<tokio::sync::Mutex<Vec<String>>>, 
-    current_dir: &std::path::PathBuf
+    cmd: &str,
+    input_lines: &[String],
+    output_lines: &std::sync::Arc<tokio::sync::Mutex<Vec<String>>>,
+    current_dir: &std::path::PathBuf,
 ) {
     let args: Vec<&str> = cmd.split_whitespace().collect();
     if args.is_empty() {
         return;
     }
-    
+
     match args[0] {
         "grep" => {
             // Handle grep with stdin input
             misc::handle_grep_with_input(cmd, input_lines, output_lines, current_dir).await;
-        },
+        }
         "cat" => {
             // Cat in pipe context just passes through the input
             let mut out = output_lines.lock().await;
             out.extend_from_slice(input_lines);
-        },
+        }
         "head" => {
             // Implement head command for pipes
             let mut n = 10; // default
             let mut i = 1;
-            
+
             while i < args.len() {
                 match args[i] {
                     "-n" | "--lines" => {
@@ -331,15 +427,15 @@ async fn execute_piped_command(
                 }
                 i += 1;
             }
-            
+
             let mut out = output_lines.lock().await;
             out.extend(input_lines.iter().take(n).cloned());
-        },
+        }
         "tail" => {
             // Implement tail command for pipes
             let mut n = 10; // default
             let mut i = 1;
-            
+
             while i < args.len() {
                 match args[i] {
                     "-n" | "--lines" => {
@@ -358,25 +454,25 @@ async fn execute_piped_command(
                 }
                 i += 1;
             }
-            
+
             let mut out = output_lines.lock().await;
             let start_index = input_lines.len().saturating_sub(n);
             out.extend(input_lines.iter().skip(start_index).cloned());
-        },
+        }
 
         "sort" => {
             // Sort command for pipes (use advanced version)
             misc::handle_sort_with_input(cmd, input_lines, output_lines).await;
-        },
+        }
         "wc" => {
             // Word count command for pipes (use advanced version)
             misc::handle_wc_with_input(cmd, input_lines, output_lines).await;
-        },
+        }
         "echo" => {
             // Echo command doesn't typically read from stdin, but in pipe context
             // we'll just output what was requested
             misc::handle_echo(cmd, output_lines).await;
-        },
+        }
         "uniq" => {
             // Unique command for pipes
             let mut out = output_lines.lock().await;
@@ -387,7 +483,7 @@ async fn execute_piped_command(
                     last_line = line;
                 }
             }
-        },
+        }
         _ => {
             // Unknown command in pipe context
             let mut out = output_lines.lock().await;

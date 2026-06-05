@@ -11,19 +11,125 @@ https://tts.opensam.foundation/api/tts?text=hello%20world&speaker_id=&style_wav=
 https://tts.alpha.opensam.foundation/api/tts?text=hello%20world&speaker_id=&style_wav=
 
 
-Features:
-- Touch Friendly User Interface
-- Built with rust-lang
-- Open Source (GPLv3)
+## Implemented Work
 
-Lifx:
-  - Works online and offline (with offline lifx server package)
-  - Ability to set the light color/kelvin/power from touch panels
+This list reflects the code currently present in the repository. SAM is still in active development, and several areas have partial implementations or integration gaps, but the following pieces are implemented or substantially scaffolded.
 
-Media Center Features:
-  - Games
-  - App Support (Netflix, Youtube, Spotify, etc.)
-  - Game Controller Support
+### Core Runtime and Application Shell
+- Rust application split between the `sam` binary and reusable `libsam` library.
+- Tokio multi-threaded runtime setup with interactive TUI mode and server/CapRover mode.
+- First-run config initialization under the user SAM directory.
+- Dual console/file logging setup plus panic reporting and cleanup hooks.
+- Doctor/diagnostic command entry point.
+- Installer binaries and migration helpers.
+- Docker and CapRover deployment files, including SQLite and PostgreSQL variants.
+
+### Web, API, and Dashboard
+- Rouille-based HTTP server and static web dashboard under `www/`.
+- REST API routing for sessions, humans, locations, observations, rooms, services, settings, things, jobs, IO commands, Ollama, telemetry, and service control.
+- Health, liveness, readiness, detailed health, metrics, resource middleware, CSRF, and HTTP rate-limit modules.
+- Web dashboard assets for service control, media, LIFX/touch controls, humans, rooms, locations, settings, setup, sanitization, and mobile-responsive UI.
+- Console web app under `www/apps/console`.
+
+### Service Architecture
+- Large modular service layer with shared config, validation, retry, HTTP client, traits, and common error types.
+- Service orchestrator with service registry, dependency ordering, start/stop flow, restart manager integration, and status tracking.
+- Restart manager with restart strategies, circuit-breaker state, metrics, and notifier hooks.
+- Thread manager and resource-management modules for limits, monitoring, pools, and cleanup.
+
+### Infrastructure Services
+- PostgreSQL service with connection pooling and schema initialization paths.
+- SQLite support through `rusqlite` and database-engine abstractions.
+- Redis service with connection pooling, health checks, circuit-breaker style protection, and tests.
+- Docker service using Bollard for container orchestration and helper startup for PostgreSQL/Redis.
+- Hybrid cache modules for web sessions, crawled pages, Wikipedia summaries, and crawler extension results.
+
+### WebSocket and Real-Time Messaging
+- WebSocket message model for subscribe/unsubscribe, commands, authentication, heartbeat, service status, system stats, network stats, activity, alerts, and command responses.
+- Connection security modules for rate limits, message validation, session info, permissions, and audit logging.
+- System stats collection and alert generation logic.
+- WebSocket tests and audit log support.
+
+### Security
+- Security modules for auth, audit logging, sessions, input validation, HTTP middleware, and validation middleware.
+- Documented fixes for command injection, SQL injection, WebSocket security, and general hardening.
+- JWT-related security tests.
+- Input validation coverage for URLs, SQL/XSS-style payloads, path traversal, command injection, email, and usernames.
+
+### Web Crawler
+- Crawler service with URL crawling, runner, jobs, pages, rejected URL tracking, and database integration.
+- Robots.txt compliance, sitemap parsing, RSS/Atom feed parsing, DNS cache, circuit breaker, adaptive rate limiting, retry handling, and user-agent rotation.
+- Persistent Redis-backed job queue with distributed locks, priority scheduling, orphan recovery, retries, and stats.
+- Memory-optimized crawl state with Bloom filter, LRU cache, bounded queue, and Redis spillover.
+- Content storage with compression, deduplication, metadata extraction, full-text search support, and language/content-type filtering.
+- Configurable crawl jobs with max depth, whitelist/blacklist, regex filters, cron-style schedules, priorities, tags, custom headers, and presets.
+- REST crawler management API with CRUD, start/stop/restart, pause/resume, queue management, stats, metrics, and preset endpoints.
+- Prometheus crawler metrics, webhook notifications, error categorization, data export, benchmarks, and crawler test suites.
+
+### Storage and Files
+- File storage trait layer with list/upload/download/delete/folder/move/copy/exists/metadata/search/share/version/batch/stream/sync operations.
+- Local filesystem storage provider.
+- Dropbox integration with OAuth, folder creation, listing, download, delete, and auth helpers.
+- Nextcloud and SeaweedFS provider modules.
+- Memory/storage modules for database-backed file records.
+
+### Backup and Recovery
+- Legacy backup service plus enhanced backup implementation.
+- Full and incremental backups, restore flow, verification, compression, checksums, metadata, retention policies, restore points, metrics, and tests.
+- Backup scheduler entry point.
+
+### AI, Voice, and Language
+- Whisper/STT modules, enhanced Whisper service configuration, installation helpers, and model download/build workflow.
+- TTS modules with enhanced, external, and legacy paths.
+- Voice assistant service with conversation history, command processing, and TTS/STT integration points.
+- RiveScript service and bundled brain/scripts.
+- LLM services for OpenAI, Llama, and Ollama.
+- Ollama HTTP API endpoints and coding-agent Ollama auto-configuration.
+
+### Coding Agent
+- Coding agent service, executor, config, and TUI rendering support.
+- Workspace context analysis, project detection, dependency scanning, git context, and session context.
+- Code completion, review, explanation, refactoring, automated debugging, security analysis, migration, pair programming, collaboration, templates, code-flow visualization, bug prediction, and documentation generation modules.
+- Provider abstraction with Ollama, OpenAI, and local provider modules.
+
+### Home Automation and Devices
+- LIFX service with configuration, protocol handling, discovery, bulbs, handlers, traits, and API servers.
+- Touch-friendly LIFX frontend controls and media/LIFX integration assets.
+- Matter and mDNS service modules.
+- Memory models for humans, face encodings, notifications, locations, rooms, things, observations, and observation objects.
+
+### Media and Entertainment
+- Media service modules for games, images, YouTube, Snapcast, and Snapcast API.
+- Image-processing modules including OCNN, SRGAN, and neural style transfer.
+- Spotify, sound, speaker recognition, RTSP download/manager/recording, and camera/observation support modules.
+- Bundled media packages and app icons for Netflix, Spotify, YouTube, console, games, FFmpeg, Snapcast, Whisper, and object-recognition assets.
+
+### Network, Remote Access, and Security Tools
+- SSH client/server modules with remote command server support.
+- Remote access helper script and documented telnet/netcat/SSH tunnel workflows.
+- Vulnerability scanner with network scanning, port scanning, service detection, OS hints, vulnerability classification, and report generation.
+- ClamAV service module and resource-management virus-scan integration point.
+- P2P modules for enhanced nodes, secure messaging, file sharing, sync, network segmentation, rate limits, peer stats, and tests.
+
+### Notifications and Communications
+- Notification service modules for channels, rules, and HTTP handling.
+- SMS service modules for Plivo, Twilio, and Vonage.
+- Event service module.
+
+### Package Management and Platform Support
+- Package manager modules for Cargo, pip, apt, dnf, yum, pacman, zypper, Homebrew, MacPorts, Chocolatey, and winget.
+- vcpkg support.
+- Linux/macOS/Windows-specific installer and package-management scaffolding.
+
+### Plugins and Extensibility
+- Plugin trait and registry for compiled-in plugins.
+- Feature-gated WASM plugin runtime and hot-reload loader modules.
+- Plugin manifest support.
+
+### Testing, Benchmarks, and Documentation
+- Unit, integration, functional, binary-interface, JWT security, DB pool safety, Redis safety, WebSocket build, telemetry, crawler, RTSP, LIFX exhaustion, and command tests.
+- Benchmarks for services and crawler.
+- Organized docs for API, deployment, development, features, security, design, directory structure, CapRover, database setup, Snapcast, LIFX, NST, Sentry, SSH, thread manager, resource management, cache, migrations, Redis refactor, crawler enhancements, and test reports.
 
 ## 🚨 Security Notice
 
@@ -413,7 +519,9 @@ This project follows an organized directory structure for better maintainability
 
 For detailed information about the directory structure, see [docs/DIRECTORY_STRUCTURE.md](docs/DIRECTORY_STRUCTURE.md).
 
-## 📋 TODO/Roadmap
+## Partial Work and Roadmap
+
+These are active or incomplete areas discovered from the README, docs, TODO comments, and code placeholders.
 
 ### Security & Stability (High Priority)
 - 🔄 Replace remaining `.unwrap()` calls with proper error handling
@@ -421,18 +529,31 @@ For detailed information about the directory structure, see [docs/DIRECTORY_STRU
 - ⏳ Add comprehensive input validation
 - ⏳ Implement proper session management
 - ⏳ Add rate limiting and DOS protection
+- Finish unsafe-block and memory-safety audit.
+- Finish SQL-security audit and parameterization pass.
+- Fix resource leaks in backup, SSH, and P2P/file-sharing paths.
 
 ### Core Features
-- Add clock_widget_display_format setting for the clock widget
-- Intergrate Whisper as a primary STT/TTS engine https://github.com/ggerganov/whisper.cpp
-- Use whisper for realtime STT/TTS using wasm2js
-- Keep exsting TTS/STT methods to be used as a backup
-- Add metadata to file storage api
+- Harden WebSocket lifecycle management, including graceful shutdown for background tasks and deployment configuration.
+- Complete service orchestrator health monitoring, restart execution, and service-specific handlers for all registered service variants.
+- Integrate Whisper as a primary STT/TTS engine https://github.com/ggerganov/whisper.cpp
+- Use Whisper for realtime STT/TTS using wasm2js.
+- Keep existing TTS/STT methods as fallback paths.
+- Implement STT HTTP API handling, DeepSpeech path, language detection, and configurable local/external STT servers.
+- Finish local/Coqui TTS integration.
+- Add metadata to file storage API.
 - SSH command pipeline support for cli
-- Password manager
-- Vulnerability scanning and classification of internal network
-- Ext Web crawler for links, summaries, ports, etc.
-- P2P communications between sam instances for Job tasking, hive communications
+- Finish notification history and notification settings UI.
+- Finish SMS support and additional notification providers such as email/push.
+- Complete cache databases as Redis/PostgreSQL hybrid.
+- Add support for additional database backends such as MySQL where abstractions exist but implementation is missing.
+- Add support for additional storage backends such as S3 and Google Cloud Storage.
+- Create an OID for SAM on server startup with root-only access.
+- Bootcamp service for collected prompts/data and model training.
+- Revise default RiveScript with bootcamp prompts.
+- Extend thing/device support to more device types and platforms.
+- Complete P2P job tasking, hive communication, state sync, load reporting, and key-agreement work.
+- Finish backup encryption.
 
 ### Platform Support
 - Stablize windows build
@@ -442,12 +563,33 @@ For detailed information about the directory structure, see [docs/DIRECTORY_STRU
 ### UI/UX Improvements  
 - Overhaul web interface for no jquery, gulp asset pipelines, etc
 - Overhaul help command
+- Finish TUI file browser and database management modes.
+- GUI and API overhaul.
 
 ### Gaming & Emulation
-- PS1 emulation and native file support (.ps1) https://github.com/js-emulators/WASMpsx
+- Complete PS1 emulation and native file support (.ps1) https://github.com/js-emulators/WASMpsx
 - NES emulation and native file support (.nes) https://github.com/takahirox/nes-rust
 - Gameboy emulation https://github.com/andrewimm/wasm-gb
 - Chip-8 Emulation (.ch8)
+
+### Crawler Future Work
+- Implement focused/topical crawling with ML classification.
+- Add link graph analysis and visualization.
+- Support crawling API endpoints, not just HTML.
+- Add archive.org integration for historical snapshots.
+- Implement distributed crawling across multiple nodes.
+- Add machine-learning crawl prioritization.
+- Create browser extension for manual URL submission.
+- Add Tor/proxy crawling support.
+- Implement change detection for recrawling.
+- Add screenshot capture and crawl replay.
+- Finish full PDF/document extraction, image metadata extraction, and non-Chrome JS renderers.
+
+### Coding Agent Future Work
+- Replace placeholder OpenAI/local provider responses with real inference calls where still stubbed.
+- Finish PDF generation in documentation generator.
+- Finish unimplemented visualization types and GPU providers.
+- Complete IO module implementation.
 
 0.0.4(WIP):
 - database restructured

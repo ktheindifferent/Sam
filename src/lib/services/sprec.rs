@@ -7,9 +7,10 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+use crate::services::thread_manager;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use crate::services::thread_manager;
+use std::process::Command;
 // Add missing import for tools module
 
 /// Initializes the SPREC service (currently a placeholder).
@@ -72,12 +73,9 @@ pub fn build() {
                         .push(crate::memory::PGCol::String(observation.oid.clone()));
                     full_pg_query.query_columns.push("oid =".to_string());
 
-                    if let Ok(full_observations) = crate::memory::Observation::select(
-                        None,
-                        None,
-                        None,
-                        Some(full_pg_query),
-                    ) {
+                    if let Ok(full_observations) =
+                        crate::memory::Observation::select(None, None, None, Some(full_pg_query))
+                    {
                         if let Some(full_observation) = full_observations.first() {
                             if let Some(file_data) = &full_observation.observation_file {
                                 if let Err(e) = std::fs::write(&audio_file, file_data) {
@@ -112,8 +110,19 @@ pub fn predict(file_path: &str) -> Result<SprecPrediction, crate::services::Erro
     }
     std::fs::copy(file_path, test_file)?;
 
-    let result = crate::tools::cmd("python3 /opt/sam/scripts/sprec/predict.py")
+    let output = Command::new("python3")
+        .arg("/opt/sam/scripts/sprec/predict.py")
+        .output()
         .map_err(|e| crate::services::Error::Other(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(crate::services::Error::Other(format!(
+            "SPREC prediction failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    let result = String::from_utf8_lossy(&output.stdout);
     let vec: Vec<&str> = result.split(":::::").collect();
 
     if vec.len() > 2 {

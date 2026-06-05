@@ -143,22 +143,28 @@ impl AlertManager {
     pub async fn send_alert(&self, alert: Alert) -> Result<()> {
         let alert_key = format!("{}_{:?}", alert.thing_oid, alert.alert_type);
         let now = SystemTime::now();
-        
+
         let should_send = {
-            let last_times = self.last_alert_times.lock().unwrap();
+            let last_times = self
+                .last_alert_times
+                .lock()
+                .map_err(|e| anyhow::anyhow!("RTSP test alert cooldown lock poisoned: {}", e))?;
             if let Some(last_time) = last_times.get(&alert_key) {
                 now.duration_since(*last_time).unwrap_or(Duration::ZERO) >= self.cooldown_duration
             } else {
                 true
             }
         };
-        
+
         if should_send {
             self.alert_tx.send(alert).await?;
-            let mut last_times = self.last_alert_times.lock().unwrap();
+            let mut last_times = self
+                .last_alert_times
+                .lock()
+                .map_err(|e| anyhow::anyhow!("RTSP test alert cooldown lock poisoned: {}", e))?;
             last_times.insert(alert_key, now);
         }
-        
+
         Ok(())
     }
 }

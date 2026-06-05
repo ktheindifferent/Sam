@@ -1,10 +1,10 @@
+use anyhow::Result;
+use log::{debug, warn};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, Semaphore};
 use tokio::time::timeout;
-use anyhow::Result;
-use log::{debug, warn};
-use std::collections::HashMap;
 
 /// Resource limits enforcement
 pub struct ResourceLimits {
@@ -26,7 +26,7 @@ impl ResourceLimits {
             memory_limiter: Arc::new(MemoryLimiter::new(memory_limits)),
         }
     }
-    
+
     /// Check file upload limits
     pub async fn check_file_upload(
         &self,
@@ -34,9 +34,11 @@ impl ResourceLimits {
         file_size: usize,
         extension: &str,
     ) -> Result<FileUploadCheck> {
-        self.file_limiter.check_upload(user_id, file_size, extension).await
+        self.file_limiter
+            .check_upload(user_id, file_size, extension)
+            .await
     }
-    
+
     /// Check request limits
     pub async fn check_request(
         &self,
@@ -44,9 +46,11 @@ impl ResourceLimits {
         body_size: usize,
         headers_size: usize,
     ) -> Result<RequestCheck> {
-        self.request_limiter.check_request(client_ip, body_size, headers_size).await
+        self.request_limiter
+            .check_request(client_ip, body_size, headers_size)
+            .await
     }
-    
+
     /// Check memory limits
     pub async fn check_memory_allocation(&self, size: usize) -> Result<MemoryCheck> {
         self.memory_limiter.check_allocation(size).await
@@ -86,7 +90,7 @@ impl FileLimiter {
             user_storage: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     /// Check if upload is allowed
     pub async fn check_upload(
         &self,
@@ -103,7 +107,7 @@ impl FileLimiter {
                 },
             });
         }
-        
+
         // Check extension
         if !self.is_extension_allowed(extension) {
             return Ok(FileUploadCheck::Rejected {
@@ -112,11 +116,11 @@ impl FileLimiter {
                 },
             });
         }
-        
+
         // Check user storage quota
         let mut storage = self.user_storage.write().await;
         let current_storage = storage.get(user_id).copied().unwrap_or(0);
-        
+
         if current_storage + file_size > self.limits.max_user_storage {
             return Ok(FileUploadCheck::Rejected {
                 reason: FileRejectionReason::StorageQuotaExceeded {
@@ -126,24 +130,24 @@ impl FileLimiter {
                 },
             });
         }
-        
+
         // Check concurrent uploads
         let mut uploads = self.user_uploads.write().await;
-        let upload_state = uploads.entry(user_id.to_string()).or_insert_with(|| {
-            UserUploadState {
+        let upload_state = uploads
+            .entry(user_id.to_string())
+            .or_insert_with(|| UserUploadState {
                 semaphore: Arc::new(Semaphore::new(self.limits.max_concurrent_uploads)),
                 current_uploads: 0,
                 last_upload: Instant::now(),
-            }
-        });
-        
+            });
+
         // Try to acquire upload slot
         match upload_state.semaphore.clone().try_acquire_owned() {
             Ok(permit) => {
                 upload_state.current_uploads += 1;
                 upload_state.last_upload = Instant::now();
                 storage.insert(user_id.to_string(), current_storage + file_size);
-                
+
                 Ok(FileUploadCheck::Allowed {
                     permit: Some(permit),
                     remaining_storage: self.limits.max_user_storage - (current_storage + file_size),
@@ -157,27 +161,33 @@ impl FileLimiter {
             }),
         }
     }
-    
+
     /// Check if extension is allowed
     fn is_extension_allowed(&self, extension: &str) -> bool {
         let ext_lower = extension.to_lowercase();
-        
+
         // Check blocked extensions first
-        if self.limits.blocked_extensions.iter()
-            .any(|blocked| blocked.to_lowercase() == ext_lower) {
+        if self
+            .limits
+            .blocked_extensions
+            .iter()
+            .any(|blocked| blocked.to_lowercase() == ext_lower)
+        {
             return false;
         }
-        
+
         // If allowed list is empty, all non-blocked are allowed
         if self.limits.allowed_extensions.is_empty() {
             return true;
         }
-        
+
         // Check allowed list
-        self.limits.allowed_extensions.iter()
+        self.limits
+            .allowed_extensions
+            .iter()
             .any(|allowed| allowed.to_lowercase() == ext_lower)
     }
-    
+
     /// Release storage quota
     pub async fn release_storage(&self, user_id: &str, size: usize) {
         let mut storage = self.user_storage.write().await;
@@ -250,7 +260,7 @@ impl RequestLimiter {
             ip_requests: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     /// Check if request is allowed
     pub async fn check_request(
         &self,
@@ -267,7 +277,7 @@ impl RequestLimiter {
                 },
             });
         }
-        
+
         // Check header size
         if headers_size > self.limits.max_header_size {
             return Ok(RequestCheck::Rejected {
@@ -277,23 +287,23 @@ impl RequestLimiter {
                 },
             });
         }
-        
+
         // Check concurrent requests
         let mut ip_states = self.ip_requests.write().await;
-        let ip_state = ip_states.entry(client_ip.to_string()).or_insert_with(|| {
-            IpRequestState {
+        let ip_state = ip_states
+            .entry(client_ip.to_string())
+            .or_insert_with(|| IpRequestState {
                 semaphore: Arc::new(Semaphore::new(self.limits.max_concurrent_per_ip)),
                 current_requests: 0,
                 last_request: Instant::now(),
-            }
-        });
-        
+            });
+
         // Try to acquire request slot
         match ip_state.semaphore.clone().try_acquire_owned() {
             Ok(permit) => {
                 ip_state.current_requests += 1;
                 ip_state.last_request = Instant::now();
-                
+
                 Ok(RequestCheck::Allowed {
                     permit: Some(permit),
                     timeout: self.limits.max_processing_time,
@@ -307,7 +317,7 @@ impl RequestLimiter {
             }),
         }
     }
-    
+
     /// Process request with timeout
     pub async fn process_with_timeout<F, T>(
         &self,
@@ -339,18 +349,9 @@ pub enum RequestCheck {
 /// Request rejection reason
 #[derive(Debug)]
 pub enum RequestRejectionReason {
-    BodyTooLarge {
-        size: usize,
-        max_size: usize,
-    },
-    HeadersTooLarge {
-        size: usize,
-        max_size: usize,
-    },
-    TooManyConcurrentRequests {
-        current: usize,
-        max: usize,
-    },
+    BodyTooLarge { size: usize, max_size: usize },
+    HeadersTooLarge { size: usize, max_size: usize },
+    TooManyConcurrentRequests { current: usize, max: usize },
 }
 
 /// Memory limits
@@ -376,7 +377,7 @@ impl MemoryLimiter {
             current_usage: Arc::new(RwLock::new(0)),
         }
     }
-    
+
     /// Check if memory allocation is allowed
     pub async fn check_allocation(&self, size: usize) -> Result<MemoryCheck> {
         if size > self.limits.max_allocation {
@@ -387,13 +388,13 @@ impl MemoryLimiter {
                 },
             });
         }
-        
+
         let mut current = self.current_usage.write().await;
         let total_after = *current + size;
-        
+
         // Check system memory
         let system_memory = get_system_memory_usage();
-        
+
         if system_memory > self.limits.critical_threshold {
             return Ok(MemoryCheck::Rejected {
                 reason: MemoryRejectionReason::SystemMemoryCritical {
@@ -402,26 +403,26 @@ impl MemoryLimiter {
                 },
             });
         }
-        
+
         if system_memory > self.limits.warning_threshold {
             warn!("System memory usage is high: {:.2}%", system_memory * 100.0);
         }
-        
+
         *current = total_after;
-        
+
         Ok(MemoryCheck::Allowed {
             allocated: size,
             current_usage: total_after,
         })
     }
-    
+
     /// Release allocated memory
     pub async fn release(&self, size: usize) {
         let mut current = self.current_usage.write().await;
         *current = current.saturating_sub(size);
         debug!("Released {} bytes, current usage: {}", size, *current);
     }
-    
+
     /// Get current memory usage
     pub async fn get_usage(&self) -> usize {
         *self.current_usage.read().await
@@ -443,27 +444,21 @@ pub enum MemoryCheck {
 /// Memory rejection reason
 #[derive(Debug)]
 pub enum MemoryRejectionReason {
-    AllocationTooLarge {
-        requested: usize,
-        max: usize,
-    },
-    SystemMemoryCritical {
-        usage: f32,
-        threshold: f32,
-    },
+    AllocationTooLarge { requested: usize, max: usize },
+    SystemMemoryCritical { usage: f32, threshold: f32 },
 }
 
 /// Get system memory usage as percentage
 fn get_system_memory_usage() -> f32 {
     // Use sysinfo crate to get actual memory usage
     use sysinfo::System;
-    
+
     let mut sys = System::new();
     sys.refresh_memory();
-    
+
     let total = sys.total_memory();
     let used = sys.used_memory();
-    
+
     if total > 0 {
         (used as f32) / (total as f32)
     } else {
@@ -487,34 +482,34 @@ impl LimitedBuffer {
             current_size: 0,
         }
     }
-    
+
     /// Write data to buffer
     pub fn write(&mut self, data: &[u8]) -> Result<usize> {
         let available = self.max_size - self.current_size;
         let to_write = data.len().min(available);
-        
+
         if to_write == 0 {
             return Err(anyhow::anyhow!("Buffer size limit exceeded"));
         }
-        
+
         self.buffer.extend_from_slice(&data[..to_write]);
         self.current_size += to_write;
-        
+
         Ok(to_write)
     }
-    
+
     /// Read and clear buffer
     pub fn read(&mut self) -> Vec<u8> {
         let data = std::mem::take(&mut self.buffer);
         self.current_size = 0;
         data
     }
-    
+
     /// Get current size
     pub fn size(&self) -> usize {
         self.current_size
     }
-    
+
     /// Check if buffer is full
     pub fn is_full(&self) -> bool {
         self.current_size >= self.max_size
@@ -534,38 +529,47 @@ mod tests {
             allowed_extensions: vec!["jpg".to_string(), "png".to_string()],
             blocked_extensions: vec!["exe".to_string()],
         };
-        
+
         let limiter = FileLimiter::new(limits);
-        
+
         // Test allowed upload
-        let check = limiter.check_upload("user1", 512 * 1024, "jpg").await.unwrap();
+        let check = limiter
+            .check_upload("user1", 512 * 1024, "jpg")
+            .await
+            .unwrap();
         assert!(matches!(check, FileUploadCheck::Allowed { .. }));
-        
+
         // Test blocked extension
-        let check = limiter.check_upload("user1", 512 * 1024, "exe").await.unwrap();
+        let check = limiter
+            .check_upload("user1", 512 * 1024, "exe")
+            .await
+            .unwrap();
         assert!(matches!(check, FileUploadCheck::Rejected { .. }));
-        
+
         // Test file too large
-        let check = limiter.check_upload("user1", 2 * 1024 * 1024, "jpg").await.unwrap();
+        let check = limiter
+            .check_upload("user1", 2 * 1024 * 1024, "jpg")
+            .await
+            .unwrap();
         assert!(matches!(check, FileUploadCheck::Rejected { .. }));
     }
 
     #[test]
     fn test_limited_buffer() {
         let mut buffer = LimitedBuffer::new(10);
-        
+
         // Write within limit
         assert_eq!(buffer.write(b"hello").unwrap(), 5);
         assert_eq!(buffer.size(), 5);
-        
+
         // Write up to limit
         assert_eq!(buffer.write(b"world").unwrap(), 5);
         assert_eq!(buffer.size(), 10);
         assert!(buffer.is_full());
-        
+
         // Try to exceed limit
         assert!(buffer.write(b"!").is_err());
-        
+
         // Read and clear
         let data = buffer.read();
         assert_eq!(&data, b"helloworld");

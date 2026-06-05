@@ -25,7 +25,8 @@ impl MatterDeviceController {
         local_address: &str,
     ) -> Result<Thing> {
         let cert_path = "/opt/sam/keys/matter/";
-        let code = onboarding::decode_manual_pairing_code(pin).unwrap();
+        let code = onboarding::decode_manual_pairing_code(pin)
+            .map_err(|e| anyhow::anyhow!("Invalid Matter pairing code: {}", e))?;
         let device_id = 300;
         let cm: Arc<dyn certmanager::CertManager> = match FileCertManager::load(cert_path) {
             Ok(cm) => cm,
@@ -69,7 +70,8 @@ impl MatterDeviceController {
         let cert_path = "/opt/sam/keys/matter/";
         let controller_id = 100; // Default controller ID
         let device_id = thing
-            .online_identifiers.first()
+            .online_identifiers
+            .first()
             .ok_or_else(|| anyhow::anyhow!("No device_id found"))?
             .parse::<u64>()?;
         let device_address = &thing.ip_address;
@@ -94,7 +96,8 @@ impl MatterDeviceController {
         let cert_path = "/opt/sam/keys/matter/";
         let controller_id = 100; // Default controller ID
         let device_id = thing
-            .online_identifiers.first()
+            .online_identifiers
+            .first()
             .ok_or_else(|| anyhow::anyhow!("No device_id found"))?
             .parse::<u64>()?;
         let device_address = &thing.ip_address;

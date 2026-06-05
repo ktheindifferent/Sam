@@ -7,21 +7,21 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
-// ██     ██ ███████ ███████      ███████  ██████  ███    ██  █████  ██████  
-// ██     ██ ██      ██           ██      ██    ██ ████   ██ ██   ██ ██   ██ 
-// ██  █  ██ █████   ███████      ███████ ██    ██ ██ ██  ██ ███████ ██████  
-// ██ ███ ██ ██           ██           ██ ██    ██ ██  ██ ██ ██   ██ ██   ██ 
-//  ███ ███  ███████ ███████      ███████  ██████  ██   ████ ██   ██ ██   ██ 
+// ██     ██ ███████ ███████      ███████  ██████  ███    ██  █████  ██████
+// ██     ██ ██      ██           ██      ██    ██ ████   ██ ██   ██ ██   ██
+// ██  █  ██ █████   ███████      ███████ ██    ██ ██ ██  ██ ███████ ██████
+// ██ ███ ██ ██           ██           ██ ██    ██ ██  ██ ██ ██   ██ ██   ██
+//  ███ ███  ███████ ███████      ███████  ██████  ██   ████ ██   ██ ██   ██
 // Copyright 2021-2026 The Open Sam Foundation (OSF)
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
 /**
  * Librespot Integration for Spotify Support
- * 
+ *
  * This module provides installation and configuration helpers for librespot,
  * the open-source Spotify client used as a Snapcast source.
- * 
+ *
  * Setup Instructions:
  * 1. Install librespot: cargo install librespot
  * 2. Copy to system path: sudo cp ~/.cargo/bin/librespot /usr/local/bin/
@@ -29,14 +29,13 @@
  *    - SNAPCAST_SPOTIFY_USERNAME
  *    - SNAPCAST_SPOTIFY_PASSWORD
  *    - SNAPCAST_SPOTIFY_DEVICE_NAME
- * 
+ *
  * Security Notes:
  * - Credentials are read from environment variables only (never hardcoded)
  * - Config file permissions are set to 0640 (owner/group read, owner write)
  * - Default bind address is localhost for security
  */
-
-use log::{info, warn, error, debug};
+use log::{debug, error, info, warn};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -47,16 +46,16 @@ use std::thread;
 pub enum SnapcastError {
     #[error("Installation failed: {0}")]
     InstallationFailed(String),
-    
+
     #[error("Configuration failed: {0}")]
     ConfigurationFailed(String),
-    
+
     #[error("Librespot not found: {0}")]
     LibrespotNotFound(String),
-    
+
     #[error("Service start failed: {0}")]
     ServiceStartFailed(String),
-    
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -64,14 +63,14 @@ pub enum SnapcastError {
 static SNAPCAST_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Initialize the Snapcast server
-/// 
+///
 /// This function:
 /// 1. Checks if snapserver is installed, installs if missing
 /// 2. Starts snapserver in a background thread
 /// 3. Handles platform-specific quirks (e.g., Debian Bullseye)
 pub async fn init() -> Result<(), SnapcastError> {
     info!("Initializing Snapcast server");
-    
+
     // Check and install if needed
     if !Path::new("/usr/bin/snapserver").exists() {
         info!("snapserver not found, attempting installation");
@@ -91,7 +90,10 @@ pub async fn init() -> Result<(), SnapcastError> {
         .map_err(|e| SnapcastError::ServiceStartFailed(e.to_string()))?;
 
     SNAPCAST_RUNNING.store(true, std::sync::atomic::Ordering::SeqCst);
-    info!("snapcast server started successfully on thread: {:?}", snap_cast_thread.thread().name());
+    info!(
+        "snapcast server started successfully on thread: {:?}",
+        snap_cast_thread.thread().name()
+    );
     Ok(())
 }
 
@@ -109,7 +111,7 @@ pub async fn is_running() -> bool {
 }
 
 /// Configure Snapcast server with security settings
-/// 
+///
 /// This function:
 /// 1. Reads credentials from environment variables (never hardcoded)
 /// 2. Generates secure random password if not provided
@@ -118,7 +120,7 @@ pub async fn is_running() -> bool {
 /// 5. Binds to localhost by default (explicit config required for external access)
 pub fn configure() -> Result<(), SnapcastError> {
     info!("Configuring Snapcast server with security settings");
-    
+
     // Get credentials from environment variables only
     let (username, password_generated) = match std::env::var("SNAPCAST_USERNAME") {
         Ok(user) => (user, false),
@@ -127,7 +129,7 @@ pub fn configure() -> Result<(), SnapcastError> {
             ("sam_user".to_string(), false)
         }
     };
-    
+
     let password = match std::env::var("SNAPCAST_PASSWORD") {
         Ok(pass) => pass,
         Err(_) => {
@@ -137,19 +139,18 @@ pub fn configure() -> Result<(), SnapcastError> {
             new_pass
         }
     };
-    
-    let device_name = std::env::var("SNAPCAST_DEVICE_NAME")
-        .unwrap_or_else(|_| "Sam".to_string());
-    
+
+    let device_name = std::env::var("SNAPCAST_DEVICE_NAME").unwrap_or_else(|_| "Sam".to_string());
+
     // Security settings: bind to localhost by default
-    let bind_address = std::env::var("SNAPCAST_BIND_ADDRESS")
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    
+    let bind_address =
+        std::env::var("SNAPCAST_BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1".to_string());
+
     if bind_address != "127.0.0.1" {
         warn!("Snapcast will bind to external address: {}", bind_address);
         warn!("Ensure firewall rules are properly configured");
     }
-    
+
     // Check if librespot is available
     let (librespot_available, librespot_path) = match check_librespot() {
         Ok(path) => {
@@ -162,7 +163,7 @@ pub fn configure() -> Result<(), SnapcastError> {
             (false, "/usr/local/bin/librespot".to_string())
         }
     };
-    
+
     // Build Spotify source URL if librespot is available
     let spotify_source = if librespot_available && !password_generated {
         debug!("Configuring Spotify source with provided credentials");
@@ -171,15 +172,18 @@ pub fn configure() -> Result<(), SnapcastError> {
     } else if librespot_available {
         warn!("Spotify source configured but password was auto-generated");
         warn!("Set SNAPCAST_PASSWORD environment variable for consistent credentials");
-        format!("source = librespot://{}?name={}&devicename={}&bitrate=320&normalize=true\n",
-            librespot_path, device_name, device_name)
+        format!(
+            "source = librespot://{}?name={}&devicename={}&bitrate=320&normalize=true\n",
+            librespot_path, device_name, device_name
+        )
     } else {
         debug!("Spotify source disabled (librespot not available)");
         format!("# Spotify source disabled\n# Install librespot: cargo install librespot\n# Then copy to: sudo cp ~/.cargo/bin/librespot /usr/local/bin/\n")
     };
-    
+
     // Build secure configuration
-    let cfg = format!(r#"[server]
+    let cfg = format!(
+        r#"[server]
 threads = -1
 pidfile = /var/run/snapserver/pid
 user = snapserver
@@ -207,31 +211,38 @@ port = 1704
 [logging]
 loglevel = info
 logfile = /var/log/snapserver.log"#,
-        bind_address,
-        bind_address,
-        bind_address,
-        spotify_source
+        bind_address, bind_address, bind_address, spotify_source
     );
-    
+
     // Write configuration with secure permissions
     std::fs::write("/etc/snapserver.conf", &cfg)
         .map_err(|e| SnapcastError::ConfigurationFailed(e.to_string()))?;
-    
+
     // Set secure file permissions (Unix only)
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        match std::fs::set_permissions("/etc/snapserver.conf", std::fs::Permissions::from_mode(0o640)) {
+        match std::fs::set_permissions(
+            "/etc/snapserver.conf",
+            std::fs::Permissions::from_mode(0o640),
+        ) {
             Ok(_) => debug!("Config file permissions set to 0640"),
-            Err(e) => warn!("Failed to set config file permissions: {}", e)
+            Err(e) => warn!("Failed to set config file permissions: {}", e),
         }
     }
-    
+
     info!("Snapcast configuration written successfully");
     info!("  - Bind address: {}", bind_address);
-    info!("  - Spotify integration: {}", if librespot_available { "enabled" } else { "disabled" });
+    info!(
+        "  - Spotify integration: {}",
+        if librespot_available {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
     info!("  - Device name: {}", device_name);
-    
+
     Ok(())
 }
 
@@ -242,7 +253,7 @@ fn generate_secure_password() -> String {
                             abcdefghijklmnopqrstuvwxyz\
                             0123456789!@#$%^&*";
     let mut rng = rand::thread_rng();
-    
+
     (0..16)
         .map(|_| {
             let idx = rng.gen_range(0..CHARSET.len());
@@ -260,19 +271,19 @@ pub fn check_librespot() -> Result<String, String> {
         "/bin/librespot",
         &std::env::var("LIBRESPOT_PATH").unwrap_or_default(),
     ];
-    
+
     for path in &paths {
         if !path.is_empty() && Path::new(path).exists() {
             log::info!("librespot found at {}", path);
             return Ok(path.to_string());
         }
     }
-    
+
     // Try to find via which command
     let output = std::process::Command::new("which")
         .arg("librespot")
         .output();
-    
+
     if let Ok(out) = output {
         if out.status.success() {
             let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -280,7 +291,7 @@ pub fn check_librespot() -> Result<String, String> {
             return Ok(path);
         }
     }
-    
+
     Err("librespot not found. Install with: cargo install librespot".to_string())
 }
 
@@ -343,7 +354,10 @@ pub fn install_snapcast_server_arm64() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::tools::safe_uinx_cmd("dpkg", &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"]);
+    crate::tools::safe_uinx_cmd(
+        "dpkg",
+        &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"],
+    );
     crate::tools::safe_uinx_cmd("service", &["snapserver", "start"]);
     Ok(())
 }
@@ -357,7 +371,10 @@ pub fn install_snapcast_server_arm() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::tools::safe_uinx_cmd("dpkg", &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"]);
+    crate::tools::safe_uinx_cmd(
+        "dpkg",
+        &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"],
+    );
     crate::tools::safe_uinx_cmd("service", &["snapserver", "start"]);
     Ok(())
 }
@@ -372,7 +389,10 @@ pub fn install_snapcast_server_amd64() -> std::io::Result<()> {
         pos += bytes_written;
     }
 
-    crate::tools::safe_uinx_cmd("dpkg", &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"]);
+    crate::tools::safe_uinx_cmd(
+        "dpkg",
+        &["--force-all", "-i", "/opt/sam/tmp/snapserver.deb"],
+    );
     crate::tools::safe_uinx_cmd("service", &["snapserver", "start"]);
     Ok(())
 }

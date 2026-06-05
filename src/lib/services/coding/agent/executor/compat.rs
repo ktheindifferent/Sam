@@ -1,15 +1,15 @@
 //! Compatibility layer for legacy executor
 
-use std::sync::Arc;
-use std::path::PathBuf;
 use anyhow::Result;
-use tokio::sync::{Mutex, mpsc};
 use log::info;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 
-use crate::services::coding::agent::service::CodingAgentService;
-use crate::services::coding::agent::execution_state::{IncrementalExecution, ExecutionState};
-use crate::services::coding::agent::step_parser::StepParser;
 use crate::services::coding::agent::command_executor::CommandExecutor;
+use crate::services::coding::agent::execution_state::{ExecutionState, IncrementalExecution};
+use crate::services::coding::agent::service::CodingAgentService;
+use crate::services::coding::agent::step_parser::StepParser;
 
 /// Message queue for user input during execution (legacy)
 #[derive(Debug, Clone)]
@@ -98,15 +98,16 @@ impl CodingAgentExecutor {
 
         let planning_prompt = self.create_planning_prompt(task_description);
 
-        let response = self.coding_agent.generate_response(
-            &planning_prompt,
-            current_dir,
-            session_context,
-            None,
-        ).await?;
+        let response = self
+            .coding_agent
+            .generate_response(&planning_prompt, current_dir, session_context, None)
+            .await?;
 
         // Parse and execute steps
-        let steps = self.step_parser.parse_execution_steps(&response.response_text, task_description).await;
+        let steps = self
+            .step_parser
+            .parse_execution_steps(&response.response_text, task_description)
+            .await;
 
         {
             let mut execution = self.execution.lock().await;
@@ -152,12 +153,12 @@ Generate the minimal sequence of commands needed:"#,
             };
 
             if let Some(step) = step {
-                let output = self.command_executor.execute_command(
-                    &step.command,
-                    current_dir
-                ).await;
+                let output = self
+                    .command_executor
+                    .execute_command(&step.command, current_dir)
+                    .await;
 
-                let result = Ok(output);  // Wrap in Ok since execute_command doesn't fail
+                let result = Ok(output); // Wrap in Ok since execute_command doesn't fail
                 let mut execution = self.execution.lock().await;
                 execution.update_step_output(step.step_number, result);
             } else {
@@ -253,7 +254,8 @@ Generate the minimal sequence of commands needed:"#,
         context.verification_enabled = true;
         drop(context);
 
-        self.execute_incremental_task(task_description, current_dir, session_context, false).await
+        self.execute_incremental_task(task_description, current_dir, session_context, false)
+            .await
     }
 
     /// Get spinner text
@@ -271,10 +273,12 @@ Generate the minimal sequence of commands needed:"#,
     /// Get interactive status
     pub async fn get_interactive_status(&self) -> String {
         let execution = self.execution.lock().await;
-        format!("State: {:?}, Steps: {}/{}",
+        format!(
+            "State: {:?}, Steps: {}/{}",
             execution.state,
             execution.current_step,
-            execution.steps.len())
+            execution.steps.len()
+        )
     }
 
     /// Process queued messages

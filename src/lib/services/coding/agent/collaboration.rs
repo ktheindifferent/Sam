@@ -1,10 +1,10 @@
+use anyhow::Result;
+use log::{debug, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{SystemTime, Duration};
-use tokio::sync::{RwLock, Mutex, broadcast, mpsc};
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use log::{info, debug, warn};
+use std::time::{Duration, SystemTime};
+use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
 
 /// Real-time collaborative coding session
 #[derive(Debug, Clone)]
@@ -98,8 +98,14 @@ pub enum CollaborationEvent {
     ParticipantJoined(Participant),
     ParticipantLeft(String),
     CodeChanged(EditOperation),
-    CursorMoved { participant_id: String, position: CursorPosition },
-    SelectionChanged { participant_id: String, selection: Selection },
+    CursorMoved {
+        participant_id: String,
+        position: CursorPosition,
+    },
+    SelectionChanged {
+        participant_id: String,
+        selection: Selection,
+    },
     SuggestionMade(AiSuggestion),
     CommentAdded(CodeComment),
     FileRenamed(String),
@@ -186,7 +192,9 @@ impl CollaborationSession {
         participants.push(participant.clone());
 
         // Broadcast join event
-        let _ = self.broadcast_tx.send(CollaborationEvent::ParticipantJoined(participant));
+        let _ = self
+            .broadcast_tx
+            .send(CollaborationEvent::ParticipantJoined(participant));
 
         Ok(())
     }
@@ -204,7 +212,9 @@ impl CollaborationSession {
         selections.remove(participant_id);
 
         // Broadcast leave event
-        let _ = self.broadcast_tx.send(CollaborationEvent::ParticipantLeft(participant_id.to_string()));
+        let _ = self.broadcast_tx.send(CollaborationEvent::ParticipantLeft(
+            participant_id.to_string(),
+        ));
 
         Ok(())
     }
@@ -234,9 +244,14 @@ impl CollaborationSession {
                 // Format the code based on language
                 content = self.format_code(&content, &code_state.language).await?;
             }
-            OperationType::Refactor { refactor_type, affected_range } => {
+            OperationType::Refactor {
+                refactor_type,
+                affected_range,
+            } => {
                 // Apply refactoring
-                content = self.apply_refactoring(&content, refactor_type, affected_range).await?;
+                content = self
+                    .apply_refactoring(&content, refactor_type, affected_range)
+                    .await?;
             }
         }
 
@@ -249,7 +264,9 @@ impl CollaborationSession {
         history.push(operation.clone());
 
         // Broadcast change
-        let _ = self.broadcast_tx.send(CollaborationEvent::CodeChanged(operation));
+        let _ = self
+            .broadcast_tx
+            .send(CollaborationEvent::CodeChanged(operation));
 
         Ok(())
     }
@@ -276,13 +293,22 @@ impl CollaborationSession {
     }
 
     /// Apply refactoring to code
-    async fn apply_refactoring(&self, code: &str, refactor_type: &str, range: &(usize, usize)) -> Result<String> {
+    async fn apply_refactoring(
+        &self,
+        code: &str,
+        refactor_type: &str,
+        range: &(usize, usize),
+    ) -> Result<String> {
         // Placeholder for refactoring logic
         Ok(code.to_string())
     }
 
     /// Update cursor position for a participant
-    pub async fn update_cursor(&self, participant_id: String, position: CursorPosition) -> Result<()> {
+    pub async fn update_cursor(
+        &self,
+        participant_id: String,
+        position: CursorPosition,
+    ) -> Result<()> {
         let mut cursors = self.cursor_positions.write().await;
         cursors.insert(participant_id.clone(), position.clone());
 
@@ -296,21 +322,30 @@ impl CollaborationSession {
     }
 
     /// Update selection for a participant
-    pub async fn update_selection(&self, participant_id: String, selection: Selection) -> Result<()> {
+    pub async fn update_selection(
+        &self,
+        participant_id: String,
+        selection: Selection,
+    ) -> Result<()> {
         let mut selections = self.selections.write().await;
         selections.insert(participant_id.clone(), selection.clone());
 
         // Broadcast selection update
-        let _ = self.broadcast_tx.send(CollaborationEvent::SelectionChanged {
-            participant_id,
-            selection,
-        });
+        let _ = self
+            .broadcast_tx
+            .send(CollaborationEvent::SelectionChanged {
+                participant_id,
+                selection,
+            });
 
         Ok(())
     }
 
     /// Get AI suggestions for current code
-    pub async fn get_ai_suggestions(&self, context: SuggestionContext) -> Result<Vec<AiSuggestion>> {
+    pub async fn get_ai_suggestions(
+        &self,
+        context: SuggestionContext,
+    ) -> Result<Vec<AiSuggestion>> {
         let code_state = self.code_state.read().await;
         let ai_assistant = self.ai_assistant.read().await;
 
@@ -321,15 +356,24 @@ impl CollaborationSession {
         let mut suggestions = Vec::new();
 
         // Generate different types of suggestions based on context
-        if let Some(completion) = self.generate_completion(&code_state.content, &context).await? {
+        if let Some(completion) = self
+            .generate_completion(&code_state.content, &context)
+            .await?
+        {
             suggestions.push(completion);
         }
 
-        if let Some(bug_fix) = self.detect_and_suggest_fix(&code_state.content, &context).await? {
+        if let Some(bug_fix) = self
+            .detect_and_suggest_fix(&code_state.content, &context)
+            .await?
+        {
             suggestions.push(bug_fix);
         }
 
-        if let Some(optimization) = self.suggest_optimization(&code_state.content, &context).await? {
+        if let Some(optimization) = self
+            .suggest_optimization(&code_state.content, &context)
+            .await?
+        {
             suggestions.push(optimization);
         }
 
@@ -337,7 +381,11 @@ impl CollaborationSession {
     }
 
     /// Generate code completion suggestion
-    async fn generate_completion(&self, code: &str, context: &SuggestionContext) -> Result<Option<AiSuggestion>> {
+    async fn generate_completion(
+        &self,
+        code: &str,
+        context: &SuggestionContext,
+    ) -> Result<Option<AiSuggestion>> {
         // Extract context around cursor
         let lines: Vec<&str> = code.lines().collect();
 
@@ -363,7 +411,11 @@ impl CollaborationSession {
     }
 
     /// Detect bugs and suggest fixes
-    async fn detect_and_suggest_fix(&self, code: &str, context: &SuggestionContext) -> Result<Option<AiSuggestion>> {
+    async fn detect_and_suggest_fix(
+        &self,
+        code: &str,
+        context: &SuggestionContext,
+    ) -> Result<Option<AiSuggestion>> {
         // Simple bug detection (would use AI model in production)
         if code.contains(".unwrap()") {
             return Ok(Some(AiSuggestion {
@@ -380,7 +432,11 @@ impl CollaborationSession {
     }
 
     /// Suggest code optimizations
-    async fn suggest_optimization(&self, code: &str, context: &SuggestionContext) -> Result<Option<AiSuggestion>> {
+    async fn suggest_optimization(
+        &self,
+        code: &str,
+        context: &SuggestionContext,
+    ) -> Result<Option<AiSuggestion>> {
         // Simple optimization detection (would use AI model in production)
         if code.contains("Vec::new()") && code.contains(".push(") {
             let push_count = code.matches(".push(").count();
@@ -476,7 +532,8 @@ impl CollaborationManager {
         sessions.insert(session_id.clone(), session.clone());
 
         let mut participant_sessions = self.participant_sessions.write().await;
-        participant_sessions.entry(owner.id)
+        participant_sessions
+            .entry(owner.id)
             .or_insert_with(HashSet::new)
             .insert(session_id);
 
@@ -490,14 +547,16 @@ impl CollaborationManager {
         participant: Participant,
     ) -> Result<Arc<CollaborationSession>> {
         let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
+        let session = sessions
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found"))?
             .clone();
 
         session.add_participant(participant.clone()).await?;
 
         let mut participant_sessions = self.participant_sessions.write().await;
-        participant_sessions.entry(participant.id)
+        participant_sessions
+            .entry(participant.id)
             .or_insert_with(HashSet::new)
             .insert(session_id.to_string());
 
@@ -505,11 +564,7 @@ impl CollaborationManager {
     }
 
     /// Leave a session
-    pub async fn leave_session(
-        &self,
-        session_id: &str,
-        participant_id: &str,
-    ) -> Result<()> {
+    pub async fn leave_session(&self, session_id: &str, participant_id: &str) -> Result<()> {
         let sessions = self.sessions.read().await;
         if let Some(session) = sessions.get(session_id) {
             session.remove_participant(participant_id).await?;
@@ -526,7 +581,8 @@ impl CollaborationManager {
     /// Get all sessions for a participant
     pub async fn get_participant_sessions(&self, participant_id: &str) -> Vec<String> {
         let participant_sessions = self.participant_sessions.read().await;
-        participant_sessions.get(participant_id)
+        participant_sessions
+            .get(participant_id)
             .map(|set| set.iter().cloned().collect())
             .unwrap_or_default()
     }

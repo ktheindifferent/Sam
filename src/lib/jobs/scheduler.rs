@@ -1,13 +1,13 @@
-use anyhow::{Result, Context};
-use chrono::{DateTime, Utc, Datelike, Timelike};
+use super::queue::JobQueue;
+use super::types::Job;
+use anyhow::{Context, Result};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use deadpool_redis::Pool;
 use log::{error, info, warn};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, Mutex};
 use tokio::time::interval;
-use super::queue::JobQueue;
-use super::types::Job;
 
 pub struct JobScheduler {
     redis_pool: Pool,
@@ -24,7 +24,7 @@ struct SchedulerState {
 impl JobScheduler {
     pub async fn new(redis_pool: Pool) -> Result<Self> {
         let queue = Arc::new(JobQueue::new(redis_pool.clone()).await?);
-        
+
         Ok(Self {
             redis_pool,
             queue,
@@ -34,24 +34,27 @@ impl JobScheduler {
             })),
         })
     }
-    
+
     pub async fn schedule(&self, mut job: Job, at: DateTime<Utc>) -> Result<String> {
         job.scheduled_at = Some(at);
         self.queue.enqueue(job).await
     }
-    
+
     pub async fn schedule_recurring(
         &self,
         job_template: Job,
         schedule: CronSchedule,
     ) -> Result<String> {
         // Store the recurring job schedule in Redis
-        let mut conn = self.redis_pool.get().await
+        let mut conn = self
+            .redis_pool
+            .get()
+            .await
             .context("Failed to get Redis connection")?;
-        
+
         let recurring_id = nanoid::nanoid!();
         let recurring_key = format!("jobs:recurring:{}", recurring_id);
-        
+
         let recurring_job = RecurringJob {
             id: recurring_id.clone(),
             template: job_template,
@@ -60,34 +63,34 @@ impl JobScheduler {
             next_run: schedule.next_run_after(Utc::now()),
             enabled: true,
         };
-        
-        let job_json = serde_json::to_string(&recurring_job)
-            .context("Failed to serialize recurring job")?;
-        
+
+        let job_json =
+            serde_json::to_string(&recurring_job).context("Failed to serialize recurring job")?;
+
         deadpool_redis::redis::cmd("SET")
             .arg(&recurring_key)
             .arg(&job_json)
             .query_async::<()>(&mut conn)
             .await
             .context("Failed to store recurring job")?;
-        
+
         info!("Scheduled recurring job {}", recurring_id);
         Ok(recurring_id)
     }
-    
+
     pub async fn start(&self) -> Result<()> {
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
         let mut state = self.state.lock().await;
         state.shutdown_tx = Some(shutdown_tx);
-        
+
         let queue = self.queue.clone();
         let redis_pool = self.redis_pool.clone();
-        
+
         let handle = tokio::spawn(async move {
             info!("Job scheduler starting");
-            
+
             let mut check_interval = interval(Duration::from_secs(5));
-            
+
             loop {
                 tokio::select! {
                     _ = &mut shutdown_rx => {
@@ -122,7 +125,7 @@ impl JobScheduler {
                                 error!("Failed to check scheduled jobs: {}", e);
                             }
                         }
-                        
+
                         // Check for recurring jobs
                         if let Err(e) = Self::process_recurring_jobs(&redis_pool, &queue).await {
                             error!("Failed to process recurring jobs: {}", e);
@@ -130,32 +133,34 @@ impl JobScheduler {
                     }
                 }
             }
-            
+
             info!("Job scheduler stopped");
         });
-        
+
         state.handle = Some(handle);
         Ok(())
     }
-    
+
     pub async fn stop(&self) -> Result<()> {
         let mut state = self.state.lock().await;
         if let Some(tx) = state.shutdown_tx.take() {
             let _ = tx.send(());
         }
-        
+
         if let Some(handle) = state.handle.take() {
             drop(state); // Release the lock before awaiting
             handle.await.context("Failed to join scheduler task")?;
         }
-        
+
         Ok(())
     }
 
     async fn process_recurring_jobs(redis_pool: &Pool, queue: &JobQueue) -> Result<()> {
-        let mut conn = redis_pool.get().await
+        let mut conn = redis_pool
+            .get()
+            .await
             .context("Failed to get Redis connection")?;
-        
+
         // Get all recurring job keys
         let pattern = "jobs:recurring:*";
         let keys: Vec<String> = deadpool_redis::redis::cmd("KEYS")
@@ -163,16 +168,16 @@ impl JobScheduler {
             .query_async::<Vec<String>>(&mut conn)
             .await
             .context("Failed to get recurring job keys")?;
-        
+
         let now = Utc::now();
-        
+
         for key in keys {
             let job_json: Option<String> = deadpool_redis::redis::cmd("GET")
                 .arg(&key)
                 .query_async::<Option<String>>(&mut conn)
                 .await
                 .context("Failed to get recurring job")?;
-            
+
             if let Some(json) = job_json {
                 match serde_json::from_str::<RecurringJob>(&json) {
                     Ok(mut recurring_job) => {
@@ -182,20 +187,23 @@ impl JobScheduler {
                             job.id = nanoid::nanoid!();
                             job.created_at = now;
                             job.updated_at = now;
-                            
+
                             // Enqueue the job
                             match queue.enqueue(job).await {
                                 Ok(job_id) => {
-                                    info!("Enqueued recurring job {} (instance {})", 
-                                          recurring_job.id, job_id);
-                                    
+                                    info!(
+                                        "Enqueued recurring job {} (instance {})",
+                                        recurring_job.id, job_id
+                                    );
+
                                     // Update last run and next run times
                                     recurring_job.last_run = Some(now);
-                                    recurring_job.next_run = recurring_job.schedule.next_run_after(now);
-                                    
+                                    recurring_job.next_run =
+                                        recurring_job.schedule.next_run_after(now);
+
                                     let updated_json = serde_json::to_string(&recurring_job)
                                         .context("Failed to serialize recurring job")?;
-                                    
+
                                     deadpool_redis::redis::cmd("SET")
                                         .arg(&key)
                                         .arg(&updated_json)
@@ -204,8 +212,10 @@ impl JobScheduler {
                                         .ok();
                                 }
                                 Err(e) => {
-                                    error!("Failed to enqueue recurring job {}: {}", 
-                                           recurring_job.id, e);
+                                    error!(
+                                        "Failed to enqueue recurring job {}: {}",
+                                        recurring_job.id, e
+                                    );
                                 }
                             }
                         }
@@ -216,7 +226,7 @@ impl JobScheduler {
                 }
             }
         }
-        
+
         Ok(())
     }
 }
@@ -243,9 +253,20 @@ impl RecurringJob {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CronSchedule {
     Interval(Duration),
-    Daily { hour: u32, minute: u32 },
-    Weekly { day: Weekday, hour: u32, minute: u32 },
-    Monthly { day: u32, hour: u32, minute: u32 },
+    Daily {
+        hour: u32,
+        minute: u32,
+    },
+    Weekly {
+        day: Weekday,
+        hour: u32,
+        minute: u32,
+    },
+    Monthly {
+        day: u32,
+        hour: u32,
+        minute: u32,
+    },
     Cron(String), // Standard cron expression
 }
 
@@ -262,11 +283,11 @@ impl CronSchedule {
                     .with_minute(*minute)?
                     .with_second(0)?
                     .with_nanosecond(0)?;
-                
+
                 if next <= after {
                     next += chrono::Duration::days(1);
                 }
-                
+
                 Some(next)
             }
             CronSchedule::Weekly { day, hour, minute } => {
@@ -275,12 +296,12 @@ impl CronSchedule {
                     .with_minute(*minute)?
                     .with_second(0)?
                     .with_nanosecond(0)?;
-                
+
                 // Find the next occurrence of the specified weekday
                 while next.weekday() != day.to_chrono() || next <= after {
                     next += chrono::Duration::days(1);
                 }
-                
+
                 Some(next)
             }
             CronSchedule::Monthly { day, hour, minute } => {
@@ -290,21 +311,19 @@ impl CronSchedule {
                     .with_minute(*minute)?
                     .with_second(0)?
                     .with_nanosecond(0)?;
-                
+
                 if next <= after {
                     // Move to next month
                     let month = next.month();
                     let year = next.year();
-                    
+
                     if month == 12 {
-                        next = next
-                            .with_year(year + 1)?
-                            .with_month(1)?;
+                        next = next.with_year(year + 1)?.with_month(1)?;
                     } else {
                         next = next.with_month(month + 1)?;
                     }
                 }
-                
+
                 Some(next)
             }
             CronSchedule::Cron(_expr) => {

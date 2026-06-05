@@ -1,14 +1,14 @@
-use std::sync::Arc;
-use std::path::PathBuf;
 use anyhow::Result;
-use tokio::sync::{Mutex, mpsc};
-use tokio::time::{sleep, Duration};
 use log;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
+use tokio::time::{sleep, Duration};
 
-use super::service::CodingAgentService;
-use super::execution_state::IncrementalExecution;
-use super::step_parser::StepParser;
 use super::command_executor::CommandExecutor;
+use super::execution_state::IncrementalExecution;
+use super::service::CodingAgentService;
+use super::step_parser::StepParser;
 
 /// Message queue for user input during execution
 #[derive(Debug, Clone)]
@@ -85,7 +85,9 @@ impl InteractiveExecutor {
         let mut context = self.context.lock().await;
         context.user_messages.push(user_msg);
 
-        log::info!("Queued user message: {}", &context.user_messages.last().unwrap().content);
+        if let Some(last_message) = context.user_messages.last() {
+            log::info!("Queued user message: {}", last_message.content);
+        }
     }
 
     /// Process queued messages without losing context
@@ -104,7 +106,10 @@ impl InteractiveExecutor {
         session_context: &[String],
         max_correction_attempts: u32,
     ) -> Result<()> {
-        log::info!("Starting interactive execution with verification: {}", task_description);
+        log::info!(
+            "Starting interactive execution with verification: {}",
+            task_description
+        );
 
         // Initialize context
         {
@@ -125,10 +130,20 @@ impl InteractiveExecutor {
             log::info!("Execution attempt {}/{}", attempt, max_correction_attempts);
 
             // Generate or regenerate execution plan
-            let plan = self.generate_execution_plan(task_description, current_dir, session_context, attempt > 1).await?;
+            let plan = self
+                .generate_execution_plan(
+                    task_description,
+                    current_dir,
+                    session_context,
+                    attempt > 1,
+                )
+                .await?;
 
             // Parse steps
-            let steps = self.step_parser.parse_execution_steps(&plan, task_description).await;
+            let steps = self
+                .step_parser
+                .parse_execution_steps(&plan, task_description)
+                .await;
 
             {
                 let mut execution = self.execution.lock().await;
@@ -140,11 +155,9 @@ impl InteractiveExecutor {
             let execution_result = self.execute_steps_interactively(current_dir).await?;
 
             // Verify execution against original task
-            needs_correction = self.verify_execution_with_ollama(
-                task_description,
-                &execution_result,
-                current_dir,
-            ).await?;
+            needs_correction = self
+                .verify_execution_with_ollama(task_description, &execution_result, current_dir)
+                .await?;
 
             if needs_correction {
                 log::info!("Execution needs correction, attempt {}", attempt);
@@ -162,7 +175,9 @@ impl InteractiveExecutor {
                     println!("📝 Processing queued message: {}", msg);
                     // Incorporate user feedback into next iteration
                     let mut context = self.context.lock().await;
-                    context.session_context.push(format!("User feedback: {}", msg));
+                    context
+                        .session_context
+                        .push(format!("User feedback: {}", msg));
                 }
             }
         }
@@ -186,7 +201,9 @@ impl InteractiveExecutor {
         let context = self.context.lock().await;
 
         let prompt = if is_correction {
-            let history_str = context.command_history.iter()
+            let history_str = context
+                .command_history
+                .iter()
                 .map(|(cmd, output)| format!("Command: {}\nOutput: {}\n", cmd, output))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -229,12 +246,10 @@ Generate the minimal sequence of commands needed:"#,
             )
         };
 
-        let response = self.coding_agent.generate_response(
-            &prompt,
-            current_dir,
-            session_context,
-            None,
-        ).await?;
+        let response = self
+            .coding_agent
+            .generate_response(&prompt, current_dir, session_context, None)
+            .await?;
 
         Ok(response.response_text)
     }
@@ -270,11 +285,9 @@ Generate the minimal sequence of commands needed:"#,
             }
 
             // Execute command
-            let result = self.execute_command_with_validation(
-                &command,
-                &working_dir,
-                i,
-            ).await;
+            let result = self
+                .execute_command_with_validation(&command, &working_dir, i)
+                .await;
 
             // Update working directory if needed
             if command.starts_with("cargo new ") {
@@ -305,7 +318,9 @@ Generate the minimal sequence of commands needed:"#,
             // Store command history
             {
                 let mut context = self.context.lock().await;
-                context.command_history.push((command.clone(), result.output.clone()));
+                context
+                    .command_history
+                    .push((command.clone(), result.output.clone()));
                 context.execution_log.push(format!(
                     "Step {}: {} -> {}",
                     i + 1,
@@ -316,9 +331,7 @@ Generate the minimal sequence of commands needed:"#,
 
             full_execution_log.push(format!(
                 "Command: {}\nOutput: {}\nSuccess: {}\n",
-                command,
-                result.output,
-                result.success
+                command, result.output, result.success
             ));
 
             // Show result with cleaner formatting
@@ -345,7 +358,10 @@ Generate the minimal sequence of commands needed:"#,
                 println!("   ❌ {}", clean_output);
 
                 // Ask Ollama for suggestions on failure
-                if let Some(suggestion) = self.get_correction_suggestion(&command, &result.output).await {
+                if let Some(suggestion) = self
+                    .get_correction_suggestion(&command, &result.output)
+                    .await
+                {
                     println!("   💡 Suggestion: {}", suggestion);
                 }
             }
@@ -364,7 +380,11 @@ Generate the minimal sequence of commands needed:"#,
         working_dir: &PathBuf,
         step_index: usize,
     ) -> CommandResult {
-        let output = match self.command_executor.execute_validated_command(command, working_dir).await {
+        let output = match self
+            .command_executor
+            .execute_validated_command(command, working_dir)
+            .await
+        {
             Ok(out) => out,
             Err(err) => err,
         };
@@ -386,9 +406,9 @@ Generate the minimal sequence of commands needed:"#,
             false
         } else {
             // For other cases, consider it success if no critical errors
-            !output.to_lowercase().contains("error:") &&
-            !output.to_lowercase().contains("failed:") &&
-            !output.to_lowercase().contains("fatal:")
+            !output.to_lowercase().contains("error:")
+                && !output.to_lowercase().contains("failed:")
+                && !output.to_lowercase().contains("fatal:")
         };
 
         // Update execution state
@@ -398,7 +418,7 @@ Generate the minimal sequence of commands needed:"#,
                 execution.update_step(
                     step_index,
                     self.command_executor.trim_output(&output, command),
-                    success
+                    success,
                 );
                 execution.advance_step();
             }
@@ -416,16 +436,14 @@ Error: {}
 Provide a BRIEF (one line) suggestion to fix this error. Be specific and actionable.
 If the error is expected (like 'file already exists'), say 'No action needed'.
 Response:"#,
-            command,
-            error
+            command, error
         );
 
-        match self.coding_agent.generate_response(
-            &prompt,
-            &PathBuf::from("."),
-            &[],
-            None,
-        ).await {
+        match self
+            .coding_agent
+            .generate_response(&prompt, &PathBuf::from("."), &[], None)
+            .await
+        {
             Ok(response) => {
                 let suggestion = response.response_text.trim().to_string();
                 if !suggestion.is_empty() && suggestion != "No action needed" {
@@ -462,16 +480,13 @@ Respond with ONLY one of these:
 - "NEEDS_CORRECTION" if there are issues or missing steps
 
 Response:"#,
-            original_task,
-            execution_log
+            original_task, execution_log
         );
 
-        let response = self.coding_agent.generate_response(
-            &prompt,
-            current_dir,
-            &[],
-            None,
-        ).await?;
+        let response = self
+            .coding_agent
+            .generate_response(&prompt, current_dir, &[], None)
+            .await?;
 
         let verdict = response.response_text.trim().to_uppercase();
         Ok(verdict.contains("NEEDS_CORRECTION"))
@@ -541,7 +556,11 @@ Response:"#,
 
         // Remove redundant "Command failed:" prefix if present
         if trimmed.starts_with("Command failed:") {
-            return trimmed.strip_prefix("Command failed:").unwrap_or(trimmed).trim().to_string();
+            return trimmed
+                .strip_prefix("Command failed:")
+                .unwrap_or(trimmed)
+                .trim()
+                .to_string();
         }
 
         // For other errors, return as-is but truncated if too long

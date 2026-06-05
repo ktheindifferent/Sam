@@ -40,9 +40,12 @@ pub fn status() -> &'static str {
 }
 
 /// Set the current SMS provider
-pub fn set_provider(provider: Provider) {
-    let mut guard = CURRENT_PROVIDER.lock().unwrap();
+pub fn set_provider(provider: Provider) -> Result<(), String> {
+    let mut guard = CURRENT_PROVIDER
+        .lock()
+        .map_err(|e| format!("Failed to lock SMS provider state: {e}"))?;
     *guard = provider;
+    Ok(())
 }
 
 /// Send an SMS message using the current provider
@@ -50,7 +53,10 @@ pub async fn send_sms(to: &str, body: &str) -> Result<(), String> {
     if !SERVICE_RUNNING.load(Ordering::SeqCst) {
         return Err("SMS service is not running".to_string());
     }
-    let provider = CURRENT_PROVIDER.lock().unwrap().clone();
+    let provider = CURRENT_PROVIDER
+        .lock()
+        .map_err(|e| format!("Failed to lock SMS provider state: {e}"))?
+        .clone();
     match provider {
         Provider::Twilio => twilio::send_sms(to, body).await,
         Provider::Vonage => vonage::send_sms(to, body).await,
@@ -63,7 +69,10 @@ pub async fn receive_sms() -> Result<Vec<String>, String> {
     if !SERVICE_RUNNING.load(Ordering::SeqCst) {
         return Err("SMS service is not running".to_string());
     }
-    let provider = CURRENT_PROVIDER.lock().unwrap().clone();
+    let provider = CURRENT_PROVIDER
+        .lock()
+        .map_err(|e| format!("Failed to lock SMS provider state: {e}"))?
+        .clone();
     match provider {
         Provider::Twilio => twilio::receive_sms().await,
         Provider::Vonage => vonage::receive_sms().await,

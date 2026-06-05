@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 /// Code intelligence engine for advanced analysis and refactoring
@@ -157,7 +157,7 @@ pub enum DependencyKind {
 /// Security vulnerability
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vulnerability {
-    pub id: String,           // CVE ID
+    pub id: String, // CVE ID
     pub severity: VulnerabilitySeverity,
     pub description: String,
     pub fixed_version: Option<String>,
@@ -306,11 +306,13 @@ impl SymbolIndex {
     }
 
     pub fn add_symbol(&mut self, symbol: Symbol) {
-        self.symbols.entry(symbol.name.clone())
+        self.symbols
+            .entry(symbol.name.clone())
             .or_insert_with(Vec::new)
             .push(symbol.clone());
 
-        self.file_symbols.entry(symbol.file.clone())
+        self.file_symbols
+            .entry(symbol.file.clone())
             .or_insert_with(Vec::new)
             .push(symbol);
     }
@@ -382,9 +384,7 @@ impl CodeIntelligence {
 
     /// Analyze a file
     pub async fn analyze_file(&self, path: &Path) -> Result<FileAnalysis> {
-        let extension = path.extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         for (_, analyzer) in &self.analyzers {
             if analyzer.supported_extensions().contains(&extension) {
@@ -392,12 +392,16 @@ impl CodeIntelligence {
             }
         }
 
-        Err(anyhow::anyhow!("No analyzer found for file type: {}", extension))
+        Err(anyhow::anyhow!(
+            "No analyzer found for file type: {}",
+            extension
+        ))
     }
 
     /// Find all references to a symbol
     pub async fn find_all_references(&self, symbol_name: &str) -> Vec<SymbolReference> {
-        self.symbol_index.find_references(symbol_name)
+        self.symbol_index
+            .find_references(symbol_name)
             .cloned()
             .unwrap_or_default()
     }
@@ -421,7 +425,9 @@ impl CodeIntelligence {
         refactoring_name: &str,
         context: &RefactoringContext,
     ) -> Result<RefactoringPreview> {
-        self.refactoring_engine.preview(refactoring_name, context).await
+        self.refactoring_engine
+            .preview(refactoring_name, context)
+            .await
     }
 
     /// Apply a refactoring
@@ -430,7 +436,9 @@ impl CodeIntelligence {
         refactoring_name: &str,
         context: &RefactoringContext,
     ) -> Result<RefactoringResult> {
-        self.refactoring_engine.apply(refactoring_name, context).await
+        self.refactoring_engine
+            .apply(refactoring_name, context)
+            .await
     }
 
     /// Get code complexity report for a project
@@ -452,9 +460,13 @@ impl CodeIntelligence {
                     }
                 }
 
-                report.issues_by_severity.entry(IssueSeverity::Error)
+                report
+                    .issues_by_severity
+                    .entry(IssueSeverity::Error)
                     .or_insert(0);
-                report.issues_by_severity.entry(IssueSeverity::Warning)
+                report
+                    .issues_by_severity
+                    .entry(IssueSeverity::Warning)
                     .or_insert(0);
 
                 for issue in analysis.issues {
@@ -480,7 +492,13 @@ impl CodeIntelligence {
                 let mut entries = fs::read_dir(&current).await?;
                 while let Some(entry) = entries.next_entry().await? {
                     let path = entry.path();
-                    if path.is_dir() && !path.file_name().unwrap_or_default().to_string_lossy().starts_with('.') {
+                    if path.is_dir()
+                        && !path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .starts_with('.')
+                    {
                         stack.push(path);
                     } else if self.is_source_file(&path) {
                         files.push(path);
@@ -493,7 +511,9 @@ impl CodeIntelligence {
     }
 
     fn is_source_file(&self, path: &Path) -> bool {
-        let extensions = ["rs", "py", "js", "ts", "go", "java", "cs", "cpp", "rb", "swift", "kt"];
+        let extensions = [
+            "rs", "py", "js", "ts", "go", "java", "cs", "cpp", "rb", "swift", "kt",
+        ];
         path.extension()
             .and_then(|e| e.to_str())
             .map(|e| extensions.contains(&e))
@@ -519,18 +539,29 @@ impl RefactoringEngine {
     }
 
     pub fn register(&mut self, refactoring: Box<dyn Refactoring>) {
-        self.refactorings.insert(refactoring.name().to_string(), refactoring);
+        self.refactorings
+            .insert(refactoring.name().to_string(), refactoring);
     }
 
-    pub async fn preview(&self, name: &str, context: &RefactoringContext) -> Result<RefactoringPreview> {
-        self.refactorings.get(name)
+    pub async fn preview(
+        &self,
+        name: &str,
+        context: &RefactoringContext,
+    ) -> Result<RefactoringPreview> {
+        self.refactorings
+            .get(name)
             .ok_or_else(|| anyhow::anyhow!("Refactoring '{}' not found", name))?
             .preview(context)
             .await
     }
 
-    pub async fn apply(&self, name: &str, context: &RefactoringContext) -> Result<RefactoringResult> {
-        self.refactorings.get(name)
+    pub async fn apply(
+        &self,
+        name: &str,
+        context: &RefactoringContext,
+    ) -> Result<RefactoringResult> {
+        self.refactorings
+            .get(name)
             .ok_or_else(|| anyhow::anyhow!("Refactoring '{}' not found", name))?
             .apply(context)
             .await
@@ -554,14 +585,16 @@ impl DependencyGraph {
     }
 
     pub fn find_dependencies(&self, node_name: &str) -> Vec<String> {
-        self.edges.iter()
+        self.edges
+            .iter()
             .filter(|e| e.from == node_name)
             .map(|e| e.to.clone())
             .collect()
     }
 
     pub fn find_dependents(&self, node_name: &str) -> Vec<String> {
-        self.edges.iter()
+        self.edges
+            .iter()
             .filter(|e| e.to == node_name)
             .map(|e| e.from.clone())
             .collect()
@@ -574,7 +607,13 @@ impl DependencyGraph {
 
         for node in self.nodes.keys() {
             if !visited.contains(node) {
-                self.dfs_cycle_detection(node, &mut visited, &mut stack, &mut Vec::new(), &mut cycles);
+                self.dfs_cycle_detection(
+                    node,
+                    &mut visited,
+                    &mut stack,
+                    &mut Vec::new(),
+                    &mut cycles,
+                );
             }
         }
 

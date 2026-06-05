@@ -22,7 +22,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::services::traits::{Service, ServiceConfig, ServiceError, ServiceHealth, HealthStatus};
+use crate::services::traits::{HealthStatus, Service, ServiceConfig, ServiceError, ServiceHealth};
 
 /// NextCloud service configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,14 +152,18 @@ impl NextCloudService {
             .danger_accept_invalid_certs(!config.verify_ssl)
             .build()?;
 
-        let webdav_path = config.webdav_path.clone().unwrap_or_else(|| {
-            format!("/remote.php/dav/files/{}/", config.username)
-        });
+        let webdav_path = config
+            .webdav_path
+            .clone()
+            .unwrap_or_else(|| format!("/remote.php/dav/files/{}/", config.username));
 
         let base_webdav_url = format!("{}{}", config.server_url.trim_end_matches('/'), webdav_path);
 
         let auth_credentials = format!("{}:{}", config.username, config.password);
-        let auth_header = format!("Basic {}", general_purpose::STANDARD.encode(&auth_credentials));
+        let auth_header = format!(
+            "Basic {}",
+            general_purpose::STANDARD.encode(&auth_credentials)
+        );
 
         let service_config = ServiceConfig {
             name: "NextCloud".to_string(),
@@ -181,8 +185,12 @@ impl NextCloudService {
 
     /// Test connection to NextCloud server
     pub async fn test_connection(&self) -> Result<bool> {
-        let response = self.client
-            .request(reqwest::Method::from_bytes(b"PROPFIND")?, &self.base_webdav_url)
+        let response = self
+            .client
+            .request(
+                reqwest::Method::from_bytes(b"PROPFIND")?,
+                &self.base_webdav_url,
+            )
             .header("Authorization", &self.auth_header)
             .header("Depth", "0")
             .send()
@@ -211,7 +219,8 @@ impl NextCloudService {
   </d:prop>
 </d:propfind>"#;
 
-        let response = self.client
+        let response = self
+            .client
             .request(reqwest::Method::from_bytes(b"PROPFIND")?, &url)
             .header("Authorization", &self.auth_header)
             .header("Depth", "1")
@@ -229,15 +238,25 @@ impl NextCloudService {
     }
 
     /// Upload a file to NextCloud
-    pub async fn upload_file(&self, local_path: &Path, remote_path: &str, content: &[u8]) -> Result<NextCloudFile> {
-        let url = format!("{}{}", self.base_webdav_url, remote_path.trim_start_matches('/'));
+    pub async fn upload_file(
+        &self,
+        local_path: &Path,
+        remote_path: &str,
+        content: &[u8],
+    ) -> Result<NextCloudFile> {
+        let url = format!(
+            "{}{}",
+            self.base_webdav_url,
+            remote_path.trim_start_matches('/')
+        );
 
         // For large files, use chunked upload
         if content.len() > self.config.chunk_size {
             return self.upload_file_chunked(&url, content).await;
         }
 
-        let response = self.client
+        let response = self
+            .client
             .put(&url)
             .header("Authorization", &self.auth_header)
             .body(content.to_vec())
@@ -266,7 +285,8 @@ impl NextCloudService {
             let chunk_url = format!("{}/{}", upload_url, i);
             let is_last_chunk = i == chunk_count - 1;
 
-            let mut request = self.client
+            let mut request = self
+                .client
                 .put(&chunk_url)
                 .header("Authorization", &self.auth_header)
                 .header("Content-Length", chunk.len().to_string())
@@ -278,19 +298,28 @@ impl NextCloudService {
 
             let response = request.send().await?;
             if !response.status().is_success() {
-                return Err(anyhow!("Failed to upload chunk {}/{}: HTTP {}", i + 1, chunk_count, response.status()));
+                return Err(anyhow!(
+                    "Failed to upload chunk {}/{}: HTTP {}",
+                    i + 1,
+                    chunk_count,
+                    response.status()
+                ));
             }
         }
 
         // Finalize upload
-        let finalize_response = self.client
+        let finalize_response = self
+            .client
             .post(&format!("{}/finalize", upload_url))
             .header("Authorization", &self.auth_header)
             .send()
             .await?;
 
         if !finalize_response.status().is_success() {
-            return Err(anyhow!("Failed to finalize upload: HTTP {}", finalize_response.status()));
+            return Err(anyhow!(
+                "Failed to finalize upload: HTTP {}",
+                finalize_response.status()
+            ));
         }
 
         // Get file metadata
@@ -300,16 +329,24 @@ impl NextCloudService {
 
     /// Download a file from NextCloud
     pub async fn download_file(&self, remote_path: &str) -> Result<Vec<u8>> {
-        let url = format!("{}{}", self.base_webdav_url, remote_path.trim_start_matches('/'));
+        let url = format!(
+            "{}{}",
+            self.base_webdav_url,
+            remote_path.trim_start_matches('/')
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", &self.auth_header)
             .send()
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to download file: HTTP {}", response.status()));
+            return Err(anyhow!(
+                "Failed to download file: HTTP {}",
+                response.status()
+            ));
         }
 
         Ok(response.bytes().await?.to_vec())
@@ -335,7 +372,8 @@ impl NextCloudService {
   </d:prop>
 </d:propfind>"#;
 
-        let response = self.client
+        let response = self
+            .client
             .request(reqwest::Method::from_bytes(b"PROPFIND")?, &url)
             .header("Authorization", &self.auth_header)
             .header("Depth", "0")
@@ -345,13 +383,18 @@ impl NextCloudService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to get file info: HTTP {}", response.status()));
+            return Err(anyhow!(
+                "Failed to get file info: HTTP {}",
+                response.status()
+            ));
         }
 
         let xml_content = response.text().await?;
         let files = self.parse_propfind_response(&xml_content)?;
 
-        files.into_iter().next()
+        files
+            .into_iter()
+            .next()
             .ok_or_else(|| anyhow!("File not found: {}", path))
     }
 
@@ -359,7 +402,8 @@ impl NextCloudService {
     pub async fn delete_file(&self, path: &str) -> Result<()> {
         let url = format!("{}{}", self.base_webdav_url, path.trim_start_matches('/'));
 
-        let response = self.client
+        let response = self
+            .client
             .delete(&url)
             .header("Authorization", &self.auth_header)
             .send()
@@ -380,14 +424,18 @@ impl NextCloudService {
     pub async fn create_directory(&self, path: &str) -> Result<()> {
         let url = format!("{}{}", self.base_webdav_url, path.trim_start_matches('/'));
 
-        let response = self.client
+        let response = self
+            .client
             .request(reqwest::Method::from_bytes(b"MKCOL")?, &url)
             .header("Authorization", &self.auth_header)
             .send()
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to create directory: HTTP {}", response.status()));
+            return Err(anyhow!(
+                "Failed to create directory: HTTP {}",
+                response.status()
+            ));
         }
 
         Ok(())
@@ -395,10 +443,19 @@ impl NextCloudService {
 
     /// Move or rename a file/directory
     pub async fn move_file(&self, from_path: &str, to_path: &str) -> Result<()> {
-        let from_url = format!("{}{}", self.base_webdav_url, from_path.trim_start_matches('/'));
-        let to_url = format!("{}{}", self.base_webdav_url, to_path.trim_start_matches('/'));
+        let from_url = format!(
+            "{}{}",
+            self.base_webdav_url,
+            from_path.trim_start_matches('/')
+        );
+        let to_url = format!(
+            "{}{}",
+            self.base_webdav_url,
+            to_path.trim_start_matches('/')
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .request(reqwest::Method::from_bytes(b"MOVE")?, &from_url)
             .header("Authorization", &self.auth_header)
             .header("Destination", &to_url)
@@ -422,10 +479,19 @@ impl NextCloudService {
 
     /// Copy a file/directory
     pub async fn copy_file(&self, from_path: &str, to_path: &str) -> Result<()> {
-        let from_url = format!("{}{}", self.base_webdav_url, from_path.trim_start_matches('/'));
-        let to_url = format!("{}{}", self.base_webdav_url, to_path.trim_start_matches('/'));
+        let from_url = format!(
+            "{}{}",
+            self.base_webdav_url,
+            from_path.trim_start_matches('/')
+        );
+        let to_url = format!(
+            "{}{}",
+            self.base_webdav_url,
+            to_path.trim_start_matches('/')
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .request(reqwest::Method::from_bytes(b"COPY")?, &from_url)
             .header("Authorization", &self.auth_header)
             .header("Destination", &to_url)
@@ -441,8 +507,19 @@ impl NextCloudService {
     }
 
     /// Create a share link for a file
-    pub async fn create_share(&self, path: &str, share_type: &str, share_with: Option<&str>, permissions: u32, password: Option<&str>, expire_date: Option<DateTime<Utc>>) -> Result<NextCloudShare> {
-        let share_url = format!("{}/ocs/v2.php/apps/files_sharing/api/v1/shares", self.config.server_url.trim_end_matches('/'));
+    pub async fn create_share(
+        &self,
+        path: &str,
+        share_type: &str,
+        share_with: Option<&str>,
+        permissions: u32,
+        password: Option<&str>,
+        expire_date: Option<DateTime<Utc>>,
+    ) -> Result<NextCloudShare> {
+        let share_url = format!(
+            "{}/ocs/v2.php/apps/files_sharing/api/v1/shares",
+            self.config.server_url.trim_end_matches('/')
+        );
 
         let mut params = vec![
             ("path", path.to_string()),
@@ -463,7 +540,8 @@ impl NextCloudService {
             params.push(("expireDate", expire.format("%Y-%m-%d").to_string()));
         }
 
-        let response = self.client
+        let response = self
+            .client
             .post(&share_url)
             .header("Authorization", &self.auth_header)
             .header("OCS-APIRequest", "true")
@@ -472,7 +550,10 @@ impl NextCloudService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to create share: HTTP {}", response.status()));
+            return Err(anyhow!(
+                "Failed to create share: HTTP {}",
+                response.status()
+            ));
         }
 
         let json_response: Value = response.json().await?;
@@ -481,9 +562,13 @@ impl NextCloudService {
 
     /// List all shares for a file
     pub async fn list_shares(&self, path: &str) -> Result<Vec<NextCloudShare>> {
-        let share_url = format!("{}/ocs/v2.php/apps/files_sharing/api/v1/shares", self.config.server_url.trim_end_matches('/'));
+        let share_url = format!(
+            "{}/ocs/v2.php/apps/files_sharing/api/v1/shares",
+            self.config.server_url.trim_end_matches('/')
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&share_url)
             .header("Authorization", &self.auth_header)
             .header("OCS-APIRequest", "true")
@@ -501,10 +586,14 @@ impl NextCloudService {
 
     /// Delete a share
     pub async fn delete_share(&self, share_id: &str) -> Result<()> {
-        let share_url = format!("{}/ocs/v2.php/apps/files_sharing/api/v1/shares/{}",
-            self.config.server_url.trim_end_matches('/'), share_id);
+        let share_url = format!(
+            "{}/ocs/v2.php/apps/files_sharing/api/v1/shares/{}",
+            self.config.server_url.trim_end_matches('/'),
+            share_id
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .delete(&share_url)
             .header("Authorization", &self.auth_header)
             .header("OCS-APIRequest", "true")
@@ -512,7 +601,10 @@ impl NextCloudService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to delete share: HTTP {}", response.status()));
+            return Err(anyhow!(
+                "Failed to delete share: HTTP {}",
+                response.status()
+            ));
         }
 
         Ok(())
@@ -547,9 +639,13 @@ impl NextCloudService {
 
     /// Search files by name pattern
     pub async fn search_files(&self, pattern: &str) -> Result<Vec<NextCloudFile>> {
-        let search_url = format!("{}/ocs/v2.php/apps/files/api/v1/search", self.config.server_url.trim_end_matches('/'));
+        let search_url = format!(
+            "{}/ocs/v2.php/apps/files/api/v1/search",
+            self.config.server_url.trim_end_matches('/')
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&search_url)
             .header("Authorization", &self.auth_header)
             .header("OCS-APIRequest", "true")
@@ -558,7 +654,10 @@ impl NextCloudService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to search files: HTTP {}", response.status()));
+            return Err(anyhow!(
+                "Failed to search files: HTTP {}",
+                response.status()
+            ));
         }
 
         let json_response: Value = response.json().await?;
@@ -578,19 +677,37 @@ impl NextCloudService {
 
     /// Parse share API response
     fn parse_share_response(&self, json: &Value) -> Result<NextCloudShare> {
-        let data = json.get("ocs")
+        let data = json
+            .get("ocs")
             .and_then(|ocs| ocs.get("data"))
             .ok_or_else(|| anyhow!("Invalid share response format"))?;
 
         let share = NextCloudShare {
-            id: data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            share_type: data.get("share_type").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            permissions: data.get("permissions").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-            shared_with: data.get("share_with").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            id: data
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            share_type: data
+                .get("share_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            permissions: data
+                .get("permissions")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
+            shared_with: data
+                .get("share_with")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             created_at: Utc::now(), // Would parse from response
-            expires_at: None, // Would parse from response
+            expires_at: None,       // Would parse from response
             password_protected: data.get("password").is_some(),
-            url: data.get("url").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            url: data
+                .get("url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         };
 
         Ok(share)
@@ -598,14 +715,17 @@ impl NextCloudService {
 
     /// Parse shares list response
     fn parse_shares_response(&self, json: &Value) -> Result<Vec<NextCloudShare>> {
-        let data = json.get("ocs")
+        let data = json
+            .get("ocs")
             .and_then(|ocs| ocs.get("data"))
             .and_then(|data| data.as_array())
             .ok_or_else(|| anyhow!("Invalid shares response format"))?;
 
         let mut shares = Vec::new();
         for item in data {
-            if let Ok(share) = self.parse_share_response(&serde_json::json!({"ocs": {"data": item}})) {
+            if let Ok(share) =
+                self.parse_share_response(&serde_json::json!({"ocs": {"data": item}}))
+            {
                 shares.push(share);
             }
         }
@@ -627,12 +747,20 @@ impl Service for NextCloudService {
         log::info!("Starting NextCloud service...");
 
         // Test connection
-        if !self.test_connection().await.map_err(|e| ServiceError::Connection(e.to_string()))? {
-            return Err(ServiceError::Connection("Failed to connect to NextCloud server".to_string()));
+        if !self
+            .test_connection()
+            .await
+            .map_err(|e| ServiceError::Connection(e.to_string()))?
+        {
+            return Err(ServiceError::Connection(
+                "Failed to connect to NextCloud server".to_string(),
+            ));
         }
 
         // Perform initial sync
-        self.sync().await.map_err(|e| ServiceError::Initialization(e.to_string()))?;
+        self.sync()
+            .await
+            .map_err(|e| ServiceError::Initialization(e.to_string()))?;
 
         log::info!("NextCloud service started successfully");
         Ok(())

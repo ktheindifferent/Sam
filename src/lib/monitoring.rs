@@ -1,5 +1,5 @@
 //! Application monitoring and observability module
-//! 
+//!
 //! Provides integration with Sentry for error tracking, performance monitoring,
 //! and application observability.
 
@@ -9,14 +9,15 @@ use std::collections::BTreeMap;
 /// Initialize Sentry with enhanced configuration
 pub fn init_sentry() -> sentry::ClientInitGuard {
     sentry::init((
-        std::env::var("SENTRY_DSN")
-            .unwrap_or_else(|_| "http://2f7ca9e40bcc42589eb9c01e0a8696ea@sentry.alpha.opensam.foundation/5".to_string()),
+        std::env::var("SENTRY_DSN").unwrap_or_else(|_| {
+            "http://2f7ca9e40bcc42589eb9c01e0a8696ea@sentry.alpha.opensam.foundation/5".to_string()
+        }),
         sentry::ClientOptions {
             release: sentry::release_name!(),
             environment: Some(
                 std::env::var("ENVIRONMENT")
                     .unwrap_or_else(|_| "development".to_string())
-                    .into()
+                    .into(),
             ),
             attach_stacktrace: true,
             send_default_pii: false,
@@ -26,34 +27,40 @@ pub fn init_sentry() -> sentry::ClientInitGuard {
                 // Filter out sensitive data before sending
                 // Note: Headers are not directly accessible in the current Sentry API
                 // We can still filter other sensitive data from the event
-                
+
                 // Clear any sensitive extra data
                 event.extra.remove("password");
                 event.extra.remove("api_key");
                 event.extra.remove("token");
-                
+
                 Some(event)
             })),
             ..Default::default()
-        }
+        },
     ))
 }
 
 /// Report a service error to Sentry with context
-pub fn report_service_error(service: &str, error: &dyn std::fmt::Display, context: Option<BTreeMap<String, String>>) {
+pub fn report_service_error(
+    service: &str,
+    error: &dyn std::fmt::Display,
+    context: Option<BTreeMap<String, String>>,
+) {
     let mut event = Event {
         message: Some(format!("Service error in {}: {}", service, error)),
         level: Level::Error,
         ..Default::default()
     };
-    
+
     if let Some(ctx) = context {
         for (key, value) in ctx {
             event.extra.insert(key, value.into());
         }
     }
-    
-    event.tags.insert("service".to_string(), service.to_string());
+
+    event
+        .tags
+        .insert("service".to_string(), service.to_string());
     sentry::capture_event(event);
 }
 
@@ -117,7 +124,7 @@ impl PerformanceSpan {
             transaction: Some(transaction.into()),
         }
     }
-    
+
     /// Complete the span
     pub fn finish(mut self) {
         if let Some(transaction) = self.transaction.take() {
@@ -137,7 +144,7 @@ impl Drop for PerformanceSpan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_performance_span() {
         let span = PerformanceSpan::new("test", "test_operation");

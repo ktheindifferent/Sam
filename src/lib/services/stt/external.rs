@@ -1,10 +1,10 @@
-use anyhow::{Result, Context};
-use serde::{Deserialize, Serialize};
-use log::{info, warn};
-use reqwest;
-use std::time::Duration;
 use super::STTPrediction;
 use crate::services::environment::get_env_config;
+use anyhow::{Context, Result};
+use log::{info, warn};
+use reqwest;
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalSTTConfig {
@@ -38,22 +38,22 @@ impl ExternalSTTService {
             .timeout(config.timeout)
             .build()
             .context("Failed to build HTTP client for STT")?;
-        
+
         Ok(Self { config, client })
     }
-    
+
     pub fn with_config(config: ExternalSTTConfig) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(config.timeout)
             .build()
             .context("Failed to build HTTP client for STT")?;
-        
+
         Ok(Self { config, client })
     }
-    
+
     pub async fn transcribe(&self, audio_data: Vec<u8>, format: &str) -> Result<STTPrediction> {
         let env_config = get_env_config();
-        
+
         if env_config.is_caprover && env_config.stt_url.is_none() {
             warn!("STT_URL not configured in CapRover mode - STT service unavailable");
             return Ok(STTPrediction {
@@ -63,43 +63,45 @@ impl ExternalSTTService {
                 duration_ms: 0,
             });
         }
-        
-        let endpoint = env_config.stt_url
-            .as_ref()
-            .unwrap_or(&self.config.endpoint);
-        
+
+        let endpoint = env_config.stt_url.as_ref().unwrap_or(&self.config.endpoint);
+
         info!("Sending audio to external STT service: {}", endpoint);
-        
-        let mut request = self.client
+
+        let mut request = self
+            .client
             .post(endpoint)
             .header("Content-Type", format!("audio/{}", format));
-        
+
         if let Some(api_key) = &self.config.api_key {
             request = request.header("Authorization", format!("Bearer {}", api_key));
         }
-        
+
         if let Some(model) = &self.config.model {
             request = request.header("X-STT-Model", model);
         }
-        
+
         let response = request
             .body(audio_data)
             .send()
             .await
             .context("Failed to send request to STT service")?;
-        
+
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
             return Err(anyhow::anyhow!(
-                "STT service returned error {}: {}", 
-                status, error_text
+                "STT service returned error {}: {}",
+                status,
+                error_text
             ));
         }
-        
-        let result: STTResponse = response.json().await
+
+        let result: STTResponse = response
+            .json()
+            .await
             .context("Failed to parse STT response")?;
-        
+
         Ok(STTPrediction {
             text: result.text,
             confidence: result.confidence.unwrap_or(1.0),
@@ -107,26 +109,28 @@ impl ExternalSTTService {
             duration_ms: result.processing_time_ms.unwrap_or(0),
         })
     }
-    
+
     pub async fn health_check(&self) -> Result<()> {
         let env_config = get_env_config();
-        let endpoint = env_config.stt_url
-            .as_ref()
-            .unwrap_or(&self.config.endpoint);
-        
+        let endpoint = env_config.stt_url.as_ref().unwrap_or(&self.config.endpoint);
+
         let health_url = format!("{}/health", endpoint.trim_end_matches("/stt"));
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&health_url)
             .send()
             .await
             .context("Failed to check STT service health")?;
-        
+
         if response.status().is_success() {
             info!("External STT service is healthy");
             Ok(())
         } else {
-            Err(anyhow::anyhow!("STT service health check failed: {}", response.status()))
+            Err(anyhow::anyhow!(
+                "STT service health check failed: {}",
+                response.status()
+            ))
         }
     }
 }
@@ -142,7 +146,7 @@ struct STTResponse {
 /// Get the appropriate STT service based on environment configuration
 pub async fn get_stt_service() -> Result<Box<dyn STTServiceTrait>> {
     let env_config = get_env_config();
-    
+
     if env_config.is_caprover || env_config.stt_url.is_some() {
         info!("Using external STT service");
         Ok(Box::new(ExternalSTTService::new()?))
@@ -160,8 +164,7 @@ pub trait STTServiceTrait: Send + Sync {
 
 impl STTServiceTrait for ExternalSTTService {
     fn transcribe_sync(&self, audio_data: Vec<u8>, format: &str) -> Result<STTPrediction> {
-        tokio::runtime::Handle::current()
-            .block_on(self.transcribe(audio_data, format))
+        tokio::runtime::Handle::current().block_on(self.transcribe(audio_data, format))
     }
 }
 

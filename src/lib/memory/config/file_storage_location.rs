@@ -247,10 +247,7 @@ impl FileStorageLocation {
 
     /// Asynchronously deletes a FileStorageLocation from the database by OID.
     pub async fn destroy_async(oid: String) -> Result<bool> {
-        crate::memory::Config::destroy_row_async(
-            oid,
-            "config_file_storage_locations".to_string(),
-        )
-        .await
+        crate::memory::Config::destroy_row_async(oid, "config_file_storage_locations".to_string())
+            .await
     }
 }

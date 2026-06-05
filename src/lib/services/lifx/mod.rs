@@ -29,11 +29,20 @@ lazy_static::lazy_static! {
 }
 
 pub fn set_global_discovery(discovery: Arc<Mutex<DiscoveryService>>) {
-    *GLOBAL_DISCOVERY.lock().unwrap() = Some(discovery);
+    match GLOBAL_DISCOVERY.lock() {
+        Ok(mut global_discovery) => *global_discovery = Some(discovery),
+        Err(e) => log::error!("Failed to set LIFX discovery service: {}", e),
+    }
 }
 
 pub fn get_global_discovery() -> Option<Arc<Mutex<DiscoveryService>>> {
-    GLOBAL_DISCOVERY.lock().unwrap().clone()
+    match GLOBAL_DISCOVERY.lock() {
+        Ok(global_discovery) => global_discovery.clone(),
+        Err(e) => {
+            log::error!("Failed to get LIFX discovery service: {}", e);
+            None
+        }
+    }
 }
 
 pub fn stop_service() -> anyhow::Result<()> {
@@ -46,7 +55,10 @@ pub fn status_service() -> anyhow::Result<String> {
     if SERVICE_RUNNING.load(Ordering::SeqCst) {
         let bulb_count = BULB_COUNT.load(Ordering::SeqCst);
         let port = API_PORT.load(Ordering::SeqCst);
-        Ok(format!("Running - {} bulbs discovered (port {})", bulb_count, port))
+        Ok(format!(
+            "Running - {} bulbs discovered (port {})",
+            bulb_count, port
+        ))
     } else {
         Ok("Stopped".to_string())
     }
@@ -89,7 +101,7 @@ pub fn handle(session: Option<String>, request: &rouille::Request) -> rouille::R
 
         // Try enhanced API handlers first (scenes, effects, zones, presets)
         let enhanced_response = handlers::handle_enhanced_api_request(request);
-        if enhanced_response.status_code() != 404 {
+        if enhanced_response.status_code != 404 {
             return enhanced_response;
         }
 

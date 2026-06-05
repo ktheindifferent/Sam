@@ -13,7 +13,10 @@ pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> 
         return Ok(());
     }
     let mut cmd = Command::new("sudo");
-    cmd.arg("-u").arg(&crate::get_human().await).arg("brew").arg("install");
+    cmd.arg("-u")
+        .arg(&crate::get_human().await)
+        .arg("brew")
+        .arg("install");
     for pkg in &packages {
         cmd.arg(pkg);
     }
@@ -21,14 +24,16 @@ pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> 
     if status.success() {
         Ok(())
     } else {
-        Err(anyhow::anyhow!(format!("brew install failed with status: {}", status)))
+        Err(anyhow::anyhow!(format!(
+            "brew install failed with status: {}",
+            status
+        )))
     }
 }
 
 /// Asynchronously installs Homebrew if it is not already installed.
 /// Returns Ok(()) if Homebrew is installed or was installed successfully, otherwise returns an error.
 pub async fn install() -> Result<(), anyhow::Error> {
-
     // Check if brew is already installed
     let status = Command::new("sudo")
         .arg("-u")
@@ -55,7 +60,9 @@ pub async fn install() -> Result<(), anyhow::Error> {
     if status.success() {
         Ok(())
     } else {
-        Err(anyhow::anyhow!(format!("Homebrew install failed with status: {}", status)))
+        Err(anyhow::anyhow!(format!(
+            "Homebrew install failed with status: {}",
+            status
+        )))
     }
 }
-

@@ -1,9 +1,9 @@
+use super::super::state::TuiState;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, Paragraph},
 };
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget, TuiWidgetState};
-use super::super::state::TuiState;
 
 /// Render the logs mode with scrolling and filtering support
 pub fn render_logs_mode(
@@ -21,7 +21,11 @@ pub fn render_logs_mode(
         ])
         .split(area);
 
-    let cursor_char = if show_cursor && state.log_input_mode { "_" } else { " " };
+    let cursor_char = if show_cursor && state.log_input_mode {
+        "_"
+    } else {
+        " "
+    };
     let filter_display = format!("{}{}", state.log_filter_text, cursor_char);
     let filter_title = if state.log_input_mode {
         "Filter (Type to filter, ESC to exit, Enter to apply)"
@@ -55,7 +59,10 @@ pub fn render_logs_mode(
     };
 
     let log_title = if !state.log_filter_text.is_empty() {
-        format!("System Logs - Filter: '{}' | Scroll: {}", state.log_filter_text, state.log_scroll_offset)
+        format!(
+            "System Logs - Filter: '{}' | Scroll: {}",
+            state.log_filter_text, state.log_scroll_offset
+        )
     } else {
         format!("System Logs - Scroll: {}", state.log_scroll_offset)
     };
@@ -79,8 +86,8 @@ pub fn render_logs_mode(
         "↑/↓: Scroll | PageUp/Down: Page | /: Filter | c: Clear | +/-: Log Level | Space: Toggle | ←/→: Display Level"
     };
 
-    let help_widget = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL).title("Controls"));
+    let help_widget =
+        Paragraph::new(help_text).block(Block::default().borders(Borders::ALL).title("Controls"));
 
     f.render_widget(filter_widget, chunks[0]);
     f.render_widget(tui_logger_widget, chunks[1]);

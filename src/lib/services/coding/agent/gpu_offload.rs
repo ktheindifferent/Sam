@@ -1,15 +1,15 @@
+use anyhow::Result;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use reqwest::Client;
-use std::collections::HashMap;
 
 /// GPU provider types for offloading LLM inference
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum GpuProvider {
-    Ollama,     // Local/remote Ollama instance (e.g., your GPU desktop rig)
+    Ollama, // Local/remote Ollama instance (e.g., your GPU desktop rig)
     Salad,
     Vast,
     RunPod,
@@ -20,12 +20,12 @@ pub enum GpuProvider {
 /// GPU instance specifications
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpuInstanceSpec {
-    pub gpu_type: String,           // e.g., "RTX 4090", "A100", "H100"
-    pub vram_gb: u32,               // Video RAM in GB
-    pub cpu_cores: u32,             // Number of CPU cores
-    pub ram_gb: u32,                // System RAM in GB
-    pub cost_per_hour: f64,         // Cost in USD per hour
-    pub min_billing_minutes: u32,   // Minimum billing period in minutes
+    pub gpu_type: String,         // e.g., "RTX 4090", "A100", "H100"
+    pub vram_gb: u32,             // Video RAM in GB
+    pub cpu_cores: u32,           // Number of CPU cores
+    pub ram_gb: u32,              // System RAM in GB
+    pub cost_per_hour: f64,       // Cost in USD per hour
+    pub min_billing_minutes: u32, // Minimum billing period in minutes
 }
 
 /// GPU instance state
@@ -45,7 +45,7 @@ pub struct GpuInstance {
     pub provider: GpuProvider,
     pub spec: GpuInstanceSpec,
     pub state: InstanceState,
-    pub endpoint: String,           // Ollama API endpoint
+    pub endpoint: String,             // Ollama API endpoint
     pub ssh_endpoint: Option<String>, // SSH access if available
     pub api_key: Option<String>,
     pub started_at: SystemTime,
@@ -71,7 +71,7 @@ pub struct CostTracker {
 pub struct OllamaClient {
     client: Client,
     base_url: String,
-    api_key: Option<String>,  // Optional for authentication
+    api_key: Option<String>, // Optional for authentication
 }
 
 impl OllamaClient {
@@ -85,7 +85,8 @@ impl OllamaClient {
 
     /// Check if Ollama is running and available
     pub async fn health_check(&self) -> Result<bool> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/api/tags", self.base_url))
             .send()
             .await?;
@@ -95,7 +96,8 @@ impl OllamaClient {
 
     /// List available models
     pub async fn list_models(&self) -> Result<Vec<String>> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/api/tags", self.base_url))
             .send()
             .await?;
@@ -122,7 +124,8 @@ impl OllamaClient {
             "stream": false
         });
 
-        let mut request = self.client
+        let mut request = self
+            .client
             .post(format!("{}/api/pull", self.base_url))
             .json(&request_body);
 
@@ -141,7 +144,12 @@ impl OllamaClient {
     }
 
     /// Generate completion using Ollama
-    pub async fn generate(&self, model: &str, prompt: &str, options: Option<serde_json::Value>) -> Result<String> {
+    pub async fn generate(
+        &self,
+        model: &str,
+        prompt: &str,
+        options: Option<serde_json::Value>,
+    ) -> Result<String> {
         let request_body = serde_json::json!({
             "model": model,
             "prompt": prompt,
@@ -153,7 +161,8 @@ impl OllamaClient {
             }))
         });
 
-        let mut request = self.client
+        let mut request = self
+            .client
             .post(format!("{}/api/generate", self.base_url))
             .json(&request_body);
 
@@ -173,7 +182,12 @@ impl OllamaClient {
     }
 
     /// Chat completion using Ollama
-    pub async fn chat(&self, model: &str, messages: Vec<serde_json::Value>, options: Option<serde_json::Value>) -> Result<String> {
+    pub async fn chat(
+        &self,
+        model: &str,
+        messages: Vec<serde_json::Value>,
+        options: Option<serde_json::Value>,
+    ) -> Result<String> {
         let request_body = serde_json::json!({
             "model": model,
             "messages": messages,
@@ -185,7 +199,8 @@ impl OllamaClient {
             }))
         });
 
-        let mut request = self.client
+        let mut request = self
+            .client
             .post(format!("{}/api/chat", self.base_url))
             .json(&request_body);
 
@@ -201,12 +216,16 @@ impl OllamaClient {
         }
 
         let data: serde_json::Value = response.json().await?;
-        Ok(data["message"]["content"].as_str().unwrap_or("").to_string())
+        Ok(data["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string())
     }
 
     /// Get GPU information from Ollama instance
     pub async fn get_gpu_info(&self) -> Result<serde_json::Value> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/api/ps", self.base_url))
             .send()
             .await?;
@@ -255,7 +274,8 @@ impl SaladClient {
             "auto_scale": false
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/containers", self.base_url))
             .header("API-Key", &self.api_key)
             .json(&request_body)
@@ -274,20 +294,35 @@ impl SaladClient {
             provider: GpuProvider::Salad,
             spec: spec.clone(),
             state: InstanceState::Provisioning,
-            endpoint: response_data["endpoint"].as_str().unwrap_or_default().to_string(),
-            ssh_endpoint: response_data.get("ssh_endpoint").and_then(|s| s.as_str()).map(String::from),
+            endpoint: response_data["endpoint"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            ssh_endpoint: response_data
+                .get("ssh_endpoint")
+                .and_then(|s| s.as_str())
+                .map(String::from),
             api_key: Some(self.api_key.clone()),
             started_at: SystemTime::now(),
             stopped_at: None,
             session_id: uuid::Uuid::new_v4().to_string(),
-            container_id: Some(response_data["container_id"].as_str().unwrap_or_default().to_string()),
-            region: response_data["region"].as_str().unwrap_or("us-east").to_string(),
+            container_id: Some(
+                response_data["container_id"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
+            region: response_data["region"]
+                .as_str()
+                .unwrap_or("us-east")
+                .to_string(),
         })
     }
 
     /// Stop and delete a GPU instance
     pub async fn delete_instance(&self, instance_id: &str) -> Result<()> {
-        let response = self.client
+        let response = self
+            .client
             .delete(format!("{}/containers/{}", self.base_url, instance_id))
             .header("API-Key", &self.api_key)
             .send()
@@ -303,7 +338,8 @@ impl SaladClient {
 
     /// Get instance status
     pub async fn get_instance_status(&self, instance_id: &str) -> Result<InstanceState> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/containers/{}", self.base_url, instance_id))
             .header("API-Key", &self.api_key)
             .send()
@@ -336,7 +372,9 @@ impl SaladClient {
 
             match self.get_instance_status(instance_id).await? {
                 InstanceState::Running => return Ok(()),
-                InstanceState::Failed(err) => return Err(anyhow::anyhow!("Instance failed: {}", err)),
+                InstanceState::Failed(err) => {
+                    return Err(anyhow::anyhow!("Instance failed: {}", err))
+                }
                 _ => {
                     tokio::time::sleep(Duration::from_secs(5)).await;
                 }
@@ -368,27 +406,29 @@ pub struct GpuOffloadConfig {
     pub preferred_regions: Vec<String>,
     pub min_vram_gb: u32,
     // Ollama-specific configuration
-    pub ollama_endpoint: Option<String>,  // e.g., "http://192.168.1.100:11434"
-    pub ollama_api_key: Option<String>,   // Optional authentication
-    pub ollama_models: Vec<String>,       // Preferred models to use
-    pub ollama_gpu_layers: Option<u32>,   // Number of layers to offload to GPU
+    pub ollama_endpoint: Option<String>, // e.g., "http://192.168.1.100:11434"
+    pub ollama_api_key: Option<String>,  // Optional authentication
+    pub ollama_models: Vec<String>,      // Preferred models to use
+    pub ollama_gpu_layers: Option<u32>,  // Number of layers to offload to GPU
 }
 
 impl Default for GpuOffloadConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            provider: GpuProvider::Ollama,  // Default to Ollama for local GPU rigs
+            provider: GpuProvider::Ollama, // Default to Ollama for local GPU rigs
             auto_scale: true,
             max_instances: 1,
-            budget_limit: Some(10.0), // $10 default limit
+            budget_limit: Some(10.0),    // $10 default limit
             budget_alert_threshold: 0.8, // Alert at 80% of budget
             idle_timeout_minutes: 30,
             preferred_gpu_types: vec!["RTX 4090".to_string(), "RTX 3090".to_string()],
             preferred_regions: vec!["us-east".to_string(), "us-west".to_string()],
             min_vram_gb: 24,
             // Ollama defaults
-            ollama_endpoint: std::env::var("OLLAMA_HOST").ok().or_else(|| Some("http://localhost:11434".to_string())),
+            ollama_endpoint: std::env::var("OLLAMA_HOST")
+                .ok()
+                .or_else(|| Some("http://localhost:11434".to_string())),
             ollama_api_key: std::env::var("OLLAMA_API_KEY").ok(),
             ollama_models: vec![
                 "deepseek-coder:33b".to_string(),
@@ -404,14 +444,19 @@ impl Default for GpuOffloadConfig {
 impl GpuOffloadManager {
     pub fn new(config: GpuOffloadConfig) -> Self {
         let salad_client = if config.provider == GpuProvider::Salad {
-            std::env::var("SALAD_API_KEY").ok().map(|key| Arc::new(SaladClient::new(key)))
+            std::env::var("SALAD_API_KEY")
+                .ok()
+                .map(|key| Arc::new(SaladClient::new(key)))
         } else {
             None
         };
 
         let ollama_client = if config.provider == GpuProvider::Ollama {
             config.ollama_endpoint.as_ref().map(|endpoint| {
-                Arc::new(OllamaClient::new(endpoint.clone(), config.ollama_api_key.clone()))
+                Arc::new(OllamaClient::new(
+                    endpoint.clone(),
+                    config.ollama_api_key.clone(),
+                ))
             })
         } else {
             None
@@ -435,7 +480,10 @@ impl GpuOffloadManager {
         // Check if we already have an instance for this session
         let instances = self.instances.read().await;
         if let Some(existing) = instances.get(session_id) {
-            if matches!(existing.state, InstanceState::Running | InstanceState::Provisioning) {
+            if matches!(
+                existing.state,
+                InstanceState::Running | InstanceState::Provisioning
+            ) {
                 return Ok(existing.clone());
             }
         }
@@ -446,7 +494,11 @@ impl GpuOffloadManager {
             let trackers = self.cost_trackers.read().await;
             let total_cost: f64 = trackers.values().map(|t| t.total_cost).sum();
             if total_cost >= budget_limit {
-                return Err(anyhow::anyhow!("Budget limit exceeded: ${:.2} >= ${:.2}", total_cost, budget_limit));
+                return Err(anyhow::anyhow!(
+                    "Budget limit exceeded: ${:.2} >= ${:.2}",
+                    total_cost,
+                    budget_limit
+                ));
             }
         }
 
@@ -459,8 +511,13 @@ impl GpuOffloadManager {
                 if let Some(client) = &self.ollama_client {
                     // Check if Ollama is running
                     if !client.health_check().await? {
-                        return Err(anyhow::anyhow!("Ollama is not running at {}",
-                            self.config.ollama_endpoint.as_ref().unwrap_or(&"unknown".to_string())));
+                        return Err(anyhow::anyhow!(
+                            "Ollama is not running at {}",
+                            self.config
+                                .ollama_endpoint
+                                .as_ref()
+                                .unwrap_or(&"unknown".to_string())
+                        ));
                     }
 
                     // Get GPU info
@@ -491,7 +548,11 @@ impl GpuOffloadManager {
                         provider: GpuProvider::Ollama,
                         spec: gpu_spec.clone(),
                         state: InstanceState::Running,
-                        endpoint: self.config.ollama_endpoint.clone().unwrap_or_else(|| "http://localhost:11434".to_string()),
+                        endpoint: self
+                            .config
+                            .ollama_endpoint
+                            .clone()
+                            .unwrap_or_else(|| "http://localhost:11434".to_string()),
                         ssh_endpoint: None,
                         api_key: self.config.ollama_api_key.clone(),
                         started_at: SystemTime::now(),
@@ -510,7 +571,9 @@ impl GpuOffloadManager {
                     instance.session_id = session_id.to_string();
 
                     // Wait for instance to be ready
-                    client.wait_for_ready(&instance.id, Duration::from_secs(300)).await?;
+                    client
+                        .wait_for_ready(&instance.id, Duration::from_secs(300))
+                        .await?;
                     instance.state = InstanceState::Running;
 
                     instance
@@ -518,7 +581,12 @@ impl GpuOffloadManager {
                     return Err(anyhow::anyhow!("Salad API key not configured"));
                 }
             }
-            _ => return Err(anyhow::anyhow!("Provider {:?} not yet implemented", self.config.provider)),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Provider {:?} not yet implemented",
+                    self.config.provider
+                ))
+            }
         };
 
         // Store instance and create cost tracker
@@ -530,19 +598,26 @@ impl GpuOffloadManager {
 
         {
             let mut trackers = self.cost_trackers.write().await;
-            trackers.insert(session_id.to_string(), CostTracker {
-                session_id: session_id.to_string(),
-                total_cost: 0.0,
-                runtime_minutes: 0,
-                gpu_hours: 0.0,
-                cost_per_hour: gpu_spec.cost_per_hour,
-                budget_limit: self.config.budget_limit,
-                budget_alert_threshold: self.config.budget_alert_threshold,
-            });
+            trackers.insert(
+                session_id.to_string(),
+                CostTracker {
+                    session_id: session_id.to_string(),
+                    total_cost: 0.0,
+                    runtime_minutes: 0,
+                    gpu_hours: 0.0,
+                    cost_per_hour: gpu_spec.cost_per_hour,
+                    budget_limit: self.config.budget_limit,
+                    budget_alert_threshold: self.config.budget_alert_threshold,
+                },
+            );
         }
 
-        log::info!("Started GPU instance {} for session {} at ${}/hour",
-                   instance.id, session_id, gpu_spec.cost_per_hour);
+        log::info!(
+            "Started GPU instance {} for session {} at ${}/hour",
+            instance.id,
+            session_id,
+            gpu_spec.cost_per_hour
+        );
 
         Ok(instance)
     }
@@ -555,12 +630,13 @@ impl GpuOffloadManager {
             instance.stopped_at = Some(SystemTime::now());
 
             // Calculate final cost
-            if let Some(started) = SystemTime::UNIX_EPOCH.checked_add(
-                instance.started_at.duration_since(SystemTime::UNIX_EPOCH)?
-            ) {
+            if let Some(started) = SystemTime::UNIX_EPOCH
+                .checked_add(instance.started_at.duration_since(SystemTime::UNIX_EPOCH)?)
+            {
                 let runtime = SystemTime::now().duration_since(started)?;
                 let runtime_minutes = runtime.as_secs() / 60;
-                let billable_minutes = runtime_minutes.max(instance.spec.min_billing_minutes as u64);
+                let billable_minutes =
+                    runtime_minutes.max(instance.spec.min_billing_minutes as u64);
                 let cost = (billable_minutes as f64 / 60.0) * instance.spec.cost_per_hour;
 
                 let mut trackers = self.cost_trackers.write().await;
@@ -569,8 +645,12 @@ impl GpuOffloadManager {
                     tracker.gpu_hours = billable_minutes as f64 / 60.0;
                     tracker.total_cost = cost;
 
-                    log::info!("Session {} GPU usage: {} minutes, cost: ${:.2}",
-                               session_id, runtime_minutes, cost);
+                    log::info!(
+                        "Session {} GPU usage: {} minutes, cost: ${:.2}",
+                        session_id,
+                        runtime_minutes,
+                        cost
+                    );
                 }
             }
 
@@ -593,7 +673,8 @@ impl GpuOffloadManager {
     /// Get Ollama endpoint for a session
     pub async fn get_ollama_endpoint(&self, session_id: &str) -> Option<String> {
         let instances = self.instances.read().await;
-        instances.get(session_id)
+        instances
+            .get(session_id)
             .filter(|i| matches!(i.state, InstanceState::Running))
             .map(|i| i.endpoint.clone())
     }
@@ -614,7 +695,8 @@ impl GpuOffloadManager {
                     .unwrap_or_default();
 
                 let runtime_minutes = runtime.as_secs() / 60;
-                let billable_minutes = runtime_minutes.max(instance.spec.min_billing_minutes as u64);
+                let billable_minutes =
+                    runtime_minutes.max(instance.spec.min_billing_minutes as u64);
                 let current_cost = (billable_minutes as f64 / 60.0) * instance.spec.cost_per_hour;
 
                 tracker.runtime_minutes = runtime_minutes;
@@ -625,8 +707,13 @@ impl GpuOffloadManager {
                 if let Some(limit) = tracker.budget_limit {
                     let usage_ratio = current_cost / limit;
                     if usage_ratio >= tracker.budget_alert_threshold {
-                        log::warn!("Session {} approaching budget limit: ${:.2} of ${:.2} ({:.0}%)",
-                                   session_id, current_cost, limit, usage_ratio * 100.0);
+                        log::warn!(
+                            "Session {} approaching budget limit: ${:.2} of ${:.2} ({:.0}%)",
+                            session_id,
+                            current_cost,
+                            limit,
+                            usage_ratio * 100.0
+                        );
                     }
                 }
             }
@@ -634,9 +721,15 @@ impl GpuOffloadManager {
     }
 
     /// Generate code using GPU-accelerated Ollama instance
-    pub async fn generate_code(&self, session_id: &str, prompt: &str, model: Option<String>) -> Result<String> {
+    pub async fn generate_code(
+        &self,
+        session_id: &str,
+        prompt: &str,
+        model: Option<String>,
+    ) -> Result<String> {
         let instances = self.instances.read().await;
-        let instance = instances.get(session_id)
+        let instance = instances
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("No GPU instance found for session"))?;
 
         if !matches!(instance.state, InstanceState::Running) {
@@ -647,7 +740,9 @@ impl GpuOffloadManager {
             GpuProvider::Ollama => {
                 if let Some(client) = &self.ollama_client {
                     let model_to_use = model.unwrap_or_else(|| {
-                        self.config.ollama_models.first()
+                        self.config
+                            .ollama_models
+                            .first()
                             .cloned()
                             .unwrap_or_else(|| "codellama:34b".to_string())
                     });
@@ -667,14 +762,23 @@ impl GpuOffloadManager {
                     Err(anyhow::anyhow!("Ollama client not configured"))
                 }
             }
-            _ => Err(anyhow::anyhow!("Code generation not supported for provider {:?}", instance.provider))
+            _ => Err(anyhow::anyhow!(
+                "Code generation not supported for provider {:?}",
+                instance.provider
+            )),
         }
     }
 
     /// Chat with GPU-accelerated Ollama for coding assistance
-    pub async fn chat_code(&self, session_id: &str, messages: Vec<serde_json::Value>, model: Option<String>) -> Result<String> {
+    pub async fn chat_code(
+        &self,
+        session_id: &str,
+        messages: Vec<serde_json::Value>,
+        model: Option<String>,
+    ) -> Result<String> {
         let instances = self.instances.read().await;
-        let instance = instances.get(session_id)
+        let instance = instances
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("No GPU instance found for session"))?;
 
         if !matches!(instance.state, InstanceState::Running) {
@@ -685,7 +789,9 @@ impl GpuOffloadManager {
             GpuProvider::Ollama => {
                 if let Some(client) = &self.ollama_client {
                     let model_to_use = model.unwrap_or_else(|| {
-                        self.config.ollama_models.first()
+                        self.config
+                            .ollama_models
+                            .first()
                             .cloned()
                             .unwrap_or_else(|| "codellama:34b".to_string())
                     });
@@ -702,14 +808,18 @@ impl GpuOffloadManager {
                     Err(anyhow::anyhow!("Ollama client not configured"))
                 }
             }
-            _ => Err(anyhow::anyhow!("Chat not supported for provider {:?}", instance.provider))
+            _ => Err(anyhow::anyhow!(
+                "Chat not supported for provider {:?}",
+                instance.provider
+            )),
         }
     }
 
     /// Get available models for the current GPU instance
     pub async fn list_available_models(&self, session_id: &str) -> Result<Vec<String>> {
         let instances = self.instances.read().await;
-        let instance = instances.get(session_id)
+        let instance = instances
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("No GPU instance found for session"))?;
 
         match instance.provider {
@@ -720,14 +830,15 @@ impl GpuOffloadManager {
                     Err(anyhow::anyhow!("Ollama client not configured"))
                 }
             }
-            _ => Ok(Vec::new())
+            _ => Ok(Vec::new()),
         }
     }
 
     /// Pull a specific model to the GPU instance
     pub async fn pull_model(&self, session_id: &str, model_name: &str) -> Result<()> {
         let instances = self.instances.read().await;
-        let instance = instances.get(session_id)
+        let instance = instances
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("No GPU instance found for session"))?;
 
         match instance.provider {
@@ -739,14 +850,18 @@ impl GpuOffloadManager {
                     Err(anyhow::anyhow!("Ollama client not configured"))
                 }
             }
-            _ => Err(anyhow::anyhow!("Model pulling not supported for provider {:?}", instance.provider))
+            _ => Err(anyhow::anyhow!(
+                "Model pulling not supported for provider {:?}",
+                instance.provider
+            )),
         }
     }
 
     /// Get GPU utilization information
     pub async fn get_gpu_stats(&self, session_id: &str) -> Result<serde_json::Value> {
         let instances = self.instances.read().await;
-        let instance = instances.get(session_id)
+        let instance = instances
+            .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("No GPU instance found for session"))?;
 
         match instance.provider {
@@ -757,7 +872,7 @@ impl GpuOffloadManager {
                     Err(anyhow::anyhow!("Ollama client not configured"))
                 }
             }
-            _ => Ok(serde_json::json!({}))
+            _ => Ok(serde_json::json!({})),
         }
     }
 
@@ -832,7 +947,10 @@ impl GpuOffloadManager {
             .collect();
 
         if suitable.is_empty() {
-            return Err(anyhow::anyhow!("No suitable GPU found with {}GB+ VRAM", self.config.min_vram_gb));
+            return Err(anyhow::anyhow!(
+                "No suitable GPU found with {}GB+ VRAM",
+                self.config.min_vram_gb
+            ));
         }
 
         // Prefer GPUs in the preference list
@@ -843,8 +961,13 @@ impl GpuOffloadManager {
         }
 
         // Otherwise, choose the cheapest suitable option
-        suitable.into_iter()
-            .min_by(|a, b| a.cost_per_hour.partial_cmp(&b.cost_per_hour).unwrap())
+        suitable
+            .into_iter()
+            .min_by(|a, b| {
+                a.cost_per_hour
+                    .partial_cmp(&b.cost_per_hour)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .ok_or_else(|| anyhow::anyhow!("No GPU available"))
     }
 

@@ -86,7 +86,9 @@ impl HttpClientBuilder {
             .connect_timeout(Duration::from_secs(self.config.connect_timeout_seconds))
             .pool_idle_timeout(Duration::from_secs(self.config.pool_idle_timeout_seconds))
             .pool_max_idle_per_host(self.config.pool_max_idle_per_host)
-            .redirect(reqwest::redirect::Policy::limited(self.config.max_redirects))
+            .redirect(reqwest::redirect::Policy::limited(
+                self.config.max_redirects,
+            ))
             .user_agent(self.config.user_agent)
             .danger_accept_invalid_certs(self.config.accept_invalid_certs);
 
@@ -199,7 +201,11 @@ impl ApiClient {
     }
 
     pub fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.config.base_url.trim_end_matches('/'), path.trim_start_matches('/'));
+        let url = format!(
+            "{}/{}",
+            self.config.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        );
         let mut request = self.client.request(method, url);
 
         // Add authentication
@@ -267,7 +273,7 @@ mod tests {
             .user_agent("CustomAgent/2.0".to_string())
             .accept_invalid_certs(true)
             .build();
-        
+
         assert!(client.is_ok());
     }
 
@@ -276,7 +282,7 @@ mod tests {
         let config = ApiClientConfig::new("https://api.example.com".to_string())
             .with_api_key("test-key".to_string())
             .with_header("Custom-Header".to_string(), "value".to_string());
-        
+
         assert_eq!(config.base_url, "https://api.example.com");
         assert_eq!(config.api_key, Some("test-key".to_string()));
         assert_eq!(config.headers.len(), 1);

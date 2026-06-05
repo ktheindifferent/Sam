@@ -66,18 +66,25 @@ impl MotionDetector {
 
     pub fn detect_motion_ffmpeg(&mut self, rtsp_url: &str, output_dir: &Path) -> Result<bool> {
         // Extract a frame from the stream
-        let frame_path = output_dir.join(format!("frame_{}.jpg", SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_millis()));
-        
+        let frame_path = output_dir.join(format!(
+            "frame_{}.jpg",
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis()
+        ));
+
         // Use FFmpeg to extract a single frame
+        let frame_path_str = frame_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Frame path is not valid UTF-8"))?;
         let output = Command::new("ffmpeg")
             .args([
-                "-rtsp_transport", "tcp",
-                "-i", rtsp_url,
-                "-frames:v", "1",
+                "-rtsp_transport",
+                "tcp",
+                "-i",
+                rtsp_url,
+                "-frames:v",
+                "1",
                 "-y",
-                frame_path.to_str().unwrap(),
+                frame_path_str,
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -91,16 +98,23 @@ impl MotionDetector {
         let motion_detected = if let Some(ref last_path) = self.last_frame_path {
             if last_path.exists() && frame_path.exists() {
                 // Use FFmpeg to calculate scene change
+                let last_path_str = last_path
+                    .to_str()
+                    .ok_or_else(|| anyhow::anyhow!("Previous frame path is not valid UTF-8"))?;
                 let scene_output = Command::new("ffmpeg")
                     .args([
-                        "-i", last_path.to_str().unwrap(),
-                        "-i", frame_path.to_str().unwrap(),
-                        "-filter_complex", "psnr",
-                        "-f", "null",
-                        "-"
+                        "-i",
+                        last_path_str,
+                        "-i",
+                        frame_path_str,
+                        "-filter_complex",
+                        "psnr",
+                        "-f",
+                        "null",
+                        "-",
                     ])
                     .output()?;
-                
+
                 // Parse PSNR output to detect significant changes
                 let stderr = String::from_utf8_lossy(&scene_output.stderr);
                 stderr.contains("PSNR") // Simplified detection
@@ -203,8 +217,8 @@ impl AnomalyDetector {
     pub fn detect_anomaly(&mut self, motion_level: f32) -> f32 {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0) as i64;
 
         let metrics = FrameMetrics {
             brightness: 0.5, // Placeholder
@@ -219,10 +233,9 @@ impl AnomalyDetector {
 
         // Calculate baseline if we have enough history
         if self.baseline_metrics.is_none() && self.history.len() >= 10 {
-            let avg_motion = self.history.iter()
-                .map(|m| m.motion_level)
-                .sum::<f32>() / self.history.len() as f32;
-            
+            let avg_motion = self.history.iter().map(|m| m.motion_level).sum::<f32>()
+                / self.history.len() as f32;
+
             self.baseline_metrics = Some(FrameMetrics {
                 brightness: 0.5,
                 motion_level: avg_motion,
@@ -286,19 +299,22 @@ impl AlertManager {
 
     pub async fn send_alert(&self, alert: Alert) -> Result<()> {
         let alert_key = format!("{:?}_{}", alert.alert_type, alert.thing_oid);
-        
+
         // Check cooldown
-        let mut last_times = self.last_alert_times.lock().unwrap();
+        let mut last_times = self
+            .last_alert_times
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock alert cooldown state: {}", e))?;
         if let Some(last_time) = last_times.get(&alert_key) {
             if last_time.elapsed().unwrap_or(Duration::MAX) < self.cooldown_duration {
                 return Ok(()); // Skip due to cooldown
             }
         }
-        
+
         // Send alert
         self.alert_tx.send(alert).await?;
         last_times.insert(alert_key, SystemTime::now());
-        
+
         Ok(())
     }
 }
@@ -316,14 +332,10 @@ pub struct RtspStreamProcessor {
 }
 
 impl RtspStreamProcessor {
-    pub fn new(
-        thing_oid: String,
-        rtsp_url: String,
-        alert_tx: mpsc::Sender<Alert>,
-    ) -> Result<Self> {
+    pub fn new(thing_oid: String, rtsp_url: String, alert_tx: mpsc::Sender<Alert>) -> Result<Self> {
         let work_dir = PathBuf::from(format!("/tmp/rtsp_{}", thing_oid));
         fs::create_dir_all(&work_dir)?;
-        
+
         Ok(Self {
             thing_oid,
             rtsp_url,
@@ -338,23 +350,22 @@ impl RtspStreamProcessor {
 
     pub async fn process_stream(&mut self) -> Result<()> {
         let mut interval = time::interval(Duration::from_secs(1));
-        
+
         loop {
             interval.tick().await;
-            
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_secs() as i64;
-            
+
+            let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+
             // Check for motion
-            let motion_detected = self.motion_detector
+            let motion_detected = self
+                .motion_detector
                 .detect_motion_ffmpeg(&self.rtsp_url, &self.work_dir)?;
-            
+
             let motion_level = if motion_detected { 1.0 } else { 0.0 };
-            
+
             // Detect anomaly
             let anomaly_score = self.anomaly_detector.detect_anomaly(motion_level);
-            
+
             // Send alerts
             if motion_detected {
                 let alert = Alert {
@@ -367,7 +378,7 @@ impl RtspStreamProcessor {
                 };
                 self.alert_manager.send_alert(alert).await?;
             }
-            
+
             if anomaly_score > 0.8 {
                 let alert = Alert {
                     timestamp,
@@ -386,16 +397,11 @@ impl RtspStreamProcessor {
                 };
                 self.alert_manager.send_alert(alert).await?;
             }
-            
+
             // Store observation if something interesting happened
             if motion_detected || anomaly_score > 0.5 {
-                self.store_observation(
-                    timestamp,
-                    motion_detected,
-                    vec![],
-                    vec![],
-                    anomaly_score,
-                ).await?;
+                self.store_observation(timestamp, motion_detected, vec![], vec![], anomaly_score)
+                    .await?;
             }
         }
     }
@@ -415,30 +421,38 @@ impl RtspStreamProcessor {
         } else {
             ObservationType::UNKNOWN
         };
-        
+
         // Add notes
         if motion_detected {
-            observation.observation_notes.push("Motion detected".to_string());
+            observation
+                .observation_notes
+                .push("Motion detected".to_string());
         }
         if anomaly_score > 0.5 {
-            observation.observation_notes.push(format!("Anomaly score: {:.2}", anomaly_score));
+            observation
+                .observation_notes
+                .push(format!("Anomaly score: {:.2}", anomaly_score));
         }
-        
+
         // Store deep vision results as JSON
-        observation.deep_vision_json = Some(serde_json::json!({
-            "motion_detected": motion_detected,
-            "detections": detections,
-            "faces": faces,
-            "anomaly_score": anomaly_score,
-        }).to_string());
-        
+        observation.deep_vision_json = Some(
+            serde_json::json!({
+                "motion_detected": motion_detected,
+                "detections": detections,
+                "faces": faces,
+                "anomaly_score": anomaly_score,
+            })
+            .to_string(),
+        );
+
         // Save to database
         task::spawn_blocking(move || {
             if let Err(e) = observation.save() {
                 log::error!("Failed to save observation: {}", e);
             }
-        }).await?;
-        
+        })
+        .await?;
+
         Ok(())
     }
 }

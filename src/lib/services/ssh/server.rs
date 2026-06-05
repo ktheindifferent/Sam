@@ -1,9 +1,9 @@
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
-use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{Mutex, RwLock};
 
 use crate::services::orchestrator::ServiceStatus;
 use std::env;
@@ -63,17 +63,20 @@ impl RemoteAccessServer {
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let port = get_ssh_server_port();
         info!("Starting SAM Remote Access Server on port {}", port);
-        info!("SSH clients can connect using: ssh sam@hostname -p {} 'nc localhost {}'", port, port);
-        
+        info!(
+            "SSH clients can connect using: ssh sam@hostname -p {} 'nc localhost {}'",
+            port, port
+        );
+
         let socket = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-        
+
         loop {
             let (stream, addr) = socket.accept().await?;
             debug!("New connection from: {}", addr);
-            
+
             let sessions = self.sessions.clone();
             let session_counter = self.session_counter.clone();
-            
+
             tokio::spawn(async move {
                 if let Err(e) = handle_connection(stream, sessions, session_counter).await {
                     error!("Connection error: {}", e);
@@ -102,30 +105,31 @@ async fn handle_connection(
          For SSH access, use: ssh sam@hostname -p {} 'nc localhost {}'\r\n\
          \r\n\
          Login: ",
-        get_ssh_server_port(), get_ssh_server_port()
+        get_ssh_server_port(),
+        get_ssh_server_port()
     );
     stream.write_all(welcome.as_bytes()).await?;
-    
+
     let mut buffer = [0; 1024];
     let mut authenticated = false;
     let mut username = String::new();
-    
+
     // Authentication loop
     while !authenticated {
         let n = stream.read(&mut buffer).await?;
         if n == 0 {
             return Ok(());
         }
-        
+
         let input = String::from_utf8_lossy(&buffer[..n]).trim().to_string();
-        
+
         if username.is_empty() {
             username = input;
             stream.write_all(b"Password: ").await?;
         } else {
             let expected_username = get_ssh_username();
             let expected_password = get_ssh_password();
-            
+
             if username == expected_username && input == expected_password {
                 authenticated = true;
                 let welcome = format!(
@@ -136,7 +140,9 @@ async fn handle_connection(
                 stream.write_all(welcome.as_bytes()).await?;
                 info!("User {} authenticated successfully", username);
             } else {
-                stream.write_all(b"\r\nAuthentication failed.\r\nLogin: ").await?;
+                stream
+                    .write_all(b"\r\nAuthentication failed.\r\nLogin: ")
+                    .await?;
                 username.clear();
                 warn!("Authentication failed for user: {}", username);
             }
@@ -157,17 +163,17 @@ async fn handle_connection(
     // Command loop
     loop {
         stream.write_all(b"sam> ").await?;
-        
+
         let n = stream.read(&mut buffer).await?;
         if n == 0 {
             break;
         }
-        
+
         let input = String::from_utf8_lossy(&buffer[..n]).trim().to_string();
         let response = handle_command(&input).await;
-        
+
         stream.write_all(response.as_bytes()).await?;
-        
+
         if input == "exit" || input == "quit" {
             break;
         }
@@ -178,7 +184,7 @@ async fn handle_connection(
         let mut sessions = sessions.write().await;
         sessions.remove(&session_id);
     }
-    
+
     info!("Session {} ended for user {}", session_id, username);
     Ok(())
 }
@@ -262,9 +268,7 @@ async fn handle_command(input: &str) -> String {
                 std::env::consts::ARCH
             )
         }
-        "exit" | "quit" => {
-            "Goodbye!\r\n".to_string()
-        }
+        "exit" | "quit" => "Goodbye!\r\n".to_string(),
         "" => "\r\n".to_string(),
         _ => {
             format!(
@@ -323,7 +327,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_ssh_server_port_available() {
-        let result = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_SSH_SERVER_PORT)).await;
+        let result =
+            tokio::net::TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_SSH_SERVER_PORT)).await;
         assert!(result.is_ok());
     }
 

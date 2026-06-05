@@ -1,13 +1,13 @@
 use super::{
-    types::*,
+    code_intelligence::{CodeIntelligence, Symbol},
     errors::{CodingAgentError, CodingAgentResult},
     providers::LLMProvider,
-    code_intelligence::{CodeIntelligence, Symbol},
+    types::*,
 };
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use serde::{Serialize, Deserialize};
-use async_trait::async_trait;
 
 /// Automated refactoring engine with pattern recognition
 pub struct RefactoringEngine {
@@ -128,7 +128,11 @@ pub struct RefactoringCatalog {
 /// Refactoring trait
 #[async_trait]
 pub trait Refactoring: Send + Sync {
-    async fn apply(&self, code: &str, context: &RefactoringContext) -> CodingAgentResult<RefactoringResult>;
+    async fn apply(
+        &self,
+        code: &str,
+        context: &RefactoringContext,
+    ) -> CodingAgentResult<RefactoringResult>;
     fn get_preconditions(&self) -> Vec<Precondition>;
     fn get_postconditions(&self) -> Vec<Postcondition>;
     fn estimate_impact(&self, context: &RefactoringContext) -> ImpactEstimate;
@@ -397,16 +401,20 @@ impl RefactoringEngine {
         context: &RefactoringContext,
     ) -> CodingAgentResult<Vec<RefactoringOpportunity>> {
         let patterns = self.pattern_detector.detect_patterns(code, context).await?;
-        
+
         let mut opportunities = Vec::new();
         for pattern in patterns {
             let opportunity = self.pattern_to_opportunity(pattern, context).await?;
             opportunities.push(opportunity);
         }
-        
+
         // Sort by priority
-        opportunities.sort_by(|a, b| b.priority.partial_cmp(&a.priority).unwrap());
-        
+        opportunities.sort_by(|a, b| {
+            b.priority
+                .partial_cmp(&a.priority)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         Ok(opportunities)
     }
 
@@ -415,7 +423,10 @@ impl RefactoringEngine {
         pattern: PatternMatch,
         context: &RefactoringContext,
     ) -> CodingAgentResult<RefactoringOpportunity> {
-        let impact = self.impact_analyzer.analyze_impact(&pattern, context).await?;
+        let impact = self
+            .impact_analyzer
+            .analyze_impact(&pattern, context)
+            .await?;
         let priority = self.calculate_priority(&pattern, &impact);
         let benefits = self.estimate_benefits(&pattern).await?;
 
@@ -435,14 +446,14 @@ impl RefactoringEngine {
             PatternType::DeadCode => 0.9,
             _ => 0.5,
         };
-        
+
         let risk_weight = match impact.risk_level {
             RiskLevel::Low => 1.0,
             RiskLevel::Medium => 0.8,
             RiskLevel::High => 0.6,
             RiskLevel::Critical => 0.4,
         };
-        
+
         pattern.confidence * pattern_weight * risk_weight
     }
 
@@ -460,7 +471,7 @@ impl RefactoringEngine {
             ],
             _ => vec!["General code improvement".to_string()],
         };
-        
+
         Ok(benefits)
     }
 
@@ -471,45 +482,61 @@ impl RefactoringEngine {
     ) -> CodingAgentResult<RefactoringResult> {
         // Read the target file
         let code = tokio::fs::read_to_string(&request.target_path).await?;
-        
+
         // Create context
         let context = self.create_context(&request).await?;
-        
+
         // Create rollback point
-        let rollback_point = self.rollback_manager.create_rollback_point(&[(request.target_path.clone(), code.clone())]).await?;
-        
+        let rollback_point = self
+            .rollback_manager
+            .create_rollback_point(&[(request.target_path.clone(), code.clone())])
+            .await?;
+
         // Determine refactoring to apply
         let refactoring_type = if request.auto_detect {
             self.auto_select_refactoring(&code, &context).await?
         } else {
-            request.refactoring_type.ok_or(CodingAgentError::ValidationError {
-                field: "refactoring_type".to_string(),
-                message: "Refactoring type must be specified or auto_detect must be true".to_string()
-            })?
+            request
+                .refactoring_type
+                .ok_or(CodingAgentError::ValidationError {
+                    field: "refactoring_type".to_string(),
+                    message: "Refactoring type must be specified or auto_detect must be true"
+                        .to_string(),
+                })?
         };
-        
+
         // Get refactoring implementation
-        let refactoring = self.refactoring_catalog.get_refactoring(&refactoring_type)
+        let refactoring = self
+            .refactoring_catalog
+            .get_refactoring(&refactoring_type)
             .ok_or(CodingAgentError::ConfigError {
-                message: format!("Refactoring type {:?} not supported", refactoring_type)
+                message: format!("Refactoring type {:?} not supported", refactoring_type),
             })?;
-        
+
         // Check preconditions
-        self.check_preconditions(refactoring.as_ref(), &context).await?;
-        
+        self.check_preconditions(refactoring.as_ref(), &context)
+            .await?;
+
         // Apply refactoring
         let mut result = refactoring.apply(&code, &context).await?;
         result.rollback_point = rollback_point;
-        
+
         // Validate result
         result.validation_results = self.validate_refactoring(&result, &context).await?;
-        
+
         Ok(result)
     }
 
-    async fn create_context(&self, request: &RefactoringRequest) -> CodingAgentResult<RefactoringContext> {
+    async fn create_context(
+        &self,
+        request: &RefactoringRequest,
+    ) -> CodingAgentResult<RefactoringContext> {
         Ok(RefactoringContext {
-            project_path: request.target_path.parent().unwrap_or(Path::new(".")).to_path_buf(),
+            project_path: request
+                .target_path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_path_buf(),
             target_file: request.target_path.clone(),
             language: self.detect_language(&request.target_path),
             symbols: vec![],
@@ -536,12 +563,13 @@ impl RefactoringEngine {
         context: &RefactoringContext,
     ) -> CodingAgentResult<RefactoringType> {
         let opportunities = self.detect_opportunities(code, context).await?;
-        
-        opportunities.first()
+
+        opportunities
+            .first()
             .and_then(|o| o.pattern.suggested_refactorings.first().cloned())
             .ok_or(CodingAgentError::NotFound {
                 resource: "RefactoringOpportunity".to_string(),
-                id: "any".to_string()
+                id: "any".to_string(),
             })
     }
 
@@ -578,7 +606,7 @@ impl RefactoringEngine {
         context: &RefactoringContext,
     ) -> CodingAgentResult<RefactoringPlan> {
         let opportunities = self.detect_opportunities(code, context).await?;
-        
+
         let mut steps = Vec::new();
         for (i, opportunity) in opportunities.iter().take(5).enumerate() {
             if let Some(refactoring_type) = opportunity.pattern.suggested_refactorings.first() {
@@ -592,7 +620,7 @@ impl RefactoringEngine {
                 });
             }
         }
-        
+
         Ok(RefactoringPlan {
             steps,
             total_impact: ImpactEstimate {
@@ -627,7 +655,7 @@ impl PatternDetector {
             detectors: HashMap::new(),
             confidence_threshold: 0.7,
         };
-        
+
         // Initialize pattern detectors
         detector.initialize_detectors();
         detector
@@ -644,15 +672,15 @@ impl PatternDetector {
         context: &RefactoringContext,
     ) -> CodingAgentResult<Vec<PatternMatch>> {
         let mut all_matches = Vec::new();
-        
+
         for detector in self.detectors.values() {
             let matches = detector.detect(code, context).await;
             all_matches.extend(matches);
         }
-        
+
         // Filter by confidence threshold
         all_matches.retain(|m| m.confidence >= self.confidence_threshold);
-        
+
         Ok(all_matches)
     }
 }
@@ -663,7 +691,7 @@ impl RefactoringCatalog {
             refactorings: HashMap::new(),
             custom_refactorings: Vec::new(),
         };
-        
+
         // Initialize built-in refactorings
         catalog.initialize_refactorings();
         catalog
@@ -674,7 +702,10 @@ impl RefactoringCatalog {
         // This would include specific implementations for each refactoring type
     }
 
-    pub fn get_refactoring(&self, refactoring_type: &RefactoringType) -> Option<&Box<dyn Refactoring>> {
+    pub fn get_refactoring(
+        &self,
+        refactoring_type: &RefactoringType,
+    ) -> Option<&Box<dyn Refactoring>> {
         self.refactorings.get(refactoring_type)
     }
 }
@@ -739,31 +770,32 @@ impl RollbackManager {
             original_code: files.iter().cloned().collect(),
             metadata: HashMap::new(),
         };
-        
+
         self.rollback_history.push_back(rollback_point.clone());
-        
+
         // Maintain max history size
         if self.rollback_history.len() > self.max_history_size {
             self.rollback_history.pop_front();
         }
-        
+
         Ok(rollback_point)
     }
 
     pub async fn rollback(&mut self, rollback_id: &str) -> CodingAgentResult<()> {
-        let rollback_point = self.rollback_history
+        let rollback_point = self
+            .rollback_history
             .iter()
             .find(|p| p.id == rollback_id)
             .ok_or(CodingAgentError::NotFound {
                 resource: "RollbackPoint".to_string(),
-                id: rollback_id.to_string()
+                id: rollback_id.to_string(),
             })?;
-        
+
         // Restore original files
         for (path, content) in &rollback_point.original_code {
             tokio::fs::write(path, content).await?;
         }
-        
+
         Ok(())
     }
 }

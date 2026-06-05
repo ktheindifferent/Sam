@@ -7,20 +7,17 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+use crate::services::traits::{HealthStatus, Service, ServiceConfig, ServiceError, ServiceHealth};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use dropbox_sdk::{default_client::UserAuthDefaultClient, files, oauth2::Authorization};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::collections::HashMap;
+use std::io::Read;
+use std::path::Path;
 use std::sync::RwLock;
 use std::time::SystemTime;
-use std::io::Read;
-use chrono::{DateTime, Utc};
-use dropbox_sdk::{
-    files, default_client::UserAuthDefaultClient,
-    oauth2::Authorization
-};
 use thiserror::Error;
-use crate::services::traits::{Service, ServiceConfig, ServiceHealth, HealthStatus, ServiceError};
 
 #[derive(Error, Debug)]
 pub enum DropboxError {
@@ -107,13 +104,17 @@ impl DropboxService {
 
     pub async fn authenticate(&mut self) -> Result<()> {
         if self.config.access_token.is_empty() {
-            return Err(DropboxError::Authentication("No access token provided".to_string()));
+            return Err(DropboxError::Authentication(
+                "No access token provided".to_string(),
+            ));
         }
 
         // Create authorization using the load method with access token
         let saved_token = format!("1&{}", self.config.access_token);
-        let auth = Authorization::load(self.config.client_id.clone(), &saved_token)
-            .ok_or_else(|| DropboxError::Authentication("Failed to create authorization".to_string()))?;
+        let auth =
+            Authorization::load(self.config.client_id.clone(), &saved_token).ok_or_else(|| {
+                DropboxError::Authentication("Failed to create authorization".to_string())
+            })?;
 
         let client = UserAuthDefaultClient::new(auth);
         self.client = Some(client);
@@ -122,25 +123,32 @@ impl DropboxService {
 
     pub async fn test_connection(&self) -> Result<bool> {
         match &self.client {
-            Some(client) => {
-                match dropbox_sdk::users::get_current_account(client) {
-                    Ok(_) => Ok(true),
-                    Err(e) => Err(DropboxError::Api(format!("Connection test failed: {:?}", e))),
-                }
+            Some(client) => match dropbox_sdk::users::get_current_account(client) {
+                Ok(_) => Ok(true),
+                Err(e) => Err(DropboxError::Api(format!(
+                    "Connection test failed: {:?}",
+                    e
+                ))),
             },
-            None => Err(DropboxError::Authentication("Client not authenticated".to_string())),
+            None => Err(DropboxError::Authentication(
+                "Client not authenticated".to_string(),
+            )),
         }
     }
 
     pub async fn list_files(&self, path: &str, limit: Option<u32>) -> Result<Vec<DropboxFile>> {
-        let client = self.client.as_ref().ok_or_else(||
-            DropboxError::Authentication("Client not authenticated".to_string())
-        )?;
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| DropboxError::Authentication("Client not authenticated".to_string()))?;
 
-        let path = if path.is_empty() || path == "/" { "" } else { path };
+        let path = if path.is_empty() || path == "/" {
+            ""
+        } else {
+            path
+        };
 
-        let list_arg = files::ListFolderArg::new(path.to_string())
-            .with_limit(limit.unwrap_or(100));
+        let list_arg = files::ListFolderArg::new(path.to_string()).with_limit(limit.unwrap_or(100));
 
         match files::list_folder(client, &list_arg) {
             Ok(Ok(result)) => {
@@ -153,20 +161,27 @@ impl DropboxService {
                             files.push(DropboxFile {
                                 id: file_metadata.id,
                                 name: file_metadata.name,
-                                path: file_metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
+                                path: file_metadata
+                                    .path_lower
+                                    .unwrap_or_else(|| "unknown".to_string()),
                                 size: file_metadata.size,
-                                modified: file_metadata.server_modified.parse::<DateTime<Utc>>().unwrap_or_else(|_| Utc::now()),
+                                modified: file_metadata
+                                    .server_modified
+                                    .parse::<DateTime<Utc>>()
+                                    .unwrap_or_else(|_| Utc::now()),
                                 is_folder: false,
                                 mime_type: self.get_mime_type(&file_name),
                                 content_hash: file_metadata.content_hash,
                                 rev: Some(file_metadata.rev),
                             });
-                        },
+                        }
                         files::Metadata::Folder(folder_metadata) => {
                             files.push(DropboxFile {
                                 id: folder_metadata.id,
                                 name: folder_metadata.name,
-                                path: folder_metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
+                                path: folder_metadata
+                                    .path_lower
+                                    .unwrap_or_else(|| "unknown".to_string()),
                                 size: 0,
                                 modified: Utc::now(),
                                 is_folder: true,
@@ -174,22 +189,28 @@ impl DropboxService {
                                 content_hash: None,
                                 rev: None,
                             });
-                        },
+                        }
                         _ => {} // Ignore deleted entries
                     }
                 }
 
                 Ok(files)
-            },
+            }
             Ok(Err(e)) => Err(DropboxError::Api(format!("List folder error: {:?}", e))),
             Err(e) => Err(DropboxError::Api(format!("Failed to list files: {:?}", e))),
         }
     }
 
-    pub async fn upload_file(&self, _local_path: &Path, remote_path: &str, content: &[u8]) -> Result<DropboxFile> {
-        let client = self.client.as_ref().ok_or_else(||
-            DropboxError::Authentication("Client not authenticated".to_string())
-        )?;
+    pub async fn upload_file(
+        &self,
+        _local_path: &Path,
+        remote_path: &str,
+        content: &[u8],
+    ) -> Result<DropboxFile> {
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| DropboxError::Authentication("Client not authenticated".to_string()))?;
 
         let remote_path = if !remote_path.starts_with('/') {
             format!("/{}", remote_path)
@@ -209,46 +230,55 @@ impl DropboxService {
                     name: metadata.name,
                     path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
                     size: metadata.size,
-                    modified: metadata.server_modified.parse::<DateTime<Utc>>().unwrap_or_else(|_| Utc::now()),
+                    modified: metadata
+                        .server_modified
+                        .parse::<DateTime<Utc>>()
+                        .unwrap_or_else(|_| Utc::now()),
                     is_folder: false,
                     mime_type: self.get_mime_type(&file_name),
                     content_hash: metadata.content_hash,
                     rev: Some(metadata.rev),
                 })
-            },
+            }
             Ok(Err(e)) => Err(DropboxError::Api(format!("Upload error: {:?}", e))),
             Err(e) => Err(DropboxError::Api(format!("Failed to upload file: {:?}", e))),
         }
     }
 
     pub async fn download_file(&self, remote_path: &str) -> Result<Vec<u8>> {
-        let client = self.client.as_ref().ok_or_else(||
-            DropboxError::Authentication("Client not authenticated".to_string())
-        )?;
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| DropboxError::Authentication("Client not authenticated".to_string()))?;
 
         let download_arg = files::DownloadArg::new(remote_path.to_string());
 
         match files::download(client, &download_arg, None, None) {
-            Ok(Ok(http_result)) => {
-                match http_result.body {
-                    Some(mut reader) => {
-                        let mut content = Vec::new();
-                        reader.read_to_end(&mut content)
-                            .map_err(|e| DropboxError::Network(format!("Failed to read response body: {}", e)))?;
-                        Ok(content)
-                    },
-                    None => Err(DropboxError::Api("No content in download response".to_string())),
+            Ok(Ok(http_result)) => match http_result.body {
+                Some(mut reader) => {
+                    let mut content = Vec::new();
+                    reader.read_to_end(&mut content).map_err(|e| {
+                        DropboxError::Network(format!("Failed to read response body: {}", e))
+                    })?;
+                    Ok(content)
                 }
+                None => Err(DropboxError::Api(
+                    "No content in download response".to_string(),
+                )),
             },
             Ok(Err(e)) => Err(DropboxError::Api(format!("Download error: {:?}", e))),
-            Err(e) => Err(DropboxError::Api(format!("Failed to download file: {:?}", e))),
+            Err(e) => Err(DropboxError::Api(format!(
+                "Failed to download file: {:?}",
+                e
+            ))),
         }
     }
 
     pub async fn delete_file(&self, remote_path: &str) -> Result<()> {
-        let client = self.client.as_ref().ok_or_else(||
-            DropboxError::Authentication("Client not authenticated".to_string())
-        )?;
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| DropboxError::Authentication("Client not authenticated".to_string()))?;
 
         let delete_arg = files::DeleteArg::new(remote_path.to_string());
 
@@ -260,77 +290,78 @@ impl DropboxService {
     }
 
     pub async fn create_folder(&self, path: &str) -> Result<DropboxFile> {
-        let client = self.client.as_ref().ok_or_else(||
-            DropboxError::Authentication("Client not authenticated".to_string())
-        )?;
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| DropboxError::Authentication("Client not authenticated".to_string()))?;
 
-        let folder_arg = files::CreateFolderArg::new(path.to_string())
-            .with_autorename(false);
+        let folder_arg = files::CreateFolderArg::new(path.to_string()).with_autorename(false);
 
         match files::create_folder_v2(client, &folder_arg) {
-            Ok(Ok(result)) => {
-                Ok(DropboxFile {
-                    id: result.metadata.id,
-                    name: result.metadata.name,
-                    path: result.metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
+            Ok(Ok(result)) => Ok(DropboxFile {
+                id: result.metadata.id,
+                name: result.metadata.name,
+                path: result
+                    .metadata
+                    .path_lower
+                    .unwrap_or_else(|| "unknown".to_string()),
+                size: 0,
+                modified: Utc::now(),
+                is_folder: true,
+                mime_type: "application/x-directory".to_string(),
+                content_hash: None,
+                rev: None,
+            }),
+            Ok(Err(e)) => Err(DropboxError::Api(format!("Create folder error: {:?}", e))),
+            Err(e) => Err(DropboxError::Api(format!(
+                "Failed to create folder: {:?}",
+                e
+            ))),
+        }
+    }
+
+    pub async fn move_file(&self, from_path: &str, to_path: &str) -> Result<DropboxFile> {
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| DropboxError::Authentication("Client not authenticated".to_string()))?;
+
+        let move_arg = files::RelocationArg::new(from_path.to_string(), to_path.to_string())
+            .with_allow_shared_folder(false)
+            .with_autorename(false)
+            .with_allow_ownership_transfer(false);
+
+        match files::move_v2(client, &move_arg) {
+            Ok(Ok(result)) => match result.metadata {
+                files::Metadata::File(metadata) => {
+                    let file_name = metadata.name.clone();
+                    Ok(DropboxFile {
+                        id: metadata.id,
+                        name: metadata.name,
+                        path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
+                        size: metadata.size,
+                        modified: metadata
+                            .server_modified
+                            .parse::<DateTime<Utc>>()
+                            .unwrap_or_else(|_| Utc::now()),
+                        is_folder: false,
+                        mime_type: self.get_mime_type(&file_name),
+                        content_hash: metadata.content_hash,
+                        rev: Some(metadata.rev),
+                    })
+                }
+                files::Metadata::Folder(metadata) => Ok(DropboxFile {
+                    id: metadata.id,
+                    name: metadata.name,
+                    path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
                     size: 0,
                     modified: Utc::now(),
                     is_folder: true,
                     mime_type: "application/x-directory".to_string(),
                     content_hash: None,
                     rev: None,
-                })
-            },
-            Ok(Err(e)) => Err(DropboxError::Api(format!("Create folder error: {:?}", e))),
-            Err(e) => Err(DropboxError::Api(format!("Failed to create folder: {:?}", e))),
-        }
-    }
-
-    pub async fn move_file(&self, from_path: &str, to_path: &str) -> Result<DropboxFile> {
-        let client = self.client.as_ref().ok_or_else(||
-            DropboxError::Authentication("Client not authenticated".to_string())
-        )?;
-
-        let move_arg = files::RelocationArg::new(
-            from_path.to_string(),
-            to_path.to_string()
-        )
-        .with_allow_shared_folder(false)
-        .with_autorename(false)
-        .with_allow_ownership_transfer(false);
-
-        match files::move_v2(client, &move_arg) {
-            Ok(Ok(result)) => {
-                match result.metadata {
-                    files::Metadata::File(metadata) => {
-                        let file_name = metadata.name.clone();
-                        Ok(DropboxFile {
-                            id: metadata.id,
-                            name: metadata.name,
-                            path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
-                            size: metadata.size,
-                            modified: metadata.server_modified.parse::<DateTime<Utc>>().unwrap_or_else(|_| Utc::now()),
-                            is_folder: false,
-                            mime_type: self.get_mime_type(&file_name),
-                            content_hash: metadata.content_hash,
-                            rev: Some(metadata.rev),
-                        })
-                    },
-                    files::Metadata::Folder(metadata) => {
-                        Ok(DropboxFile {
-                            id: metadata.id,
-                            name: metadata.name,
-                            path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
-                            size: 0,
-                            modified: Utc::now(),
-                            is_folder: true,
-                            mime_type: "application/x-directory".to_string(),
-                            content_hash: None,
-                            rev: None,
-                        })
-                    },
-                    _ => Err(DropboxError::Api("Unexpected metadata type".to_string())),
-                }
+                }),
+                _ => Err(DropboxError::Api("Unexpected metadata type".to_string())),
             },
             Ok(Err(e)) => Err(DropboxError::Api(format!("Move error: {:?}", e))),
             Err(e) => Err(DropboxError::Api(format!("Failed to move file: {:?}", e))),
@@ -338,50 +369,47 @@ impl DropboxService {
     }
 
     pub async fn copy_file(&self, from_path: &str, to_path: &str) -> Result<DropboxFile> {
-        let client = self.client.as_ref().ok_or_else(||
-            DropboxError::Authentication("Client not authenticated".to_string())
-        )?;
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| DropboxError::Authentication("Client not authenticated".to_string()))?;
 
-        let copy_arg = files::RelocationArg::new(
-            from_path.to_string(),
-            to_path.to_string()
-        )
-        .with_allow_shared_folder(false)
-        .with_autorename(false)
-        .with_allow_ownership_transfer(false);
+        let copy_arg = files::RelocationArg::new(from_path.to_string(), to_path.to_string())
+            .with_allow_shared_folder(false)
+            .with_autorename(false)
+            .with_allow_ownership_transfer(false);
 
         match files::copy_v2(client, &copy_arg) {
-            Ok(Ok(result)) => {
-                match result.metadata {
-                    files::Metadata::File(metadata) => {
-                        let file_name = metadata.name.clone();
-                        Ok(DropboxFile {
-                            id: metadata.id,
-                            name: metadata.name,
-                            path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
-                            size: metadata.size,
-                            modified: metadata.server_modified.parse::<DateTime<Utc>>().unwrap_or_else(|_| Utc::now()),
-                            is_folder: false,
-                            mime_type: self.get_mime_type(&file_name),
-                            content_hash: metadata.content_hash,
-                            rev: Some(metadata.rev),
-                        })
-                    },
-                    files::Metadata::Folder(metadata) => {
-                        Ok(DropboxFile {
-                            id: metadata.id,
-                            name: metadata.name,
-                            path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
-                            size: 0,
-                            modified: Utc::now(),
-                            is_folder: true,
-                            mime_type: "application/x-directory".to_string(),
-                            content_hash: None,
-                            rev: None,
-                        })
-                    },
-                    _ => Err(DropboxError::Api("Unexpected metadata type".to_string())),
+            Ok(Ok(result)) => match result.metadata {
+                files::Metadata::File(metadata) => {
+                    let file_name = metadata.name.clone();
+                    Ok(DropboxFile {
+                        id: metadata.id,
+                        name: metadata.name,
+                        path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
+                        size: metadata.size,
+                        modified: metadata
+                            .server_modified
+                            .parse::<DateTime<Utc>>()
+                            .unwrap_or_else(|_| Utc::now()),
+                        is_folder: false,
+                        mime_type: self.get_mime_type(&file_name),
+                        content_hash: metadata.content_hash,
+                        rev: Some(metadata.rev),
+                    })
                 }
+                files::Metadata::Folder(metadata) => Ok(DropboxFile {
+                    id: metadata.id,
+                    name: metadata.name,
+                    path: metadata.path_lower.unwrap_or_else(|| "unknown".to_string()),
+                    size: 0,
+                    modified: Utc::now(),
+                    is_folder: true,
+                    mime_type: "application/x-directory".to_string(),
+                    content_hash: None,
+                    rev: None,
+                }),
+                _ => Err(DropboxError::Api("Unexpected metadata type".to_string())),
             },
             Ok(Err(e)) => Err(DropboxError::Api(format!("Copy error: {:?}", e))),
             Err(e) => Err(DropboxError::Api(format!("Failed to copy file: {:?}", e))),
@@ -409,7 +437,10 @@ impl DropboxService {
             Some("ogg") => "audio/ogg".to_string(),
             Some("pdf") => "application/pdf".to_string(),
             Some("doc") => "application/msword".to_string(),
-            Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document".to_string(),
+            Some("docx") => {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    .to_string()
+            }
             Some("txt") => "text/plain".to_string(),
             Some("json") => "application/json".to_string(),
             Some("xml") => "application/xml".to_string(),

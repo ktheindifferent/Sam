@@ -3,7 +3,7 @@
 //! This module provides common helper functions for timestamp operations,
 //! string manipulation, safe arithmetic, and other shared functionality.
 
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Get current Unix timestamp in seconds
 pub fn unix_timestamp() -> u64 {
@@ -40,7 +40,12 @@ pub fn format_duration(seconds: u64) -> String {
     } else if seconds < 3600 {
         format!("{}m {}s", seconds / 60, seconds % 60)
     } else {
-        format!("{}h {}m {}s", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+        format!(
+            "{}h {}m {}s",
+            seconds / 3600,
+            (seconds % 3600) / 60,
+            seconds % 60
+        )
     }
 }
 
@@ -80,7 +85,10 @@ pub fn option_string_or_default(opt: Option<String>, default: &str) -> String {
 }
 
 /// Convert Result to Option, logging errors
-pub fn result_to_option_with_log<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> Option<T> {
+pub fn result_to_option_with_log<T, E: std::fmt::Display>(
+    result: Result<T, E>,
+    context: &str,
+) -> Option<T> {
     match result {
         Ok(val) => Some(val),
         Err(e) => {

@@ -1,9 +1,9 @@
 //! Error context for better debugging and recovery
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 /// Rich error context with debugging information
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -130,7 +130,10 @@ impl ErrorContext {
         }
 
         if let Some(ref loc) = self.location {
-            output.push(format!("Location: {}:{}:{}", loc.file, loc.line, loc.column));
+            output.push(format!(
+                "Location: {}:{}:{}",
+                loc.file, loc.line, loc.column
+            ));
         }
 
         if !self.metadata.is_empty() {
@@ -158,7 +161,10 @@ impl ErrorContext {
             }
         }
 
-        output.push(format!("Time: {}", self.timestamp.format("%Y-%m-%d %H:%M:%S UTC")));
+        output.push(format!(
+            "Time: {}",
+            self.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
 
         if let Some(ref id) = self.correlation_id {
             output.push(format!("Correlation ID: {}", id));

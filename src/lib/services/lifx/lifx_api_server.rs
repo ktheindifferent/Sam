@@ -34,24 +34,24 @@
 
 #![allow(deprecated)]
 
+use crate::services::thread_manager::{self, ThreadConfig};
 use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
+use lazy_static::lazy_static;
 use lifx_rs::lan::{
     get_product_info, BuildOptions, Message, PowerLevel, ProductInfo, RawMessage, HSBK,
 };
+use prometheus::{register_int_counter, register_int_gauge, IntCounter, IntGauge};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use rouille::try_or_400;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
-use crate::services::thread_manager::{self, ThreadConfig};
 use threadpool::ThreadPool;
-use lazy_static::lazy_static;
-use prometheus::{IntCounter, IntGauge, register_int_counter, register_int_gauge};
 
 use rouille::post_input;
 use rouille::Response;
@@ -70,21 +70,21 @@ const INITIAL_RETRY_DELAY_MS: u64 = 100;
 
 lazy_static! {
     static ref LIFX_THREAD_POOL: ThreadPool = ThreadPool::with_name("lifx_worker".to_string(), 4);
-    
     static ref THREAD_SPAWN_FAILURES: IntCounter = register_int_counter!(
         "lifx_thread_spawn_failures_total",
         "Total number of thread spawn failures in LIFX service"
-    ).unwrap();
-    
+    )
+    .unwrap();
     static ref THREAD_POOL_ACTIVE: IntGauge = register_int_gauge!(
         "lifx_thread_pool_active_threads",
         "Number of active threads in LIFX thread pool"
-    ).unwrap();
-    
+    )
+    .unwrap();
     static ref THREAD_SPAWN_ATTEMPTS: IntCounter = register_int_counter!(
         "lifx_thread_spawn_attempts_total",
         "Total number of thread spawn attempts in LIFX service"
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 /// Check if system resources are available for spawning new threads.
@@ -105,10 +105,10 @@ fn check_thread_resources() -> Result<(), String> {
     let active_count = LIFX_THREAD_POOL.active_count();
     let queued_count = LIFX_THREAD_POOL.queued_count();
     let max_count = LIFX_THREAD_POOL.max_count();
-    
+
     // Update metrics
     THREAD_POOL_ACTIVE.set(active_count as i64);
-    
+
     // Check if thread pool is saturated
     if active_count >= max_count && queued_count > 0 {
         return Err(format!(
@@ -116,7 +116,7 @@ fn check_thread_resources() -> Result<(), String> {
             active_count, queued_count
         ));
     }
-    
+
     // Check system limits (soft check)
     #[cfg(target_os = "linux")]
     {
@@ -127,13 +127,14 @@ fn check_thread_resources() -> Result<(), String> {
                 if active_count > max_threads / 2 {
                     log::warn!(
                         "Thread usage high: {} active threads out of {} system max",
-                        active_count, max_threads
+                        active_count,
+                        max_threads
                     );
                 }
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -486,7 +487,12 @@ impl Manager {
             }
             Message::StateLabel { label } => {
                 bulb.name.update(label.0);
-                bulb.label = bulb.name.data.as_ref().map(|s| s.to_string()).unwrap_or_default();
+                bulb.label = bulb
+                    .name
+                    .data
+                    .as_ref()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
             }
 
             Message::StateLocation {
@@ -732,40 +738,99 @@ impl Manager {
 }
 
 /// Helper function to set bulb color based on color string command
-/// 
+///
 /// Supports multiple color formats:
 /// - Named colors: "white", "red", "blue", etc.
 /// - HSBK components: "hue:12345", "saturation:0.5", "brightness:0.8", "kelvin:3000"
 /// - RGB: "rgb:255,128,64" (values 0-255 or 0.0-1.0)
 /// - Hex: "#FF8040" or "#F84"
-fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: u32) -> Result<(), String> {
+fn set_bulb_color(
+    bulb: &BulbInfo,
+    sock: &UdpSocket,
+    color_str: &str,
+    duration: u32,
+) -> Result<(), String> {
     let kelvin = bulb.lifx_color.as_ref().map(|c| c.kelvin).unwrap_or(6500);
-    let brightness = bulb.lifx_color.as_ref().map(|c| c.brightness).unwrap_or(65535);
+    let brightness = bulb
+        .lifx_color
+        .as_ref()
+        .map(|c| c.brightness)
+        .unwrap_or(65535);
     let saturation = bulb.lifx_color.as_ref().map(|c| c.saturation).unwrap_or(0);
     let hue = bulb.lifx_color.as_ref().map(|c| c.hue).unwrap_or(0);
 
     let hsbk = if color_str.contains("white") {
-        HSBK { hue: 0, saturation: 0, brightness, kelvin }
+        HSBK {
+            hue: 0,
+            saturation: 0,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("red") {
-        HSBK { hue: 0, saturation: 65535, brightness, kelvin }
+        HSBK {
+            hue: 0,
+            saturation: 65535,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("orange") {
-        HSBK { hue: 7098, saturation: 65535, brightness, kelvin }
+        HSBK {
+            hue: 7098,
+            saturation: 65535,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("yellow") {
-        HSBK { hue: 10920, saturation: 65535, brightness, kelvin }
+        HSBK {
+            hue: 10920,
+            saturation: 65535,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("cyan") {
-        HSBK { hue: 32760, saturation: 65535, brightness, kelvin }
+        HSBK {
+            hue: 32760,
+            saturation: 65535,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("green") {
-        HSBK { hue: 21840, saturation: 65535, brightness, kelvin }
+        HSBK {
+            hue: 21840,
+            saturation: 65535,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("blue") {
-        HSBK { hue: 43680, saturation: 65535, brightness, kelvin }
+        HSBK {
+            hue: 43680,
+            saturation: 65535,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("purple") {
-        HSBK { hue: 50050, saturation: 65535, brightness, kelvin }
+        HSBK {
+            hue: 50050,
+            saturation: 65535,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("pink") {
-        HSBK { hue: 63700, saturation: 25000, brightness, kelvin }
+        HSBK {
+            hue: 63700,
+            saturation: 25000,
+            brightness,
+            kelvin,
+        }
     } else if color_str.contains("hue:") {
         if let Some(hue_val) = extract_color_value(color_str, "hue:") {
             if let Ok(h) = hue_val.parse::<u16>() {
-                HSBK { hue: h, saturation, brightness, kelvin }
+                HSBK {
+                    hue: h,
+                    saturation,
+                    brightness,
+                    kelvin,
+                }
             } else {
                 return Err("Invalid hue value".to_string());
             }
@@ -775,7 +840,12 @@ fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: 
     } else if color_str.contains("saturation:") {
         if let Some(sat_val) = extract_color_value(color_str, "saturation:") {
             if let Ok(s) = sat_val.parse::<f64>() {
-                HSBK { hue, saturation: (s * 655.35) as u16, brightness, kelvin }
+                HSBK {
+                    hue,
+                    saturation: (s * 655.35) as u16,
+                    brightness,
+                    kelvin,
+                }
             } else {
                 return Err("Invalid saturation value".to_string());
             }
@@ -785,7 +855,12 @@ fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: 
     } else if color_str.contains("brightness:") {
         if let Some(bright_val) = extract_color_value(color_str, "brightness:") {
             if let Ok(b) = bright_val.parse::<f64>() {
-                HSBK { hue, saturation, brightness: (b * 65535.0) as u16, kelvin }
+                HSBK {
+                    hue,
+                    saturation,
+                    brightness: (b * 65535.0) as u16,
+                    kelvin,
+                }
             } else {
                 return Err("Invalid brightness value".to_string());
             }
@@ -795,7 +870,12 @@ fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: 
     } else if color_str.contains("kelvin:") {
         if let Some(kelvin_val) = extract_color_value(color_str, "kelvin:") {
             if let Ok(k) = kelvin_val.parse::<u16>() {
-                HSBK { hue, saturation: 0, brightness, kelvin: k }
+                HSBK {
+                    hue,
+                    saturation: 0,
+                    brightness,
+                    kelvin: k,
+                }
             } else {
                 return Err("Invalid kelvin value".to_string());
             }
@@ -813,8 +893,10 @@ fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: 
                             let r_norm = if r > 1.0 { r / 255.0 } else { r };
                             let g_norm = if g > 1.0 { g / 255.0 } else { g };
                             let b_norm = if b > 1.0 { b / 255.0 } else { b };
-                            
-                            let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(r_norm, g_norm, b_norm);
+
+                            let rgb = palette::rgb::Rgb::<palette::encoding::Srgb, f32>::new(
+                                r_norm, g_norm, b_norm,
+                            );
                             let hsv = Hsv::from_color(rgb);
                             HSBK {
                                 hue: (hsv.hue.into_positive_degrees() * 182.0) as u16,
@@ -842,11 +924,14 @@ fn set_bulb_color(bulb: &BulbInfo, sock: &UdpSocket, color_str: &str, duration: 
         // Support both 3-digit and 6-digit hex colors
         let hex_expanded = if hex.len() == 3 {
             let chars: Vec<char> = hex.chars().collect();
-            format!("{}{}{}{}{}{}", chars[0], chars[0], chars[1], chars[1], chars[2], chars[2])
+            format!(
+                "{}{}{}{}{}{}",
+                chars[0], chars[0], chars[1], chars[1], chars[2], chars[2]
+            )
         } else {
             hex.to_string()
         };
-        
+
         if let Ok(rgb) = TransformRgb::from_hex_str(&format!("#{}", hex_expanded)) {
             let r = rgb.get_red();
             let g = rgb.get_green();
@@ -874,7 +959,10 @@ fn extract_color_value<'a>(input: &'a str, prefix: &str) -> Option<&'a str> {
     input.find(prefix).map(|pos| {
         let start = pos + prefix.len();
         let rest = &input[start..];
-        rest.split_whitespace().next().unwrap_or(rest).trim_end_matches(|c: char| !c.is_alphanumeric() && c != ':' && c != ',' && c != '#')
+        rest.split_whitespace()
+            .next()
+            .unwrap_or(rest)
+            .trim_end_matches(|c: char| !c.is_alphanumeric() && c != ':' && c != ',' && c != '#')
     })
 }
 
@@ -904,15 +992,15 @@ impl StopHandle {
 /// Returns the port that was successfully bound, or an error if all attempts failed
 fn try_bind_with_retry(
     address: &str,
-    primary_port: u16, 
-    fallback_ports: &[u16]
+    primary_port: u16,
+    fallback_ports: &[u16],
 ) -> Result<u16, String> {
     let mut delay_ms = INITIAL_RETRY_DELAY_MS;
-    
+
     // Try primary port first with retries
     for retry in 0..MAX_BIND_RETRIES {
         let bind_addr = format!("{}:{}", address, primary_port);
-        
+
         // Test if we can bind to this address
         match std::net::TcpListener::bind(&bind_addr) {
             Ok(_listener) => {
@@ -921,10 +1009,13 @@ fn try_bind_with_retry(
             }
             Err(e) => {
                 log::warn!(
-                    "Port {} unavailable (attempt {}/{}): {}", 
-                    primary_port, retry + 1, MAX_BIND_RETRIES, e
+                    "Port {} unavailable (attempt {}/{}): {}",
+                    primary_port,
+                    retry + 1,
+                    MAX_BIND_RETRIES,
+                    e
                 );
-                
+
                 if retry < MAX_BIND_RETRIES - 1 {
                     thread::sleep(Duration::from_millis(delay_ms));
                     delay_ms = (delay_ms * 2).min(5000); // Cap at 5 seconds
@@ -932,12 +1023,12 @@ fn try_bind_with_retry(
             }
         }
     }
-    
+
     // Try fallback ports
     for &port in fallback_ports {
         log::info!("Attempting fallback port {}", port);
         let bind_addr = format!("{}:{}", address, port);
-        
+
         match std::net::TcpListener::bind(&bind_addr) {
             Ok(_listener) => {
                 log::info!("Successfully verified fallback port {} is available", port);
@@ -948,14 +1039,17 @@ fn try_bind_with_retry(
             }
         }
     }
-    
+
     Err(format!(
         "Failed to find available port for LIFX API server. Tried primary port {} and fallback ports {:?}",
         primary_port, fallback_ports
     ))
 }
 
-#[deprecated(since = "2.0.0", note = "Use the modular API server in lifx::api_server::start instead")]
+#[deprecated(
+    since = "2.0.0",
+    note = "Use the modular API server in lifx::api_server::start instead"
+)]
 pub fn start(config: Config) -> StopHandle {
     // sudo::with_env(&["SECRET_KEY"]).unwrap();
     // sudo::escalate_if_needed().unwrap();
@@ -982,10 +1076,12 @@ pub fn start(config: Config) -> StopHandle {
                 health_check_interval_ms: Some(30000),
                 enable_monitoring: true,
             };
-            
+
             thread_manager::spawn_with_config(bg_config, move |shutdown_signal, _health_rx| {
                 log::info!("LIFX API background thread started");
-                while !stop_flag_bg2.load(Ordering::SeqCst) && !shutdown_signal.load(Ordering::Relaxed) {
+                while !stop_flag_bg2.load(Ordering::SeqCst)
+                    && !shutdown_signal.load(Ordering::Relaxed)
+                {
                     let mut lock = match th_arc_mgr.lock() {
                         Ok(l) => l,
                         Err(e) => {
@@ -1008,18 +1104,18 @@ pub fn start(config: Config) -> StopHandle {
             // HTTP server thread configuration with restart capabilities
             let http_config = ThreadConfig {
                 name: "lifx_api_http_server".to_string(),
-                restart_on_panic: true,  // Enable auto-restart on panic
-                max_restarts: 3,         // Allow up to 3 restart attempts
-                restart_delay_ms: 2000,  // Wait 2 seconds between restarts
+                restart_on_panic: true, // Enable auto-restart on panic
+                max_restarts: 3,        // Allow up to 3 restart attempts
+                restart_delay_ms: 2000, // Wait 2 seconds between restarts
                 health_check_interval_ms: Some(10000),
                 enable_monitoring: true,
             };
-            
+
             // Check resources before attempting to spawn thread
             if let Err(e) = check_thread_resources() {
                 log::warn!("Resource check warning: {}", e);
             }
-            
+
             // Define fallback ports for the LIFX API server
             let fallback_ports = vec![
                 config.port + 1,
@@ -1029,9 +1125,10 @@ pub fn start(config: Config) -> StopHandle {
                 8081,
                 9090,
             ];
-            
+
             // Try to find an available port before spawning the thread
-            let available_port = match try_bind_with_retry("0.0.0.0", config.port, &fallback_ports) {
+            let available_port = match try_bind_with_retry("0.0.0.0", config.port, &fallback_ports)
+            {
                 Ok(port) => port,
                 Err(e) => {
                     log::error!("Failed to find available port for LIFX API server: {}", e);
@@ -1042,17 +1139,17 @@ pub fn start(config: Config) -> StopHandle {
                     };
                 }
             };
-            
+
             // Increment spawn attempt counter
             THREAD_SPAWN_ATTEMPTS.inc();
-            
+
             // Try to spawn thread with proper error handling
             let http_thread_result = thread::Builder::new()
                 .name("lifx_api_http_server".to_string())
                 .stack_size(2 * 1024 * 1024)  // Set explicit stack size to reduce memory usage
                 .spawn(move || {
                 let stop_flag_http2_clone = stop_flag_http2.clone();
-                
+
                 // Create the server with the available port
                 let server_result = rouille::Server::new(
                     format!("0.0.0.0:{}", available_port).as_str(),
@@ -1061,7 +1158,7 @@ pub fn start(config: Config) -> StopHandle {
                             return Response::empty_404();
                         }
                         let auth_header = request.header("Authorization");
-                        if auth_header.is_none() || auth_header.unwrap() != format!("Bearer {}", config.secret_key) {
+                        if !matches!(auth_header, Some(header) if header == format!("Bearer {}", config.secret_key)) {
                             return Response::empty_404();
                         }
                         let mut response = Response::text("hello world");
@@ -1080,7 +1177,7 @@ pub fn start(config: Config) -> StopHandle {
 
                         let mut selector = "";
 
-                        if vec.len() >= 3 {
+                        if vec.len() > 3 {
                             selector = vec[3];
                         }
 
@@ -1834,17 +1931,17 @@ pub fn start(config: Config) -> StopHandle {
                         response
                     },
                 );
-                
+
                 match server_result {
                     Ok(server) => {
                         log::info!("LIFX API server successfully started on port {}", available_port);
-                        
+
                         // Main server loop
                         while !stop_flag_http2_clone.load(Ordering::SeqCst) {
                             server.poll();
                             thread::sleep(Duration::from_millis(10));
                         }
-                        
+
                         log::info!("LIFX API server stopped");
                     }
                     Err(e) => {
@@ -1853,11 +1950,14 @@ pub fn start(config: Config) -> StopHandle {
                     }
                 }
             });
-            
+
             // Handle thread spawn result
             match http_thread_result {
                 Ok(handle) => {
-                    log::info!("LIFX HTTP server thread spawned successfully on port {}", available_port);
+                    log::info!(
+                        "LIFX HTTP server thread spawned successfully on port {}",
+                        available_port
+                    );
                     return StopHandle {
                         stop_flag,
                         http_thread: Some(handle),
@@ -1866,17 +1966,20 @@ pub fn start(config: Config) -> StopHandle {
                 Err(e) => {
                     log::error!("Failed to spawn LIFX HTTP server thread: {}", e);
                     THREAD_SPAWN_FAILURES.inc();
-                    
+
                     // Fallback: Try to use thread pool
                     log::info!("Attempting fallback to thread pool execution");
-                    
+
                     let stop_flag_pool = stop_flag_http2.clone();
                     let fallback_port = available_port; // Use the port we already verified is available
-                    
+
                     // Execute in thread pool as fallback
                     LIFX_THREAD_POOL.execute(move || {
-                        log::info!("LIFX HTTP server running in thread pool on port {}", fallback_port);
-                        
+                        log::info!(
+                            "LIFX HTTP server running in thread pool on port {}",
+                            fallback_port
+                        );
+
                         let server_result = rouille::Server::new(
                             format!("0.0.0.0:{}", fallback_port).as_str(),
                             move |request| {
@@ -1887,9 +1990,9 @@ pub fn start(config: Config) -> StopHandle {
                                 // For now, return a service unavailable response
                                 Response::text("Service temporarily running in degraded mode")
                                     .with_status_code(503)
-                            }
+                            },
                         );
-                        
+
                         match server_result {
                             Ok(server) => {
                                 while !stop_flag_pool.load(Ordering::SeqCst) {
@@ -1902,7 +2005,7 @@ pub fn start(config: Config) -> StopHandle {
                             }
                         }
                     });
-                    
+
                     // Return without HTTP thread handle (degraded mode)
                     return StopHandle {
                         stop_flag,
@@ -1934,7 +2037,7 @@ mod tests {
         // Test successful binding to primary port
         let primary_port = 49152; // Use a high port number unlikely to be in use
         let fallback_ports = vec![49153, 49154];
-        
+
         let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), primary_port);
@@ -1945,10 +2048,10 @@ mod tests {
         // Test fallback to alternative port when primary is occupied
         let primary_port = 49155;
         let fallback_ports = vec![49156, 49157, 49158];
-        
+
         // Occupy the primary port
         let _listener = TcpListener::bind(format!("127.0.0.1:{}", primary_port)).unwrap();
-        
+
         let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
         assert!(result.is_ok());
         let bound_port = result.unwrap();
@@ -1961,15 +2064,17 @@ mod tests {
         // Test failure when all ports are occupied
         let primary_port = 49160;
         let fallback_ports = vec![49161, 49162];
-        
+
         // Occupy all ports
         let _listener1 = TcpListener::bind(format!("127.0.0.1:{}", primary_port)).unwrap();
         let _listener2 = TcpListener::bind(format!("127.0.0.1:{}", 49161)).unwrap();
         let _listener3 = TcpListener::bind(format!("127.0.0.1:{}", 49162)).unwrap();
-        
+
         let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Failed to find available port"));
+        assert!(result
+            .unwrap_err()
+            .contains("Failed to find available port"));
     }
 
     #[test]
@@ -1977,14 +2082,14 @@ mod tests {
         // Test that exponential backoff is working
         let primary_port = 49165;
         let fallback_ports = vec![];
-        
+
         // Occupy the port
         let _listener = TcpListener::bind(format!("127.0.0.1:{}", primary_port)).unwrap();
-        
+
         let start = std::time::Instant::now();
         let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
         let elapsed = start.elapsed();
-        
+
         // With exponential backoff: 100ms + 200ms + 400ms + 800ms = 1500ms minimum
         // But we cap at 5 retries, so actual time should be at least this
         assert!(result.is_err());
@@ -1998,7 +2103,7 @@ mod tests {
             stop_flag: Arc::new(AtomicBool::new(false)),
             http_thread: None,
         };
-        
+
         // This should not panic even with None thread
         stop_handle.stop();
     }
@@ -2006,30 +2111,32 @@ mod tests {
     #[test]
     fn test_concurrent_port_binding() {
         // Test that concurrent binding attempts don't cause race conditions
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-        
+        use std::sync::Arc;
+
         let port = 49170;
         let success_count = Arc::new(AtomicUsize::new(0));
         let success_count_clone = success_count.clone();
-        
+
         // Spawn multiple threads trying to bind to the same port
-        let handles: Vec<_> = (0..3).map(|i| {
-            let success_count = success_count_clone.clone();
-            thread::spawn(move || {
-                let fallback_ports = vec![49171 + i, 49174 + i];
-                let result = try_bind_with_retry("127.0.0.1", port, &fallback_ports);
-                if result.is_ok() {
-                    success_count.fetch_add(1, Ordering::SeqCst);
-                }
+        let handles: Vec<_> = (0..3)
+            .map(|i| {
+                let success_count = success_count_clone.clone();
+                thread::spawn(move || {
+                    let fallback_ports = vec![49171 + i, 49174 + i];
+                    let result = try_bind_with_retry("127.0.0.1", port, &fallback_ports);
+                    if result.is_ok() {
+                        success_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                })
             })
-        }).collect();
-        
+            .collect();
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().unwrap();
         }
-        
+
         // All threads should succeed (by using different ports)
         assert_eq!(success_count.load(Ordering::SeqCst), 3);
     }
@@ -2039,7 +2146,7 @@ mod tests {
         // Test handling of invalid bind addresses
         let primary_port = 49180;
         let fallback_ports = vec![49181];
-        
+
         // Try to bind to an invalid address (this should fail gracefully)
         let result = try_bind_with_retry("999.999.999.999", primary_port, &fallback_ports);
         assert!(result.is_err());
@@ -2050,10 +2157,10 @@ mod tests {
         // Test behavior when trying to bind to privileged ports (will fail on non-root)
         let primary_port = 80; // Privileged port
         let fallback_ports = vec![49185, 49186]; // Non-privileged fallbacks
-        
+
         // This should fail on primary but succeed on fallback
         let result = try_bind_with_retry("127.0.0.1", primary_port, &fallback_ports);
-        
+
         // If running as non-root, should fallback to high ports
         if !is_root() {
             assert!(result.is_ok());
@@ -2061,7 +2168,7 @@ mod tests {
             assert!(fallback_ports.contains(&bound_port));
         }
     }
-    
+
     fn is_root() -> bool {
         #[cfg(unix)]
         {

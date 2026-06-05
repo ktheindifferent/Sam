@@ -13,12 +13,12 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use std::path::PathBuf;
-use tokio::io::AsyncBufReadExt;
+use std::sync::Arc;
 use tokio::fs as async_fs;
+use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 
 use scraper::{Html, Selector};
 use tokio::fs::metadata;
@@ -29,16 +29,22 @@ use tokio::fs::metadata;
 // {id: "car", probability: 0.615291, left: 465, right: 679, top: 71, bottom: 169}
 // {id: "bicycle", probability: 0.585022, left: 206, right: 575, top: 150, bottom: 450}
 pub fn darknet_image_with_gpu(file_path: String) -> Result<String, String> {
-    let _observation_file = fs::read(file_path.as_str()).unwrap();
+    fs::read(file_path.as_str())
+        .map_err(|e| format!("failed to read observation file '{file_path}': {e}"))?;
 
-    let child = Command::new("sh")
-    .arg("-c")
-    .arg(format!("cd /opt/sam/bin/darknet/ && ./darknet-gpu detect /opt/sam/bin/darknet/cfg/yolov3-tiny.cfg /opt/sam/bin/darknet/yolov3-tiny.weights {}", file_path.clone()))
-    .stdout(Stdio::piped())
-    .spawn()
-    .expect("failed to execute child");
+    let child = Command::new("./darknet-gpu")
+        .current_dir("/opt/sam/bin/darknet/")
+        .arg("detect")
+        .arg("/opt/sam/bin/darknet/cfg/yolov3-tiny.cfg")
+        .arg("/opt/sam/bin/darknet/yolov3-tiny.weights")
+        .arg(&file_path)
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("failed to execute darknet-gpu: {e}"))?;
 
-    let output = child.wait_with_output().expect("failed to wait on child");
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("failed to wait on darknet-gpu: {e}"))?;
     let darknet = String::from_utf8_lossy(&output.stdout)
         .to_string()
         .replace("\n", "");
@@ -119,10 +125,16 @@ pub async fn darknet_detect(image_path: &str) -> Result<DetectionResult, String>
         .map_err(|e| format!("Failed to parse darknet output: {e}"))
 }
 
-
 // Helper: Run a command and stream output lines
-async fn run_command_stream_lines(cmd: Command, output_lines: Option<&Arc<Mutex<Vec<String>>>>, prefix: &str) -> Result<(), String> {
-    let mut child = tokio::process::Command::from(cmd).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()
+async fn run_command_stream_lines(
+    cmd: Command,
+    output_lines: Option<&Arc<Mutex<Vec<String>>>>,
+    prefix: &str,
+) -> Result<(), String> {
+    let mut child = tokio::process::Command::from(cmd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to spawn {}: {}", prefix, e))?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -130,7 +142,11 @@ async fn run_command_stream_lines(cmd: Command, output_lines: Option<&Arc<Mutex<
     if let Some(stdout) = stdout {
         let reader = tokio::io::BufReader::new(stdout);
         let mut lines_stream = reader.lines();
-        while let Some(line) = lines_stream.next_line().await.map_err(|e| format!("{} stdout error: {}", prefix, e))? {
+        while let Some(line) = lines_stream
+            .next_line()
+            .await
+            .map_err(|e| format!("{} stdout error: {}", prefix, e))?
+        {
             crate::println(output_lines, line.clone()).await;
             if output_lines.is_none() {
                 let msg = format!("{}: {}", prefix, line);
@@ -142,7 +158,11 @@ async fn run_command_stream_lines(cmd: Command, output_lines: Option<&Arc<Mutex<
     if let Some(stderr) = stderr {
         let reader = tokio::io::BufReader::new(stderr);
         let mut lines_stream = reader.lines();
-        while let Some(line) = lines_stream.next_line().await.map_err(|e| format!("{} stderr error: {}", prefix, e))? {
+        while let Some(line) = lines_stream
+            .next_line()
+            .await
+            .map_err(|e| format!("{} stderr error: {}", prefix, e))?
+        {
             crate::println(output_lines, line.clone()).await;
             if output_lines.is_none() {
                 let msg = format!("{}: {}", prefix, line);
@@ -151,7 +171,10 @@ async fn run_command_stream_lines(cmd: Command, output_lines: Option<&Arc<Mutex<
             lines.push(line);
         }
     }
-    let status = child.wait().await.map_err(|e| format!("{} wait error: {}", prefix, e))?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("{} wait error: {}", prefix, e))?;
     if !status.success() {
         return Err(format!("{} failed: {:?}", prefix, lines));
     }
@@ -192,8 +215,7 @@ pub async fn build_darknet(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Re
     async_fs::create_dir_all(output_dir)
         .await
         .map_err(|e| format!("Failed to create output dir: {e}"))?;
-    
-    
+
     let bin_bytes = async_fs::read(&src_bin)
         .await
         .map_err(|e| format!("Failed to read binary: {e}"))?;
@@ -214,7 +236,9 @@ pub async fn build_darknet(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Re
     Ok(())
 }
 
-pub async fn download_cfg_index(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(), String> {
+pub async fn download_cfg_index(
+    output_lines: Option<&Arc<Mutex<Vec<String>>>>,
+) -> Result<(), String> {
     let url = "https://github.com/ktheindifferent/Darknet/tree/master/cfg";
     let output_dir = "./cfg";
     async_fs::create_dir_all(output_dir)
@@ -235,7 +259,8 @@ pub async fn download_cfg_index(output_lines: Option<&Arc<Mutex<Vec<String>>>>) 
         .await
         .map_err(|e| format!("Failed to read body: {e}"))?;
     let document = Html::parse_document(&body);
-    let selector = Selector::parse("a.Link--primary").unwrap();
+    let selector = Selector::parse("a.Link--primary")
+        .map_err(|e| format!("Failed to parse GitHub link selector: {}", e))?;
     let mut file_list = Vec::new();
     for element in document.select(&selector) {
         if let Some(file_name) = element.value().attr("title") {
@@ -286,7 +311,9 @@ pub async fn download_cfg_index(output_lines: Option<&Arc<Mutex<Vec<String>>>>) 
     Ok(())
 }
 
-pub async fn download_yolov3_cfg(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(), String> {
+pub async fn download_yolov3_cfg(
+    output_lines: Option<&Arc<Mutex<Vec<String>>>>,
+) -> Result<(), String> {
     let url = "https://raw.githubusercontent.com/ktheindifferent/Darknet/refs/heads/master/cfg/yolov3.cfg";
     let output_dir = "/opt/sam/models";
     let output_path = format!("{output_dir}/yolov3.cfg");
@@ -315,7 +342,9 @@ pub async fn download_yolov3_cfg(output_lines: Option<&Arc<Mutex<Vec<String>>>>)
     Ok(())
 }
 
-pub async fn download_yolov3_model(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> Result<(), String> {
+pub async fn download_yolov3_model(
+    output_lines: Option<&Arc<Mutex<Vec<String>>>>,
+) -> Result<(), String> {
     let url = "https://github.com/patrick013/Object-Detection---Yolov3/raw/refs/heads/master/model/yolov3.weights";
     let output_dir = "/opt/sam/models";
     let output_path = format!("{output_dir}/yolov3.weights");
@@ -348,11 +377,19 @@ pub async fn download_yolov3_model(output_lines: Option<&Arc<Mutex<Vec<String>>>
 }
 
 pub async fn install(output_lines: Option<&Arc<Mutex<Vec<String>>>>) -> std::io::Result<()> {
-    build_darknet(output_lines).await.map_err(std::io::Error::other)?;
-    download_yolov3_model(output_lines).await.map_err(std::io::Error::other)?;
-    download_yolov3_cfg(output_lines).await.map_err(std::io::Error::other)?;
-    download_cfg_index(output_lines).await.map_err(std::io::Error::other)?;
-    #[cfg(any(target_os="linux", target_os="macos"))]
+    build_darknet(output_lines)
+        .await
+        .map_err(std::io::Error::other)?;
+    download_yolov3_model(output_lines)
+        .await
+        .map_err(std::io::Error::other)?;
+    download_yolov3_cfg(output_lines)
+        .await
+        .map_err(std::io::Error::other)?;
+    download_cfg_index(output_lines)
+        .await
+        .map_err(std::io::Error::other)?;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         let mut chmod_cmd = Command::new("chmod");
         chmod_cmd.arg("+x").arg("/opt/sam/bin/darknet");

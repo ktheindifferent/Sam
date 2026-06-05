@@ -1,17 +1,13 @@
+use super::super::state::{Notification, NotificationLevel};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Span,
     widgets::{Block, Borders, Paragraph},
 };
-use super::super::state::{Notification, NotificationLevel};
 
 /// Render notification toasts at top-right
-pub fn render_toasts(
-    f: &mut ratatui::Frame,
-    area: Rect,
-    notifications: &[Notification],
-) {
+pub fn render_toasts(f: &mut ratatui::Frame, area: Rect, notifications: &[Notification]) {
     // Only show non-expired notifications, max 3
     let active: Vec<&Notification> = notifications
         .iter()
@@ -43,18 +39,21 @@ pub fn render_toasts(
             NotificationLevel::Error => Color::Red,
         };
 
-        let toast = Paragraph::new(Span::styled(&notification.message, Style::default().fg(Color::White)))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(color))
-                    .title(match notification.level {
-                        NotificationLevel::Info => "Info",
-                        NotificationLevel::Success => "Success",
-                        NotificationLevel::Warning => "Warning",
-                        NotificationLevel::Error => "Error",
-                    }),
-            );
+        let toast = Paragraph::new(Span::styled(
+            &notification.message,
+            Style::default().fg(Color::White),
+        ))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(color))
+                .title(match notification.level {
+                    NotificationLevel::Info => "Info",
+                    NotificationLevel::Success => "Success",
+                    NotificationLevel::Warning => "Warning",
+                    NotificationLevel::Error => "Error",
+                }),
+        );
 
         f.render_widget(ratatui::widgets::Clear, toast_area);
         f.render_widget(toast, toast_area);

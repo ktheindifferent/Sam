@@ -27,7 +27,7 @@ pub fn games() -> Result<Vec<Game>, crate::services::Error> {
     let mut games: Vec<Game> = Vec::new();
     let paths = fs::read_dir("/opt/sam/games/")?;
     for path in paths {
-        let pth = path.unwrap().path().display().to_string();
+        let pth = path?.path().display().to_string();
 
         if !pth.contains(".zip") {
             let game = Game {

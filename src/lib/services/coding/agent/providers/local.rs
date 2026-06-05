@@ -1,14 +1,13 @@
 //! Local LLM provider implementation
 
+use super::UnifiedProvider;
+use crate::services::coding::agent::traits::provider::{
+    FinishReason, GenerateRequest, GenerateResponse, Model, ModelCapability, ProviderInfo,
+    ProviderMetrics, ProviderType, TokenUsage,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::any::Any;
-use super::UnifiedProvider;
-use crate::services::coding::agent::traits::provider::{
-    GenerateRequest, GenerateResponse, Model, ProviderInfo,
-    ProviderMetrics, ProviderType, TokenUsage, FinishReason,
-    ModelCapability,
-};
 
 /// Local provider for running models locally
 pub struct LocalProvider {
@@ -57,15 +56,13 @@ impl UnifiedProvider for LocalProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<Model>> {
-        Ok(vec![
-            Model {
-                id: self.model_name.clone(),
-                name: "Local LLM".to_string(),
-                description: Some("Local language model".to_string()),
-                context_length: 2048,
-                capabilities: vec![ModelCapability::Chat, ModelCapability::Completion],
-            },
-        ])
+        Ok(vec![Model {
+            id: self.model_name.clone(),
+            name: "Local LLM".to_string(),
+            description: Some("Local language model".to_string()),
+            context_length: 2048,
+            capabilities: vec![ModelCapability::Chat, ModelCapability::Completion],
+        }])
     }
 
     async fn get_metrics(&self) -> Result<ProviderMetrics> {

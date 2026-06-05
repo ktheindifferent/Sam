@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 const HOUR: Duration = Duration::from_secs(60 * 60);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RefreshableData<T> {
     pub data: Option<T>,
     pub max_age: Duration,
@@ -36,14 +36,14 @@ impl<T> RefreshableData<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LiColor {
     Unknown,
     Single(RefreshableData<HSBK>),
     Multi(RefreshableData<Vec<Option<HSBK>>>),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LifxColor {
     pub hue: u16,
     pub saturation: u16,
@@ -57,13 +57,13 @@ pub struct LifxGroup {
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LifxLocation {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct BulbInfo {
     pub id: String,
     pub uuid: String,
@@ -155,7 +155,12 @@ impl BulbInfo {
         match message {
             Message::StateLabel { label } => {
                 self.name.update(label.0);
-                self.label = self.name.data.as_ref().map(|s| s.to_string()).unwrap_or_default();
+                self.label = self
+                    .name
+                    .data
+                    .as_ref()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
             }
             Message::StateLocation {
                 location,

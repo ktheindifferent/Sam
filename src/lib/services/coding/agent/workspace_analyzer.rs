@@ -1,11 +1,11 @@
+use anyhow::Result;
+use log::info;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
 use tokio::fs;
-use log::info;
 
-use super::types::{ProjectType, BuildSystem, ProjectStructure};
+use super::types::{BuildSystem, ProjectStructure, ProjectType};
 
 /// Workspace analyzer for comprehensive project understanding
 pub struct WorkspaceAnalyzer {
@@ -291,7 +291,8 @@ impl WorkspaceAnalyzer {
 
                 // Extract dependencies from config file
                 if let Ok(content) = fs::read_to_string(&path).await {
-                    dependencies.extend(self.extract_dependencies_from_content(&content, &project_type));
+                    dependencies
+                        .extend(self.extract_dependencies_from_content(&content, &project_type));
                 }
                 break;
             }
@@ -334,14 +335,17 @@ impl WorkspaceAnalyzer {
             if path.is_file() {
                 if let Some(ext) = path.extension() {
                     if extensions.contains(&ext.to_str().unwrap_or("")) {
-                        files.push(path.strip_prefix(&self.root_path)
-                            .unwrap_or(path)
-                            .to_string_lossy()
-                            .to_string());
+                        files.push(
+                            path.strip_prefix(&self.root_path)
+                                .unwrap_or(path)
+                                .to_string_lossy()
+                                .to_string(),
+                        );
                     }
                 }
             }
-        }).await?;
+        })
+        .await?;
 
         Ok(files)
     }
@@ -384,20 +388,30 @@ impl WorkspaceAnalyzer {
         self.walk_directory(&self.root_path, &mut |path| {
             if path.is_file() {
                 let path_str = path.to_string_lossy();
-                if test_patterns.iter().any(|pattern| path_str.contains(pattern)) {
-                    test_files.push(path.strip_prefix(&self.root_path)
-                        .unwrap_or(path)
-                        .to_string_lossy()
-                        .to_string());
+                if test_patterns
+                    .iter()
+                    .any(|pattern| path_str.contains(pattern))
+                {
+                    test_files.push(
+                        path.strip_prefix(&self.root_path)
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .to_string(),
+                    );
                 }
             }
-        }).await?;
+        })
+        .await?;
 
         Ok(test_files)
     }
 
     /// Extract dependencies from config file content
-    fn extract_dependencies_from_content(&self, content: &str, project_type: &ProjectType) -> Vec<String> {
+    fn extract_dependencies_from_content(
+        &self,
+        content: &str,
+        project_type: &ProjectType,
+    ) -> Vec<String> {
         let mut deps = Vec::new();
 
         match project_type {
@@ -451,7 +465,8 @@ impl WorkspaceAnalyzer {
             if path.is_file() {
                 files_to_analyze.push(path.to_path_buf());
             }
-        }).await?;
+        })
+        .await?;
 
         for path in files_to_analyze {
             if path.is_file() {
@@ -474,8 +489,13 @@ impl WorkspaceAnalyzer {
                                 total_lines += lines;
 
                                 let lang = self.detect_language_from_extension(ext_str);
-                                let entry = language_distribution.entry(lang.clone())
-                                    .or_insert(LanguageStats { files: 0, lines: 0, percentage: 0.0 });
+                                let entry = language_distribution.entry(lang.clone()).or_insert(
+                                    LanguageStats {
+                                        files: 0,
+                                        lines: 0,
+                                        percentage: 0.0,
+                                    },
+                                );
                                 entry.files += 1;
                                 entry.lines += lines;
                             }
@@ -513,7 +533,10 @@ impl WorkspaceAnalyzer {
     }
 
     /// Analyze project dependencies
-    async fn analyze_dependencies(&self, project_structure: &ProjectStructure) -> Result<DependencyAnalysis> {
+    async fn analyze_dependencies(
+        &self,
+        project_structure: &ProjectStructure,
+    ) -> Result<DependencyAnalysis> {
         let mut direct_dependencies = Vec::new();
         let mut dev_dependencies = Vec::new();
         let mut outdated = Vec::new();
@@ -634,7 +657,10 @@ impl WorkspaceAnalyzer {
     }
 
     /// Calculate code health metrics
-    async fn calculate_code_health(&self, statistics: &WorkspaceStatistics) -> Result<CodeHealthMetrics> {
+    async fn calculate_code_health(
+        &self,
+        statistics: &WorkspaceStatistics,
+    ) -> Result<CodeHealthMetrics> {
         let total_lines = statistics.total_lines as f32;
 
         // Simple heuristic calculations (would need proper analysis tools in production)
@@ -644,7 +670,12 @@ impl WorkspaceAnalyzer {
             None
         };
 
-        let documentation_coverage = if statistics.file_types.get(&FileType::Documentation).unwrap_or(&0) > &0 {
+        let documentation_coverage = if statistics
+            .file_types
+            .get(&FileType::Documentation)
+            .unwrap_or(&0)
+            > &0
+        {
             25.0 // Placeholder
         } else {
             0.0
@@ -665,15 +696,24 @@ impl WorkspaceAnalyzer {
     }
 
     /// Analyze project architecture
-    async fn analyze_architecture(&self, project_structure: &ProjectStructure) -> Result<ArchitectureInfo> {
+    async fn analyze_architecture(
+        &self,
+        project_structure: &ProjectStructure,
+    ) -> Result<ArchitectureInfo> {
         let mut layers = Vec::new();
         let mut modules = Vec::new();
 
         // Detect common architectural patterns
         let common_layers = vec![
-            ("presentation", vec!["ui", "views", "controllers", "handlers"]),
+            (
+                "presentation",
+                vec!["ui", "views", "controllers", "handlers"],
+            ),
             ("business", vec!["services", "domain", "core", "lib"]),
-            ("data", vec!["models", "repositories", "database", "persistence"]),
+            (
+                "data",
+                vec!["models", "repositories", "database", "persistence"],
+            ),
         ];
 
         for (layer_name, patterns) in common_layers {
@@ -719,20 +759,25 @@ impl WorkspaceAnalyzer {
                     }
                 }
             }
-        }).await?;
+        })
+        .await?;
 
         for path in files_to_scan {
             if let Ok(content) = fs::read_to_string(&path).await {
                 // Check for hardcoded secrets
-                if content.contains("password =") || content.contains("api_key =") ||
-                   content.contains("secret =") || content.contains("token =") {
+                if content.contains("password =")
+                    || content.contains("api_key =")
+                    || content.contains("secret =")
+                    || content.contains("token =")
+                {
                     issues.push(SecurityIssue {
                         severity: VulnerabilitySeverity::High,
                         category: SecurityCategory::HardcodedSecret,
                         file: path.clone(),
                         line: None,
                         description: "Potential hardcoded secret detected".to_string(),
-                        recommendation: "Use environment variables or secure key management".to_string(),
+                        recommendation: "Use environment variables or secure key management"
+                            .to_string(),
                     });
                 }
 
@@ -744,7 +789,8 @@ impl WorkspaceAnalyzer {
                         file: path.clone(),
                         line: None,
                         description: "Potential SQL injection vulnerability".to_string(),
-                        recommendation: "Use parameterized queries instead of string formatting".to_string(),
+                        recommendation: "Use parameterized queries instead of string formatting"
+                            .to_string(),
                     });
                 }
             }
@@ -770,7 +816,10 @@ impl WorkspaceAnalyzer {
                 priority: SuggestionPriority::Critical,
                 category: SuggestionCategory::Security,
                 title: "Address security vulnerabilities".to_string(),
-                description: format!("Found {} security issues that need immediate attention", security_issues.len()),
+                description: format!(
+                    "Found {} security issues that need immediate attention",
+                    security_issues.len()
+                ),
                 action_items: vec![
                     "Review and fix all hardcoded secrets".to_string(),
                     "Implement secure coding practices".to_string(),
@@ -818,7 +867,10 @@ impl WorkspaceAnalyzer {
                 priority: SuggestionPriority::Medium,
                 category: SuggestionCategory::Dependencies,
                 title: "Update outdated dependencies".to_string(),
-                description: format!("{} dependencies have newer versions available", dependencies.outdated.len()),
+                description: format!(
+                    "{} dependencies have newer versions available",
+                    dependencies.outdated.len()
+                ),
                 action_items: vec![
                     "Review changelog for breaking changes".to_string(),
                     "Update dependencies incrementally".to_string(),
@@ -843,11 +895,44 @@ impl WorkspaceAnalyzer {
 
     /// Check if file is a text file
     fn is_text_file(&self, extension: &str) -> bool {
-        matches!(extension,
-            "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "go" | "java" | "cpp" | "c" | "h" |
-            "hpp" | "cs" | "rb" | "php" | "swift" | "kt" | "scala" | "sh" | "bash" | "yml" |
-            "yaml" | "json" | "xml" | "toml" | "ini" | "cfg" | "conf" | "txt" | "md" |
-            "markdown" | "rst" | "html" | "css" | "scss" | "sass" | "sql"
+        matches!(
+            extension,
+            "rs" | "py"
+                | "js"
+                | "ts"
+                | "jsx"
+                | "tsx"
+                | "go"
+                | "java"
+                | "cpp"
+                | "c"
+                | "h"
+                | "hpp"
+                | "cs"
+                | "rb"
+                | "php"
+                | "swift"
+                | "kt"
+                | "scala"
+                | "sh"
+                | "bash"
+                | "yml"
+                | "yaml"
+                | "json"
+                | "xml"
+                | "toml"
+                | "ini"
+                | "cfg"
+                | "conf"
+                | "txt"
+                | "md"
+                | "markdown"
+                | "rst"
+                | "html"
+                | "css"
+                | "scss"
+                | "sass"
+                | "sql"
         )
     }
 
@@ -871,7 +956,8 @@ impl WorkspaceAnalyzer {
             "sh" | "bash" => "Shell",
             "sql" => "SQL",
             _ => "Other",
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// Categorize file type
@@ -880,11 +966,17 @@ impl WorkspaceAnalyzer {
 
         if path_str.contains("test") || path_str.contains("spec") {
             FileType::Test
-        } else if path_str.contains("config") || path_str.ends_with(".toml") ||
-                  path_str.ends_with(".json") || path_str.ends_with(".yml") {
+        } else if path_str.contains("config")
+            || path_str.ends_with(".toml")
+            || path_str.ends_with(".json")
+            || path_str.ends_with(".yml")
+        {
             FileType::Config
-        } else if path_str.ends_with(".md") || path_str.ends_with(".rst") ||
-                  path_str.contains("readme") || path_str.contains("license") {
+        } else if path_str.ends_with(".md")
+            || path_str.ends_with(".rst")
+            || path_str.contains("readme")
+            || path_str.contains("license")
+        {
             FileType::Documentation
         } else if path_str.contains("build") || path_str.contains("dist") {
             FileType::Build

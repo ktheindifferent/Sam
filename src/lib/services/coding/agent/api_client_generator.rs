@@ -1,14 +1,14 @@
 use super::{
-    types::*,
     errors::{CodingAgentError, CodingAgentResult},
     providers::LLMProvider,
     templates::TemplateManager,
+    types::*,
 };
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use serde::{Serialize, Deserialize};
-use serde_json::Value;
-use async_trait::async_trait;
 
 /// Intelligent API client generator
 pub struct ApiClientGenerator {
@@ -61,7 +61,11 @@ pub trait SpecParser: Send + Sync {
 /// Code generator trait
 #[async_trait]
 pub trait CodeGenerator: Send + Sync {
-    async fn generate(&self, spec: &ParsedApiSpec, config: &GenerationConfig) -> CodingAgentResult<GeneratedCode>;
+    async fn generate(
+        &self,
+        spec: &ParsedApiSpec,
+        config: &GenerationConfig,
+    ) -> CodingAgentResult<GeneratedCode>;
     fn get_dependencies(&self, spec: &ParsedApiSpec) -> Vec<Dependency>;
 }
 
@@ -516,7 +520,7 @@ impl ApiClientGenerator {
             validation_engine: ApiValidationEngine::new(),
             optimization_engine: OptimizationEngine::new(),
         };
-        
+
         generator.initialize_parsers();
         generator.initialize_generators();
         generator
@@ -524,36 +528,26 @@ impl ApiClientGenerator {
 
     fn initialize_parsers(&mut self) {
         // Initialize OpenAPI parser
-        self.spec_parsers.insert(
-            SpecFormat::OpenAPI3,
-            Box::new(OpenApiParser::new()),
-        );
-        
+        self.spec_parsers
+            .insert(SpecFormat::OpenAPI3, Box::new(OpenApiParser::new()));
+
         // Initialize GraphQL parser
-        self.spec_parsers.insert(
-            SpecFormat::GraphQL,
-            Box::new(GraphQLParser::new()),
-        );
+        self.spec_parsers
+            .insert(SpecFormat::GraphQL, Box::new(GraphQLParser::new()));
     }
 
     fn initialize_generators(&mut self) {
         // Initialize Rust generator
-        self.code_generators.insert(
-            Language::Rust,
-            Box::new(RustGenerator::new()),
-        );
-        
+        self.code_generators
+            .insert(Language::Rust, Box::new(RustGenerator::new()));
+
         // Initialize TypeScript generator
-        self.code_generators.insert(
-            Language::TypeScript,
-            Box::new(TypeScriptGenerator::new()),
-        );
-        
+        self.code_generators
+            .insert(Language::TypeScript, Box::new(TypeScriptGenerator::new()));
+
         // Initialize Python generator
-        self.code_generators.insert(
-            Language::Python,
-            Box::new(PythonGenerator::new()),
-        );
+        self.code_generators
+            .insert(Language::Python, Box::new(PythonGenerator::new()));
     }
 
     /// Generate API client from specification
@@ -564,37 +558,43 @@ impl ApiClientGenerator {
         config: GenerationConfig,
     ) -> CodingAgentResult<GeneratedCode> {
         // Parse specification
-        let parser = self.spec_parsers.get(&spec_format)
-            .ok_or_else(|| CodingAgentError::ConfigError {
-                message: format!("Spec format {:?} not supported", spec_format)
-            })?;
-        
+        let parser =
+            self.spec_parsers
+                .get(&spec_format)
+                .ok_or_else(|| CodingAgentError::ConfigError {
+                    message: format!("Spec format {:?} not supported", spec_format),
+                })?;
+
         let parsed_spec = parser.parse(spec_content).await?;
-        
+
         // Validate specification
         let validation = parser.validate(&parsed_spec)?;
         if !validation.is_valid {
             return Err(CodingAgentError::ValidationError {
                 field: "api_spec".to_string(),
-                message: format!("Invalid API spec: {:?}", validation.errors)
+                message: format!("Invalid API spec: {:?}", validation.errors),
             });
         }
-        
+
         // Generate code
-        let generator = self.code_generators.get(&config.language)
-            .ok_or_else(|| CodingAgentError::ConfigError {
-                message: format!("Language {:?} not supported", config.language)
-            })?;
-        
+        let generator = self.code_generators.get(&config.language).ok_or_else(|| {
+            CodingAgentError::ConfigError {
+                message: format!("Language {:?} not supported", config.language),
+            }
+        })?;
+
         let mut generated = generator.generate(&parsed_spec, &config).await?;
 
         // Optimize code
         let optimization_level = config.optimization_level;
-        self.optimization_engine.optimize(&mut generated, optimization_level).await?;
+        self.optimization_engine
+            .optimize(&mut generated, optimization_level)
+            .await?;
 
         // Add documentation
-        self.add_documentation(&mut generated, &parsed_spec, &config).await?;
-        
+        self.add_documentation(&mut generated, &parsed_spec, &config)
+            .await?;
+
         Ok(generated)
     }
 
@@ -607,15 +607,15 @@ impl ApiClientGenerator {
         // Generate README
         let readme = self.generate_readme(spec, config).await?;
         generated.documentation.readme = readme;
-        
+
         // Generate API docs
         let api_docs = self.generate_api_docs(spec, config).await?;
         generated.documentation.api_docs = api_docs;
-        
+
         // Generate examples
         let examples = self.generate_examples(spec, config).await?;
         generated.documentation.examples = examples;
-        
+
         Ok(())
     }
 
@@ -634,7 +634,9 @@ impl ApiClientGenerator {
             See examples directory for usage examples.\n",
             spec.title,
             spec.version,
-            spec.description.as_ref().unwrap_or(&"API client library".to_string()),
+            spec.description
+                .as_ref()
+                .unwrap_or(&"API client library".to_string()),
             match config.language {
                 Language::Rust => "cargo add api-client",
                 Language::TypeScript => "npm install api-client",
@@ -642,7 +644,7 @@ impl ApiClientGenerator {
                 _ => "See installation instructions",
             }
         );
-        
+
         Ok(readme)
     }
 
@@ -652,9 +654,9 @@ impl ApiClientGenerator {
         config: &GenerationConfig,
     ) -> CodingAgentResult<String> {
         let mut docs = String::new();
-        
+
         docs.push_str("# API Documentation\n\n");
-        
+
         for endpoint in &spec.endpoints {
             docs.push_str(&format!(
                 "## {} {}\n\n{}
@@ -662,10 +664,15 @@ impl ApiClientGenerator {
 ",
                 endpoint.method.to_string(),
                 endpoint.path,
-                endpoint.description.as_ref().unwrap_or(&endpoint.summary.as_ref().unwrap_or(&"No description".to_string()))
+                endpoint.description.as_ref().unwrap_or(
+                    &endpoint
+                        .summary
+                        .as_ref()
+                        .unwrap_or(&"No description".to_string())
+                )
             ));
         }
-        
+
         Ok(docs)
     }
 
@@ -675,7 +682,7 @@ impl ApiClientGenerator {
         config: &GenerationConfig,
     ) -> CodingAgentResult<Vec<CodeExample>> {
         let mut examples = Vec::new();
-        
+
         // Generate basic usage example
         examples.push(CodeExample {
             title: "Basic Usage".to_string(),
@@ -683,7 +690,7 @@ impl ApiClientGenerator {
             code: self.generate_basic_example(spec, config).await?,
             output: None,
         });
-        
+
         // Generate authentication example if needed
         if !spec.authentication.is_empty() {
             examples.push(CodeExample {
@@ -693,7 +700,7 @@ impl ApiClientGenerator {
                 output: None,
             });
         }
-        
+
         Ok(examples)
     }
 
@@ -711,20 +718,20 @@ impl ApiClientGenerator {
                     let client = Client::new();\n\
                     // Make API call\n\
                 }"
-            },
+            }
             Language::TypeScript => {
                 "import { ApiClient } from 'api-client';\n\n\
                 const client = new ApiClient();\n\
                 // Make API call"
-            },
+            }
             Language::Python => {
                 "from api_client import Client\n\n\
                 client = Client()\n\
                 # Make API call"
-            },
+            }
             _ => "// Example code",
         };
-        
+
         Ok(example.to_string())
     }
 
@@ -734,14 +741,21 @@ impl ApiClientGenerator {
         config: &GenerationConfig,
     ) -> CodingAgentResult<String> {
         // Generate authentication example based on auth type
-        let auth = &spec.authentication[0];
+        let auth =
+            spec.authentication
+                .first()
+                .ok_or_else(|| CodingAgentError::ValidationError {
+                    field: "authentication".to_string(),
+                    message: "Cannot generate authentication example without an auth scheme"
+                        .to_string(),
+                })?;
         let example = match auth.auth_type {
             AuthType::ApiKey => "client.set_api_key(\"your-api-key\");",
             AuthType::BearerToken => "client.set_bearer_token(\"your-token\");",
             AuthType::BasicAuth => "client.set_basic_auth(\"username\", \"password\");",
             _ => "// Configure authentication",
         };
-        
+
         Ok(example.to_string())
     }
 
@@ -754,14 +768,16 @@ impl ApiClientGenerator {
     ) -> CodingAgentResult<GeneratedCode> {
         // Parse and enhance spec with AI
         let format_clone = spec_format.clone();
-        let enhanced_spec = self.enhance_spec_with_ai(spec_content, format_clone).await?;
+        let enhanced_spec = self
+            .enhance_spec_with_ai(spec_content, format_clone)
+            .await?;
 
         // Generate optimized code
         let mut generated = self.generate(&enhanced_spec, spec_format, config).await?;
-        
+
         // Add AI-generated improvements
         self.add_ai_improvements(&mut generated).await?;
-        
+
         Ok(generated)
     }
 
@@ -780,16 +796,13 @@ impl ApiClientGenerator {
             },
             spec_content
         );
-        
+
         // For now, return original spec
         // In real implementation, would use LLM
         Ok(spec_content.to_string())
     }
 
-    async fn add_ai_improvements(
-        &self,
-        generated: &mut GeneratedCode,
-    ) -> CodingAgentResult<()> {
+    async fn add_ai_improvements(&self, generated: &mut GeneratedCode) -> CodingAgentResult<()> {
         // Add AI-generated improvements like better error handling, logging, etc.
         Ok(())
     }
@@ -876,9 +889,13 @@ impl RustGenerator {
 
 #[async_trait]
 impl CodeGenerator for RustGenerator {
-    async fn generate(&self, spec: &ParsedApiSpec, config: &GenerationConfig) -> CodingAgentResult<GeneratedCode> {
+    async fn generate(
+        &self,
+        spec: &ParsedApiSpec,
+        config: &GenerationConfig,
+    ) -> CodingAgentResult<GeneratedCode> {
         let mut files = Vec::new();
-        
+
         // Generate main client file
         files.push(GeneratedFile {
             path: config.output_directory.join("src/lib.rs"),
@@ -886,7 +903,7 @@ impl CodeGenerator for RustGenerator {
             file_type: FileType::SourceCode,
             description: "Main client library".to_string(),
         });
-        
+
         // Generate Cargo.toml
         files.push(GeneratedFile {
             path: config.output_directory.join("Cargo.toml"),
@@ -949,7 +966,11 @@ impl CodeGenerator for RustGenerator {
 }
 
 impl RustGenerator {
-    fn generate_client_code(&self, spec: &ParsedApiSpec, config: &GenerationConfig) -> CodingAgentResult<String> {
+    fn generate_client_code(
+        &self,
+        spec: &ParsedApiSpec,
+        config: &GenerationConfig,
+    ) -> CodingAgentResult<String> {
         Ok(format!(
             "// Auto-generated {} API client\n\n\
             use reqwest::Client;\n\n\
@@ -965,12 +986,15 @@ impl RustGenerator {
                     }}\n\
                 }}\n\
             }}",
-            spec.title,
-            spec.base_url
+            spec.title, spec.base_url
         ))
     }
 
-    fn generate_cargo_toml(&self, spec: &ParsedApiSpec, config: &GenerationConfig) -> CodingAgentResult<String> {
+    fn generate_cargo_toml(
+        &self,
+        spec: &ParsedApiSpec,
+        config: &GenerationConfig,
+    ) -> CodingAgentResult<String> {
         Ok(format!(
             "[package]\n\
             name = \"{}\"\n\
@@ -980,8 +1004,7 @@ impl RustGenerator {
             reqwest = {{ version = \"0.11\", features = [\"json\"] }}\n\
             serde = {{ version = \"1.0\", features = [\"derive\"] }}\n\
             tokio = {{ version = \"1.0\", features = [\"full\"] }}",
-            config.package_name,
-            spec.version
+            config.package_name, spec.version
         ))
     }
 }
@@ -994,7 +1017,11 @@ impl TypeScriptGenerator {
 
 #[async_trait]
 impl CodeGenerator for TypeScriptGenerator {
-    async fn generate(&self, spec: &ParsedApiSpec, config: &GenerationConfig) -> CodingAgentResult<GeneratedCode> {
+    async fn generate(
+        &self,
+        spec: &ParsedApiSpec,
+        config: &GenerationConfig,
+    ) -> CodingAgentResult<GeneratedCode> {
         // Generate TypeScript client
         Ok(GeneratedCode {
             files: vec![],
@@ -1027,13 +1054,11 @@ impl CodeGenerator for TypeScriptGenerator {
     }
 
     fn get_dependencies(&self, spec: &ParsedApiSpec) -> Vec<Dependency> {
-        vec![
-            Dependency {
-                name: "axios".to_string(),
-                version: "^1.0.0".to_string(),
-                dependency_type: DependencyType::Runtime,
-            },
-        ]
+        vec![Dependency {
+            name: "axios".to_string(),
+            version: "^1.0.0".to_string(),
+            dependency_type: DependencyType::Runtime,
+        }]
     }
 }
 
@@ -1045,7 +1070,11 @@ impl PythonGenerator {
 
 #[async_trait]
 impl CodeGenerator for PythonGenerator {
-    async fn generate(&self, spec: &ParsedApiSpec, config: &GenerationConfig) -> CodingAgentResult<GeneratedCode> {
+    async fn generate(
+        &self,
+        spec: &ParsedApiSpec,
+        config: &GenerationConfig,
+    ) -> CodingAgentResult<GeneratedCode> {
         // Generate Python client
         Ok(GeneratedCode {
             files: vec![],
@@ -1078,13 +1107,11 @@ impl CodeGenerator for PythonGenerator {
     }
 
     fn get_dependencies(&self, spec: &ParsedApiSpec) -> Vec<Dependency> {
-        vec![
-            Dependency {
-                name: "requests".to_string(),
-                version: ">=2.28.0".to_string(),
-                dependency_type: DependencyType::Runtime,
-            },
-        ]
+        vec![Dependency {
+            name: "requests".to_string(),
+            version: ">=2.28.0".to_string(),
+            dependency_type: DependencyType::Runtime,
+        }]
     }
 }
 
@@ -1098,12 +1125,14 @@ impl ApiValidationEngine {
 
 impl OptimizationEngine {
     fn new() -> Self {
-        Self {
-            optimizers: vec![],
-        }
+        Self { optimizers: vec![] }
     }
 
-    async fn optimize(&self, code: &mut GeneratedCode, level: OptimizationLevel) -> CodingAgentResult<()> {
+    async fn optimize(
+        &self,
+        code: &mut GeneratedCode,
+        level: OptimizationLevel,
+    ) -> CodingAgentResult<()> {
         for optimizer in &self.optimizers {
             optimizer.optimize(code, level).await;
         }

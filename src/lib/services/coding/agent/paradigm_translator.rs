@@ -1,13 +1,13 @@
 use super::{
-    types::*,
+    code_intelligence::CodeIntelligence,
     errors::{CodingAgentError, CodingAgentResult},
     providers::LLMProvider,
-    code_intelligence::CodeIntelligence,
+    types::*,
 };
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use serde::{Serialize, Deserialize};
-use async_trait::async_trait;
 
 /// Code paradigm translator for converting between programming paradigms
 pub struct ParadigmTranslator {
@@ -364,7 +364,7 @@ impl ParadigmTranslator {
             pattern_library: PatternLibrary::new(),
             validation_engine: ValidationEngine::new(),
         };
-        
+
         translator.initialize_rules();
         translator
     }
@@ -404,14 +404,12 @@ impl ParadigmTranslator {
                 to: Paradigm::ObjectOriented,
             },
             TranslationRules {
-                patterns: vec![
-                    PatternTranslation {
-                        source_pattern: "higher-order functions".to_string(),
-                        target_pattern: "strategy pattern".to_string(),
-                        description: "Convert HOFs to strategy pattern".to_string(),
-                        examples: vec![],
-                    },
-                ],
+                patterns: vec![PatternTranslation {
+                    source_pattern: "higher-order functions".to_string(),
+                    target_pattern: "strategy pattern".to_string(),
+                    description: "Convert HOFs to strategy pattern".to_string(),
+                    examples: vec![],
+                }],
                 idioms: vec![],
                 constraints: vec![],
                 optimizations: vec![],
@@ -424,30 +422,33 @@ impl ParadigmTranslator {
     }
 
     /// Translate code between paradigms
-    pub async fn translate(&self, request: TranslationRequest) -> CodingAgentResult<TranslationResult> {
+    pub async fn translate(
+        &self,
+        request: TranslationRequest,
+    ) -> CodingAgentResult<TranslationResult> {
         // Analyze source code
-        let source_analysis = self.analyze_source(&request.source_code, &request.source_paradigm).await?;
-        
+        let source_analysis = self
+            .analyze_source(&request.source_code, &request.source_paradigm)
+            .await?;
+
         // Get translation rules
-        let rules = self.get_translation_rules(&request.source_paradigm, &request.target_paradigm)?;
-        
+        let rules =
+            self.get_translation_rules(&request.source_paradigm, &request.target_paradigm)?;
+
         // Apply transformations
-        let transformed = self.apply_transformations(
-            &request.source_code,
-            &source_analysis,
-            &rules,
-            &request,
-        ).await?;
-        
+        let transformed = self
+            .apply_transformations(&request.source_code, &source_analysis, &rules, &request)
+            .await?;
+
         // Validate result
-        let validation = self.validation_engine.validate_paradigm(
-            &transformed.translated_code,
-            &request.target_paradigm,
-        ).await?;
-        
+        let validation = self
+            .validation_engine
+            .validate_paradigm(&transformed.translated_code, &request.target_paradigm)
+            .await?;
+
         // Generate suggestions
         let suggestions = self.generate_suggestions(&transformed, &validation).await?;
-        
+
         let metrics = self.calculate_metrics(&request.source_code, &transformed.translated_code)?;
 
         Ok(TranslationResult {
@@ -482,11 +483,11 @@ impl ParadigmTranslator {
             from: from.clone(),
             to: to.clone(),
         };
-        
+
         self.translation_rules
             .get(&pair)
             .ok_or_else(|| CodingAgentError::ConfigError {
-                message: format!("Translation from {:?} to {:?} not supported", from, to)
+                message: format!("Translation from {:?} to {:?} not supported", from, to),
             })
     }
 
@@ -503,21 +504,23 @@ impl ParadigmTranslator {
             transformation_log: Vec::new(),
             warnings: Vec::new(),
         };
-        
+
         // Apply pattern translations
         for (i, pattern) in rules.patterns.iter().enumerate() {
             let step = TransformationStep {
                 step_number: i + 1,
                 description: pattern.description.clone(),
                 before: result.translated_code.clone(),
-                after: self.apply_pattern_translation(&result.translated_code, pattern).await?,
+                after: self
+                    .apply_pattern_translation(&result.translated_code, pattern)
+                    .await?,
                 rule_applied: pattern.source_pattern.clone(),
             };
-            
+
             result.translated_code = step.after.clone();
             result.transformation_log.push(step);
         }
-        
+
         Ok(result)
     }
 
@@ -529,10 +532,9 @@ impl ParadigmTranslator {
         // Use AI to apply pattern translation
         let prompt = format!(
             "Transform this code by applying the pattern: {}\nCode:\n{}",
-            pattern.description,
-            code
+            pattern.description, code
         );
-        
+
         // For now, return the original code
         // In a real implementation, this would use the LLM
         Ok(code.to_string())
@@ -544,7 +546,7 @@ impl ParadigmTranslator {
         validation: &ValidationResult,
     ) -> CodingAgentResult<Vec<ImprovementSuggestion>> {
         let mut suggestions = Vec::new();
-        
+
         // Generate suggestions based on validation
         for violation in &validation.violations {
             suggestions.push(ImprovementSuggestion {
@@ -554,14 +556,18 @@ impl ParadigmTranslator {
                 impact: ImpactLevel::Medium,
             });
         }
-        
+
         Ok(suggestions)
     }
 
-    fn calculate_metrics(&self, source: &str, target: &str) -> CodingAgentResult<TranslationMetrics> {
+    fn calculate_metrics(
+        &self,
+        source: &str,
+        target: &str,
+    ) -> CodingAgentResult<TranslationMetrics> {
         let source_lines = source.lines().count();
         let target_lines = target.lines().count();
-        
+
         Ok(TranslationMetrics {
             source_lines,
             target_lines,
@@ -578,24 +584,30 @@ impl ParadigmTranslator {
     }
 
     /// Analyze paradigm characteristics
-    pub async fn analyze_paradigm(
-        &self,
-        code: &str,
-    ) -> CodingAgentResult<ParadigmAnalysis> {
+    pub async fn analyze_paradigm(&self, code: &str) -> CodingAgentResult<ParadigmAnalysis> {
         let mut scores = HashMap::new();
-        
+
         // Calculate paradigm scores
-        scores.insert(Paradigm::ObjectOriented, self.calculate_oop_score(code).await?);
-        scores.insert(Paradigm::Functional, self.calculate_functional_score(code).await?);
-        scores.insert(Paradigm::Procedural, self.calculate_procedural_score(code).await?);
-        
+        scores.insert(
+            Paradigm::ObjectOriented,
+            self.calculate_oop_score(code).await?,
+        );
+        scores.insert(
+            Paradigm::Functional,
+            self.calculate_functional_score(code).await?,
+        );
+        scores.insert(
+            Paradigm::Procedural,
+            self.calculate_procedural_score(code).await?,
+        );
+
         // Find dominant paradigm
         let dominant = scores
             .iter()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(p, _)| p.clone())
             .unwrap_or(Paradigm::Procedural);
-        
+
         Ok(ParadigmAnalysis {
             dominant_paradigm: dominant,
             paradigm_scores: scores,
@@ -609,8 +621,9 @@ impl ParadigmTranslator {
         let has_classes = code.contains("class ");
         let has_inheritance = code.contains("extends") || code.contains(": public");
         let has_encapsulation = code.contains("private") || code.contains("protected");
-        
-        let score = (has_classes as u8 + has_inheritance as u8 + has_encapsulation as u8) as f32 / 3.0;
+
+        let score =
+            (has_classes as u8 + has_inheritance as u8 + has_encapsulation as u8) as f32 / 3.0;
         Ok(score)
     }
 
@@ -619,7 +632,7 @@ impl ParadigmTranslator {
         let has_lambdas = code.contains("=>") || code.contains("lambda");
         let has_map_filter = code.contains(".map(") || code.contains(".filter(");
         let has_immutable = code.contains("const ") || code.contains("let ");
-        
+
         let score = (has_lambdas as u8 + has_map_filter as u8 + has_immutable as u8) as f32 / 3.0;
         Ok(score)
     }
@@ -629,24 +642,27 @@ impl ParadigmTranslator {
         let has_functions = code.contains("function ") || code.contains("def ");
         let has_loops = code.contains("for ") || code.contains("while ");
         let has_conditionals = code.contains("if ") || code.contains("switch ");
-        
+
         let score = (has_functions as u8 + has_loops as u8 + has_conditionals as u8) as f32 / 3.0;
         Ok(score)
     }
 
-    async fn extract_characteristics(&self, code: &str) -> CodingAgentResult<HashMap<String, String>> {
+    async fn extract_characteristics(
+        &self,
+        code: &str,
+    ) -> CodingAgentResult<HashMap<String, String>> {
         let mut characteristics = HashMap::new();
-        
+
         characteristics.insert(
             "primary_constructs".to_string(),
             "functions, classes, modules".to_string(),
         );
-        
+
         characteristics.insert(
             "state_management".to_string(),
             "mixed mutable and immutable".to_string(),
         );
-        
+
         Ok(characteristics)
     }
 }
@@ -682,7 +698,7 @@ impl PatternLibrary {
             patterns: HashMap::new(),
             cross_references: HashMap::new(),
         };
-        
+
         library.initialize_patterns();
         library
     }
@@ -691,41 +707,37 @@ impl PatternLibrary {
         // Add OOP patterns
         self.patterns.insert(
             Paradigm::ObjectOriented,
-            vec![
-                ParadigmPattern {
-                    name: "Singleton".to_string(),
-                    paradigm: Paradigm::ObjectOriented,
-                    description: "Ensure a class has only one instance".to_string(),
-                    structure: PatternStructure {
-                        components: vec![],
-                        relationships: vec![],
-                        invariants: vec![],
-                    },
-                    use_cases: vec![],
-                    advantages: vec![],
-                    disadvantages: vec![],
+            vec![ParadigmPattern {
+                name: "Singleton".to_string(),
+                paradigm: Paradigm::ObjectOriented,
+                description: "Ensure a class has only one instance".to_string(),
+                structure: PatternStructure {
+                    components: vec![],
+                    relationships: vec![],
+                    invariants: vec![],
                 },
-            ],
+                use_cases: vec![],
+                advantages: vec![],
+                disadvantages: vec![],
+            }],
         );
-        
+
         // Add Functional patterns
         self.patterns.insert(
             Paradigm::Functional,
-            vec![
-                ParadigmPattern {
-                    name: "Monad".to_string(),
-                    paradigm: Paradigm::Functional,
-                    description: "Compose computations with context".to_string(),
-                    structure: PatternStructure {
-                        components: vec![],
-                        relationships: vec![],
-                        invariants: vec![],
-                    },
-                    use_cases: vec![],
-                    advantages: vec![],
-                    disadvantages: vec![],
+            vec![ParadigmPattern {
+                name: "Monad".to_string(),
+                paradigm: Paradigm::Functional,
+                description: "Compose computations with context".to_string(),
+                structure: PatternStructure {
+                    components: vec![],
+                    relationships: vec![],
+                    invariants: vec![],
                 },
-            ],
+                use_cases: vec![],
+                advantages: vec![],
+                disadvantages: vec![],
+            }],
         );
     }
 }
@@ -761,12 +773,12 @@ mod tests {
             from: Paradigm::ObjectOriented,
             to: Paradigm::Functional,
         };
-        
+
         let pair2 = ParadigmPair {
             from: Paradigm::ObjectOriented,
             to: Paradigm::Functional,
         };
-        
+
         assert_eq!(pair1, pair2);
     }
 

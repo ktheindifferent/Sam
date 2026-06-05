@@ -1,11 +1,11 @@
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use tokio::sync::{RwLock, mpsc, broadcast, oneshot};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 use tokio::time::{interval, sleep};
 
 use super::errors::CodingAgentError as ServiceError;
@@ -382,9 +382,19 @@ pub struct FileEdit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EditOperation {
-    Insert { position: usize, text: String },
-    Delete { position: usize, length: usize },
-    Replace { position: usize, length: usize, text: String },
+    Insert {
+        position: usize,
+        text: String,
+    },
+    Delete {
+        position: usize,
+        length: usize,
+    },
+    Replace {
+        position: usize,
+        length: usize,
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -492,7 +502,8 @@ impl DistributedCollaborationEngine {
         participant: Participant,
     ) -> Result<(), ServiceError> {
         let sessions = self.sessions.read().await;
-        let session_arc = sessions.get(session_id)
+        let session_arc = sessions
+            .get(session_id)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "session".to_string(),
                 id: session_id.to_string(),
@@ -511,10 +522,12 @@ impl DistributedCollaborationEngine {
         session.participants.push(participant.clone());
 
         // Broadcast join event
-        self.event_bus.broadcast(
-            session_id,
-            CollaborationEvent::ParticipantJoined(participant),
-        ).await?;
+        self.event_bus
+            .broadcast(
+                session_id,
+                CollaborationEvent::ParticipantJoined(participant),
+            )
+            .await?;
 
         Ok(())
     }
@@ -527,7 +540,8 @@ impl DistributedCollaborationEngine {
         operation: EditOperation,
     ) -> Result<(), ServiceError> {
         let sessions = self.sessions.read().await;
-        let session_arc = sessions.get(session_id)
+        let session_arc = sessions
+            .get(session_id)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "session".to_string(),
                 id: session_id.to_string(),
@@ -536,7 +550,10 @@ impl DistributedCollaborationEngine {
         let mut session = session_arc.write().await;
 
         // Get or create file
-        let file = session.workspace.files.entry(file_path.to_path_buf())
+        let file = session
+            .workspace
+            .files
+            .entry(file_path.to_path_buf())
             .or_insert_with(|| SharedFile {
                 path: file_path.to_path_buf(),
                 content: String::new(),
@@ -565,16 +582,18 @@ impl DistributedCollaborationEngine {
         file.checksum = self.calculate_checksum(&file.content);
 
         // Broadcast edit event
-        self.event_bus.broadcast(
-            session_id,
-            CollaborationEvent::FileEdited(FileEdit {
-                participant_id: participant_id.to_string(),
-                file: file_path.to_path_buf(),
-                operation,
-                version: file.version,
-                timestamp: SystemTime::now(),
-            }),
-        ).await?;
+        self.event_bus
+            .broadcast(
+                session_id,
+                CollaborationEvent::FileEdited(FileEdit {
+                    participant_id: participant_id.to_string(),
+                    file: file_path.to_path_buf(),
+                    operation,
+                    version: file.version,
+                    timestamp: SystemTime::now(),
+                }),
+            )
+            .await?;
 
         // Check for conflicts
         self.detect_conflicts(&mut session.workspace).await?;
@@ -582,7 +601,11 @@ impl DistributedCollaborationEngine {
         Ok(())
     }
 
-    fn apply_edit_operation(&self, content: &mut String, operation: &EditOperation) -> Result<(), ServiceError> {
+    fn apply_edit_operation(
+        &self,
+        content: &mut String,
+        operation: &EditOperation,
+    ) -> Result<(), ServiceError> {
         match operation {
             EditOperation::Insert { position, text } => {
                 if *position <= content.len() {
@@ -604,7 +627,11 @@ impl DistributedCollaborationEngine {
                     });
                 }
             }
-            EditOperation::Replace { position, length, text } => {
+            EditOperation::Replace {
+                position,
+                length,
+                text,
+            } => {
                 if position + length <= content.len() {
                     content.drain(*position..*position + length);
                     content.insert_str(*position, text);
@@ -632,7 +659,8 @@ impl DistributedCollaborationEngine {
             let mut line_participants: HashMap<usize, Vec<String>> = HashMap::new();
 
             for (participant_id, cursor) in &file.cursors {
-                line_participants.entry(cursor.line)
+                line_participants
+                    .entry(cursor.line)
                     .or_insert_with(Vec::new)
                     .push(participant_id.clone());
             }
@@ -676,7 +704,8 @@ impl DistributedCollaborationEngine {
         };
 
         let sessions = self.sessions.read().await;
-        let session_arc = sessions.get(session_id)
+        let session_arc = sessions
+            .get(session_id)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "session".to_string(),
                 id: session_id.to_string(),
@@ -686,10 +715,9 @@ impl DistributedCollaborationEngine {
         session.code_reviews.push(review.clone());
 
         // Broadcast review event
-        self.event_bus.broadcast(
-            session_id,
-            CollaborationEvent::CodeReviewAdded(review),
-        ).await?;
+        self.event_bus
+            .broadcast(session_id, CollaborationEvent::CodeReviewAdded(review))
+            .await?;
 
         Ok(review_id)
     }
@@ -700,7 +728,8 @@ impl DistributedCollaborationEngine {
         file_path: &Path,
     ) -> Result<Vec<AiSuggestion>, ServiceError> {
         let sessions = self.sessions.read().await;
-        let session_arc = sessions.get(session_id)
+        let session_arc = sessions
+            .get(session_id)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "session".to_string(),
                 id: session_id.to_string(),
@@ -708,11 +737,15 @@ impl DistributedCollaborationEngine {
 
         let session = session_arc.read().await;
 
-        let file = session.workspace.files.get(file_path)
-            .ok_or_else(|| ServiceError::NotFound {
-                resource: "file".to_string(),
-                id: file_path.display().to_string(),
-            })?;
+        let file =
+            session
+                .workspace
+                .files
+                .get(file_path)
+                .ok_or_else(|| ServiceError::NotFound {
+                    resource: "file".to_string(),
+                    id: file_path.display().to_string(),
+                })?;
 
         // Generate AI suggestions
         let prompt = format!(
@@ -720,7 +753,10 @@ impl DistributedCollaborationEngine {
             file.content
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         // Parse suggestions
         let suggestions = self.parse_ai_suggestions(&response, file_path)?;
@@ -728,23 +764,25 @@ impl DistributedCollaborationEngine {
         Ok(suggestions)
     }
 
-    fn parse_ai_suggestions(&self, response: &str, file_path: &Path) -> Result<Vec<AiSuggestion>, ServiceError> {
+    fn parse_ai_suggestions(
+        &self,
+        response: &str,
+        file_path: &Path,
+    ) -> Result<Vec<AiSuggestion>, ServiceError> {
         // Simple parsing - in production would be more sophisticated
-        Ok(vec![
-            AiSuggestion {
-                suggestion_type: SuggestionType::CodeCompletion,
-                target_file: file_path.to_path_buf(),
-                location: Selection {
-                    start_line: 0,
-                    start_column: 0,
-                    end_line: 0,
-                    end_column: 0,
-                },
-                content: "Suggested improvement".to_string(),
-                confidence: 0.85,
-                explanation: response.to_string(),
-            }
-        ])
+        Ok(vec![AiSuggestion {
+            suggestion_type: SuggestionType::CodeCompletion,
+            target_file: file_path.to_path_buf(),
+            location: Selection {
+                start_line: 0,
+                start_column: 0,
+                end_line: 0,
+                end_column: 0,
+            },
+            content: "Suggested improvement".to_string(),
+            confidence: 0.85,
+            explanation: response.to_string(),
+        }])
     }
 }
 
@@ -761,7 +799,11 @@ impl EventBus {
         }
     }
 
-    async fn broadcast(&self, session_id: &str, event: CollaborationEvent) -> Result<(), ServiceError> {
+    async fn broadcast(
+        &self,
+        session_id: &str,
+        event: CollaborationEvent,
+    ) -> Result<(), ServiceError> {
         let subscribers = self.subscribers.read().await;
 
         if let Some(senders) = subscribers.get(session_id) {
@@ -777,7 +819,8 @@ impl EventBus {
         let (tx, rx) = broadcast::channel(100);
 
         let mut subscribers = self.subscribers.write().await;
-        subscribers.entry(session_id.to_string())
+        subscribers
+            .entry(session_id.to_string())
             .or_insert_with(Vec::new)
             .push(tx);
 
@@ -800,7 +843,8 @@ impl NetworkManager {
 
     async fn start_listener(&self, session_id: &str) -> Result<(), ServiceError> {
         let addr = "127.0.0.1:0";
-        let listener = TcpListener::bind(addr).await
+        let listener = TcpListener::bind(addr)
+            .await
             .map_err(|e| ServiceError::NetworkError {
                 message: e.to_string(),
                 url: Some(addr.to_string()),

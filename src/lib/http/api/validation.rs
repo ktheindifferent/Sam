@@ -1,9 +1,8 @@
-use rouille::{Request, Response};
 use crate::security::validation_middleware::{
-    InputValidation, ApiQueryParams,
-    FileUploadInput, encode_for_html,
-    validate_json_input, validate_body_size
+    encode_for_html, validate_body_size, validate_json_input, ApiQueryParams, FileUploadInput,
+    InputValidation,
 };
+use rouille::{Request, Response};
 use serde_json::json;
 
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024; // 10MB default
@@ -18,25 +17,26 @@ pub fn validate_request_body<T: InputValidation + serde::de::DeserializeOwned>(
         Err(_) => {
             return Err(Response::json(&json!({
                 "error": "Failed to read request body"
-            })).with_status_code(400));
+            }))
+            .with_status_code(400));
         }
     };
-    
+
     // Validate body size
     if let Err(errors) = validate_body_size(body.len(), MAX_BODY_SIZE) {
         return Err(Response::json(&json!({
             "errors": errors.errors
-        })).with_status_code(413));
+        }))
+        .with_status_code(413));
     }
-    
+
     // Parse and validate JSON
     match validate_json_input::<T>(&body) {
         Ok(validated) => Ok(validated),
-        Err(errors) => {
-            Err(Response::json(&json!({
-                "errors": errors.errors
-            })).with_status_code(400))
-        }
+        Err(errors) => Err(Response::json(&json!({
+            "errors": errors.errors
+        }))
+        .with_status_code(400)),
     }
 }
 
@@ -48,19 +48,19 @@ pub fn validate_query_params(request: &Request) -> Result<ApiQueryParams, Respon
         sort: None,
         filter: None,
     };
-    
+
     // Parse query string
     let query = request.raw_query_string();
     if !query.is_empty() {
         for pair in query.split('&') {
-            let parts: Vec<&str> = pair.split('=').collect();
+            let parts: Vec<&str> = pair.splitn(2, '=').collect();
             if parts.len() != 2 {
                 continue;
             }
-            
+
             let key = parts[0];
             let value = urlencoding::decode(parts[1]).unwrap_or_default();
-            
+
             match key {
                 "page" => params.page = value.parse().ok(),
                 "limit" => params.limit = value.parse().ok(),
@@ -70,15 +70,14 @@ pub fn validate_query_params(request: &Request) -> Result<ApiQueryParams, Respon
             }
         }
     }
-    
+
     // Validate parameters
     match params.validate_and_sanitize() {
         Ok(()) => Ok(params),
-        Err(errors) => {
-            Err(Response::json(&json!({
-                "errors": errors.errors
-            })).with_status_code(400))
-        }
+        Err(errors) => Err(Response::json(&json!({
+            "errors": errors.errors
+        }))
+        .with_status_code(400)),
     }
 }
 
@@ -88,17 +87,20 @@ pub fn validate_file_upload(request: &Request) -> Result<FileUploadInput, Respon
     let input = match rouille::input::multipart::get_multipart_input(request) {
         Ok(mut multipart) => {
             let mut file_input = None;
-            
+
             while let Some(entry) = multipart.next() {
                 if entry.headers.name.as_ref() == "file_data" {
                     let filename = entry.headers.filename.clone().unwrap_or_default();
-                    let content_type = entry.headers.content_type.clone()
+                    let content_type = entry
+                        .headers
+                        .content_type
+                        .clone()
                         .map(|ct| ct.to_string())
                         .unwrap_or_else(|| "application/octet-stream".to_string());
-                    
+
                     // For now, create placeholder data until multipart handling is fully implemented
                     let data = Vec::new();
-                    
+
                     file_input = Some(FileUploadInput {
                         filename,
                         content_type,
@@ -108,27 +110,30 @@ pub fn validate_file_upload(request: &Request) -> Result<FileUploadInput, Respon
                     break;
                 }
             }
-            
-            file_input.ok_or_else(|| Response::json(&json!({
-                "error": "No file data found in request"
-            })).with_status_code(400))?
+
+            file_input.ok_or_else(|| {
+                Response::json(&json!({
+                    "error": "No file data found in request"
+                }))
+                .with_status_code(400)
+            })?
         }
         Err(_) => {
             return Err(Response::json(&json!({
                 "error": "Invalid multipart form data"
-            })).with_status_code(400));
+            }))
+            .with_status_code(400));
         }
     };
-    
+
     // Validate file input
     let mut file_input = input;
     match file_input.validate_and_sanitize() {
         Ok(()) => Ok(file_input),
-        Err(errors) => {
-            Err(Response::json(&json!({
-                "errors": errors.errors
-            })).with_status_code(400))
-        }
+        Err(errors) => Err(Response::json(&json!({
+            "errors": errors.errors
+        }))
+        .with_status_code(400)),
     }
 }
 
@@ -159,7 +164,8 @@ pub fn error_response(message: &str, status_code: u16) -> Response {
     let safe_message = encode_for_html(message);
     Response::json(&json!({
         "error": safe_message
-    })).with_status_code(status_code)
+    }))
+    .with_status_code(status_code)
 }
 
 /// Validate path parameter to prevent directory traversal
@@ -168,16 +174,17 @@ pub fn validate_path_param(path: &str) -> Result<String, Response> {
     if path.contains("..") || path.contains("//") || path.starts_with('/') {
         return Err(error_response("Invalid path parameter", 400));
     }
-    
+
     // Allow only alphanumeric, dash, underscore, dot
-    let sanitized: String = path.chars()
+    let sanitized: String = path
+        .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
         .collect();
-    
+
     if sanitized.is_empty() || sanitized.len() > 255 {
         return Err(error_response("Invalid path parameter", 400));
     }
-    
+
     Ok(sanitized)
 }
 
@@ -186,26 +193,30 @@ pub fn validate_id_param(id: &str) -> Result<String, Response> {
     // Check if it's a valid UUID
     if id.len() == 36 {
         // Basic UUID format check
-        let uuid_regex = regex::Regex::new(r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$").unwrap();
+        let uuid_regex = regex::Regex::new(
+            r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+        )
+        .unwrap();
         if uuid_regex.is_match(id) {
             return Ok(id.to_string());
         }
     }
-    
+
     // Check if it's a numeric ID
     if id.chars().all(|c| c.is_numeric()) && id.len() <= 20 {
         return Ok(id.to_string());
     }
-    
+
     // Check if it's an alphanumeric OID
-    let sanitized: String = id.chars()
+    let sanitized: String = id
+        .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
         .collect();
-    
+
     if sanitized.is_empty() || sanitized.len() > 64 {
         return Err(error_response("Invalid ID parameter", 400));
     }
-    
+
     Ok(sanitized)
 }
 
@@ -239,7 +250,7 @@ mod tests {
             "name": "<script>alert('xss')</script>",
             "safe": "normal text"
         });
-        
+
         let sanitized = sanitize_output_json(&input);
         let name = sanitized["name"].as_str().unwrap();
         assert!(!name.contains("<script>"));

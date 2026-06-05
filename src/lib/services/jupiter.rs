@@ -22,7 +22,9 @@ pub fn get_db_obj() -> Result<crate::memory::config::Service, crate::services::E
     pg_query.query_columns.push("identifier =".to_string());
     let service = crate::memory::config::Service::select(None, None, None, Some(pg_query))
         .map_err(|e| crate::services::Error::Other(e.to_string()))?;
-    Ok(service[0].clone())
+    service.first().cloned().ok_or_else(|| {
+        crate::services::Error::Other("Jupiter service is not configured".to_string())
+    })
 }
 
 pub fn handle(

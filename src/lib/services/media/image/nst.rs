@@ -31,7 +31,7 @@ pub fn handle(
     request: &Request,
 ) -> Result<Response, crate::http::Error> {
     if request.url().contains("/styles") {
-        return Ok(Response::json(&styles().unwrap()));
+        return Ok(Response::json(&styles()?));
     }
 
     if request.url().contains("/run") {
@@ -60,20 +60,21 @@ pub fn handle(
             if input.image_id.contains("oid:") {
                 let oid = input.image_id.replace("oid:", "");
                 if Path::new(format!("/opt/sam/files/{oid}").as_str()).exists() {
-                    let _ = thread::Builder::new()
-                        .name("nst_thread".to_string())
-                        .spawn(move || {
-                            let _ = run(
-                                &selected_style,
-                                format!("/opt/sam/files/{oid}").as_str(),
-                                oid,
-                                input.nst_style,
-                            );
-                        });
+                    let _ =
+                        thread::Builder::new()
+                            .name("nst_thread".to_string())
+                            .spawn(move || {
+                                let _ = run(
+                                    &selected_style,
+                                    format!("/opt/sam/files/{oid}").as_str(),
+                                    oid,
+                                    input.nst_style,
+                                );
+                            });
                 }
             }
 
-            return Ok(Response::json(&styles().unwrap()));
+            return Ok(Response::json(&styles()?));
         }
     }
     Ok(Response::empty_404())
@@ -100,8 +101,12 @@ pub fn run(
 ) -> Result<(), crate::services::Error> {
     #[cfg(not(feature = "nst"))]
     {
-        log::warn!("NST feature not enabled. Build with --features nst to enable Neural Style Transfer");
-        return Err(crate::services::Error::Other("NST feature not enabled".to_string()));
+        log::warn!(
+            "NST feature not enabled. Build with --features nst to enable Neural Style Transfer"
+        );
+        return Err(crate::services::Error::Other(
+            "NST feature not enabled".to_string(),
+        ));
     }
 
     #[cfg(feature = "nst")]
@@ -114,11 +119,14 @@ pub fn run(
 
         let mut net_vs = tch::nn::VarStore::new(device);
         let net = vgg::vgg16(&net_vs.root(), imagenet::CLASS_COUNT);
-        
+
         // Load VGG16 weights
         if let Err(e) = net_vs.load("/opt/sam/models/vgg16.ot") {
             log::error!("Failed to load VGG16 model: {}. Run install() first.", e);
-            return Err(crate::services::Error::Other(format!("VGG16 model not found: {}", e)));
+            return Err(crate::services::Error::Other(format!(
+                "VGG16 model not found: {}",
+                e
+            )));
         }
         net_vs.freeze();
 
@@ -127,15 +135,21 @@ pub fn run(
             Ok(img) => img.unsqueeze(0).to_device(device),
             Err(e) => {
                 log::error!("Failed to load style image: {}", e);
-                return Err(crate::services::Error::Other(format!("Style image load error: {}", e)));
+                return Err(crate::services::Error::Other(format!(
+                    "Style image load error: {}",
+                    e
+                )));
             }
         };
-        
+
         let content_img = match imagenet::load_image(content_img) {
             Ok(img) => img.unsqueeze(0).to_device(device),
             Err(e) => {
                 log::error!("Failed to load content image: {}", e);
-                return Err(crate::services::Error::Other(format!("Content image load error: {}", e)));
+                return Err(crate::services::Error::Other(format!(
+                    "Content image load error: {}",
+                    e
+                )));
             }
         };
 
@@ -148,23 +162,23 @@ pub fn run(
         let mut opt = nn::Adam::default().build(&vs, LEARNING_RATE)?;
 
         log::info!("Starting optimization with {} steps", TOTAL_STEPS);
-        
+
         for step_idx in 1..(1 + TOTAL_STEPS) {
             let input_layers = net.forward_all_t(&input_var, false, Some(max_layer));
-            
+
             let style_loss: Tensor = STYLE_INDEXES
                 .iter()
                 .map(|&i| style_loss(&input_layers[i], &style_layers[i]))
                 .sum();
-            
+
             let content_loss: Tensor = CONTENT_INDEXES
                 .iter()
                 .map(|&i| input_layers[i].mse_loss(&content_layers[i], tch::Reduction::Mean))
                 .sum();
-            
+
             let loss = style_loss * STYLE_WEIGHT + content_loss;
             opt.backward_step(&loss);
-            
+
             if step_idx % 100 == 0 {
                 let loss_val = f64::try_from(&loss).unwrap_or_else(|_| {
                     // Fallback: extract scalar value using double_value if tensor is scalar
@@ -172,15 +186,21 @@ pub fn run(
                 });
                 log::info!("Step {}: Loss = {:.6}", step_idx, loss_val);
             }
-            
+
             if step_idx % 1000 == 0 {
                 let loss_val = f64::try_from(&loss).unwrap_or_else(|_| {
                     // Fallback: extract scalar value using double_value if tensor is scalar
                     loss.double_value(&[])
                 });
-                log::info!("Saving intermediate result at step {}: Loss = {:.6}", step_idx, loss_val);
-                
-                if let Err(e) = imagenet::save_image(&input_var, &format!("/opt/sam/files/out{}.jpg", step_idx)) {
+                log::info!(
+                    "Saving intermediate result at step {}: Loss = {:.6}",
+                    step_idx,
+                    loss_val
+                );
+
+                if let Err(e) =
+                    imagenet::save_image(&input_var, &format!("/opt/sam/files/out{}.jpg", step_idx))
+                {
                     log::warn!("Failed to save intermediate image: {}", e);
                     continue;
                 }
@@ -218,7 +238,7 @@ pub fn styles() -> Result<Vec<Style>, crate::services::Error> {
     let mut styles: Vec<Style> = Vec::new();
     let paths = fs::read_dir("/opt/sam/models/nst/")?;
     for path in paths {
-        let pth = path.unwrap().path().display().to_string();
+        let pth = path?.path().display().to_string();
 
         let style = Style {
             name: titlecase(
@@ -238,22 +258,30 @@ pub fn styles() -> Result<Vec<Style>, crate::services::Error> {
 
 pub fn install() -> Result<(), crate::services::Error> {
     // Create models directory if it doesn't exist
-    std::fs::create_dir_all("/opt/sam/models/nst")
-        .map_err(|e| crate::services::Error::Other(format!("Failed to create models directory: {}", e)))?;
+    std::fs::create_dir_all("/opt/sam/models/nst").map_err(|e| {
+        crate::services::Error::Other(format!("Failed to create models directory: {}", e))
+    })?;
 
     // Download VGG16 model if it doesn't exist
     if !Path::new("/opt/sam/models/vgg16.ot").exists() {
         log::info!("Downloading VGG16 model weights...");
-        match crate::tools::safe_cmd("wget", &[
-            "-O", "/opt/sam/models/vgg16.ot",
-            "https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot"
-        ]) {
+        match crate::tools::safe_cmd(
+            "wget",
+            &[
+                "-O",
+                "/opt/sam/models/vgg16.ot",
+                "https://github.com/LaurentMazare/tch-rs/releases/download/mw/vgg16.ot",
+            ],
+        ) {
             Ok(output) => {
                 log::info!("VGG16 model downloaded successfully: {}", output);
             }
             Err(e) => {
                 log::error!("Failed to download VGG16 model: {}", e);
-                return Err(crate::services::Error::Other(format!("VGG16 download failed: {}", e)));
+                return Err(crate::services::Error::Other(format!(
+                    "VGG16 download failed: {}",
+                    e
+                )));
             }
         }
     } else {
@@ -261,10 +289,22 @@ pub fn install() -> Result<(), crate::services::Error> {
     }
 
     // Install default style images
-    install_style_image("fra_angelico.jpg", include_bytes!("../../../../../packages/nst/fra_angelico.jpg"))?;
-    install_style_image("paul_cézanne.jpg", include_bytes!("../../../../../packages/nst/paul_cézanne.jpg"))?;
-    install_style_image("sassetta.jpg", include_bytes!("../../../../../packages/nst/sassetta.jpg"))?;
-    install_style_image("vincent_van_gogh.jpg", include_bytes!("../../../../../packages/nst/vincent_van_gogh.jpg"))?;
+    install_style_image(
+        "fra_angelico.jpg",
+        include_bytes!("../../../../../packages/nst/fra_angelico.jpg"),
+    )?;
+    install_style_image(
+        "paul_cézanne.jpg",
+        include_bytes!("../../../../../packages/nst/paul_cézanne.jpg"),
+    )?;
+    install_style_image(
+        "sassetta.jpg",
+        include_bytes!("../../../../../packages/nst/sassetta.jpg"),
+    )?;
+    install_style_image(
+        "vincent_van_gogh.jpg",
+        include_bytes!("../../../../../packages/nst/vincent_van_gogh.jpg"),
+    )?;
 
     log::info!("NST installation completed successfully");
     Ok(())
@@ -272,19 +312,21 @@ pub fn install() -> Result<(), crate::services::Error> {
 
 fn install_style_image(filename: &str, data: &[u8]) -> Result<(), crate::services::Error> {
     let path = format!("/opt/sam/models/nst/{}", filename);
-    
+
     if !Path::new(&path).exists() {
         log::info!("Installing style image: {}", filename);
-        let mut file = File::create(&path)
-            .map_err(|e| crate::services::Error::Other(format!("Failed to create file {}: {}", path, e)))?;
-        
-        file.write_all(data)
-            .map_err(|e| crate::services::Error::Other(format!("Failed to write file {}: {}", path, e)))?;
-        
+        let mut file = File::create(&path).map_err(|e| {
+            crate::services::Error::Other(format!("Failed to create file {}: {}", path, e))
+        })?;
+
+        file.write_all(data).map_err(|e| {
+            crate::services::Error::Other(format!("Failed to write file {}: {}", path, e))
+        })?;
+
         log::info!("Style image {} installed successfully", filename);
     } else {
         log::debug!("Style image {} already exists", filename);
     }
-    
+
     Ok(())
 }

@@ -10,6 +10,14 @@
 // TUI State Management
 var currentMode = 'command';
 var selectedServiceIndex = 0;
+var selectedDatabaseTable = 'settings';
+var databaseCache = {
+  settings: [],
+  services: []
+};
+var filesCurrentPath = term_directory;
+var filesParentPath = null;
+var filesLoading = false;
 var services = [
   { name: 'Crawler', id: 'crawler', status: 'unknown' },
   { name: 'Redis', id: 'redis', status: 'unknown' },
@@ -18,7 +26,12 @@ var services = [
   { name: 'PostgreSQL', id: 'postgres', status: 'unknown' },
   { name: 'LIFX', id: 'lifx', status: 'unknown' },
   { name: 'HTTP Server', id: 'http_server', status: 'unknown' },
-  { name: 'Ollama', id: 'ollama', status: 'unknown' }
+  { name: 'Ollama AI', id: 'ollama', status: 'unknown' },
+  { name: 'TTS', id: 'tts', status: 'unknown' },
+  { name: 'STT', id: 'stt', status: 'unknown' },
+  { name: 'SSH Server', id: 'ssh_server', status: 'unknown' },
+  { name: 'Media Center', id: 'media', status: 'unknown' },
+  { name: 'Snapcast', id: 'snapcast', status: 'unknown' }
 ];
 
 // Original terminal state
@@ -63,6 +76,22 @@ $( document ).ready(function() {
     filterLogs($(this).val());
   });
 
+  $('#files-refresh-button').on('click', function() {
+    loadFilesMode(true);
+  });
+
+  $('#files-parent-button').on('click', function() {
+    navigateFilesParent();
+  });
+
+  $('#files-list-content').on('click', '.file-entry-directory', function() {
+    var path = $(this).data('path');
+    if (path) {
+      filesCurrentPath = path;
+      loadFilesMode(true);
+    }
+  });
+
   window.onkeydown = function(k){
     // Only log debug info in development
     // console.log(k)
@@ -93,6 +122,16 @@ $( document ).ready(function() {
     // Handle different modes
     if (currentMode === 'services') {
       handleServicesKeyboard(k);
+      return;
+    }
+
+    if (currentMode === 'database') {
+      handleDatabaseKeyboard(k);
+      return;
+    }
+
+    if (currentMode === 'files') {
+      handleFilesKeyboard(k);
       return;
     }
     
@@ -272,6 +311,12 @@ function switchMode(mode) {
     case 'logs':
       loadLogs();
       break;
+    case 'database':
+      loadDatabaseMode();
+      break;
+    case 'files':
+      loadFilesMode();
+      break;
   }
 
   // Log mode switch like TUI does
@@ -430,6 +475,201 @@ function updateSystemInfo() {
       '</div>'
     );
   });
+}
+
+function handleDatabaseKeyboard(k) {
+  if (k.keyCode === 82) { // R
+    k.preventDefault();
+    loadDatabaseMode(true);
+  }
+}
+
+function loadDatabaseMode(forceRefresh) {
+  var summary = $('#database-summary');
+  var tables = $('#database-table-list');
+  var records = $('#database-records');
+
+  if (forceRefresh || (!databaseCache.settings.length && !databaseCache.services.length)) {
+    summary.html('<div class="metric-row"><span class="metric-label">Status:</span><span class="metric-value">Loading...</span></div>');
+    tables.empty();
+    records.text('Loading...');
+
+    $.when(
+      $.get('/api/settings'),
+      $.get('/api/services')
+    ).done(function(settingsResponse, servicesResponse) {
+      databaseCache.settings = normalizeApiArray(settingsResponse[0]);
+      databaseCache.services = normalizeApiArray(servicesResponse[0]);
+      renderDatabaseMode();
+    }).fail(function(xhr) {
+      var message = xhr && xhr.responseText ? xhr.responseText : 'Unable to load database resources';
+      summary.html(
+        '<div class="metric-row">' +
+        '<span class="metric-label">Status:</span>' +
+        '<span class="metric-value service-status error">' + escapeHtml(message) + '</span>' +
+        '</div>'
+      );
+      tables.empty();
+      records.text('');
+    });
+  } else {
+    renderDatabaseMode();
+  }
+}
+
+function normalizeApiArray(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (payload && Array.isArray(payload.data)) {
+    return payload.data;
+  }
+  if (payload) {
+    return [payload];
+  }
+  return [];
+}
+
+function renderDatabaseMode() {
+  var tableDefinitions = [
+    { id: 'settings', label: 'settings', rows: databaseCache.settings },
+    { id: 'services', label: 'services', rows: databaseCache.services }
+  ];
+  var totalRows = tableDefinitions.reduce(function(sum, table) {
+    return sum + table.rows.length;
+  }, 0);
+
+  $('#database-summary').html(
+    '<div class="metric-row"><span class="metric-label">Status:</span><span class="metric-value service-status running">connected</span></div>' +
+    '<div class="metric-row"><span class="metric-label">Tables:</span><span class="metric-value">' + tableDefinitions.length + '</span></div>' +
+    '<div class="metric-row"><span class="metric-label">Rows:</span><span class="metric-value">' + totalRows + '</span></div>'
+  );
+
+  var tables = $('#database-table-list');
+  tables.empty();
+  tableDefinitions.forEach(function(table) {
+    var item = $('<div class="database-table-item' + (table.id === selectedDatabaseTable ? ' selected' : '') + '">');
+    item.text(table.label + ' (' + table.rows.length + ')');
+    item.on('click', function() {
+      selectedDatabaseTable = table.id;
+      renderDatabaseMode();
+    });
+    tables.append(item);
+  });
+
+  var selected = tableDefinitions.find(function(table) {
+    return table.id === selectedDatabaseTable;
+  }) || tableDefinitions[0];
+  $('#database-records-title').text(selected.label + ' Records');
+  renderDatabaseRecords(selected.rows);
+}
+
+function renderDatabaseRecords(rows) {
+  var records = $('#database-records');
+  records.empty();
+
+  if (!rows.length) {
+    records.append('<div class="database-record-item">No records returned.</div>');
+    return;
+  }
+
+  rows.forEach(function(row, index) {
+    var title = row.key || row.identifier || row.name || row.oid || ('record ' + (index + 1));
+    var item = $('<div class="database-record-item">');
+    item.append('<div class="database-record-key">' + escapeHtml(title) + '</div>');
+    item.append('<div class="database-record-value">' + escapeHtml(JSON.stringify(row, null, 2)) + '</div>');
+    records.append(item);
+  });
+}
+
+function handleFilesKeyboard(k) {
+  if (k.keyCode === 82) { // R
+    k.preventDefault();
+    loadFilesMode(true);
+  } else if (k.keyCode === 8) { // Backspace
+    k.preventDefault();
+    navigateFilesParent();
+  }
+}
+
+function loadFilesMode(forceRefresh) {
+  if (filesLoading && !forceRefresh) {
+    return;
+  }
+
+  filesCurrentPath = filesCurrentPath || term_directory || '~';
+  $('#files-current-path').text(filesCurrentPath);
+  $('#files-list-content').text('Loading ' + filesCurrentPath + '...');
+  filesLoading = true;
+
+  $.get('/api/console/files?path=' + encodeURIComponent(filesCurrentPath))
+    .done(function(data) {
+      filesCurrentPath = data.path || filesCurrentPath;
+      filesParentPath = data.parent || null;
+      $('#files-list-content').html(renderFileEntries(data.entries || []));
+    })
+    .fail(function(xhr) {
+      var message = xhr && xhr.responseText ? xhr.responseText : 'Unable to load directory';
+      $('#files-list-content').text(message);
+    })
+    .always(function() {
+      filesLoading = false;
+      $('#files-current-path').text(filesCurrentPath);
+    });
+}
+
+function navigateFilesParent() {
+  if (filesParentPath) {
+    filesCurrentPath = filesParentPath;
+    loadFilesMode(true);
+    return;
+  }
+  filesCurrentPath = '~';
+  loadFilesMode(true);
+}
+
+function renderFileEntries(entries) {
+  if (!entries.length) {
+    return '<div class="file-entry">Directory is empty.</div>';
+  }
+
+  return entries.map(function(entry) {
+    var kindMarker = entry.kind === 'directory' ? '[dir] ' : '      ';
+    var size = entry.kind === 'directory' ? '-' : formatBytes(entry.size || 0);
+    var modified = entry.modified ? new Date(entry.modified * 1000).toLocaleString() : '';
+    var className = 'file-entry file-entry-' + escapeHtml(entry.kind || 'other');
+    var name = escapeHtml(entry.name || '');
+    var path = escapeHtml(entry.path || '');
+    var row = '<span class="file-kind">' + kindMarker + '</span>' +
+      '<span class="file-name">' + name + '</span>' +
+      '<span class="file-size">' + size + '</span>' +
+      '<span class="file-modified">' + escapeHtml(modified) + '</span>';
+
+    return '<div class="' + className + '" data-path="' + path + '" data-kind="' + escapeHtml(entry.kind || '') + '">' + row + '</div>';
+  }).join('');
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) {
+    return bytes + ' B';
+  }
+  var units = ['KB', 'MB', 'GB', 'TB'];
+  var value = bytes / 1024;
+  var unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value = value / 1024;
+    unitIndex++;
+  }
+  return value.toFixed(value >= 10 ? 0 : 1) + ' ' + units[unitIndex];
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function loadLogs() {

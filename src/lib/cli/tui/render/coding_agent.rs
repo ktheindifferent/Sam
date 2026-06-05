@@ -1,11 +1,11 @@
+use super::super::state::TuiState;
+use super::{centered_rect, get_spinner_char};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Tabs, Wrap},
 };
-use super::{centered_rect, get_spinner_char};
-use super::super::state::TuiState;
 
 /// Render the enhanced coding agent mode with all features
 pub fn render_coding_agent_mode(
@@ -32,10 +32,7 @@ pub fn render_coding_agent_mode(
     // === STATUS BAR WITH TABS ===
     let status_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(40),
-            Constraint::Percentage(60),
-        ])
+        .constraints([Constraint::Min(40), Constraint::Percentage(60)])
         .split(main_chunks[0]);
 
     let spinner_char = if !state.coding_agent_spinner_text.is_empty() {
@@ -50,7 +47,10 @@ pub fn render_coding_agent_mode(
             Span::styled(&state.coding_agent_model, Style::default().fg(Color::Cyan)),
             Span::raw(" | "),
             Span::styled("Dir: ", Style::default().fg(Color::Gray)),
-            Span::styled(&state.coding_agent_working_dir, Style::default().fg(Color::Blue)),
+            Span::styled(
+                &state.coding_agent_working_dir,
+                Style::default().fg(Color::Blue),
+            ),
         ]),
         Line::from(vec![
             Span::raw(&spinner_char),
@@ -75,43 +75,54 @@ pub fn render_coding_agent_mode(
         ]),
     ];
 
-    let status_widget = Paragraph::new(status_lines)
-        .block(Block::default().borders(Borders::ALL).title("Status"));
+    let status_widget =
+        Paragraph::new(status_lines).block(Block::default().borders(Borders::ALL).title("Status"));
 
     let tab_titles = vec!["Output", "Steps", "Context", "History"];
     let tabs = Tabs::new(tab_titles)
         .block(Block::default().borders(Borders::ALL).title("Views"))
         .select(state.coding_agent_panel_focus)
         .style(Style::default().fg(Color::White))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        );
 
     f.render_widget(status_widget, status_chunks[0]);
     f.render_widget(tabs, status_chunks[1]);
 
     // === PROGRESS BAR (shown during multi-step execution) ===
-    let (content_area, _progress_area) = if !state.coding_agent_execution_steps.is_empty() && state.coding_agent_panel_focus == 0 {
-        let progress_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(0)])
-            .split(main_chunks[1]);
-        let step_progress = if !state.coding_agent_execution_steps.is_empty() {
-            ((state.coding_agent_current_step as f64 / state.coding_agent_execution_steps.len() as f64) * 100.0) as u16
+    let (content_area, _progress_area) =
+        if !state.coding_agent_execution_steps.is_empty() && state.coding_agent_panel_focus == 0 {
+            let progress_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(3), Constraint::Min(0)])
+                .split(main_chunks[1]);
+            let step_progress = if !state.coding_agent_execution_steps.is_empty() {
+                ((state.coding_agent_current_step as f64
+                    / state.coding_agent_execution_steps.len() as f64)
+                    * 100.0) as u16
+            } else {
+                0
+            };
+            let gauge = Gauge::default()
+                .block(Block::default().borders(Borders::ALL).title(format!(
+                    "Progress: Step {}/{}",
+                    state.coding_agent_current_step + 1,
+                    state.coding_agent_execution_steps.len()
+                )))
+                .gauge_style(
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .percent(step_progress);
+            f.render_widget(gauge, progress_chunks[0]);
+            (progress_chunks[1], Some(progress_chunks[0]))
         } else {
-            0
+            (main_chunks[1], None)
         };
-        let gauge = Gauge::default()
-            .block(Block::default().borders(Borders::ALL).title(format!(
-                "Progress: Step {}/{}",
-                state.coding_agent_current_step + 1,
-                state.coding_agent_execution_steps.len()
-            )))
-            .gauge_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-            .percent(step_progress);
-        f.render_widget(gauge, progress_chunks[0]);
-        (progress_chunks[1], Some(progress_chunks[0]))
-    } else {
-        (main_chunks[1], None)
-    };
 
     // === MAIN CONTENT AREA ===
     let content_layout: Vec<ratatui::layout::Rect> = if state.coding_agent_panel_focus >= 2 {
@@ -155,10 +166,20 @@ fn style_output_line<'a>(l: &'a str) -> Line<'a> {
         return Line::from(Span::styled(l, Style::default().fg(Color::Cyan)));
     }
     if l.starts_with("---") || l.starts_with("+++") {
-        return Line::from(Span::styled(l, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
+        return Line::from(Span::styled(
+            l,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ));
     }
     if l.starts_with("diff ") {
-        return Line::from(Span::styled(l, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)));
+        return Line::from(Span::styled(
+            l,
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ));
     }
     // Status icons
     if l.starts_with("✅") {
@@ -178,28 +199,45 @@ fn style_output_line<'a>(l: &'a str) -> Line<'a> {
     }
 }
 
-fn render_agent_output_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rect, state: &TuiState) {
+fn render_agent_output_panel(
+    f: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    state: &TuiState,
+) {
     let content_lines: Vec<Line> = if !state.coding_agent_execution_log.is_empty() {
-        state.coding_agent_execution_log
+        state
+            .coding_agent_execution_log
             .iter()
             .map(|l| style_output_line(l))
             .collect()
     } else if !state.coding_agent_response.is_empty() {
-        state.coding_agent_response
+        state
+            .coding_agent_response
             .lines()
             .map(|l| style_output_line(l))
             .collect()
     } else {
         vec![
-            Line::from(Span::styled("🤖 AI Coding Assistant", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                "🤖 AI Coding Assistant",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
-            Line::from(Span::styled("Commands:", Style::default().fg(Color::Yellow))),
+            Line::from(Span::styled(
+                "Commands:",
+                Style::default().fg(Color::Yellow),
+            )),
             Line::from("  • Type a task and press Enter to execute"),
             Line::from("  • Use 'verify:' prefix for step-by-step verification"),
             Line::from("  • Press Tab to switch between panels"),
             Line::from("  • Press F1 for help (or type 'help')"),
             Line::from(""),
-            Line::from(Span::styled("Features:", Style::default().fg(Color::Yellow))),
+            Line::from(Span::styled(
+                "Features:",
+                Style::default().fg(Color::Yellow),
+            )),
             Line::from("  • Multi-step task execution"),
             Line::from("  • Command history (Up/Down arrows)"),
             Line::from("  • Context-aware suggestions"),
@@ -246,9 +284,15 @@ fn render_agent_output_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rect
 
 fn render_agent_steps_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rect, state: &TuiState) {
     if state.coding_agent_execution_steps.is_empty() {
-        let placeholder = Paragraph::new("No execution steps yet.\n\nSteps will appear here when you execute a task.")
-            .style(Style::default().fg(Color::Gray))
-            .block(Block::default().borders(Borders::ALL).title("Execution Steps"));
+        let placeholder = Paragraph::new(
+            "No execution steps yet.\n\nSteps will appear here when you execute a task.",
+        )
+        .style(Style::default().fg(Color::Gray))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Execution Steps"),
+        );
         f.render_widget(placeholder, area);
         return;
     }
@@ -258,14 +302,17 @@ fn render_agent_steps_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rect,
         .constraints([Constraint::Min(5), Constraint::Length(3)])
         .split(area);
 
-    let items: Vec<ListItem> = state.coding_agent_execution_steps
+    let items: Vec<ListItem> = state
+        .coding_agent_execution_steps
         .iter()
         .enumerate()
         .map(|(i, step)| {
             let style = if i < state.coding_agent_current_step {
                 Style::default().fg(Color::Green)
             } else if i == state.coding_agent_current_step {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::Gray)
             };
@@ -288,7 +335,8 @@ fn render_agent_steps_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rect,
         .highlight_symbol(">> ");
 
     let progress = if !state.coding_agent_execution_steps.is_empty() {
-        (state.coding_agent_current_step as f64 / state.coding_agent_execution_steps.len() as f64 * 100.0) as u16
+        (state.coding_agent_current_step as f64 / state.coding_agent_execution_steps.len() as f64
+            * 100.0) as u16
     } else {
         0
     };
@@ -303,41 +351,52 @@ fn render_agent_steps_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rect,
     f.render_widget(gauge, chunks[1]);
 }
 
-fn render_agent_context_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rect, state: &TuiState) {
+fn render_agent_context_panel(
+    f: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    state: &TuiState,
+) {
     let items: Vec<ListItem> = if state.coding_agent_context.is_empty() {
         vec![ListItem::new("No context yet").style(Style::default().fg(Color::Gray))]
     } else {
-        state.coding_agent_context
+        state
+            .coding_agent_context
             .iter()
             .map(|ctx| ListItem::new(ctx.as_str()))
             .collect()
     };
 
-    let context_list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Context")
-                .border_style(if state.coding_agent_panel_focus == 2 {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default()
-                }),
-        );
+    let context_list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Context")
+            .border_style(if state.coding_agent_panel_focus == 2 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            }),
+    );
 
     f.render_widget(context_list, area);
 }
 
-fn render_agent_history_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rect, state: &TuiState) {
+fn render_agent_history_panel(
+    f: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    state: &TuiState,
+) {
     let items: Vec<ListItem> = if state.coding_agent_history.is_empty() {
         vec![ListItem::new("No history yet").style(Style::default().fg(Color::Gray))]
     } else {
-        state.coding_agent_history
+        state
+            .coding_agent_history
             .iter()
             .enumerate()
             .map(|(i, cmd)| {
                 let style = if i == state.coding_agent_history_index {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -346,28 +405,36 @@ fn render_agent_history_panel(f: &mut ratatui::Frame, area: ratatui::layout::Rec
             .collect()
     };
 
-    let history_list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("History")
-                .border_style(if state.coding_agent_panel_focus == 3 {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default()
-                }),
-        );
+    let history_list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("History")
+            .border_style(if state.coding_agent_panel_focus == 3 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            }),
+    );
 
     f.render_widget(history_list, area);
 }
 
-fn render_agent_input_area(f: &mut ratatui::Frame, area: ratatui::layout::Rect, state: &TuiState, show_cursor: bool) {
+fn render_agent_input_area(
+    f: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    state: &TuiState,
+    show_cursor: bool,
+) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Length(1)])
         .split(area);
 
-    let cursor_char = if show_cursor && state.coding_agent_input_mode { "_" } else { " " };
+    let cursor_char = if show_cursor && state.coding_agent_input_mode {
+        "_"
+    } else {
+        " "
+    };
     let input_display = format!("{}{}", state.coding_agent_input, cursor_char);
 
     let input_title = if state.coding_agent_executor.is_some() {
@@ -380,23 +447,26 @@ fn render_agent_input_area(f: &mut ratatui::Frame, area: ratatui::layout::Rect, 
         "Task (Enter to execute | F1 for help | Tab to switch panels)"
     };
 
-    let input = Paragraph::new(input_display)
-        .style(Style::default())
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(input_title)
-                .border_style(if state.coding_agent_input_mode {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default()
-                }),
-        );
+    let input = Paragraph::new(input_display).style(Style::default()).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(input_title)
+            .border_style(if state.coding_agent_input_mode {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            }),
+    );
 
     let shortcuts = vec![
-        ("F1", "Help"), ("Tab", "Switch Panel"), ("Ctrl+V", "Verify Mode"),
-        ("Ctrl+A", "Auto Mode"), ("↑↓", "History"), ("PgUp/Dn", "Scroll"),
-        ("Ctrl+C", "Cancel"), ("ESC", "Exit Input"),
+        ("F1", "Help"),
+        ("Tab", "Switch Panel"),
+        ("Ctrl+V", "Verify Mode"),
+        ("Ctrl+A", "Auto Mode"),
+        ("↑↓", "History"),
+        ("PgUp/Dn", "Scroll"),
+        ("Ctrl+C", "Cancel"),
+        ("ESC", "Exit Input"),
     ];
 
     let shortcut_text = shortcuts
@@ -419,16 +489,31 @@ fn render_coding_agent_help_overlay(f: &mut ratatui::Frame, area: ratatui::layou
     let help_area = centered_rect(80, 80, area);
 
     let help_text = vec![
-        Line::from(Span::styled("🤖 AI Coding Agent - Help", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "🤖 AI Coding Agent - Help",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
-        Line::from(Span::styled("COMMANDS:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "COMMANDS:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
         Line::from("  verify:<task>    - Execute with step-by-step verification"),
         Line::from("  auto:<task>      - Execute immediately without confirmation"),
         Line::from("  help             - Show this help screen"),
         Line::from("  clear            - Clear the output"),
         Line::from("  reset            - Reset the agent state"),
         Line::from(""),
-        Line::from(Span::styled("KEYBOARD SHORTCUTS:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "KEYBOARD SHORTCUTS:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
         Line::from("  F1               - Toggle this help screen"),
         Line::from("  Tab              - Switch between panels"),
         Line::from("  Ctrl+V           - Toggle verification mode"),
@@ -439,13 +524,21 @@ fn render_coding_agent_help_overlay(f: &mut ratatui::Frame, area: ratatui::layou
         Line::from("  ESC              - Exit input mode / Close help"),
         Line::from("  Enter            - Execute command"),
         Line::from(""),
-        Line::from(Span::styled("PANELS:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "PANELS:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
         Line::from("  Output           - Main execution output"),
         Line::from("  Steps            - Step-by-step execution progress"),
         Line::from("  Context          - Conversation context and state"),
         Line::from("  History          - Command history"),
         Line::from(""),
-        Line::from(Span::styled("Press ESC to close this help", Style::default().fg(Color::Gray))),
+        Line::from(Span::styled(
+            "Press ESC to close this help",
+            Style::default().fg(Color::Gray),
+        )),
     ];
 
     let help_widget = Paragraph::new(help_text)

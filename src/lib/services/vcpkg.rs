@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use log;
+use std::path::PathBuf;
 
 /// Adds vcpkg to the system PATH for the current process.
 pub async fn set_path() -> Result<(), anyhow::Error> {
@@ -8,7 +8,7 @@ pub async fn set_path() -> Result<(), anyhow::Error> {
     let paths = std::env::var_os("PATH").unwrap_or_default();
     let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
     new_path.push(PathBuf::from(vcpkg_bin));
-    let joined = std::env::join_paths(new_path).unwrap();
+    let joined = std::env::join_paths(new_path)?;
     std::env::set_var("PATH", &joined);
     Ok(())
 }
@@ -20,7 +20,15 @@ pub async fn ensure_installed() -> Result<(), anyhow::Error> {
     let vcpkg_exists = tokio::fs::metadata(vcpkg_exe).await.is_ok();
     if !vcpkg_exists {
         log::warn!("vcpkg not found, cloning and bootstrapping...");
-        let _ = crate::run_and_log_async("git", &["clone", "https://github.com/microsoft/vcpkg.git", "C:/vcpkg"]).await;
+        let _ = crate::run_and_log_async(
+            "git",
+            &[
+                "clone",
+                "https://github.com/microsoft/vcpkg.git",
+                "C:/vcpkg",
+            ],
+        )
+        .await;
         let bootstrap = "C:\\vcpkg\\bootstrap-vcpkg.bat";
         let _ = crate::run_and_log_async(bootstrap, &[]).await;
     } else {

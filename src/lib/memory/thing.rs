@@ -255,10 +255,9 @@ impl Thing {
                 Ok(obj) => obj,
                 Err(e) => {
                     log::error!("Failed to deserialize Thing: {}", e);
-                    return Err(crate::memory::Error::Other(format!(
-                        "Deserialization error: {e}"
-                    ))
-                    .into());
+                    return Err(
+                        crate::memory::Error::Other(format!("Deserialization error: {e}")).into(),
+                    );
                 }
             };
             parsed_rows.push(object);

@@ -1,13 +1,13 @@
 //! Base provider implementation to reduce duplication across LLM providers
 
-use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
-use tokio::sync::RwLock;
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use log::{info, warn, error, debug};
-use serde::{Serialize, Deserialize};
+use tokio::sync::RwLock;
 
 /// Common provider metrics and state
 #[derive(Debug, Clone)]
@@ -82,7 +82,8 @@ impl RateLimiter {
         let now = Instant::now();
 
         // Remove old requests outside the window
-        self.requests.retain(|&req| now.duration_since(req) < self.window);
+        self.requests
+            .retain(|&req| now.duration_since(req) < self.window);
 
         if self.requests.len() < self.max_requests {
             self.requests.push(now);
@@ -180,7 +181,10 @@ impl<T: ProviderImpl> BaseProvider<T> {
             if !limiter.allow_request() {
                 if let Some(wait_time) = limiter.time_until_next_request() {
                     warn!("Rate limit exceeded, need to wait {:?}", wait_time);
-                    return Err(anyhow::anyhow!("Rate limit exceeded, retry after {:?}", wait_time));
+                    return Err(anyhow::anyhow!(
+                        "Rate limit exceeded, retry after {:?}",
+                        wait_time
+                    ));
                 }
             }
         }
@@ -197,7 +201,7 @@ impl<T: ProviderImpl> BaseProvider<T> {
                 // Exponential backoff
                 delay = Duration::from_secs_f64(
                     (delay.as_secs_f64() * self.retry_config.multiplier)
-                        .min(self.retry_config.max_delay.as_secs_f64())
+                        .min(self.retry_config.max_delay.as_secs_f64()),
                 );
             }
 
@@ -217,18 +221,27 @@ impl<T: ProviderImpl> BaseProvider<T> {
                         if total_requests == 1 {
                             state.avg_response_time_ms = duration.as_millis() as f64;
                         } else {
-                            state.avg_response_time_ms =
-                                (state.avg_response_time_ms * (total_requests - 1) as f64
-                                 + duration.as_millis() as f64) / total_requests as f64;
+                            state.avg_response_time_ms = (state.avg_response_time_ms
+                                * (total_requests - 1) as f64
+                                + duration.as_millis() as f64)
+                                / total_requests as f64;
                         }
                     }
 
-                    debug!("Provider {} generated response in {:?}", self.implementation.name(), duration);
+                    debug!(
+                        "Provider {} generated response in {:?}",
+                        self.implementation.name(),
+                        duration
+                    );
                     return Ok(response);
                 }
                 Err(e) => {
-                    error!("Provider {} error on attempt {}: {}",
-                           self.implementation.name(), attempt + 1, e);
+                    error!(
+                        "Provider {} error on attempt {}: {}",
+                        self.implementation.name(),
+                        attempt + 1,
+                        e
+                    );
                     last_error = Some(e);
                 }
             }
@@ -241,11 +254,12 @@ impl<T: ProviderImpl> BaseProvider<T> {
             state.failure_count += 1;
 
             // Mark as unavailable if too many failures
-            if state.failure_count > 5 &&
-               state.success_count < state.failure_count / 2 {
+            if state.failure_count > 5 && state.success_count < state.failure_count / 2 {
                 state.is_available = false;
-                warn!("Provider {} marked as unavailable due to high failure rate",
-                      self.implementation.name());
+                warn!(
+                    "Provider {} marked as unavailable due to high failure rate",
+                    self.implementation.name()
+                );
             }
         }
 
@@ -259,14 +273,17 @@ impl<T: ProviderImpl> BaseProvider<T> {
         // If marked as unavailable and less than 5 minutes since last check
         if !state.is_available {
             if let Some(last_failure) = state.last_failure {
-                if SystemTime::now().duration_since(last_failure)
-                    .unwrap_or(Duration::from_secs(0)) < Duration::from_secs(300) {
+                if SystemTime::now()
+                    .duration_since(last_failure)
+                    .unwrap_or(Duration::from_secs(0))
+                    < Duration::from_secs(300)
+                {
                     return false;
                 }
             }
         }
 
-        drop(state);  // Release the lock before making the async call
+        drop(state); // Release the lock before making the async call
 
         // Perform actual availability check
         let available = self.implementation.is_available_impl().await;

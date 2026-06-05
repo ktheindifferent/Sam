@@ -10,14 +10,20 @@ pub async fn set_path() -> Result<(), anyhow::Error> {
 pub async fn install() -> Result<(), anyhow::Error> {
     // Winget is included by default on Windows 10 1709+ and Windows 11
     log::info!("Checking for winget installation");
-    let winget_path = r"C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\winget.exe";
-    let exists = tokio::fs::metadata(winget_path).await.is_ok() || crate::run_and_log_async("winget", &["--version"]).await.is_ok();
+    let winget_path =
+        r"C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\winget.exe";
+    let exists = tokio::fs::metadata(winget_path).await.is_ok()
+        || crate::run_and_log_async("winget", &["--version"])
+            .await
+            .is_ok();
     if exists {
         log::info!("winget is already installed.");
         return Ok(());
     }
 
-    log::info!("winget is not installed. Attempting to install App Installer from Microsoft Store...");
+    log::info!(
+        "winget is not installed. Attempting to install App Installer from Microsoft Store..."
+    );
 
     // Try to launch the Microsoft Store to the App Installer page
     let store_uri = "ms-windows-store://pdp/?productid=9NBLGGH4NNS1";
@@ -59,8 +65,14 @@ pub async fn install_package(package: &str) -> Result<(), anyhow::Error> {
         Ok(_) => log::info!("winget package installed: {}", package),
         Err(e) => {
             let msg = format!("{}", e);
-            if msg.contains("already installed") || msg.contains("No available upgrade found") || msg.contains("No newer package versions are available") {
-                log::info!("winget reports package '{}' is already installed or up to date.", package);
+            if msg.contains("already installed")
+                || msg.contains("No available upgrade found")
+                || msg.contains("No newer package versions are available")
+            {
+                log::info!(
+                    "winget reports package '{}' is already installed or up to date.",
+                    package
+                );
             } else {
                 log::error!("Failed to install winget package {}: {}", package, e);
                 return Err(e.into());
@@ -87,8 +99,14 @@ pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> 
             Ok(_) => log::info!("winget package installed: {}", pkg),
             Err(e) => {
                 let msg = format!("{}", e);
-                if msg.contains("already installed") || msg.contains("No available upgrade found") || msg.contains("No newer package versions are available") {
-                    log::info!("winget reports package '{}' is already installed or up to date.", pkg);
+                if msg.contains("already installed")
+                    || msg.contains("No available upgrade found")
+                    || msg.contains("No newer package versions are available")
+                {
+                    log::info!(
+                        "winget reports package '{}' is already installed or up to date.",
+                        pkg
+                    );
                 } else {
                     log::error!("Failed to install winget package {}: {}", pkg, e);
                 }
@@ -105,7 +123,9 @@ pub async fn verify() -> Result<(), anyhow::Error> {
         Ok(_) => log::info!("winget is available."),
         Err(e) => {
             log::error!("winget is not available: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "winget not found").into());
+            return Err(
+                std::io::Error::new(std::io::ErrorKind::NotFound, "winget not found").into(),
+            );
         }
     }
     Ok(())

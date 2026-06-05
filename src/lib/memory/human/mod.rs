@@ -150,19 +150,31 @@ impl Human {
             if self.phone_number.is_some() {
                 client.execute(
                     "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                    &[&self.phone_number.as_ref().expect("phone_number should be Some"), &self.oid],
+                    &[
+                        &self
+                            .phone_number
+                            .as_ref()
+                            .expect("phone_number should be Some"),
+                        &self.oid,
+                    ],
                 )?;
             }
             if self.email.is_some() {
                 client.execute(
                     "UPDATE humans SET email = $1 WHERE oid = $2;",
-                    &[&self.email.as_ref().expect("email should be Some"), &self.oid],
+                    &[
+                        &self.email.as_ref().expect("email should be Some"),
+                        &self.oid,
+                    ],
                 )?;
             }
             if self.password.is_some() {
                 client.execute(
                     "UPDATE humans SET password = $1 WHERE oid = $2;",
-                    &[&self.password.as_ref().expect("password should be Some"), &self.oid],
+                    &[
+                        &self.password.as_ref().expect("password should be Some"),
+                        &self.oid,
+                    ],
                 )?;
             }
             Ok(self)
@@ -183,19 +195,31 @@ impl Human {
                 if self.phone_number.is_some() {
                     client.execute(
                         "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                        &[&self.phone_number.as_ref().expect("phone_number should be Some"), &ads.oid],
+                        &[
+                            &self
+                                .phone_number
+                                .as_ref()
+                                .expect("phone_number should be Some"),
+                            &ads.oid,
+                        ],
                     )?;
                 }
                 if self.email.is_some() {
                     client.execute(
                         "UPDATE humans SET email = $1 WHERE oid = $2;",
-                        &[&self.email.as_ref().expect("email should be Some"), &ads.oid],
+                        &[
+                            &self.email.as_ref().expect("email should be Some"),
+                            &ads.oid,
+                        ],
                     )?;
                 }
                 if self.password.is_some() {
                     client.execute(
                         "UPDATE humans SET password = $1 WHERE oid = $2;",
-                        &[&self.password.as_ref().expect("password should be Some"), &self.oid],
+                        &[
+                            &self.password.as_ref().expect("password should be Some"),
+                            &self.oid,
+                        ],
                     )?;
                 }
             }
@@ -285,7 +309,13 @@ impl Human {
                 client
                     .execute(
                         "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                        &[&self.phone_number.as_ref().expect("phone_number should be Some"), &self.oid],
+                        &[
+                            &self
+                                .phone_number
+                                .as_ref()
+                                .expect("phone_number should be Some"),
+                            &self.oid,
+                        ],
                     )
                     .await?;
             }
@@ -293,7 +323,10 @@ impl Human {
                 client
                     .execute(
                         "UPDATE humans SET email = $1 WHERE oid = $2;",
-                        &[&self.email.as_ref().expect("email should be Some"), &self.oid],
+                        &[
+                            &self.email.as_ref().expect("email should be Some"),
+                            &self.oid,
+                        ],
                     )
                     .await?;
             }
@@ -301,7 +334,10 @@ impl Human {
                 client
                     .execute(
                         "UPDATE humans SET password = $1 WHERE oid = $2;",
-                        &[&self.password.as_ref().expect("password should be Some"), &self.oid],
+                        &[
+                            &self.password.as_ref().expect("password should be Some"),
+                            &self.oid,
+                        ],
                     )
                     .await?;
             }
@@ -322,7 +358,13 @@ impl Human {
                     client
                         .execute(
                             "UPDATE humans SET phone_number = $1 WHERE oid = $2;",
-                            &[&self.phone_number.as_ref().expect("phone_number should be Some"), &ads.oid],
+                            &[
+                                &self
+                                    .phone_number
+                                    .as_ref()
+                                    .expect("phone_number should be Some"),
+                                &ads.oid,
+                            ],
                         )
                         .await?;
                 }
@@ -330,7 +372,10 @@ impl Human {
                     client
                         .execute(
                             "UPDATE humans SET email = $1 WHERE oid = $2;",
-                            &[&self.email.as_ref().expect("email should be Some"), &ads.oid],
+                            &[
+                                &self.email.as_ref().expect("email should be Some"),
+                                &ads.oid,
+                            ],
                         )
                         .await?;
                 }
@@ -338,7 +383,10 @@ impl Human {
                     client
                         .execute(
                             "UPDATE humans SET password = $1 WHERE oid = $2;",
-                            &[&self.password.as_ref().expect("password should be Some"), &self.oid],
+                            &[
+                                &self.password.as_ref().expect("password should be Some"),
+                                &self.oid,
+                            ],
                         )
                         .await?;
                 }

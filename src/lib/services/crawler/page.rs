@@ -90,15 +90,17 @@ impl CrawledPage {
         let tokens = tokens_str
             .map(|s| s.split('\n').map(|s| s.to_string()).collect())
             .unwrap_or_default();
-        
+
         let links_str: Option<String> = row.get("links");
         let links = links_str
             .map(|s| s.split('\n').map(|s| s.to_string()).collect())
             .unwrap_or_default();
-            
+
         Ok(Self {
             id: row.get("id"),
-            crawl_job_oid: row.get::<_, Option<String>>("crawl_job_oid").unwrap_or_default(),
+            crawl_job_oid: row
+                .get::<_, Option<String>>("crawl_job_oid")
+                .unwrap_or_default(),
             url: row.get("url"),
             tokens,
             links,
@@ -112,15 +114,17 @@ impl CrawledPage {
         let tokens = tokens_str
             .map(|s| s.split('\n').map(|s| s.to_string()).collect())
             .unwrap_or_default();
-            
+
         let links_str: Option<String> = row.get("links");
         let links = links_str
             .map(|s| s.split('\n').map(|s| s.to_string()).collect())
             .unwrap_or_default();
-            
+
         Ok(Self {
             id: row.get("id"),
-            crawl_job_oid: row.get::<_, Option<String>>("crawl_job_oid").unwrap_or_default(),
+            crawl_job_oid: row
+                .get::<_, Option<String>>("crawl_job_oid")
+                .unwrap_or_default(),
             url: row.get("url"),
             tokens,
             links,
@@ -153,10 +157,9 @@ impl CrawledPage {
                 Ok(obj) => obj,
                 Err(e) => {
                     log::error!("Failed to deserialize CrawledPage: {}", e);
-                    return Err(crate::memory::Error::Other(format!(
-                        "Deserialization error: {e}"
-                    ))
-                    .into());
+                    return Err(
+                        crate::memory::Error::Other(format!("Deserialization error: {e}")).into(),
+                    );
                 }
             };
             parsed_rows.push(object);
@@ -232,7 +235,15 @@ impl CrawledPage {
         }
         // Then, build values and params
         for (i, page) in pages_cleaned.iter().enumerate() {
-            values.push(format!("(${}, ${}, ${}, ${}, ${}, ${})", i * 6 + 1, i * 6 + 2, i * 6 + 3, i * 6 + 4, i * 6 + 5, i * 6 + 6));
+            values.push(format!(
+                "(${}, ${}, ${}, ${}, ${}, ${})",
+                i * 6 + 1,
+                i * 6 + 2,
+                i * 6 + 3,
+                i * 6 + 4,
+                i * 6 + 5,
+                i * 6 + 6
+            ));
             params.push(&page.crawl_job_oid);
             params.push(&page.url);
             params.push(&tokens_strs[i]);
@@ -435,23 +446,27 @@ impl CrawledPage {
         let mut pages = Vec::new();
         let mut offset = 0;
         let page_size = 1000;
-        
+
         loop {
             let batch = match Self::select_async(Some(page_size), Some(offset), None, None).await {
                 Ok(p) => p,
                 Err(e) => {
-                    log::error!("Failed to select crawled pages batch at offset {}: {}", offset, e);
+                    log::error!(
+                        "Failed to select crawled pages batch at offset {}: {}",
+                        offset,
+                        e
+                    );
                     return Err(std::io::Error::other(e.to_string()));
                 }
             };
-            
+
             if batch.is_empty() {
                 break;
             }
-            
+
             pages.extend(batch);
             offset += page_size;
-            
+
             // Yield control to prevent blocking
             tokio::task::yield_now().await;
         }
@@ -486,15 +501,17 @@ impl CrawledPage {
     pub async fn get_unshared_content(limit: usize) -> crate::memory::Result<Vec<Self>> {
         let config = crate::memory::Config::new();
         let client = config.connect_pool().await?;
-        
-        let rows = client.query(
-            "SELECT * FROM crawled_pages 
-             WHERE telemetry_shared = FALSE 
-             ORDER BY timestamp ASC 
+
+        let rows = client
+            .query(
+                "SELECT * FROM crawled_pages
+             WHERE telemetry_shared = FALSE
+             ORDER BY timestamp ASC
              LIMIT $1",
-            &[&(limit as i64)]
-        ).await?;
-        
+                &[&(limit as i64)],
+            )
+            .await?;
+
         let mut pages = Vec::new();
         for row in rows {
             match Self::from_row(&row) {
@@ -509,12 +526,14 @@ impl CrawledPage {
     pub async fn mark_telemetry_shared(&mut self) -> crate::memory::Result<()> {
         let config = crate::memory::Config::new();
         let client = config.connect_pool().await?;
-        
-        client.execute(
-            "UPDATE crawled_pages SET telemetry_shared = TRUE WHERE id = $1",
-            &[&self.id]
-        ).await?;
-        
+
+        client
+            .execute(
+                "UPDATE crawled_pages SET telemetry_shared = TRUE WHERE id = $1",
+                &[&self.id],
+            )
+            .await?;
+
         self.telemetry_shared = true;
         Ok(())
     }
@@ -524,18 +543,22 @@ impl CrawledPage {
         if ids.is_empty() {
             return Ok(());
         }
-        
+
         let config = crate::memory::Config::new();
         let client = config.connect_pool().await?;
-        
-        let ids_str = ids.iter()
+
+        let ids_str = ids
+            .iter()
             .map(|id| id.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        
-        let query = format!("UPDATE crawled_pages SET telemetry_shared = TRUE WHERE id = ANY(ARRAY[{}]::int[])", ids_str);
+
+        let query = format!(
+            "UPDATE crawled_pages SET telemetry_shared = TRUE WHERE id = ANY(ARRAY[{}]::int[])",
+            ids_str
+        );
         client.execute(&query, &[]).await?;
-        
+
         Ok(())
     }
 

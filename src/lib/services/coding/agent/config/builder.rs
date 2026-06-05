@@ -152,7 +152,9 @@ impl ConfigBuilder {
             Feature::Debugging => self.config.features.debugging_tools = true,
             Feature::PerformanceProfiling => self.config.features.performance_profiling = true,
             Feature::SecurityScanning => self.config.features.security_scanning = true,
-            Feature::DocumentationGeneration => self.config.features.documentation_generation = true,
+            Feature::DocumentationGeneration => {
+                self.config.features.documentation_generation = true
+            }
             Feature::TestGeneration => self.config.features.test_generation = true,
             Feature::RefactoringSuggestions => self.config.features.refactoring_suggestions = true,
         }
@@ -168,7 +170,9 @@ impl ConfigBuilder {
             Feature::Debugging => self.config.features.debugging_tools = false,
             Feature::PerformanceProfiling => self.config.features.performance_profiling = false,
             Feature::SecurityScanning => self.config.features.security_scanning = false,
-            Feature::DocumentationGeneration => self.config.features.documentation_generation = false,
+            Feature::DocumentationGeneration => {
+                self.config.features.documentation_generation = false
+            }
             Feature::TestGeneration => self.config.features.test_generation = false,
             Feature::RefactoringSuggestions => self.config.features.refactoring_suggestions = false,
         }

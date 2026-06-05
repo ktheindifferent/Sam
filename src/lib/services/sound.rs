@@ -7,6 +7,7 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
+use crate::services::thread_manager::{self, ThreadConfig};
 use dasp::Frame;
 use hound::{WavReader, WavSpec, WavWriter};
 use noise_gate::NoiseGate;
@@ -14,11 +15,10 @@ use std::{
     fs::File,
     io::BufWriter,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
     sync::atomic::Ordering,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use threadpool::ThreadPool;
-use crate::services::thread_manager::{self, ThreadConfig};
 
 pub fn init() {
     // Initialize sound processing stages
@@ -40,7 +40,7 @@ pub fn cache_vwavs() {
         max_memory_mb: None,
         cpu_affinity: None,
     };
-    
+
     thread_manager::spawn_with_config(config, move |_shutdown_signal, _health_rx| {
         let pool = ThreadPool::new(12); // Configurable thread pool size
         let mut pg_query = crate::memory::PostgresQueries::default();
@@ -102,8 +102,10 @@ pub fn cache_vwavs() {
                                 None,
                                 Some(full_pg_query),
                             ) {
-                                Ok(observations) if !observations.is_empty() => {
-                                    let full_observation = &observations[0];
+                                Ok(observations) => {
+                                    let Some(full_observation) = observations.first() else {
+                                        return;
+                                    };
                                     if let Some(ref observation_file) =
                                         full_observation.observation_file
                                     {
@@ -121,10 +123,6 @@ pub fn cache_vwavs() {
                                         log::error!("Observation {} has no file data", th_obsv.oid);
                                         return;
                                     }
-                                }
-                                Ok(_) => {
-                                    log::error!("No observations found for oid {}", th_obsv.oid);
-                                    return;
                                 }
                                 Err(e) => {
                                     log::error!(
@@ -209,7 +207,10 @@ pub fn observe(prediction: crate::services::stt::STTPrediction, file_path: &str)
     if !prediction.text.is_empty() {
         observation
             .observation_objects
-            .push(crate::memory::ObservationObjects::new("Person".to_string(), 0.8));
+            .push(crate::memory::ObservationObjects::new(
+                "Person".to_string(),
+                0.8,
+            ));
     }
 
     // TODO: Implement speaker identification
@@ -235,8 +236,8 @@ pub fn observe(prediction: crate::services::stt::STTPrediction, file_path: &str)
                 vec![]
             }
         };
-        if !humans.is_empty() {
-            observation.observation_humans.push(humans[0].clone());
+        if let Some(human) = humans.first() {
+            observation.observation_humans.push(human.clone());
         } else {
             let mut human = crate::memory::Human::new();
             human.name = "Unknown".to_string();
@@ -266,74 +267,73 @@ pub fn s1_init() {
         max_memory_mb: None,
         cpu_affinity: None,
     };
-    
+
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
         log::info!("Sound S1 processor started");
-        
-        while !shutdown_signal.load(Ordering::Relaxed) {
-        let thing_paths = match std::fs::read_dir("/opt/sam/tmp/sound") {
-            Ok(paths) => paths,
-            Err(e) => {
-                log::error!("Failed to read /opt/sam/tmp/sound: {}", e);
-                continue;
-            }
-        };
-        for thing_path in thing_paths {
-            let tpath = match thing_path {
-                Ok(entry) => entry.path().display().to_string(),
-                Err(e) => {
-                    log::error!("Failed to read thing_path: {}", e);
-                    continue;
-                }
-            };
-            let paths = match std::fs::read_dir(format!("{tpath}/s1")) {
-                Ok(p) => p,
-                Err(e) => {
-                    log::error!("Failed to read {}/s1: {}", tpath, e);
-                    continue;
-                }
-            };
 
-            for path in paths {
-                let spath = match path {
+        while !shutdown_signal.load(Ordering::Relaxed) {
+            let thing_paths = match std::fs::read_dir("/opt/sam/tmp/sound") {
+                Ok(paths) => paths,
+                Err(e) => {
+                    log::error!("Failed to read /opt/sam/tmp/sound: {}", e);
+                    continue;
+                }
+            };
+            for thing_path in thing_paths {
+                let tpath = match thing_path {
                     Ok(entry) => entry.path().display().to_string(),
                     Err(e) => {
-                        log::error!("Failed to read path: {}", e);
+                        log::error!("Failed to read thing_path: {}", e);
                         continue;
                     }
                 };
-                let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
-                    Ok(duration) => duration.as_secs() as i64,
+                let paths = match std::fs::read_dir(format!("{tpath}/s1")) {
+                    Ok(p) => p,
                     Err(e) => {
-                        log::error!("Failed to get system time: {}", e);
+                        log::error!("Failed to read {}/s1: {}", tpath, e);
                         continue;
                     }
                 };
 
-                if let Ok(reader) = WavReader::open(&spath) {
-                    let header = reader.spec();
-                    let samples: std::result::Result<Vec<_>, _> = reader
-                        .into_samples::<i16>()
-                        .map(|result| result.map(|sample| [sample]))
-                        .collect();
-                    
-                    if let Ok(samples) = samples
-                    {
-                        let release_time = (header.sample_rate as f32 * 1.3).round();
-                        let s2_path = PathBuf::from(format!("{tpath}/s2"));
-                        let mut sink = Sink::new(s2_path, format!("{timestamp}-"), header);
-                        let mut gate = NoiseGate::new(4000, release_time as usize);
-                        gate.process_frames(&samples, &mut sink);
-                        std::fs::remove_file(spath).ok();
+                for path in paths {
+                    let spath = match path {
+                        Ok(entry) => entry.path().display().to_string(),
+                        Err(e) => {
+                            log::error!("Failed to read path: {}", e);
+                            continue;
+                        }
+                    };
+                    let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                        Ok(duration) => duration.as_secs() as i64,
+                        Err(e) => {
+                            log::error!("Failed to get system time: {}", e);
+                            continue;
+                        }
+                    };
+
+                    if let Ok(reader) = WavReader::open(&spath) {
+                        let header = reader.spec();
+                        let samples: std::result::Result<Vec<_>, _> = reader
+                            .into_samples::<i16>()
+                            .map(|result| result.map(|sample| [sample]))
+                            .collect();
+
+                        if let Ok(samples) = samples {
+                            let release_time = (header.sample_rate as f32 * 1.3).round();
+                            let s2_path = PathBuf::from(format!("{tpath}/s2"));
+                            let mut sink = Sink::new(s2_path, format!("{timestamp}-"), header);
+                            let mut gate = NoiseGate::new(4000, release_time as usize);
+                            gate.process_frames(&samples, &mut sink);
+                            std::fs::remove_file(spath).ok();
+                        }
                     }
                 }
             }
+
+            // Sleep briefly to avoid busy loop
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
-            
-        // Sleep briefly to avoid busy loop
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-        
+
         log::info!("Sound S1 processor stopped");
     });
 }
@@ -354,10 +354,10 @@ pub fn s2_init() {
         max_memory_mb: None,
         cpu_affinity: None,
     };
-    
+
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
         log::info!("Sound S2 processor started");
-        
+
         while !shutdown_signal.load(Ordering::Relaxed) {
             // Iterate over all "thing" directories in /opt/sam/tmp/sound
             let thing_paths = match std::fs::read_dir("/opt/sam/tmp/sound") {
@@ -426,7 +426,9 @@ pub fn s2_init() {
                 let mut groups: Vec<Vec<i64>> = Vec::new();
                 let mut current_group: Vec<i64> = Vec::new();
                 for &ts in &timestamps {
-                    if current_group.is_empty() || ts == current_group.last().map(|x| x + 1).unwrap_or(ts) {
+                    if current_group.is_empty()
+                        || ts == current_group.last().map(|x| x + 1).unwrap_or(ts)
+                    {
                         current_group.push(ts);
                     } else {
                         if current_group.len() > 1 {
@@ -484,9 +486,8 @@ pub fn s2_init() {
                                     .into_samples::<i16>()
                                     .map(|r| r.map(|s| [s]))
                                     .collect();
-                                
-                                let samples = match samples
-                                {
+
+                                let samples = match samples {
                                     Ok(s) => s,
                                     Err(e) => {
                                         log::error!(
@@ -556,11 +557,11 @@ pub fn s2_init() {
                     }
                 }
             }
-            
+
             // Sleep briefly to avoid busy loop
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        
+
         log::info!("Sound S2 processor stopped");
     });
 }
@@ -581,7 +582,7 @@ pub fn s3_init() {
         max_memory_mb: None,
         cpu_affinity: None,
     };
-    
+
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
         log::info!("Sound S3 processor started");
         // Use a thread pool with a configurable number of threads (default: 3)
@@ -637,9 +638,7 @@ pub fn s3_init() {
 
                         pool.execute(move || {
                             // Run STT prediction
-                            match crate::services::stt::deep_speech_process(
-                                fpath_thread.clone(),
-                            ) {
+                            match crate::services::stt::deep_speech_process(fpath_thread.clone()) {
                                 Ok(stt) if !stt.text.is_empty() => {
                                     // Optionally play a notification sound
                                     // crate::tools::uinx_cmd("aplay /opt/sam/beep.wav".to_string());
@@ -669,7 +668,7 @@ pub fn s3_init() {
             // Sleep briefly to avoid busy-waiting
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
-        
+
         log::info!("Sound S3 processor stopped");
     });
 }
@@ -711,7 +710,7 @@ impl RecordingProcessor {
 
     pub fn push(&mut self, sample: [f32; 1]) {
         self.buffer.push(sample[0]);
-        
+
         if let Some(writer) = &mut self.writer {
             if let Err(e) = writer.write_sample((sample[0] * 32767.0) as i16) {
                 log::error!("Failed to write sample: {}", e);
@@ -798,10 +797,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use std::fs;
     use tempfile::TempDir;
-    use proptest::prelude::*;
-    
+
     #[test]
     fn test_init_functions() {
         // Test that init functions can be called without panicking
@@ -810,29 +809,29 @@ mod tests {
         s2_init();
         s3_init();
     }
-    
+
     #[test]
     fn test_record_processor_creation() {
         let temp_dir = TempDir::new().unwrap();
         let output_path = temp_dir.path().join("test_output.wav");
-        
+
         let spec = WavSpec {
             channels: 1,
             sample_rate: 16000,
             bits_per_sample: 16,
             sample_format: hound::SampleFormat::Int,
         };
-        
+
         let processor = RecordingProcessor::new(&output_path, spec);
         assert!(processor.writer.is_some());
     }
-    
+
     #[test]
     fn test_noise_gate_processing() {
         let temp_dir = TempDir::new().unwrap();
         let input_path = temp_dir.path().join("input.wav");
         let output_path = temp_dir.path().join("output.wav");
-        
+
         // Create a test WAV file
         let spec = WavSpec {
             channels: 1,
@@ -840,7 +839,7 @@ mod tests {
             bits_per_sample: 16,
             sample_format: hound::SampleFormat::Int,
         };
-        
+
         let mut writer = WavWriter::create(&input_path, spec).unwrap();
         // Write some sample data
         for i in 0..1000 {
@@ -848,51 +847,51 @@ mod tests {
             writer.write_sample(sample as i16).unwrap();
         }
         writer.finalize().unwrap();
-        
+
         // Test noise gate processing
         let mut processor = RecordingProcessor::new(&output_path, spec);
-        
+
         // Read and process the input
         let reader = WavReader::open(&input_path).unwrap();
         let samples: Vec<i16> = reader.into_samples::<i16>().map(|s| s.unwrap()).collect();
-        
+
         for sample in samples {
             processor.push([sample as f32]);
         }
-        
+
         processor.finish();
-        
+
         // Verify output file exists
         assert!(output_path.exists());
     }
-    
+
     #[test]
     fn test_record_processor_buffer_handling() {
         let temp_dir = TempDir::new().unwrap();
         let output_path = temp_dir.path().join("test_buffer.wav");
-        
+
         let spec = WavSpec {
             channels: 1,
             sample_rate: 16000,
             bits_per_sample: 16,
             sample_format: hound::SampleFormat::Int,
         };
-        
+
         let mut processor = RecordingProcessor::new(&output_path, spec);
-        
+
         // Push samples to fill buffer
         for i in 0..100 {
             processor.push([i as f32]);
         }
-        
+
         processor.finish();
         assert!(output_path.exists());
-        
+
         // Verify file has content
         let metadata = fs::metadata(&output_path).unwrap();
         assert!(metadata.len() > 44); // WAV header is 44 bytes
     }
-    
+
     proptest! {
         #[test]
         fn test_wav_spec_validation(
@@ -906,92 +905,92 @@ mod tests {
                 bits_per_sample,
                 sample_format: hound::SampleFormat::Int,
             };
-            
+
             // Spec should be valid
             prop_assert!(spec.channels > 0);
             prop_assert!(spec.sample_rate > 0);
             prop_assert!([8, 16, 24, 32].contains(&spec.bits_per_sample));
         }
-        
+
         #[test]
         fn test_sample_processing(
             samples in prop::collection::vec(i16::MIN..=i16::MAX, 10..100)
         ) {
             let temp_dir = TempDir::new().unwrap();
             let output_path = temp_dir.path().join("test_samples.wav");
-            
+
             let spec = WavSpec {
                 channels: 1,
                 sample_rate: 16000,
                 bits_per_sample: 16,
                 sample_format: hound::SampleFormat::Int,
             };
-            
+
             let mut processor = RecordingProcessor::new(&output_path, spec);
-            
+
             for sample in samples {
                 processor.push([sample as f32]);
             }
-            
+
             processor.finish();
             prop_assert!(output_path.exists());
         }
     }
-    
+
     #[test]
     fn test_concurrent_processing() {
         use std::sync::Arc;
         use std::thread;
-        
+
         let temp_dir = Arc::new(TempDir::new().unwrap());
         let mut handles = vec![];
-        
+
         for i in 0..5 {
             let temp_dir = temp_dir.clone();
             let handle = thread::spawn(move || {
                 let output_path = temp_dir.path().join(format!("concurrent_{}.wav", i));
-                
+
                 let spec = WavSpec {
                     channels: 1,
                     sample_rate: 16000,
                     bits_per_sample: 16,
                     sample_format: hound::SampleFormat::Int,
                 };
-                
+
                 let mut processor = RecordingProcessor::new(&output_path, spec);
-                
+
                 for j in 0..100 {
                     processor.push([j as f32]);
                 }
-                
+
                 processor.finish();
                 assert!(output_path.exists());
             });
             handles.push(handle);
         }
-        
+
         for handle in handles {
             handle.join().unwrap();
         }
     }
-    
+
     #[test]
     fn test_noise_gate_parameters() {
         let noise_gate = NoiseGate::new(4000, 2080);
-        
+
         // Test that noise gate can process samples
         let sample = [0.0f32];
         // Note: NoiseGate::process_frames expects a slice of samples and a sink
         // This is just testing construction, not actual processing
     }
-    
+
     #[test]
     fn test_file_path_generation() {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let path = format!("/tmp/test_{}.wav", timestamp);
         assert!(path.contains(&timestamp.to_string()));
         assert!(path.ends_with(".wav"));

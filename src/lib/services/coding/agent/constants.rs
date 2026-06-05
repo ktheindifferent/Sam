@@ -66,7 +66,6 @@ pub const HEREDOC_MARKER: &str = "EOF";
 
 // Safe commands (can be moved to config)
 pub const DEFAULT_SAFE_COMMANDS: &[&str] = &[
-    "echo", "cat", "ls", "pwd", "mkdir", "touch", "cp", "mv", "rm",
-    "cargo", "rustc", "git", "npm", "node", "python", "pip",
-    "grep", "find", "sed", "awk", "sort", "uniq", "head", "tail",
+    "echo", "cat", "ls", "pwd", "mkdir", "touch", "cp", "mv", "rm", "cargo", "rustc", "git", "npm",
+    "node", "python", "pip", "grep", "find", "sed", "awk", "sort", "uniq", "head", "tail",
 ];

@@ -3,8 +3,8 @@
 // Developed by Caleb Mitchell Smith (ktheindifferent, PixelCoda, p0indexter)
 // Licensed under GPLv3....see LICENSE file.
 
-pub mod command_parser;
 pub mod action_executor;
+pub mod command_parser;
 pub mod context_manager;
 pub mod responses;
 
@@ -33,17 +33,20 @@ pub fn handle(
     request: &Request,
 ) -> Result<Response, crate::http::Error> {
     let input = request.get_param("input");
-    let user_id = request.get_param("user_id").unwrap_or_else(|| "localuser".to_string());
+    let user_id = request
+        .get_param("user_id")
+        .unwrap_or_else(|| "localuser".to_string());
 
     match input {
         Some(iput) => {
             // Use blocking runtime for async operations
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| crate::http::Error::from(format!("Runtime init error: {}", e)))?;
+
             rt.block_on(async {
                 // Load user context
                 let mut context = context_manager::load_user_context(&user_id).await;
-                
+
                 // Update brain.py to include context
                 let context_str = context_manager::serialize_context(&context);
 
@@ -57,14 +60,14 @@ pub fn handle(
                         // Check for embedded commands
                         if rs.contains(":::::") {
                             let commands = command_parser::extract_commands(&rs);
-                            
+
                             for command in commands {
                                 let result = action_executor::execute_action(&command).await;
-                                
+
                                 // Handle web-specific actions
                                 if result.output.starts_with("WEB_ACTION:") {
                                     let action_type = &result.output[11..]; // Remove "WEB_ACTION:" prefix
-                                    
+
                                     match action_type {
                                         "CLEAR_SCREEN" => {
                                             // Replace the response with a clear screen instruction
@@ -94,13 +97,21 @@ pub fn handle(
                                         success: result.success,
                                     });
                                 }
-                                
+
                                 // Remove the command marker from response
-                                modified_response = command_parser::remove_command_markers(&modified_response, &command);
+                                modified_response = command_parser::remove_command_markers(
+                                    &modified_response,
+                                    &command,
+                                );
                             }
-                            
+
                             // Update user context based on conversation
-                            context_manager::update_context(&mut context, &iput, &modified_response, &executed_actions);
+                            context_manager::update_context(
+                                &mut context,
+                                &iput,
+                                &modified_response,
+                                &executed_actions,
+                            );
                         }
 
                         // Save updated context
@@ -111,7 +122,9 @@ pub fn handle(
                             timestamp: chrono::Utc::now().timestamp(),
                             response_type: "io".to_string(),
                             executed_actions,
-                            context_updates: Some(serde_json::to_value(&context).unwrap_or_default()),
+                            context_updates: Some(
+                                serde_json::to_value(&context).unwrap_or_default(),
+                            ),
                         };
 
                         Ok(Response::json(&io))

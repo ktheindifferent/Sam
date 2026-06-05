@@ -1,7 +1,7 @@
 //! Base executor functionality
 
-use std::path::Path;
 use anyhow::Result;
+use std::path::Path;
 use tokio::time::Duration;
 
 /// Base executor trait

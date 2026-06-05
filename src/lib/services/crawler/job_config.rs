@@ -1,88 +1,88 @@
 //! Enhanced job configuration for flexible crawling
-//! 
+//!
 //! This module provides configurable parameters for crawl jobs including
 //! max depth, domain filters, and other crawling policies.
 
+use anyhow::{Context, Result};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use regex::Regex;
-use anyhow::{Result, Context};
 
 /// Configuration for a crawl job
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrawlJobConfig {
     /// Maximum crawl depth (default: 10)
     pub max_depth: usize,
-    
+
     /// Maximum number of pages to crawl (0 = unlimited)
     pub max_pages: usize,
-    
+
     /// Domain whitelist (if empty, all domains allowed)
     pub domain_whitelist: HashSet<String>,
-    
+
     /// Domain blacklist (domains to exclude)
     pub domain_blacklist: HashSet<String>,
-    
+
     /// URL patterns to include (regex)
     pub include_patterns: Vec<String>,
-    
+
     /// URL patterns to exclude (regex)
     pub exclude_patterns: Vec<String>,
-    
+
     /// Follow external links (links to different domains)
     pub follow_external: bool,
-    
+
     /// Follow redirects
     pub follow_redirects: bool,
-    
+
     /// Maximum redirects to follow
     pub max_redirects: usize,
-    
+
     /// Respect robots.txt
     pub respect_robots: bool,
-    
+
     /// User agent string (if different from default)
     pub user_agent: Option<String>,
-    
+
     /// Request timeout in seconds
     pub timeout_seconds: u64,
-    
+
     /// Minimum delay between requests to same domain (milliseconds)
     pub min_delay_ms: u64,
-    
+
     /// Maximum concurrent requests
     pub max_concurrent: usize,
-    
+
     /// Store page content (not just metadata)
     pub store_content: bool,
-    
+
     /// Store page screenshots (requires headless browser)
     pub store_screenshots: bool,
-    
+
     /// Extract and follow links from JavaScript
     pub parse_javascript: bool,
-    
+
     /// Language filter (ISO 639-1 codes, e.g., ["en", "es"])
     pub languages: Vec<String>,
-    
+
     /// Content type filters (e.g., ["text/html", "application/pdf"])
     pub content_types: Vec<String>,
-    
+
     /// Maximum content size in bytes (0 = unlimited)
     pub max_content_size: usize,
-    
+
     /// Custom headers to send with requests
     pub custom_headers: Vec<(String, String)>,
-    
+
     /// Crawl priority (higher = more important)
     pub priority: i32,
-    
+
     /// Tags for categorization
     pub tags: Vec<String>,
-    
+
     /// Notification webhook URL for completion
     pub webhook_url: Option<String>,
-    
+
     /// Schedule expression (cron-like) for recurring crawls
     pub schedule: Option<String>,
 }
@@ -129,7 +129,7 @@ impl CrawlJobConfig {
             ..Default::default()
         }
     }
-    
+
     /// Create a config for deep crawling (high depth, follow external)
     pub fn deep() -> Self {
         Self {
@@ -139,7 +139,7 @@ impl CrawlJobConfig {
             ..Default::default()
         }
     }
-    
+
     /// Create a config for focused crawling (specific domains only)
     pub fn focused(domains: Vec<String>) -> Self {
         let whitelist: HashSet<String> = domains.into_iter().collect();
@@ -149,7 +149,7 @@ impl CrawlJobConfig {
             ..Default::default()
         }
     }
-    
+
     /// Create a config for archival crawling (store everything)
     pub fn archival() -> Self {
         Self {
@@ -167,25 +167,26 @@ impl CrawlJobConfig {
             ..Default::default()
         }
     }
-    
+
     /// Check if a URL should be crawled based on configuration
     pub fn should_crawl(&self, url: &str) -> Result<bool> {
         // Extract domain from URL
         let parsed = url::Url::parse(url).context("Failed to parse URL")?;
-        let domain = parsed.host_str()
+        let domain = parsed
+            .host_str()
             .ok_or_else(|| anyhow::anyhow!("No host in URL"))?
             .to_string();
-        
+
         // Check domain whitelist
         if !self.domain_whitelist.is_empty() && !self.domain_whitelist.contains(&domain) {
             return Ok(false);
         }
-        
+
         // Check domain blacklist
         if self.domain_blacklist.contains(&domain) {
             return Ok(false);
         }
-        
+
         // Check include patterns
         if !self.include_patterns.is_empty() {
             let mut included = false;
@@ -201,7 +202,7 @@ impl CrawlJobConfig {
                 return Ok(false);
             }
         }
-        
+
         // Check exclude patterns
         for pattern in &self.exclude_patterns {
             if let Ok(regex) = Regex::new(pattern) {
@@ -210,44 +211,42 @@ impl CrawlJobConfig {
                 }
             }
         }
-        
+
         Ok(true)
     }
-    
+
     /// Validate the configuration
     pub fn validate(&self) -> Result<()> {
         // Validate regex patterns
         for pattern in &self.include_patterns {
-            Regex::new(pattern)
-                .context(format!("Invalid include pattern: {}", pattern))?;
+            Regex::new(pattern).context(format!("Invalid include pattern: {}", pattern))?;
         }
-        
+
         for pattern in &self.exclude_patterns {
-            Regex::new(pattern)
-                .context(format!("Invalid exclude pattern: {}", pattern))?;
+            Regex::new(pattern).context(format!("Invalid exclude pattern: {}", pattern))?;
         }
-        
+
         // Validate schedule if present
         if let Some(schedule) = &self.schedule {
             validate_cron_expression(schedule)?;
         }
-        
+
         // Validate other parameters
         if self.max_depth == 0 {
             return Err(anyhow::anyhow!("max_depth must be greater than 0"));
         }
-        
+
         if self.timeout_seconds == 0 {
             return Err(anyhow::anyhow!("timeout_seconds must be greater than 0"));
         }
-        
+
         if self.max_concurrent == 0 {
             return Err(anyhow::anyhow!("max_concurrent must be greater than 0"));
         }
-        
+
         Ok(())
     }
-    
+
     /// Merge with another config (other takes precedence)
     pub fn merge(&mut self, other: &CrawlJobConfig) {
         // Only override non-default values
@@ -347,7 +346,7 @@ impl ConfigurableCrawlJob {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        
+
         Self {
             id: 0,
             oid,
@@ -364,12 +363,12 @@ impl ConfigurableCrawlJob {
             error_message: None,
         }
     }
-    
+
     /// SQL table name
     pub fn sql_table_name() -> &'static str {
         "configurable_crawl_jobs"
     }
-    
+
     /// SQL table creation
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE IF NOT EXISTS configurable_crawl_jobs (
@@ -388,7 +387,7 @@ impl ConfigurableCrawlJob {
             error_message TEXT
         );"
     }
-    
+
     /// SQL indexes
     pub fn sql_indexes() -> Vec<&'static str> {
         vec![
@@ -405,17 +404,20 @@ impl ConfigurableCrawlJob {
     pub async fn is_recently_crawled(start_url: &str) -> crate::memory::Result<bool> {
         let config = crate::memory::Config::new();
         let client = config.connect_pool().await?;
-        
+
         // Calculate timestamp for one month ago (30 days)
         let one_month_ago = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64 - (30 * 24 * 60 * 60)) // 30 days in seconds
             .unwrap_or(0);
-        
-        let query = "SELECT COUNT(*) FROM configurable_crawl_jobs WHERE start_url = $1 AND created_at > $2";
-        let row = client.query_one(query, &[&start_url, &one_month_ago]).await?;
+
+        let query =
+            "SELECT COUNT(*) FROM configurable_crawl_jobs WHERE start_url = $1 AND created_at > $2";
+        let row = client
+            .query_one(query, &[&start_url, &one_month_ago])
+            .await?;
         let count: i64 = row.get(0);
-        
+
         Ok(count > 0)
     }
 }
@@ -426,7 +428,9 @@ fn validate_cron_expression(expr: &str) -> Result<()> {
     // In production, use a proper cron parser library
     let parts: Vec<&str> = expr.split_whitespace().collect();
     if parts.len() != 5 && parts.len() != 6 {
-        return Err(anyhow::anyhow!("Invalid cron expression: expected 5 or 6 fields"));
+        return Err(anyhow::anyhow!(
+            "Invalid cron expression: expected 5 or 6 fields"
+        ));
     }
     Ok(())
 }
@@ -434,39 +438,43 @@ fn validate_cron_expression(expr: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_should_crawl() {
         let mut config = CrawlJobConfig::default();
         config.domain_whitelist.insert("example.com".to_string());
-        
+
         assert!(config.should_crawl("https://example.com/page").unwrap());
         assert!(!config.should_crawl("https://other.com/page").unwrap());
-        
+
         config.domain_whitelist.clear();
         config.domain_blacklist.insert("bad.com".to_string());
-        
+
         assert!(config.should_crawl("https://example.com/page").unwrap());
         assert!(!config.should_crawl("https://bad.com/page").unwrap());
     }
-    
+
     #[test]
     fn test_pattern_matching() {
         let mut config = CrawlJobConfig::default();
         config.exclude_patterns.push(r".*\.pdf$".to_string());
-        
-        assert!(config.should_crawl("https://example.com/page.html").unwrap());
-        assert!(!config.should_crawl("https://example.com/document.pdf").unwrap());
+
+        assert!(config
+            .should_crawl("https://example.com/page.html")
+            .unwrap());
+        assert!(!config
+            .should_crawl("https://example.com/document.pdf")
+            .unwrap());
     }
-    
+
     #[test]
     fn test_config_validation() {
         let mut config = CrawlJobConfig::default();
         assert!(config.validate().is_ok());
-        
+
         config.max_depth = 0;
         assert!(config.validate().is_err());
-        
+
         config.max_depth = 10;
         config.include_patterns.push("[invalid regex".to_string());
         assert!(config.validate().is_err());

@@ -7,9 +7,9 @@
 pub mod manifest;
 
 #[cfg(feature = "plugins")]
-pub mod wasm_runtime;
-#[cfg(feature = "plugins")]
 pub mod loader;
+#[cfg(feature = "plugins")]
+pub mod wasm_runtime;
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -121,7 +121,12 @@ impl PluginRegistry {
     }
 
     /// Route a command to the appropriate plugin.
-    pub async fn handle_command(&self, plugin_name: &str, command: &str, args: &[&str]) -> anyhow::Result<String> {
+    pub async fn handle_command(
+        &self,
+        plugin_name: &str,
+        command: &str,
+        args: &[&str],
+    ) -> anyhow::Result<String> {
         match self.plugins.get(plugin_name) {
             Some(plugin) => plugin.handle_command(command, args).await,
             None => Err(anyhow::anyhow!("Plugin '{}' not found", plugin_name)),
@@ -137,10 +142,18 @@ mod tests {
 
     #[async_trait]
     impl Plugin for TestPlugin {
-        fn name(&self) -> &str { "test" }
-        fn version(&self) -> &str { "0.1.0" }
-        async fn initialize(&self) -> anyhow::Result<()> { Ok(()) }
-        async fn shutdown(&self) -> anyhow::Result<()> { Ok(()) }
+        fn name(&self) -> &str {
+            "test"
+        }
+        fn version(&self) -> &str {
+            "0.1.0"
+        }
+        async fn initialize(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn shutdown(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
         fn commands(&self) -> Vec<(String, String)> {
             vec![("greet".to_string(), "Say hello".to_string())]
         }

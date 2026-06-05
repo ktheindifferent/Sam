@@ -11,7 +11,7 @@ pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 let mut out = output_lines_clone.lock().await;
                 out.push("Crawler service started.".to_string());
             });
-            
+
             // Immediately show feedback to the user
             let mut out = output_lines.lock().await;
             out.push("Starting crawler service...".to_string());
@@ -24,7 +24,7 @@ pub async fn handle_crawler(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
                 let mut out = output_lines_clone.lock().await;
                 out.push("Crawler service stopped.".to_string());
             });
-            
+
             // Immediately show feedback
             let mut out = output_lines.lock().await;
             out.push("Stopping crawler service...".to_string());

@@ -1,10 +1,9 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use log::{error, info};
 use std::io;
 use std::path::Path;
 use std::process::Command;
-
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     match cmd {
@@ -55,7 +54,6 @@ pub async fn handle_pg(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
         }
     }
 }
-
 
 /*
 This Rust code provides functions to install and configure PostgreSQL on Windows, Linux, and macOS.

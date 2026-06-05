@@ -1,10 +1,10 @@
+use anyhow::Result;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use tokio::fs;
-use reqwest::Client;
 use std::time::Duration;
+use tokio::fs;
 
 /// Ollama server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,19 +63,17 @@ pub struct ModelPreference {
 impl Default for OllamaConfiguration {
     fn default() -> Self {
         Self {
-            servers: vec![
-                OllamaServerConfig {
-                    name: "Local".to_string(),
-                    endpoint: "http://localhost:11434".to_string(),
-                    models: vec![],
-                    is_default: true,
-                    is_local: true,
-                    gpu_provider: None,
-                    tags: vec!["local".to_string(), "development".to_string()],
-                    max_concurrent_requests: 1,
-                    timeout_seconds: 300,
-                }
-            ],
+            servers: vec![OllamaServerConfig {
+                name: "Local".to_string(),
+                endpoint: "http://localhost:11434".to_string(),
+                models: vec![],
+                is_default: true,
+                is_local: true,
+                gpu_provider: None,
+                tags: vec!["local".to_string(), "development".to_string()],
+                max_concurrent_requests: 1,
+                timeout_seconds: 300,
+            }],
             selected_server: Some("Local".to_string()),
             selected_model: Some("codellama:latest".to_string()),
             auto_discover_local: true,
@@ -98,9 +96,7 @@ impl OllamaConfigManager {
         let config_path = Self::get_config_path()?;
         let config = Self::load_or_create_config(&config_path).await?;
 
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()?;
+        let client = Client::builder().timeout(Duration::from_secs(10)).build()?;
 
         let mut manager = Self {
             config,
@@ -152,7 +148,10 @@ impl OllamaConfigManager {
     pub async fn add_server(&mut self, mut server: OllamaServerConfig) -> Result<()> {
         // Test the connection first
         if !self.test_server_connection(&server.endpoint).await? {
-            return Err(anyhow::anyhow!("Could not connect to server at {}", server.endpoint));
+            return Err(anyhow::anyhow!(
+                "Could not connect to server at {}",
+                server.endpoint
+            ));
         }
 
         // Fetch available models
@@ -171,7 +170,10 @@ impl OllamaConfigManager {
 
         // Check for duplicate names
         if self.config.servers.iter().any(|s| s.name == server.name) {
-            return Err(anyhow::anyhow!("Server with name '{}' already exists", server.name));
+            return Err(anyhow::anyhow!(
+                "Server with name '{}' already exists",
+                server.name
+            ));
         }
 
         self.config.servers.push(server);
@@ -295,9 +297,10 @@ impl OllamaConfigManager {
 
     /// Get current server configuration
     pub fn get_current_server(&self) -> Option<&OllamaServerConfig> {
-        self.config.selected_server.as_ref().and_then(|name| {
-            self.config.servers.iter().find(|s| s.name == *name)
-        })
+        self.config
+            .selected_server
+            .as_ref()
+            .and_then(|name| self.config.servers.iter().find(|s| s.name == *name))
     }
 
     /// Get all servers
@@ -312,7 +315,10 @@ impl OllamaConfigManager {
 
     /// Refresh models for a server
     pub async fn refresh_server_models(&mut self, server_name: &str) -> Result<Vec<String>> {
-        let endpoint = self.config.servers.iter()
+        let endpoint = self
+            .config
+            .servers
+            .iter()
             .find(|s| s.name == server_name)
             .map(|s| s.endpoint.clone())
             .ok_or_else(|| anyhow::anyhow!("Server '{}' not found", server_name))?;
@@ -320,7 +326,12 @@ impl OllamaConfigManager {
         let models = self.fetch_server_models(&endpoint).await?;
 
         // Update the server's model list
-        if let Some(server) = self.config.servers.iter_mut().find(|s| s.name == server_name) {
+        if let Some(server) = self
+            .config
+            .servers
+            .iter_mut()
+            .find(|s| s.name == server_name)
+        {
             server.models = models.clone();
         }
 
@@ -329,7 +340,11 @@ impl OllamaConfigManager {
     }
 
     /// Add model preference
-    pub async fn add_model_preference(&mut self, model: String, preference: ModelPreference) -> Result<()> {
+    pub async fn add_model_preference(
+        &mut self,
+        model: String,
+        preference: ModelPreference,
+    ) -> Result<()> {
         self.config.model_preferences.insert(model, preference);
         self.save_config().await?;
         Ok(())
@@ -341,7 +356,12 @@ impl OllamaConfigManager {
     }
 
     /// Quick setup for common scenarios
-    pub async fn quick_setup_remote_server(&mut self, ip: &str, port: u16, name: Option<String>) -> Result<()> {
+    pub async fn quick_setup_remote_server(
+        &mut self,
+        ip: &str,
+        port: u16,
+        name: Option<String>,
+    ) -> Result<()> {
         let endpoint = format!("http://{}:{}", ip, port);
         let name = name.unwrap_or_else(|| format!("Remote ({})", ip));
 
@@ -369,7 +389,12 @@ impl OllamaConfigManager {
         instance_type: String,
         cost_per_hour: f64,
     ) -> Result<()> {
-        if let Some(server) = self.config.servers.iter_mut().find(|s| s.name == server_name) {
+        if let Some(server) = self
+            .config
+            .servers
+            .iter_mut()
+            .find(|s| s.name == server_name)
+        {
             server.gpu_provider = Some(GpuProviderConfig {
                 provider_type: GpuProviderType::Salad,
                 api_key: Some(api_key),
@@ -395,10 +420,16 @@ impl OllamaConfigManager {
     pub fn get_summary(&self) -> String {
         let mut summary = String::new();
 
-        summary.push_str(&format!("Configured Servers: {}\n", self.config.servers.len()));
+        summary.push_str(&format!(
+            "Configured Servers: {}\n",
+            self.config.servers.len()
+        ));
 
         if let Some(current) = self.get_current_server() {
-            summary.push_str(&format!("Current Server: {} ({})\n", current.name, current.endpoint));
+            summary.push_str(&format!(
+                "Current Server: {} ({})\n",
+                current.name, current.endpoint
+            ));
             summary.push_str(&format!("Available Models: {}\n", current.models.len()));
 
             if let Some(gpu) = &current.gpu_provider {
@@ -435,7 +466,7 @@ impl OllamaConfigBuilder {
                 tags: vec![],
                 max_concurrent_requests: 1,
                 timeout_seconds: 300,
-            }
+            },
         }
     }
 

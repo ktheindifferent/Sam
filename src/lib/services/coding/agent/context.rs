@@ -1,15 +1,26 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
+use super::types::{BuildSystem, ProjectStructure, ProjectType};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use super::types::{ProjectStructure, ProjectType, BuildSystem};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Common development environment variables
 const RELEVANT_ENV_VARS: &[&str] = &[
-    "PATH", "HOME", "USER", "SHELL", "EDITOR", "TERM",
-    "RUST_LOG", "CARGO_HOME", "RUSTUP_HOME",
-    "NODE_ENV", "NPM_CONFIG_PREFIX", "PYTHON_PATH",
-    "JAVA_HOME", "GOPATH", "GOROOT",
+    "PATH",
+    "HOME",
+    "USER",
+    "SHELL",
+    "EDITOR",
+    "TERM",
+    "RUST_LOG",
+    "CARGO_HOME",
+    "RUSTUP_HOME",
+    "NODE_ENV",
+    "NPM_CONFIG_PREFIX",
+    "PYTHON_PATH",
+    "JAVA_HOME",
+    "GOPATH",
+    "GOROOT",
 ];
 
 /// Workspace context for better AI responses
@@ -54,7 +65,11 @@ impl ContextManager {
     }
 
     /// Get enhanced context for better AI responses
-    pub async fn get_enhanced_context(&self, current_dir: &PathBuf, session_lines: &[String]) -> Result<String> {
+    pub async fn get_enhanced_context(
+        &self,
+        current_dir: &PathBuf,
+        session_lines: &[String],
+    ) -> Result<String> {
         let mut context_parts = Vec::new();
 
         // Basic system information
@@ -82,7 +97,10 @@ impl ContextManager {
 
         // Running services
         if !self.workspace_context.running_services.is_empty() {
-            context_parts.push(format!("Running Services: {}", self.workspace_context.running_services.join(", ")));
+            context_parts.push(format!(
+                "Running Services: {}",
+                self.workspace_context.running_services.join(", ")
+            ));
         }
 
         Ok(context_parts.join("\n\n"))
@@ -153,7 +171,10 @@ impl ContextManager {
     }
 
     /// Analyze project structure and cache results
-    pub async fn analyze_project_structure(&mut self, current_dir: &PathBuf) -> Result<ProjectStructure> {
+    pub async fn analyze_project_structure(
+        &mut self,
+        current_dir: &PathBuf,
+    ) -> Result<ProjectStructure> {
         // Check if we need to refresh the cache
         if let Some(cached_project) = &self.project_cache {
             if cached_project.root_directory == current_dir.to_string_lossy() {
@@ -167,9 +188,13 @@ impl ContextManager {
         Ok(project_structure)
     }
 
-    async fn analyze_project_structure_impl(&self, current_dir: &PathBuf) -> Result<ProjectStructure> {
+    async fn analyze_project_structure_impl(
+        &self,
+        current_dir: &PathBuf,
+    ) -> Result<ProjectStructure> {
         let (project_type, build_system) = self.detect_project_type(current_dir).await;
-        let (source_files, config_files, test_files) = self.scan_project_files(current_dir, &project_type).await?;
+        let (source_files, config_files, test_files) =
+            self.scan_project_files(current_dir, &project_type).await?;
         let dependencies = self.detect_dependencies(current_dir, &build_system).await?;
         let git_repository = current_dir.join(".git").exists();
 
@@ -224,7 +249,9 @@ impl ContextManager {
             return (ProjectType::Java, BuildSystem::Maven);
         }
 
-        if current_dir.join("build.gradle").exists() || current_dir.join("build.gradle.kts").exists() {
+        if current_dir.join("build.gradle").exists()
+            || current_dir.join("build.gradle.kts").exists()
+        {
             return (ProjectType::Java, BuildSystem::Gradle);
         }
 
@@ -236,59 +263,86 @@ impl ContextManager {
         (ProjectType::Unknown, BuildSystem::Unknown)
     }
 
-    async fn scan_project_files(&self, current_dir: &PathBuf, project_type: &ProjectType) -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
+    async fn scan_project_files(
+        &self,
+        current_dir: &PathBuf,
+        project_type: &ProjectType,
+    ) -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
         let mut source_files = Vec::new();
         let mut config_files = Vec::new();
         let mut test_files = Vec::new();
 
         let (source_extensions, config_patterns, test_patterns) = match project_type {
-            ProjectType::Rust => {
-                (
-                    vec!["rs"],
-                    vec!["Cargo.toml", "Cargo.lock", "build.rs", ".rustfmt.toml", "clippy.toml"],
-                    vec!["tests/", "test_", "_test.rs"],
-                )
-            }
-            ProjectType::JavaScript | ProjectType::TypeScript => {
-                (
-                    vec!["js", "ts", "jsx", "tsx"],
-                    vec!["package.json", "package-lock.json", "yarn.lock", "tsconfig.json", ".eslintrc", ".babelrc", "webpack.config.js"],
-                    vec!["test/", "tests/", "__tests__/", ".test.", ".spec."],
-                )
-            }
-            ProjectType::Python => {
-                (
-                    vec!["py", "pyx", "pyi"],
-                    vec!["setup.py", "pyproject.toml", "requirements.txt", "setup.cfg", "tox.ini", ".flake8", "mypy.ini"],
-                    vec!["test_", "_test.py", "tests/"],
-                )
-            }
-            ProjectType::Go => {
-                (
-                    vec!["go"],
-                    vec!["go.mod", "go.sum"],
-                    vec!["_test.go"],
-                )
-            }
-            ProjectType::Java => {
-                (
-                    vec!["java", "kt", "scala"],
-                    vec!["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle"],
-                    vec!["test/", "Test.java", "Tests.java"],
-                )
-            }
-            ProjectType::Unknown => {
-                (
-                    vec!["txt", "md", "yml", "yaml", "json", "toml"],
-                    vec!["Makefile", "CMakeLists.txt", "configure", "config.yml", "config.yaml"],
-                    vec![],
-                )
-            }
+            ProjectType::Rust => (
+                vec!["rs"],
+                vec![
+                    "Cargo.toml",
+                    "Cargo.lock",
+                    "build.rs",
+                    ".rustfmt.toml",
+                    "clippy.toml",
+                ],
+                vec!["tests/", "test_", "_test.rs"],
+            ),
+            ProjectType::JavaScript | ProjectType::TypeScript => (
+                vec!["js", "ts", "jsx", "tsx"],
+                vec![
+                    "package.json",
+                    "package-lock.json",
+                    "yarn.lock",
+                    "tsconfig.json",
+                    ".eslintrc",
+                    ".babelrc",
+                    "webpack.config.js",
+                ],
+                vec!["test/", "tests/", "__tests__/", ".test.", ".spec."],
+            ),
+            ProjectType::Python => (
+                vec!["py", "pyx", "pyi"],
+                vec![
+                    "setup.py",
+                    "pyproject.toml",
+                    "requirements.txt",
+                    "setup.cfg",
+                    "tox.ini",
+                    ".flake8",
+                    "mypy.ini",
+                ],
+                vec!["test_", "_test.py", "tests/"],
+            ),
+            ProjectType::Go => (vec!["go"], vec!["go.mod", "go.sum"], vec!["_test.go"]),
+            ProjectType::Java => (
+                vec!["java", "kt", "scala"],
+                vec![
+                    "pom.xml",
+                    "build.gradle",
+                    "build.gradle.kts",
+                    "settings.gradle",
+                ],
+                vec!["test/", "Test.java", "Tests.java"],
+            ),
+            ProjectType::Unknown => (
+                vec!["txt", "md", "yml", "yaml", "json", "toml"],
+                vec![
+                    "Makefile",
+                    "CMakeLists.txt",
+                    "configure",
+                    "config.yml",
+                    "config.yaml",
+                ],
+                vec![],
+            ),
         };
 
         // Scan for source files
         for extension in source_extensions {
-            self.scan_directory_recursive(current_dir, current_dir, &mut source_files, &[extension]).await?;
+            self.scan_directory_recursive(
+                current_dir,
+                current_dir,
+                &mut source_files,
+                &[extension],
+            )
+            .await?;
         }
 
         // Collect config files
@@ -311,22 +365,29 @@ impl ContextManager {
         Ok((source_files, config_files, test_files))
     }
 
-    async fn scan_directory_recursive(&self, base_dir: &PathBuf, dir: &PathBuf, files: &mut Vec<String>, extensions: &[&str]) -> Result<()> {
+    async fn scan_directory_recursive(
+        &self,
+        base_dir: &PathBuf,
+        dir: &PathBuf,
+        files: &mut Vec<String>,
+        extensions: &[&str],
+    ) -> Result<()> {
         // Use a stack-based approach to avoid recursion
         let mut dirs_to_scan = vec![dir.clone()];
-        
+
         while let Some(current_dir) = dirs_to_scan.pop() {
             if let Ok(mut entries) = tokio::fs::read_dir(&current_dir).await {
                 while let Ok(Some(entry)) = entries.next_entry().await {
                     let path = entry.path();
-                    
+
                     if let Ok(metadata) = entry.metadata().await {
                         if metadata.is_file() {
-                            let relative_path = path.strip_prefix(base_dir)
+                            let relative_path = path
+                                .strip_prefix(base_dir)
                                 .unwrap_or(&path)
                                 .to_string_lossy()
                                 .to_string();
-                            
+
                             if let Some(file_ext) = path.extension() {
                                 let ext_str = file_ext.to_string_lossy();
                                 if extensions.iter().any(|&ext| ext == ext_str) {
@@ -343,7 +404,11 @@ impl ContextManager {
         Ok(())
     }
 
-    async fn detect_dependencies(&self, current_dir: &PathBuf, build_system: &BuildSystem) -> Result<Vec<String>> {
+    async fn detect_dependencies(
+        &self,
+        current_dir: &PathBuf,
+        build_system: &BuildSystem,
+    ) -> Result<Vec<String>> {
         let mut dependencies = Vec::new();
 
         match build_system {
@@ -365,7 +430,8 @@ impl ContextManager {
                             }
                             if in_dependencies && !line.is_empty() && !line.starts_with('#') {
                                 if let Some(dep_name) = line.split('=').next() {
-                                    dependencies.push(dep_name.trim().trim_matches('"').to_string());
+                                    dependencies
+                                        .push(dep_name.trim().trim_matches('"').to_string());
                                 }
                             }
                         }
@@ -378,10 +444,13 @@ impl ContextManager {
                     if let Ok(content) = tokio::fs::read_to_string(package_json).await {
                         // Simple JSON parsing for dependencies
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if let Some(deps) = json.get("dependencies").and_then(|d| d.as_object()) {
+                            if let Some(deps) = json.get("dependencies").and_then(|d| d.as_object())
+                            {
                                 dependencies.extend(deps.keys().cloned());
                             }
-                            if let Some(dev_deps) = json.get("devDependencies").and_then(|d| d.as_object()) {
+                            if let Some(dev_deps) =
+                                json.get("devDependencies").and_then(|d| d.as_object())
+                            {
                                 dependencies.extend(dev_deps.keys().cloned());
                             }
                         }
@@ -403,17 +472,31 @@ impl ContextManager {
         if let Some(project) = &self.project_cache {
             context_parts.push(format!("Project Type: {:?}", project.project_type));
             context_parts.push(format!("Build System: {:?}", project.build_system));
-            
+
             if !project.source_files.is_empty() {
-                context_parts.push(format!("Source Files ({}): {}", 
+                context_parts.push(format!(
+                    "Source Files ({}): {}",
                     project.source_files.len(),
-                    project.source_files.iter().take(5).cloned().collect::<Vec<_>>().join(", ")
+                    project
+                        .source_files
+                        .iter()
+                        .take(5)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ));
             }
 
             if !project.dependencies.is_empty() {
-                context_parts.push(format!("Dependencies: {}", 
-                    project.dependencies.iter().take(10).cloned().collect::<Vec<_>>().join(", ")
+                context_parts.push(format!(
+                    "Dependencies: {}",
+                    project
+                        .dependencies
+                        .iter()
+                        .take(10)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ));
             }
 
@@ -448,10 +531,8 @@ impl ContextManager {
         {
             if output.status.success() {
                 let status_output = String::from_utf8_lossy(&output.stdout);
-                let status_lines: Vec<&str> = status_output
-                    .lines()
-                    .collect();
-                
+                let status_lines: Vec<&str> = status_output.lines().collect();
+
                 if !status_lines.is_empty() {
                     git_info.push(format!("Modified files: {}", status_lines.len()));
                 } else {

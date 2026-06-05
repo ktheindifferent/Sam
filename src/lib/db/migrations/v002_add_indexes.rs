@@ -9,17 +9,18 @@ impl super::Migration for Migration {
     fn version(&self) -> i64 {
         2
     }
-    
+
     fn name(&self) -> &str {
         "add_indexes"
     }
-    
+
     fn description(&self) -> &str {
         "Add performance indexes to core tables"
     }
-    
+
     async fn up(&self, tx: &Transaction<'_>) -> Result<()> {
-        tx.batch_execute(r#"
+        tx.batch_execute(
+            r#"
             -- Crawler indexes
             CREATE INDEX IF NOT EXISTS idx_crawl_pages_job_id 
                 ON crawl_pages(job_id);
@@ -63,13 +64,16 @@ impl super::Migration for Migration {
                 ON service_health(status);
             CREATE INDEX IF NOT EXISTS idx_service_health_checked_at 
                 ON service_health(checked_at DESC);
-        "#).await?;
-        
+        "#,
+        )
+        .await?;
+
         Ok(())
     }
-    
+
     async fn down(&self, tx: &Transaction<'_>) -> Result<()> {
-        tx.batch_execute(r#"
+        tx.batch_execute(
+            r#"
             -- Drop all indexes created in up()
             DROP INDEX IF EXISTS idx_crawl_pages_job_id;
             DROP INDEX IF EXISTS idx_crawl_pages_url;
@@ -92,8 +96,10 @@ impl super::Migration for Migration {
             DROP INDEX IF EXISTS idx_service_health_name;
             DROP INDEX IF EXISTS idx_service_health_status;
             DROP INDEX IF EXISTS idx_service_health_checked_at;
-        "#).await?;
-        
+        "#,
+        )
+        .await?;
+
         Ok(())
     }
 }

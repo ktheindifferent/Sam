@@ -11,7 +11,11 @@ pub struct ValidationError {
 }
 
 impl ValidationError {
-    pub fn new(field: impl Into<String>, message: impl Into<String>, code: impl Into<String>) -> Self {
+    pub fn new(
+        field: impl Into<String>,
+        message: impl Into<String>,
+        code: impl Into<String>,
+    ) -> Self {
         Self {
             field: field.into(),
             message: message.into(),
@@ -116,11 +120,8 @@ impl Validator {
         if let Some(ref value) = self.value {
             if let Ok(re) = Regex::new(pattern) {
                 if !re.is_match(value) {
-                    self.errors.push(ValidationError::new(
-                        &self.field_name,
-                        message,
-                        "pattern",
-                    ));
+                    self.errors
+                        .push(ValidationError::new(&self.field_name, message, "pattern"));
                 }
             }
         }
@@ -129,7 +130,8 @@ impl Validator {
 
     pub fn email(mut self) -> Self {
         if let Some(ref value) = self.value {
-            let email_regex = Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
+            let email_regex =
+                Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
             if !email_regex.is_match(value) {
                 self.errors.push(ValidationError::new(
                     &self.field_name,
@@ -256,11 +258,8 @@ impl Validator {
     {
         if let Some(ref value) = self.value {
             if !validator(value) {
-                self.errors.push(ValidationError::new(
-                    &self.field_name,
-                    message,
-                    "custom",
-                ));
+                self.errors
+                    .push(ValidationError::new(&self.field_name, message, "custom"));
             }
         }
         self
@@ -348,7 +347,9 @@ mod tests {
         let result = Validator::validate("email", "invalid").email().build();
         assert!(!result.is_valid());
 
-        let result = Validator::validate("email", "user@example.com").email().build();
+        let result = Validator::validate("email", "user@example.com")
+            .email()
+            .build();
         assert!(result.is_valid());
     }
 
@@ -357,7 +358,9 @@ mod tests {
         let result = Validator::validate("website", "not-a-url").url().build();
         assert!(!result.is_valid());
 
-        let result = Validator::validate("website", "https://example.com").url().build();
+        let result = Validator::validate("website", "https://example.com")
+            .url()
+            .build();
         assert!(result.is_valid());
     }
 
@@ -385,10 +388,14 @@ mod tests {
     #[test]
     fn test_one_of_validation() {
         let options = vec!["red", "green", "blue"];
-        let result = Validator::validate("color", "yellow").one_of(&options).build();
+        let result = Validator::validate("color", "yellow")
+            .one_of(&options)
+            .build();
         assert!(!result.is_valid());
 
-        let result = Validator::validate("color", "green").one_of(&options).build();
+        let result = Validator::validate("color", "green")
+            .one_of(&options)
+            .build();
         assert!(result.is_valid());
     }
 

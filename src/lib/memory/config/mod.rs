@@ -1,6 +1,6 @@
 use crate::memory::PostgresServer;
 use crate::memory::Result;
-use crate::memory::{PGCol, PostgresQueries, MemoryError};
+use crate::memory::{MemoryError, PGCol, PostgresQueries};
 use crate::services::thread_manager;
 use deadpool_postgres::Manager;
 use deadpool_postgres::Pool;
@@ -46,15 +46,23 @@ impl Config {
     /// Initializes the PostgreSQL database and starts the HTTP server.
     /// TODO: Make http a service
     pub async fn init(&self) {
-        log::info!("Connecting to PostgreSQL at: {}@{}/{}", 
-                  self.postgres.username, self.postgres.address, self.postgres.db_name);
-        
+        log::info!(
+            "Connecting to PostgreSQL at: {}@{}/{}",
+            self.postgres.username,
+            self.postgres.address,
+            self.postgres.db_name
+        );
+
         match self.create_db().await {
             Ok(_) => log::info!("Database created successfully"),
             Err(e) => {
                 log::error!("Failed to create database: {}", e);
-                log::error!("Connection string: postgresql://{}:***@{}/{}?sslmode=prefer", 
-                           self.postgres.username, self.postgres.address, self.postgres.db_name);
+                log::error!(
+                    "Connection string: postgresql://{}:***@{}/{}?sslmode=prefer",
+                    self.postgres.username,
+                    self.postgres.address,
+                    self.postgres.db_name
+                );
             }
         }
 
@@ -86,12 +94,13 @@ impl Config {
         // Start WebSocket server
         thread_manager::spawn("websocket-server", move |shutdown_signal, _health_rx| {
             // Create a new Tokio runtime for the WebSocket server
-            let runtime = tokio::runtime::Runtime::new().expect("Failed to create WebSocket runtime");
-            
+            let runtime =
+                tokio::runtime::Runtime::new().expect("Failed to create WebSocket runtime");
+
             runtime.block_on(async {
                 log::info!("Starting WebSocket server on port 8080");
                 let ws_server = crate::websocket::WsServer::new();
-                
+
                 // Start the WebSocket server
                 match ws_server.start("0.0.0.0:8080").await {
                     Ok(_) => log::info!("WebSocket server started successfully"),
@@ -103,7 +112,7 @@ impl Config {
         // Start SSH server for remote TUI access
         thread_manager::spawn("ssh-server", move |shutdown_signal, _health_rx| {
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create SSH runtime");
-            
+
             runtime.block_on(async {
                 log::info!("Starting SSH server on port 2222");
                 match crate::services::ssh::server::start_ssh_server().await {
@@ -116,14 +125,14 @@ impl Config {
         // Initialize and start crawler service
         thread_manager::spawn("crawler-service", move |shutdown_signal, _health_rx| {
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create crawler runtime");
-            
+
             runtime.block_on(async {
                 log::info!("Initializing crawler database pool");
                 match crate::services::crawler::initialize_db_pool().await {
                     Ok(_) => log::info!("Crawler database pool initialized successfully"),
                     Err(e) => log::error!("Failed to initialize crawler database pool: {}", e),
                 }
-                
+
                 log::info!("Starting crawler service");
                 crate::services::crawler::start_service_async().await;
                 log::info!("Crawler service started successfully");
@@ -503,7 +512,7 @@ impl Config {
 
         // Validate database name to prevent SQL injection
         Self::validate_sql_identifier(&self.postgres.db_name)?;
-        
+
         // Attempt to create the database
         let create_db_sql = format!("CREATE DATABASE {}", self.postgres.db_name);
         match client.batch_execute(&create_db_sql).await {
@@ -620,7 +629,7 @@ impl Config {
     pub fn destroy_row(oid: String, table_name: String) -> Result<bool> {
         // Validate table name to prevent SQL injection
         Self::validate_sql_identifier(&table_name)?;
-        
+
         let mut client = Config::client()?;
 
         // Use parameterized queries to prevent SQL injection
@@ -651,7 +660,7 @@ impl Config {
     pub async fn destroy_row_async(oid: String, table_name: String) -> Result<bool> {
         // Validate table name to prevent SQL injection
         Self::validate_sql_identifier(&table_name)?;
-        
+
         let config = crate::memory::Config::new();
         let client = config.connect_pool().await?;
         // Use parameterized queries to prevent SQL injection
@@ -883,36 +892,42 @@ impl Config {
             let mut counter = 1;
             for col in pg_query.query_columns {
                 // Clean up the column name (temporary fix for legacy code)
-                let col_cleaned = col.trim()
+                let col_cleaned = col
+                    .trim()
                     .trim_start_matches("OR ")
                     .trim_end_matches(" =")
                     .trim_end_matches("=")
                     .trim();
-                
+
                 // Special handling for SQL functions like LOWER() and comparison operators
-                let (column_expr, _needs_validation) = if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
-                    // Extract the column name from LOWER(column)
-                    let inner = &col_cleaned[6..col_cleaned.len()-1];
-                    Self::validate_sql_identifier(inner)?;
-                    (format!("LOWER({})", inner), false)
-                } else if col_cleaned.ends_with(" <") || col_cleaned.ends_with(" >") || col_cleaned.ends_with(" <=") || col_cleaned.ends_with(" >=") {
-                    // Handle comparison operators
-                    let parts: Vec<&str> = col_cleaned.rsplitn(2, ' ').collect();
-                    if parts.len() == 2 {
-                        let column_name = parts[1];
-                        let operator = parts[0];
-                        Self::validate_sql_identifier(column_name)?;
-                        (format!("{} {}", column_name, operator), false)
+                let (column_expr, _needs_validation) =
+                    if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
+                        // Extract the column name from LOWER(column)
+                        let inner = &col_cleaned[6..col_cleaned.len() - 1];
+                        Self::validate_sql_identifier(inner)?;
+                        (format!("LOWER({})", inner), false)
+                    } else if col_cleaned.ends_with(" <")
+                        || col_cleaned.ends_with(" >")
+                        || col_cleaned.ends_with(" <=")
+                        || col_cleaned.ends_with(" >=")
+                    {
+                        // Handle comparison operators
+                        let parts: Vec<&str> = col_cleaned.rsplitn(2, ' ').collect();
+                        if parts.len() == 2 {
+                            let column_name = parts[1];
+                            let operator = parts[0];
+                            Self::validate_sql_identifier(column_name)?;
+                            (format!("{} {}", column_name, operator), false)
+                        } else {
+                            // Fallback - treat as regular column name
+                            Self::validate_sql_identifier(col_cleaned)?;
+                            (col_cleaned.to_string(), true)
+                        }
                     } else {
-                        // Fallback - treat as regular column name
+                        // Regular column name
                         Self::validate_sql_identifier(col_cleaned)?;
                         (col_cleaned.to_string(), true)
-                    }
-                } else {
-                    // Regular column name
-                    Self::validate_sql_identifier(col_cleaned)?;
-                    (col_cleaned.to_string(), true)
-                };
+                    };
 
                 // Handle OR conditions (legacy support) and comparison operators
                 let operator = if column_expr.contains(" <") || column_expr.contains(" >") {
@@ -921,7 +936,7 @@ impl Config {
                 } else {
                     " ="
                 };
-                
+
                 if col.trim().starts_with("OR ") {
                     execquery = format!("{execquery} OR {}{} ${counter}", column_expr, operator);
                 } else if counter == 1 {
@@ -1053,37 +1068,43 @@ impl Config {
             let mut counter = 1;
             for col in pg_query.query_columns.iter() {
                 // Clean up the column name (temporary fix for legacy code)
-                let col_cleaned = col.trim()
+                let col_cleaned = col
+                    .trim()
                     .trim_start_matches("OR ")
                     .trim_end_matches(" =")
                     .trim_end_matches("=")
                     .trim();
-                
+
                 // Special handling for SQL functions like LOWER() and comparison operators
-                let (column_expr, needs_validation) = if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
-                    // Extract the column name from LOWER(column)
-                    let inner = &col_cleaned[6..col_cleaned.len()-1];
-                    Self::validate_sql_identifier(inner)?;
-                    (format!("LOWER({})", inner), false)
-                } else if col_cleaned.ends_with(" <") || col_cleaned.ends_with(" >") || col_cleaned.ends_with(" <=") || col_cleaned.ends_with(" >=") {
-                    // Handle comparison operators
-                    let parts: Vec<&str> = col_cleaned.rsplitn(2, ' ').collect();
-                    if parts.len() == 2 {
-                        let column_name = parts[1];
-                        let operator = parts[0];
-                        Self::validate_sql_identifier(column_name)?;
-                        (format!("{} {}", column_name, operator), false)
+                let (column_expr, needs_validation) =
+                    if col_cleaned.starts_with("LOWER(") && col_cleaned.ends_with(")") {
+                        // Extract the column name from LOWER(column)
+                        let inner = &col_cleaned[6..col_cleaned.len() - 1];
+                        Self::validate_sql_identifier(inner)?;
+                        (format!("LOWER({})", inner), false)
+                    } else if col_cleaned.ends_with(" <")
+                        || col_cleaned.ends_with(" >")
+                        || col_cleaned.ends_with(" <=")
+                        || col_cleaned.ends_with(" >=")
+                    {
+                        // Handle comparison operators
+                        let parts: Vec<&str> = col_cleaned.rsplitn(2, ' ').collect();
+                        if parts.len() == 2 {
+                            let column_name = parts[1];
+                            let operator = parts[0];
+                            Self::validate_sql_identifier(column_name)?;
+                            (format!("{} {}", column_name, operator), false)
+                        } else {
+                            // Fallback - treat as regular column name
+                            Self::validate_sql_identifier(col_cleaned)?;
+                            (col_cleaned.to_string(), true)
+                        }
                     } else {
-                        // Fallback - treat as regular column name
+                        // Regular column name
                         Self::validate_sql_identifier(col_cleaned)?;
                         (col_cleaned.to_string(), true)
-                    }
-                } else {
-                    // Regular column name
-                    Self::validate_sql_identifier(col_cleaned)?;
-                    (col_cleaned.to_string(), true)
-                };
-                
+                    };
+
                 // Handle OR conditions (legacy support) and comparison operators
                 let operator = if column_expr.contains(" <") || column_expr.contains(" >") {
                     // For comparison operators, don't add = since it's already part of column_expr
@@ -1091,7 +1112,7 @@ impl Config {
                 } else {
                     " ="
                 };
-                
+
                 if col.trim().starts_with("OR ") {
                     execquery = format!("{execquery} OR {}{} ${counter}", column_expr, operator);
                 } else if counter == 1 {
@@ -1303,10 +1324,7 @@ impl Config {
                 push_json_async!(crate::memory::cache::WebSessions, from_row_async);
             }
             t if t == crate::memory::config::FileStorageLocation::sql_table_name() => {
-                push_json_async!(
-                    crate::memory::config::FileStorageLocation,
-                    from_row_async
-                );
+                push_json_async!(crate::memory::config::FileStorageLocation, from_row_async);
             }
             t if t == crate::memory::storage::File::sql_table_name() => {
                 if columns.is_none() {

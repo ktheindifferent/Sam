@@ -1,14 +1,14 @@
 use super::{
-    types::*,
     errors::{CodingAgentError, CodingAgentResult},
     providers::LLMProvider,
+    types::*,
 };
-use std::collections::{HashMap, HashSet, BTreeMap};
-use std::path::{Path, PathBuf};
-use serde::{Serialize, Deserialize};
-use semver::{Version, VersionReq};
-use chrono::{DateTime, Utc};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use semver::{Version, VersionReq};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 /// Dependency analysis and upgrade assistant
 pub struct DependencyAnalyzer {
@@ -40,8 +40,14 @@ pub enum Language {
 #[async_trait]
 pub trait PackageManager: Send + Sync {
     async fn parse_manifest(&self, path: &Path) -> CodingAgentResult<DependencyManifest>;
-    async fn resolve_dependencies(&self, manifest: &DependencyManifest) -> CodingAgentResult<DependencyTree>;
-    async fn check_updates(&self, dependencies: &[Dependency]) -> CodingAgentResult<Vec<UpdateInfo>>;
+    async fn resolve_dependencies(
+        &self,
+        manifest: &DependencyManifest,
+    ) -> CodingAgentResult<DependencyTree>;
+    async fn check_updates(
+        &self,
+        dependencies: &[Dependency],
+    ) -> CodingAgentResult<Vec<UpdateInfo>>;
     async fn get_package_info(&self, name: &str, version: &str) -> CodingAgentResult<PackageInfo>;
 }
 
@@ -546,68 +552,76 @@ impl DependencyAnalyzer {
             upgrade_planner: UpgradePlanner::new(),
             impact_analyzer: DependencyImpactAnalyzer::new(),
         };
-        
+
         analyzer.initialize_package_managers();
         analyzer
     }
 
     fn initialize_package_managers(&mut self) {
         // Initialize package managers for different languages
-        self.package_managers.insert(Language::Rust, Box::new(CargoManager::new()));
-        self.package_managers.insert(Language::JavaScript, Box::new(NpmManager::new()));
-        self.package_managers.insert(Language::Python, Box::new(PipManager::new()));
+        self.package_managers
+            .insert(Language::Rust, Box::new(CargoManager::new()));
+        self.package_managers
+            .insert(Language::JavaScript, Box::new(NpmManager::new()));
+        self.package_managers
+            .insert(Language::Python, Box::new(PipManager::new()));
     }
 
     /// Analyze dependencies
     pub async fn analyze(&self, request: AnalysisRequest) -> CodingAgentResult<AnalysisResult> {
         // Detect language and package manager
         let language = self.detect_language(&request.project_path)?;
-        let package_manager = self.package_managers.get(&language)
-            .ok_or(CodingAgentError::ConfigError {
-                message: format!("Language {:?} not supported", language)
-            })?;
-        
+        let package_manager =
+            self.package_managers
+                .get(&language)
+                .ok_or(CodingAgentError::ConfigError {
+                    message: format!("Language {:?} not supported", language),
+                })?;
+
         // Parse manifest
-        let manifest = package_manager.parse_manifest(&request.project_path).await?;
-        
+        let manifest = package_manager
+            .parse_manifest(&request.project_path)
+            .await?;
+
         // Resolve dependency tree
         let dependency_tree = package_manager.resolve_dependencies(&manifest).await?;
-        
+
         // Check for vulnerabilities
         let vulnerabilities = if request.check_vulnerabilities {
             self.vulnerability_scanner.scan(&dependency_tree).await?
         } else {
             vec![]
         };
-        
+
         // Check for updates
         let updates_available = if request.suggest_upgrades {
-            package_manager.check_updates(&manifest.dependencies).await?
+            package_manager
+                .check_updates(&manifest.dependencies)
+                .await?
         } else {
             vec![]
         };
-        
+
         // Generate health report
-        let health_report = self.generate_health_report(
-            &dependency_tree,
-            &vulnerabilities,
-            &updates_available,
-        )?;
-        
+        let health_report =
+            self.generate_health_report(&dependency_tree, &vulnerabilities, &updates_available)?;
+
         // Create upgrade plan if requested
         let upgrade_plan = if request.suggest_upgrades && !updates_available.is_empty() {
-            Some(self.upgrade_planner.create_plan(&updates_available, &dependency_tree).await?)
+            Some(
+                self.upgrade_planner
+                    .create_plan(&updates_available, &dependency_tree)
+                    .await?,
+            )
         } else {
             None
         };
-        
+
         // Generate recommendations
-        let recommendations = self.generate_recommendations(
-            &health_report,
-            &vulnerabilities,
-            &updates_available,
-        ).await?;
-        
+        let recommendations = self
+            .generate_recommendations(&health_report, &vulnerabilities, &updates_available)
+            .await?;
+
         Ok(AnalysisResult {
             manifest,
             dependency_tree,
@@ -633,7 +647,7 @@ impl DependencyAnalyzer {
             Ok(Language::Go)
         } else {
             Err(CodingAgentError::ConfigError {
-                message: "Could not detect project language".to_string()
+                message: "Could not detect project language".to_string(),
             })
         }
     }
@@ -651,17 +665,14 @@ impl DependencyAnalyzer {
         } else {
             0.0
         };
-        
+
         let security_score = self.calculate_security_score(vulnerabilities);
         let maintenance_score = self.calculate_maintenance_score(updates);
         let complexity_score = self.calculate_complexity_score(tree);
-        
-        let overall_health = self.determine_health_score(
-            security_score,
-            maintenance_score,
-            complexity_score,
-        );
-        
+
+        let overall_health =
+            self.determine_health_score(security_score, maintenance_score, complexity_score);
+
         Ok(HealthReport {
             overall_health,
             security_score,
@@ -678,14 +689,16 @@ impl DependencyAnalyzer {
         if vulnerabilities.is_empty() {
             return 100.0;
         }
-        
-        let critical_count = vulnerabilities.iter()
+
+        let critical_count = vulnerabilities
+            .iter()
             .filter(|v| matches!(v.severity, VulnerabilitySeverity::Critical))
             .count();
-        let high_count = vulnerabilities.iter()
+        let high_count = vulnerabilities
+            .iter()
             .filter(|v| matches!(v.severity, VulnerabilitySeverity::High))
             .count();
-        
+
         100.0 - (critical_count as f32 * 20.0) - (high_count as f32 * 10.0)
     }
 
@@ -693,11 +706,12 @@ impl DependencyAnalyzer {
         if updates.is_empty() {
             return 100.0;
         }
-        
-        let major_updates = updates.iter()
+
+        let major_updates = updates
+            .iter()
             .filter(|u| matches!(u.update_type, UpdateType::Major))
             .count();
-        
+
         100.0 - (major_updates as f32 * 5.0).min(50.0)
     }
 
@@ -706,13 +720,18 @@ impl DependencyAnalyzer {
         let depth_penalty = (tree.max_depth as f32 * 2.0).min(20.0);
         let duplicate_penalty = (tree.duplicates.len() as f32 * 3.0).min(30.0);
         let cycle_penalty = (tree.cycles.len() as f32 * 10.0).min(30.0);
-        
+
         (base_score - depth_penalty - duplicate_penalty - cycle_penalty).max(0.0)
     }
 
-    fn determine_health_score(&self, security: f32, maintenance: f32, complexity: f32) -> HealthScore {
+    fn determine_health_score(
+        &self,
+        security: f32,
+        maintenance: f32,
+        complexity: f32,
+    ) -> HealthScore {
         let average = (security + maintenance + complexity) / 3.0;
-        
+
         if average >= 90.0 {
             HealthScore::Excellent
         } else if average >= 75.0 {
@@ -733,20 +752,30 @@ impl DependencyAnalyzer {
         updates: &[UpdateInfo],
     ) -> CodingAgentResult<Vec<Recommendation>> {
         let mut recommendations = Vec::new();
-        
+
         // Security recommendations
         if !vulnerabilities.is_empty() {
             recommendations.push(Recommendation {
                 recommendation_type: RecommendationType::Security,
                 priority: Priority::Critical,
                 title: "Security vulnerabilities detected".to_string(),
-                description: format!("Found {} security vulnerabilities that need immediate attention", vulnerabilities.len()),
-                action_items: vulnerabilities.iter()
-                    .map(|v| format!("Update {} to version {}", v.package, v.patched_versions.as_ref().unwrap_or(&"latest".to_string())))
+                description: format!(
+                    "Found {} security vulnerabilities that need immediate attention",
+                    vulnerabilities.len()
+                ),
+                action_items: vulnerabilities
+                    .iter()
+                    .map(|v| {
+                        format!(
+                            "Update {} to version {}",
+                            v.package,
+                            v.patched_versions.as_ref().unwrap_or(&"latest".to_string())
+                        )
+                    })
                     .collect(),
             });
         }
-        
+
         // Update recommendations
         if updates.len() > 5 {
             recommendations.push(Recommendation {
@@ -761,7 +790,7 @@ impl DependencyAnalyzer {
                 ],
             });
         }
-        
+
         Ok(recommendations)
     }
 }
@@ -806,7 +835,10 @@ impl PackageManager for CargoManager {
         })
     }
 
-    async fn resolve_dependencies(&self, manifest: &DependencyManifest) -> CodingAgentResult<DependencyTree> {
+    async fn resolve_dependencies(
+        &self,
+        manifest: &DependencyManifest,
+    ) -> CodingAgentResult<DependencyTree> {
         Ok(DependencyTree {
             root: DependencyNode {
                 dependency: Dependency {
@@ -829,7 +861,10 @@ impl PackageManager for CargoManager {
         })
     }
 
-    async fn check_updates(&self, dependencies: &[Dependency]) -> CodingAgentResult<Vec<UpdateInfo>> {
+    async fn check_updates(
+        &self,
+        dependencies: &[Dependency],
+    ) -> CodingAgentResult<Vec<UpdateInfo>> {
         Ok(vec![])
     }
 
@@ -870,7 +905,10 @@ impl PackageManager for NpmManager {
         })
     }
 
-    async fn resolve_dependencies(&self, manifest: &DependencyManifest) -> CodingAgentResult<DependencyTree> {
+    async fn resolve_dependencies(
+        &self,
+        manifest: &DependencyManifest,
+    ) -> CodingAgentResult<DependencyTree> {
         Ok(DependencyTree {
             root: DependencyNode {
                 dependency: Dependency {
@@ -893,7 +931,10 @@ impl PackageManager for NpmManager {
         })
     }
 
-    async fn check_updates(&self, dependencies: &[Dependency]) -> CodingAgentResult<Vec<UpdateInfo>> {
+    async fn check_updates(
+        &self,
+        dependencies: &[Dependency],
+    ) -> CodingAgentResult<Vec<UpdateInfo>> {
         Ok(vec![])
     }
 
@@ -934,7 +975,10 @@ impl PackageManager for PipManager {
         })
     }
 
-    async fn resolve_dependencies(&self, manifest: &DependencyManifest) -> CodingAgentResult<DependencyTree> {
+    async fn resolve_dependencies(
+        &self,
+        manifest: &DependencyManifest,
+    ) -> CodingAgentResult<DependencyTree> {
         Ok(DependencyTree {
             root: DependencyNode {
                 dependency: Dependency {
@@ -957,7 +1001,10 @@ impl PackageManager for PipManager {
         })
     }
 
-    async fn check_updates(&self, dependencies: &[Dependency]) -> CodingAgentResult<Vec<UpdateInfo>> {
+    async fn check_updates(
+        &self,
+        dependencies: &[Dependency],
+    ) -> CodingAgentResult<Vec<UpdateInfo>> {
         Ok(vec![])
     }
 
@@ -1013,7 +1060,7 @@ impl SeverityCalculator {
         thresholds.insert(VulnerabilitySeverity::Medium, 5.0);
         thresholds.insert(VulnerabilitySeverity::High, 7.0);
         thresholds.insert(VulnerabilitySeverity::Critical, 9.0);
-        
+
         Self {
             cvss_threshold: thresholds,
         }

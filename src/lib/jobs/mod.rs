@@ -1,18 +1,18 @@
-pub mod queue;
-pub mod worker;
+pub mod dead_letter;
 pub mod handler;
+pub mod monitoring;
+pub mod queue;
 pub mod scheduler;
 pub mod types;
-pub mod monitoring;
-pub mod dead_letter;
+pub mod worker;
 
-pub use queue::JobQueue;
-pub use worker::{Worker, WorkerPool};
-pub use handler::JobHandler;
-pub use scheduler::JobScheduler;
-pub use types::{Job, JobResult, JobStatus, Priority, JobError, JobType};
-pub use monitoring::JobMonitor;
 pub use dead_letter::DeadLetterQueue;
+pub use handler::JobHandler;
+pub use monitoring::JobMonitor;
+pub use queue::JobQueue;
+pub use scheduler::JobScheduler;
+pub use types::{Job, JobError, JobResult, JobStatus, JobType, Priority};
+pub use worker::{Worker, WorkerPool};
 
 // JobSystem and JobStats are defined below
 
@@ -41,7 +41,13 @@ impl std::fmt::Debug for JobSystem {
             .field("scheduler", &"<JobScheduler>")
             .field("monitor", &"<JobMonitor>")
             .field("dead_letter", &"<DeadLetterQueue>")
-            .field("handlers", &format!("<{} handlers>", self.handlers.try_read().map(|h| h.len()).unwrap_or(0)))
+            .field(
+                "handlers",
+                &format!(
+                    "<{} handlers>",
+                    self.handlers.try_read().map(|h| h.len()).unwrap_or(0)
+                ),
+            )
             .finish()
     }
 }
@@ -53,7 +59,7 @@ impl JobSystem {
         let monitor = Arc::new(JobMonitor::new(redis_pool.clone()).await?);
         let dead_letter = Arc::new(DeadLetterQueue::new(redis_pool.clone()).await?);
         let handlers = Arc::new(RwLock::new(HashMap::new()));
-        
+
         let worker_pool = Arc::new(
             WorkerPool::new(
                 num_workers,
@@ -61,9 +67,10 @@ impl JobSystem {
                 handlers.clone(),
                 monitor.clone(),
                 dead_letter.clone(),
-            ).await?
+            )
+            .await?,
         );
-        
+
         Ok(Self {
             queue,
             worker_pool,
@@ -73,35 +80,39 @@ impl JobSystem {
             handlers,
         })
     }
-    
-    pub async fn register_handler(&self, job_type: String, handler: Arc<dyn JobHandler>) -> Result<()> {
+
+    pub async fn register_handler(
+        &self,
+        job_type: String,
+        handler: Arc<dyn JobHandler>,
+    ) -> Result<()> {
         let mut handlers = self.handlers.write().await;
         handlers.insert(job_type, handler);
         Ok(())
     }
-    
+
     pub async fn enqueue(&self, job: Job) -> Result<String> {
         self.queue.enqueue(job).await
     }
-    
+
     pub async fn schedule(&self, job: Job, at: DateTime<Utc>) -> Result<String> {
         self.scheduler.schedule(job, at).await
     }
-    
+
     pub async fn start(&self) -> Result<()> {
         self.scheduler.start().await?;
         self.worker_pool.start().await?;
         self.monitor.start().await?;
         Ok(())
     }
-    
+
     pub async fn stop(&self) -> Result<()> {
         self.worker_pool.stop().await?;
         self.scheduler.stop().await?;
         self.monitor.stop().await?;
         Ok(())
     }
-    
+
     pub async fn get_stats(&self) -> Result<JobStats> {
         self.monitor.get_stats().await
     }

@@ -10,13 +10,13 @@
 //! - Handle crawl delays and rate limiting
 //! - Support for user-agent specific rules
 
-use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
-use reqwest::Url;
-use tokio::sync::RwLock;
-use std::sync::Arc;
 use log::{debug, warn};
 use once_cell::sync::Lazy;
+use reqwest::Url;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+use tokio::sync::RwLock;
 
 /// Default user agent for the SAM crawler
 pub const DEFAULT_USER_AGENT: &str = "SAM-Crawler/0.0.2 (+https://github.com/OSF/sam)";
@@ -74,17 +74,15 @@ impl RobotsRules {
         if pattern == "/" {
             return true;
         }
-        
+
         // Handle wildcard patterns
         if pattern.contains('*') {
-            let regex_pattern = pattern
-                .replace("*", ".*")
-                .replace("?", ".");
+            let regex_pattern = pattern.replace("*", ".*").replace("?", ".");
             if let Ok(re) = regex::Regex::new(&format!("^{}", regex_pattern)) {
                 return re.is_match(path);
             }
         }
-        
+
         // Simple prefix matching
         path.starts_with(pattern)
     }
@@ -110,27 +108,38 @@ impl RobotsRules {
 }
 
 /// Cache for robots.txt rules
-static ROBOTS_CACHE: Lazy<Arc<RwLock<HashMap<String, RobotsRules>>>> = 
+static ROBOTS_CACHE: Lazy<Arc<RwLock<HashMap<String, RobotsRules>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 /// Fetch and parse robots.txt for a given domain
-pub async fn fetch_robots_txt(domain: &str) -> Result<RobotsRules, Box<dyn std::error::Error + Send + Sync>> {
-    let robots_url = format!("{}://{}/robots.txt", 
-        if domain.starts_with("https") { "https" } else { "http" },
-        domain.replace("http://", "").replace("https://", ""));
-    
+pub async fn fetch_robots_txt(
+    domain: &str,
+) -> Result<RobotsRules, Box<dyn std::error::Error + Send + Sync>> {
+    let robots_url = format!(
+        "{}://{}/robots.txt",
+        if domain.starts_with("https") {
+            "https"
+        } else {
+            "http"
+        },
+        domain.replace("http://", "").replace("https://", "")
+    );
+
     debug!("Fetching robots.txt from: {}", robots_url);
-    
+
     let client = reqwest::Client::builder()
         .user_agent(DEFAULT_USER_AGENT)
         .timeout(Duration::from_secs(10))
         .danger_accept_invalid_certs(false) // Fixed: Enable proper certificate validation
         .build()
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-    
-    let response = client.get(&robots_url).send().await
+
+    let response = client
+        .get(&robots_url)
+        .send()
+        .await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-    
+
     if !response.status().is_success() {
         // If robots.txt doesn't exist, allow all crawling
         return Ok(RobotsRules {
@@ -141,51 +150,55 @@ pub async fn fetch_robots_txt(domain: &str) -> Result<RobotsRules, Box<dyn std::
             fetched_at: SystemTime::now(),
         });
     }
-    
-    let content = response.text().await
+
+    let content = response
+        .text()
+        .await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     parse_robots_txt(&content)
 }
 
 /// Parse robots.txt content
-fn parse_robots_txt(content: &str) -> Result<RobotsRules, Box<dyn std::error::Error + Send + Sync>> {
+fn parse_robots_txt(
+    content: &str,
+) -> Result<RobotsRules, Box<dyn std::error::Error + Send + Sync>> {
     let mut user_agent_rules = Vec::new();
     let mut default_rules = Vec::new();
     let mut crawl_delay = None;
     let mut sitemaps = Vec::new();
-    
+
     let mut current_user_agent = String::new();
     let mut is_our_agent = false;
-    
+
     for line in content.lines() {
         let line = line.trim();
-        
+
         // Skip comments and empty lines
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        
+
         let parts: Vec<&str> = line.splitn(2, ':').collect();
         if parts.len() != 2 {
             continue;
         }
-        
+
         let directive = parts[0].trim().to_lowercase();
         let value = parts[1].trim();
-        
+
         match directive.as_str() {
             "user-agent" => {
                 current_user_agent = value.to_lowercase();
-                is_our_agent = current_user_agent == "*" || 
-                              current_user_agent.contains("sam") ||
-                              current_user_agent.contains("crawler");
+                is_our_agent = current_user_agent == "*"
+                    || current_user_agent.contains("sam")
+                    || current_user_agent.contains("crawler");
             }
             "disallow" if !value.is_empty() => {
                 let rule = RuleEntry {
                     pattern: value.to_string(),
                     is_allow: false,
                 };
-                
+
                 if is_our_agent && current_user_agent != "*" {
                     user_agent_rules.push(rule);
                 } else if current_user_agent == "*" {
@@ -197,7 +210,7 @@ fn parse_robots_txt(content: &str) -> Result<RobotsRules, Box<dyn std::error::Er
                     pattern: value.to_string(),
                     is_allow: true,
                 };
-                
+
                 if is_our_agent && current_user_agent != "*" {
                     user_agent_rules.push(rule);
                 } else if current_user_agent == "*" {
@@ -215,7 +228,7 @@ fn parse_robots_txt(content: &str) -> Result<RobotsRules, Box<dyn std::error::Er
             _ => {}
         }
     }
-    
+
     Ok(RobotsRules {
         user_agent_rules,
         default_rules,
@@ -231,12 +244,12 @@ pub async fn is_url_allowed(url: &str) -> bool {
         Ok(u) => u,
         Err(_) => return false,
     };
-    
+
     let domain = match parsed_url.host_str() {
         Some(h) => h.to_string(),
         None => return false,
     };
-    
+
     // Check cache first
     {
         let cache = ROBOTS_CACHE.read().await;
@@ -246,20 +259,23 @@ pub async fn is_url_allowed(url: &str) -> bool {
             }
         }
     }
-    
+
     // Fetch and cache new rules
     match fetch_robots_txt(&domain).await {
         Ok(rules) => {
             let is_allowed = rules.is_allowed(url);
-            
+
             // Update cache
             let mut cache = ROBOTS_CACHE.write().await;
             cache.insert(domain, rules);
-            
+
             is_allowed
         }
         Err(e) => {
-            warn!("Failed to fetch robots.txt for {}: {}. Allowing crawl by default.", domain, e);
+            warn!(
+                "Failed to fetch robots.txt for {}: {}. Allowing crawl by default.",
+                domain, e
+            );
             true // Default to allow if we can't fetch robots.txt
         }
     }
@@ -274,7 +290,8 @@ pub async fn get_crawl_delay(domain: &str) -> Option<Duration> {
 /// Get sitemap URLs for a domain from cached rules
 pub async fn get_sitemaps(domain: &str) -> Vec<String> {
     let cache = ROBOTS_CACHE.read().await;
-    cache.get(domain)
+    cache
+        .get(domain)
         .map(|rules| rules.get_sitemaps().to_vec())
         .unwrap_or_default()
 }
@@ -294,9 +311,18 @@ mod tests {
         let rules = RobotsRules {
             user_agent_rules: vec![],
             default_rules: vec![
-                RuleEntry { pattern: "/admin".to_string(), is_allow: false },
-                RuleEntry { pattern: "/api/*".to_string(), is_allow: false },
-                RuleEntry { pattern: "/public".to_string(), is_allow: true },
+                RuleEntry {
+                    pattern: "/admin".to_string(),
+                    is_allow: false,
+                },
+                RuleEntry {
+                    pattern: "/api/*".to_string(),
+                    is_allow: false,
+                },
+                RuleEntry {
+                    pattern: "/public".to_string(),
+                    is_allow: true,
+                },
             ],
             crawl_delay: None,
             sitemaps: vec![],

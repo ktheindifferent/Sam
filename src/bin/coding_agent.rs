@@ -2,10 +2,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use libsam::services::coding::agent::{
-    CodingAgentService,
-    CodingAgentExecutor,
-};
+use libsam::services::coding::agent::{CodingAgentExecutor, CodingAgentService};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -34,7 +31,10 @@ async fn main() -> Result<()> {
     let executor = CodingAgentExecutor::new(coding_agent);
 
     // Execute task
-    match executor.execute_incremental_task(&task, &current_dir, &[], true).await {
+    match executor
+        .execute_incremental_task(&task, &current_dir, &[], true)
+        .await
+    {
         Ok(_) => {
             println!("\n✅ Task completed!");
 

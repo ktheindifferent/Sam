@@ -1,7 +1,7 @@
 pub mod linux;
 pub mod osx;
-pub mod windows;
 pub mod pip;
+pub mod windows;
 
 use anyhow::Result;
 

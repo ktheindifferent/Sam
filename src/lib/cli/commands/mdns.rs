@@ -28,8 +28,7 @@ pub async fn handle_mdns(cmd: &str, output_lines: Arc<Mutex<Vec<String>>>) {
                 .push("mDNS broadcast stopped and responder dropped.".to_string());
         }
         "mdns status" => {
-            let (discover_running, broadcast_running) =
-                crate::services::mdns::mdns_status().await;
+            let (discover_running, broadcast_running) = crate::services::mdns::mdns_status().await;
             output_lines.lock().await.push(format!(
                 "mDNS status: discover running: {}, broadcast running: {}",
                 discover_running, broadcast_running

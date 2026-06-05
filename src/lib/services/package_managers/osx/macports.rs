@@ -21,14 +21,16 @@ pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> 
     if status.success() {
         Ok(())
     } else {
-        Err(anyhow::anyhow!(format!("port install failed with status: {}", status)))
+        Err(anyhow::anyhow!(format!(
+            "port install failed with status: {}",
+            status
+        )))
     }
 }
 
 /// Asynchronously installs MacPorts on macOS.
 /// Returns Ok(()) if MacPorts is installed successfully, otherwise returns an error.
 pub async fn install() -> Result<(), anyhow::Error> {
-
     // Check if port is already installed
     if which::which("port").is_ok() {
         return Ok(());
@@ -70,6 +72,8 @@ pub async fn install() -> Result<(), anyhow::Error> {
     if which::which("port").is_ok() {
         Ok(())
     } else {
-        Err(anyhow::anyhow!("MacPorts installation did not complete successfully"))
+        Err(anyhow::anyhow!(
+            "MacPorts installation did not complete successfully"
+        ))
     }
 }

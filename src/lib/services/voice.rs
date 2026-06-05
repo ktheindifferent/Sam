@@ -9,11 +9,14 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::services::stt::whisper_enhanced::{WhisperConfig, WhisperService, WhisperResult};
-use crate::services::tts::enhanced::{TtsConfig, TtsService, TtsRequest, AudioFormat};
+use crate::services::stt::whisper_enhanced::{WhisperConfig, WhisperResult, WhisperService};
+use crate::services::tts::enhanced::{AudioFormat, TtsConfig, TtsRequest, TtsService};
+
+static VOICE_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceConfig {
@@ -85,7 +88,7 @@ impl VoiceAssistant {
     pub fn new(config: VoiceConfig) -> Result<Self, crate::services::Error> {
         let stt_service = WhisperService::with_config(config.stt_config.clone())?;
         let tts_service = TtsService::new(config.tts_config.clone())?;
-        
+
         Ok(Self {
             stt_service: Arc::new(stt_service),
             tts_service: Arc::new(tts_service),
@@ -99,15 +102,15 @@ impl VoiceAssistant {
         let mut listening = self.is_listening.lock().map_err(|e| {
             crate::services::Error::from(format!("Failed to lock listening state: {}", e))
         })?;
-        
+
         if *listening {
             return Ok(());
         }
-        
+
         *listening = true;
-        
+
         self.spawn_audio_capture_thread()?;
-        
+
         Ok(())
     }
 
@@ -115,19 +118,21 @@ impl VoiceAssistant {
         let mut listening = self.is_listening.lock().map_err(|e| {
             crate::services::Error::from(format!("Failed to lock listening state: {}", e))
         })?;
-        
+
         *listening = false;
         Ok(())
     }
 
     pub fn process_audio(&self, audio_path: &Path) -> Result<VoiceCommand, crate::services::Error> {
         let temp_wav = PathBuf::from("/tmp/sam_audio_temp.wav");
-        crate::services::stt::whisper_enhanced::WhisperEngine::convert_audio_to_16khz_mono(audio_path, &temp_wav)?;
-        
+        crate::services::stt::whisper_enhanced::WhisperEngine::convert_audio_to_16khz_mono(
+            audio_path, &temp_wav,
+        )?;
+
         let result = self.stt_service.transcribe_file(&temp_wav)?;
-        
+
         std::fs::remove_file(&temp_wav).ok();
-        
+
         let command = VoiceCommand {
             text: result.text.clone(),
             confidence: self.calculate_confidence(&result),
@@ -137,9 +142,9 @@ impl VoiceAssistant {
                 .map_err(|e| crate::services::Error::from(format!("Time error: {}", e)))?
                 .as_secs(),
         };
-        
+
         self.add_to_history(ConversationRole::User, &command.text)?;
-        
+
         Ok(command)
     }
 
@@ -153,11 +158,11 @@ impl VoiceAssistant {
             volume: Some(self.config.tts_config.volume),
             format: AudioFormat::Wav,
         };
-        
+
         let tts_result = self.tts_service.synthesize(tts_request)?;
-        
+
         self.add_to_history(ConversationRole::Assistant, text)?;
-        
+
         Ok(VoiceResponse {
             text: text.to_string(),
             audio_data: tts_result.audio_data,
@@ -174,16 +179,16 @@ impl VoiceAssistant {
 
     fn spawn_audio_capture_thread(&self) -> Result<(), crate::services::Error> {
         use std::thread;
-        
+
         let is_listening = Arc::clone(&self.is_listening);
         let wake_word = self.config.wake_word.clone();
         let stt_service = Arc::clone(&self.stt_service);
-        
+
         thread::Builder::new()
             .name("voice_capture".to_string())
             .spawn(move || {
                 log::info!("Voice capture thread started");
-                
+
                 loop {
                     let should_continue = {
                         match is_listening.lock() {
@@ -196,11 +201,11 @@ impl VoiceAssistant {
                     }
                     std::thread::sleep(Duration::from_millis(100));
                 }
-                
+
                 log::info!("Voice capture thread stopped");
             })
             .map_err(|e| crate::services::Error::from(format!("Failed to spawn thread: {}", e)))?;
-        
+
         Ok(())
     }
 
@@ -208,16 +213,21 @@ impl VoiceAssistant {
         if result.segments.is_empty() {
             return 0.0;
         }
-        
+
         let total_prob: f32 = result.segments.iter().map(|s| s.probability).sum();
         total_prob / result.segments.len() as f32
     }
 
-    fn add_to_history(&self, role: ConversationRole, text: &str) -> Result<(), crate::services::Error> {
-        let mut history = self.conversation_history.lock().map_err(|e| {
-            crate::services::Error::from(format!("Failed to lock history: {}", e))
-        })?;
-        
+    fn add_to_history(
+        &self,
+        role: ConversationRole,
+        text: &str,
+    ) -> Result<(), crate::services::Error> {
+        let mut history = self
+            .conversation_history
+            .lock()
+            .map_err(|e| crate::services::Error::from(format!("Failed to lock history: {}", e)))?;
+
         history.push(ConversationEntry {
             role,
             text: text.to_string(),
@@ -227,48 +237,44 @@ impl VoiceAssistant {
                 .as_secs(),
             metadata: None,
         });
-        
+
         if history.len() > 100 {
             history.drain(0..50);
         }
-        
+
         Ok(())
     }
 
     fn play_audio(&self, audio_data: &[u8]) -> Result<(), crate::services::Error> {
-        use std::process::Command;
-        use std::io::Write;
         use rand::{distributions::Alphanumeric, Rng};
-        
+        use std::io::Write;
+        use std::process::Command;
+
         let rand_name: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(16)
             .map(char::from)
             .collect();
         let temp_file = format!("/tmp/sam_audio_{}.wav", rand_name);
-        
+
         let mut file = std::fs::File::create(&temp_file)?;
         file.write_all(audio_data)?;
         drop(file);
-        
+
         #[cfg(target_os = "linux")]
         {
-            let _ = Command::new("aplay")
-                .arg(&temp_file)
-                .status();
-            
+            let _ = Command::new("aplay").arg(&temp_file).status();
+
             if Command::new("paplay").arg(&temp_file).status().is_err() {
                 let _ = Command::new("play").arg(&temp_file).status();
             }
         }
-        
+
         #[cfg(target_os = "macos")]
         {
-            let _ = Command::new("afplay")
-                .arg(&temp_file)
-                .status();
+            let _ = Command::new("afplay").arg(&temp_file).status();
         }
-        
+
         #[cfg(target_os = "windows")]
         {
             let _ = Command::new("powershell")
@@ -278,23 +284,27 @@ impl VoiceAssistant {
                 ])
                 .status();
         }
-        
+
         std::fs::remove_file(&temp_file).ok();
-        
+
         Ok(())
     }
 
-    pub fn get_conversation_history(&self) -> Result<Vec<ConversationEntry>, crate::services::Error> {
-        let history = self.conversation_history.lock().map_err(|e| {
-            crate::services::Error::from(format!("Failed to lock history: {}", e))
-        })?;
+    pub fn get_conversation_history(
+        &self,
+    ) -> Result<Vec<ConversationEntry>, crate::services::Error> {
+        let history = self
+            .conversation_history
+            .lock()
+            .map_err(|e| crate::services::Error::from(format!("Failed to lock history: {}", e)))?;
         Ok(history.clone())
     }
 
     pub fn clear_conversation_history(&self) -> Result<(), crate::services::Error> {
-        let mut history = self.conversation_history.lock().map_err(|e| {
-            crate::services::Error::from(format!("Failed to lock history: {}", e))
-        })?;
+        let mut history = self
+            .conversation_history
+            .lock()
+            .map_err(|e| crate::services::Error::from(format!("Failed to lock history: {}", e)))?;
         history.clear();
         Ok(())
     }
@@ -326,14 +336,19 @@ impl VoiceService {
         Ok(())
     }
 
-    pub fn process_command(&self, audio_path: &Path) -> Result<VoiceCommand, crate::services::Error> {
+    pub fn process_command(
+        &self,
+        audio_path: &Path,
+    ) -> Result<VoiceCommand, crate::services::Error> {
         let guard = self.assistant.lock().map_err(|e| {
             crate::services::Error::from(format!("Failed to lock assistant: {}", e))
         })?;
-        
+
         match &*guard {
             Some(assistant) => assistant.process_audio(audio_path),
-            None => Err(crate::services::Error::from("Voice service not initialized")),
+            None => Err(crate::services::Error::from(
+                "Voice service not initialized",
+            )),
         }
     }
 
@@ -341,18 +356,33 @@ impl VoiceService {
         let guard = self.assistant.lock().map_err(|e| {
             crate::services::Error::from(format!("Failed to lock assistant: {}", e))
         })?;
-        
+
         match &*guard {
             Some(assistant) => assistant.speak(text),
-            None => Err(crate::services::Error::from("Voice service not initialized")),
+            None => Err(crate::services::Error::from(
+                "Voice service not initialized",
+            )),
         }
     }
 }
 
 /// Initialize the voice service
 pub async fn initialize() -> anyhow::Result<()> {
+    VOICE_INITIALIZED.store(true, Ordering::SeqCst);
     log::info!("Voice service initialized");
     Ok(())
+}
+
+/// Shutdown the voice service.
+pub async fn shutdown() -> anyhow::Result<()> {
+    VOICE_INITIALIZED.store(false, Ordering::SeqCst);
+    log::info!("Voice service shut down");
+    Ok(())
+}
+
+/// Return whether the voice service has been initialized.
+pub fn is_initialized() -> bool {
+    VOICE_INITIALIZED.load(Ordering::SeqCst)
 }
 
 #[cfg(test)]

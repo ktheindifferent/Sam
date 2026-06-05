@@ -99,7 +99,10 @@ fn setup_dual_logger(log_file: &std::path::Path, is_serve_mode: bool) {
     {
         Ok(f) => Arc::new(Mutex::new(f)),
         Err(e) => {
-            eprintln!("Warning: Failed to open log file: {}. Logging to stderr only.", e);
+            eprintln!(
+                "Warning: Failed to open log file: {}. Logging to stderr only.",
+                e
+            );
             // Fall back to stderr-only logging
             if is_serve_mode || env::var("RUST_LOG").is_ok() {
                 Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -123,7 +126,7 @@ fn setup_dual_logger(log_file: &std::path::Path, is_serve_mode: bool) {
 async fn initialize_application() {
     // Initialize Sentry for error tracking and monitoring
     let _sentry_guard = sam::monitoring::init_sentry();
-    
+
     // Initialize logging first
     // Setup logging to both console and file
     let args: Vec<String> = env::args().collect();
@@ -148,11 +151,14 @@ async fn initialize_application() {
     let log_file = sam_dir.join("output.log");
 
     // Clear the log file at startup
-    let _ = std::fs::write(&log_file, format!("=== SAM Log Started at {} ===\n", chrono::Local::now()));
+    let _ = std::fs::write(
+        &log_file,
+        format!("=== SAM Log Started at {} ===\n", chrono::Local::now()),
+    );
 
     // Initialize dual logger (console + file) for all modes
     setup_dual_logger(&log_file, is_serve_mode);
-    
+
     setup_panic_handler();
     ensure_manifest_dir();
 
@@ -162,19 +168,27 @@ async fn initialize_application() {
     log::debug!("After banner, before setup_environment_variables");
     setup_environment_variables();
     log::debug!("After setup_environment_variables");
-    
+
     // Check if we're running in serve mode or CapRover environment (already checked above)
     let is_caprover = env::var("CAPROVER").unwrap_or_default().to_lowercase() == "true";
     let user_config = libsam::services::config::SamUserConfig::load();
     let database_engine = user_config.database_engine();
-    
-    log::debug!("Serve mode: {}, CapRover: {}, Database engine: {}", is_serve_mode, is_caprover, database_engine);
-    
+
+    log::debug!(
+        "Serve mode: {}, CapRover: {}, Database engine: {}",
+        is_serve_mode,
+        is_caprover,
+        database_engine
+    );
+
     if is_serve_mode || is_caprover {
-        log::info!("Running in {} mode with database engine: {}", 
-                   if is_caprover { "CapRover" } else { "serve" }, database_engine);
+        log::info!(
+            "Running in {} mode with database engine: {}",
+            if is_caprover { "CapRover" } else { "serve" },
+            database_engine
+        );
     }
-    
+
     // Handle database setup based on engine type and mode
     log::debug!("Starting database setup");
     if database_engine == "sqlite" {
@@ -188,11 +202,20 @@ async fn initialize_application() {
     } else if is_serve_mode || is_caprover {
         // In serve/CapRover mode with PostgreSQL, assume external database is configured
         // Don't try to start local PostgreSQL
-        log::info!("Using external PostgreSQL database in {}",
-                  if is_caprover { "CapRover mode" } else { "serve mode" });
+        log::info!(
+            "Using external PostgreSQL database in {}",
+            if is_caprover {
+                "CapRover mode"
+            } else {
+                "serve mode"
+            }
+        );
         // Ensure the environment variables are already set
-        if env::var("PG_DBNAME").is_err() || env::var("PG_USER").is_err() || 
-           env::var("PG_PASS").is_err() || env::var("PG_ADDRESS").is_err() {
+        if env::var("PG_DBNAME").is_err()
+            || env::var("PG_USER").is_err()
+            || env::var("PG_PASS").is_err()
+            || env::var("PG_ADDRESS").is_err()
+        {
             panic!("PostgreSQL environment variables must be set in {}: PG_DBNAME, PG_USER, PG_PASS, PG_ADDRESS",
                    if is_caprover { "CapRover mode" } else { "serve mode" });
         }
@@ -217,22 +240,25 @@ async fn initialize_application() {
             if plugin_config.enabled {
                 log::info!("Starting plugin loader");
                 let loader_config = libsam::services::plugins::loader::PluginLoaderConfig {
-                    plugins_dir: plugin_config.plugins_dir.as_ref()
+                    plugins_dir: plugin_config
+                        .plugins_dir
+                        .as_ref()
                         .map(|d| std::path::PathBuf::from(d))
                         .unwrap_or_else(|| {
                             let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
                             std::path::PathBuf::from(home).join(".sam").join("plugins")
                         }),
-                    max_memory_per_plugin: plugin_config.max_memory_per_plugin_mb.unwrap_or(64) * 1024 * 1024,
+                    max_memory_per_plugin: plugin_config.max_memory_per_plugin_mb.unwrap_or(64)
+                        * 1024
+                        * 1024,
                     fuel_limit: 1_000_000_000,
                     hot_reload: plugin_config.hot_reload.unwrap_or(true),
                 };
                 let registry = std::sync::Arc::new(tokio::sync::RwLock::new(
                     libsam::services::plugins::PluginRegistry::new(),
                 ));
-                let loader = libsam::services::plugins::loader::PluginLoader::new(
-                    loader_config, registry,
-                );
+                let loader =
+                    libsam::services::plugins::loader::PluginLoader::new(loader_config, registry);
                 let _watcher_handle = loader.spawn_watcher();
             }
         }
@@ -242,9 +268,8 @@ async fn initialize_application() {
     if let Some(ref notif_config) = user_config.notifications {
         if notif_config.enabled.unwrap_or(false) {
             log::info!("Starting notification service");
-            let _notif_handle = libsam::services::notifications::NotificationService::spawn(
-                notif_config.clone(),
-            );
+            let _notif_handle =
+                libsam::services::notifications::NotificationService::spawn(notif_config.clone());
         }
     }
 
@@ -265,19 +290,22 @@ fn setup_panic_handler() {
     // Use atomic flag to prevent recursive panic handling
     use std::sync::atomic::{AtomicBool, Ordering};
     static PANIC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
-    
+
     // First set up Sentry's panic handler
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         // Check if we're already handling a panic to prevent infinite recursion
-        if PANIC_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        if PANIC_IN_PROGRESS
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
             eprintln!("Recursive panic detected, aborting immediately");
             std::process::abort();
         }
-        
+
         // Log panic information to stderr immediately
         eprintln!("Application panic occurred: {}", info);
-        
+
         // Try to log to file first (most reliable)
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -287,17 +315,17 @@ fn setup_panic_handler() {
             use std::io::Write;
             let _ = writeln!(file, "[{}] Panic: {}", chrono::Utc::now(), info);
         }
-        
+
         // Report to Sentry (may fail in stack overflow)
         sentry::capture_event(sentry::protocol::Event {
             message: Some(info.to_string()),
             level: sentry::Level::Fatal,
             ..Default::default()
         });
-        
+
         // Call the default panic handler (which includes Sentry's own handling)
         default_panic(info);
-        
+
         // Skip cleanup if this looks like a stack overflow to prevent further issues
         let panic_msg = info.to_string();
         if panic_msg.contains("stack overflow") || panic_msg.contains("overflowed its stack") {
@@ -305,13 +333,13 @@ fn setup_panic_handler() {
             PANIC_IN_PROGRESS.store(false, Ordering::SeqCst);
             return;
         }
-        
+
         // Try to perform cleanup with timeout
         std::thread::spawn(move || {
             // Set a timeout for cleanup operations
             let cleanup_start = std::time::Instant::now();
             const CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-            
+
             // Use Handle::try_current() to check if we're in a runtime context
             match tokio::runtime::Handle::try_current() {
                 Ok(handle) => {
@@ -323,23 +351,23 @@ fn setup_panic_handler() {
                                 eprintln!("Failed to clear Redis cache on panic: {}", e);
                             }
                         }
-                        
+
                         if cleanup_start.elapsed() < CLEANUP_TIMEOUT {
                             // Shutdown all services gracefully
                             if let Err(e) = shutdown_services_on_panic().await {
                                 eprintln!("Failed to shutdown services on panic: {}", e);
                             }
                         }
-                        
+
                         PANIC_IN_PROGRESS.store(false, Ordering::SeqCst);
                     });
-                },
+                }
                 Err(_) => {
                     // We're not in a runtime context, try to create a minimal one
                     if let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
                         .thread_stack_size(1024 * 1024) // Small stack for cleanup
                         .enable_all()
-                        .build() 
+                        .build()
                     {
                         runtime.block_on(async {
                             if cleanup_start.elapsed() < CLEANUP_TIMEOUT {
@@ -348,7 +376,7 @@ fn setup_panic_handler() {
                                     eprintln!("Failed to clear Redis cache on panic: {}", e);
                                 }
                             }
-                            
+
                             if cleanup_start.elapsed() < CLEANUP_TIMEOUT {
                                 // Shutdown all services gracefully
                                 if let Err(e) = shutdown_services_on_panic().await {
@@ -368,45 +396,47 @@ fn setup_panic_handler() {
 async fn clear_redis_cache_on_panic() -> Result<(), Box<dyn std::error::Error>> {
     use deadpool_redis::{Config, Runtime};
     // use deadpool_redis::redis::AsyncCommands;
-    
+
     // Try to connect to Redis
-    let redis_url = std::env::var("REDIS_URL")
-        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-    
+    let redis_url =
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+
     let cfg = Config::from_url(redis_url);
     let pool = cfg.create_pool(Some(Runtime::Tokio1))?;
-    
+
     if let Ok(mut conn) = pool.get().await {
         // Clear all keys with a pattern or flush the database
         // Using FLUSHDB to clear the current database
-        let _: Result<(), _> = deadpool_redis::redis::cmd("FLUSHDB").query_async(&mut conn).await;
+        let _: Result<(), _> = deadpool_redis::redis::cmd("FLUSHDB")
+            .query_async(&mut conn)
+            .await;
         log::info!("Redis cache cleared on panic");
     }
-    
+
     Ok(())
 }
 
 /// Shutdown services gracefully on panic
 async fn shutdown_services_on_panic() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Shutting down services due to panic...");
-    
+
     // Shutdown crawler database pool
     sam::services::crawler::shutdown_db_pool().await;
-    
+
     // Stop crawler service if running
     sam::services::crawler::stop_service();
-    
+
     // Stop Redis if it was started by us
     sam::services::redis::stop().await;
-    
+
     // Stop PostgreSQL if needed
     if libsam::cli::commands::pg::is_postgres_running().await {
         libsam::cli::commands::pg::stop().await;
     }
-    
+
     // Add any other service shutdowns here
     log::info!("All services shut down");
-    
+
     Ok(())
 }
 
@@ -438,13 +468,13 @@ fn setup_environment_variables() {
             log::info!("Running in container, skipping sudo environment setup");
             return;
         }
-        
+
         // Check if we're running under sudo
         let is_sudo = unsafe { libc::geteuid() } == 0 && env::var("SUDO_USER").is_ok();
-        
+
         if is_sudo {
             log::info!("Running under sudo, ensuring required environment variables are preserved");
-            
+
             // Preserve important environment variables that sudo might strip
             // These are typically preserved automatically, but we ensure they're available
             let important_vars = [
@@ -459,19 +489,31 @@ fn setup_environment_variables() {
                 ("USER", "Current user"),
                 ("PATH", "System PATH"),
             ];
-            
+
             for (var_name, description) in important_vars.iter() {
                 if let Ok(value) = env::var(var_name) {
-                    log::debug!("Environment variable {} ({}) is set: {}", var_name, description, 
-                               if var_name.contains("PASS") { "[REDACTED]" } else { &value });
+                    log::debug!(
+                        "Environment variable {} ({}) is set: {}",
+                        var_name,
+                        description,
+                        if var_name.contains("PASS") {
+                            "[REDACTED]"
+                        } else {
+                            &value
+                        }
+                    );
                 } else if var_name != &"LIBTORCH" && var_name != &"SAM_USER" {
                     // These are optional, so only warn for critical ones
                     if ["PG_DBNAME", "PG_USER", "PG_PASS", "PG_ADDRESS"].contains(var_name) {
-                        log::warn!("Critical environment variable {} ({}) not found", var_name, description);
+                        log::warn!(
+                            "Critical environment variable {} ({}) not found",
+                            var_name,
+                            description
+                        );
                     }
                 }
             }
-            
+
             // Set default values for missing PostgreSQL variables if needed
             if env::var("PG_DBNAME").is_err() {
                 env::set_var("PG_DBNAME", "sam");
@@ -489,10 +531,12 @@ fn setup_environment_variables() {
                 env::set_var("PG_ADDRESS", "localhost");
                 log::debug!("Set default PG_ADDRESS=localhost");
             }
-            
+
             log::info!("Sudo environment setup completed successfully");
         } else {
-            log::debug!("Not running under sudo, environment variables should be available normally");
+            log::debug!(
+                "Not running under sudo, environment variables should be available normally"
+            );
         }
     }
 }
@@ -502,11 +546,17 @@ async fn setup_postgres(user: &str) {
     if libsam::memory::Config::check_postgres_installed() {
         log::info!("Postgres is already installed.");
         if let Err(e) = libsam::cli::commands::pg::start_postgres(user) {
-            log::error!("Failed to start PostgreSQL service: {}. Continuing without PostgreSQL.", e);
+            log::error!(
+                "Failed to start PostgreSQL service: {}. Continuing without PostgreSQL.",
+                e
+            );
             return;
         }
         if let Err(e) = libsam::memory::Config::create_user_and_database(user) {
-            log::error!("Failed to create PostgreSQL user and database: {}. Continuing anyway.", e);
+            log::error!(
+                "Failed to create PostgreSQL user and database: {}. Continuing anyway.",
+                e
+            );
         }
     } else {
         install_and_configure_postgres(user).await;
@@ -520,7 +570,10 @@ async fn install_and_configure_postgres(user: &str) {
 
     log::info!("Starting Postgres...");
     if let Err(e) = libsam::cli::commands::pg::start_postgres(user) {
-        log::error!("Failed to start PostgreSQL service during initial setup: {}. Continuing.", e);
+        log::error!(
+            "Failed to start PostgreSQL service during initial setup: {}. Continuing.",
+            e
+        );
         return;
     }
 
@@ -532,7 +585,10 @@ async fn install_and_configure_postgres(user: &str) {
 
     add_postgres_to_path_if_macos();
     if let Err(e) = libsam::memory::Config::create_user_and_database(user) {
-        log::error!("Failed to create PostgreSQL user and database during setup: {}. Continuing.", e);
+        log::error!(
+            "Failed to create PostgreSQL user and database during setup: {}. Continuing.",
+            e
+        );
     }
     log::info!("Postgres installation complete.");
 }

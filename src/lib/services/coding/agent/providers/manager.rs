@@ -1,16 +1,15 @@
 //! Provider manager for handling multiple LLM providers
 
-use std::sync::Arc;
-use std::collections::HashMap;
-use std::any::Any;
-use anyhow::{Result, anyhow};
-use async_trait::async_trait;
-use tokio::sync::RwLock;
-use super::{UnifiedProvider, OllamaProvider, OpenAIProvider, LocalProvider};
+use super::{LocalProvider, OllamaProvider, OpenAIProvider, UnifiedProvider};
 use crate::services::coding::agent::traits::provider::{
-    GenerateRequest, GenerateResponse, Model, ProviderInfo,
-    ProviderMetrics,
+    GenerateRequest, GenerateResponse, Model, ProviderInfo, ProviderMetrics,
 };
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use std::any::Any;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Manager for multiple LLM providers
 pub struct ProviderManager {
@@ -79,7 +78,9 @@ impl ProviderManager {
     /// Get active provider
     async fn get_active_provider(&self) -> Result<String> {
         let active = self.active_provider.read().await;
-        active.clone().ok_or_else(|| anyhow!("No active provider set"))
+        active
+            .clone()
+            .ok_or_else(|| anyhow!("No active provider set"))
     }
 
     /// Check if current provider is available
@@ -153,14 +154,16 @@ impl ProviderManager {
         self.register(
             "ollama".to_string(),
             Box::new(OllamaProvider::from_endpoint("localhost", 11434, 60)),
-        ).await;
+        )
+        .await;
 
         // Register OpenAI provider if API key is available
         if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
             self.register(
                 "openai".to_string(),
                 Box::new(OpenAIProvider::new(Some(api_key))),
-            ).await;
+            )
+            .await;
         }
 
         // Register local provider if model path is available
@@ -168,7 +171,8 @@ impl ProviderManager {
             self.register(
                 "local".to_string(),
                 Box::new(LocalProvider::new(Some(model_path))),
-            ).await;
+            )
+            .await;
         }
     }
 }
@@ -178,7 +182,8 @@ impl UnifiedProvider for ProviderManager {
     async fn generate(&self, request: GenerateRequest) -> Result<GenerateResponse> {
         let provider_name = self.get_active_provider().await?;
         let providers = self.providers.read().await;
-        let provider = providers.get(&provider_name)
+        let provider = providers
+            .get(&provider_name)
             .ok_or_else(|| anyhow!("Provider {} not found", provider_name))?;
         provider.generate(request).await
     }
@@ -218,7 +223,8 @@ impl UnifiedProvider for ProviderManager {
     async fn get_metrics(&self) -> Result<ProviderMetrics> {
         let provider_name = self.get_active_provider().await?;
         let providers = self.providers.read().await;
-        let provider = providers.get(&provider_name)
+        let provider = providers
+            .get(&provider_name)
             .ok_or_else(|| anyhow!("Provider {} not found", provider_name))?;
         provider.get_metrics().await
     }

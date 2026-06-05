@@ -1,8 +1,8 @@
 // TODO: Ext Crawler
 // TODO: Use redis for dns cache if available
 
-use once_cell::sync::Lazy;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -18,6 +18,7 @@ pub mod feed_parser;
 pub mod job;
 pub mod job_config;
 pub mod job_queue;
+pub mod js_renderer;
 pub mod memory_optimized;
 pub mod metrics;
 pub mod page;
@@ -31,37 +32,38 @@ pub mod url_patterns;
 pub mod url_processor;
 pub mod user_agents;
 pub mod webhooks;
-pub mod js_renderer;
 
 #[cfg(test)]
 mod test_suite;
 
-pub use job::CrawlJob;
-pub use job_config::{CrawlJobConfig, ConfigurableCrawlJob};
-pub use job_queue::{PersistentJobQueue, QueuedJob, JobStatus, QueueStats, DistributedLock};
-pub use memory_optimized::{OptimizedUrlTracker, BoundedUrlQueue, MemoryConfig};
-pub use content_storage::{CrawledContent, DeduplicationStats};
-pub use page::CrawledPage;
-pub use rejected::{CrawlRejected, RejectionReason};
-pub use rate_limiter::{AdaptiveRateLimiter, RateLimitConfig, DomainStats, init_rate_limiter, get_rate_limiter};
-pub use runner::{crawl_url, service_status, start_service, start_service_async, stop_service};
-pub use robots::{is_url_allowed, DEFAULT_USER_AGENT};
-pub use sitemap::{extract_urls_from_sitemaps, fetch_sitemap};
 pub use circuit_breaker::{is_domain_allowed, record_domain_failure, record_domain_success};
-pub use metrics::{get_crawler_metrics, generate_metrics_report, record_crawl_success, record_crawl_failure};
-pub use enhanced::{EnhancedCrawler, EnhancedCrawlResult};
+pub use content_storage::{CrawledContent, DeduplicationStats};
+pub use enhanced::{EnhancedCrawlResult, EnhancedCrawler};
+pub use job::CrawlJob;
+pub use job_config::{ConfigurableCrawlJob, CrawlJobConfig};
+pub use job_queue::{DistributedLock, JobStatus, PersistentJobQueue, QueueStats, QueuedJob};
+pub use memory_optimized::{BoundedUrlQueue, MemoryConfig, OptimizedUrlTracker};
+pub use metrics::{
+    generate_metrics_report, get_crawler_metrics, record_crawl_failure, record_crawl_success,
+};
+pub use page::CrawledPage;
+pub use rate_limiter::{
+    get_rate_limiter, init_rate_limiter, AdaptiveRateLimiter, DomainStats, RateLimitConfig,
+};
+pub use rejected::{CrawlRejected, RejectionReason};
+pub use robots::{is_url_allowed, DEFAULT_USER_AGENT};
+pub use runner::{crawl_url, service_status, start_service, start_service_async, stop_service};
+pub use sitemap::{extract_urls_from_sitemaps, fetch_sitemap};
 
 /// Global database connection pool for crawler threads
-static DB_POOL: Lazy<Arc<RwLock<Option<Pool>>>> = Lazy::new(|| {
-    Arc::new(RwLock::new(None))
-});
+static DB_POOL: Lazy<Arc<RwLock<Option<Pool>>>> = Lazy::new(|| Arc::new(RwLock::new(None)));
 
 /// Initialize the database connection pool for the crawler
 /// This should be called once at application startup
 pub async fn initialize_db_pool() -> Result<(), Box<dyn std::error::Error>> {
     // Check if running in CapRover environment
     let is_caprover = std::env::var("CAPROVER").is_ok();
-    
+
     let db_url = if is_caprover {
         // Use CapRover-specific connection string with explicit host
         std::env::var("POSTGRES_URL").unwrap_or_else(|_| {
@@ -83,15 +85,15 @@ pub async fn initialize_db_pool() -> Result<(), Box<dyn std::error::Error>> {
             )
         })
     };
-    
+
     log::info!("Initializing crawler DB pool (CapRover: {})", is_caprover);
-    
+
     let mut cfg = Config::new();
     cfg.url = Some(db_url.clone());
     cfg.manager = Some(ManagerConfig {
         recycling_method: RecyclingMethod::Fast,
     });
-    
+
     // Adjust timeouts based on environment
     let (wait_timeout, create_timeout, recycle_timeout, max_connections) = if is_caprover {
         // Extended timeouts for CapRover environment
@@ -100,7 +102,7 @@ pub async fn initialize_db_pool() -> Result<(), Box<dyn std::error::Error>> {
         // Standard timeouts for local/development
         (5, 5, 5, 20)
     };
-    
+
     cfg.pool = Some(deadpool_postgres::PoolConfig {
         max_size: max_connections,
         timeouts: deadpool_postgres::Timeouts {
@@ -110,32 +112,33 @@ pub async fn initialize_db_pool() -> Result<(), Box<dyn std::error::Error>> {
         },
         queue_mode: deadpool::managed::QueueMode::Fifo,
     });
-    
+
     // Retry connection with exponential backoff for CapRover
     let mut attempts = 0;
     let max_attempts = if is_caprover { 5 } else { 3 };
     let mut delay = std::time::Duration::from_secs(1);
-    
+
     loop {
         attempts += 1;
         log::info!("DB connection attempt {} of {}", attempts, max_attempts);
-        
+
         match cfg.create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls) {
             Ok(pool) => {
                 // Test the connection with timeout
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(10),
-                    pool.get()
-                ).await {
+                match tokio::time::timeout(std::time::Duration::from_secs(10), pool.get()).await {
                     Ok(Ok(client)) => {
                         match tokio::time::timeout(
                             std::time::Duration::from_secs(5),
-                            client.query_one("SELECT 1", &[])
-                        ).await {
+                            client.query_one("SELECT 1", &[]),
+                        )
+                        .await
+                        {
                             Ok(Ok(_)) => {
                                 let mut pool_guard = DB_POOL.write().await;
                                 *pool_guard = Some(pool);
-                                log::info!("Crawler database connection pool initialized successfully");
+                                log::info!(
+                                    "Crawler database connection pool initialized successfully"
+                                );
                                 return Ok(());
                             }
                             Ok(Err(e)) => {
@@ -158,11 +161,15 @@ pub async fn initialize_db_pool() -> Result<(), Box<dyn std::error::Error>> {
                 log::warn!("Failed to create pool: {}", e);
             }
         }
-        
+
         if attempts >= max_attempts {
-            return Err(format!("Failed to initialize DB pool after {} attempts", max_attempts).into());
+            return Err(format!(
+                "Failed to initialize DB pool after {} attempts",
+                max_attempts
+            )
+            .into());
         }
-        
+
         log::info!("Retrying in {:?}...", delay);
         tokio::time::sleep(delay).await;
         delay *= 2; // Exponential backoff
@@ -180,7 +187,7 @@ pub async fn get_db_connection() -> Option<deadpool_postgres::Client> {
         } else {
             std::time::Duration::from_secs(5)
         };
-        
+
         match tokio::time::timeout(timeout_duration, pool.get()).await {
             Ok(Ok(client)) => Some(client),
             Ok(Err(e)) => {

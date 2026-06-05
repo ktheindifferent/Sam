@@ -1,7 +1,7 @@
-use std::fmt;
-use log::{error, warn, info};
-use super::errors::{CodingAgentError, CodingAgentResult, ErrorSeverity};
 use super::constants::*;
+use super::errors::{CodingAgentError, CodingAgentResult, ErrorSeverity};
+use log::{error, info, warn};
+use std::fmt;
 
 /// Trait for consistent error handling across the coding agent
 pub trait ErrorHandler {
@@ -68,7 +68,7 @@ impl ErrorHandler for DefaultErrorHandler {
                         strategy: FallbackStrategy::UseDefault,
                     }
                 }
-            },
+            }
             ErrorSeverity::Critical | ErrorSeverity::Fatal => ErrorAction::Propagate,
         }
     }
@@ -89,7 +89,8 @@ impl ErrorHandler for DefaultErrorHandler {
     }
 
     fn get_retry_delay(&self, error: &CodingAgentError, attempt: u32) -> std::time::Duration {
-        let base_delay = error.retry_delay_seconds(attempt)
+        let base_delay = error
+            .retry_delay_seconds(attempt)
             .unwrap_or(DEFAULT_RETRY_DELAY_SECONDS);
 
         // Exponential backoff with jitter
@@ -126,8 +127,10 @@ where
                 }
 
                 let delay = handler.get_retry_delay(&error, attempt);
-                info!("Retrying {} after {:?} (attempt {}/{})",
-                    context, delay, attempt, DEFAULT_RETRY_ATTEMPTS);
+                info!(
+                    "Retrying {} after {:?} (attempt {}/{})",
+                    context, delay, attempt, DEFAULT_RETRY_ATTEMPTS
+                );
 
                 tokio::time::sleep(delay).await;
             }
@@ -141,10 +144,7 @@ pub fn wrap_error<E: std::error::Error>(error: E, context: &str) -> CodingAgentE
 }
 
 /// Log and convert Result to Option
-pub fn log_and_continue<T, E: fmt::Display>(
-    result: Result<T, E>,
-    context: &str,
-) -> Option<T> {
+pub fn log_and_continue<T, E: fmt::Display>(result: Result<T, E>, context: &str) -> Option<T> {
     match result {
         Ok(value) => Some(value),
         Err(e) => {
@@ -155,10 +155,7 @@ pub fn log_and_continue<T, E: fmt::Display>(
 }
 
 /// Ensure a critical operation succeeds or panic
-pub fn ensure_critical<T, E: fmt::Display>(
-    result: Result<T, E>,
-    context: &str,
-) -> T {
+pub fn ensure_critical<T, E: fmt::Display>(result: Result<T, E>, context: &str) -> T {
     match result {
         Ok(value) => value,
         Err(e) => {

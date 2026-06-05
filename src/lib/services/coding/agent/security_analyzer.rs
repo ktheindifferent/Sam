@@ -1,10 +1,10 @@
+use async_trait::async_trait;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
 use tokio::fs;
-use regex::Regex;
 
 use super::errors::CodingAgentError as ServiceError;
 use super::traits::provider::LLMProvider;
@@ -244,7 +244,7 @@ pub enum SupplyChainRiskType {
 pub struct SecretLeak {
     pub secret_type: SecretType,
     pub location: CodeLocation,
-    pub value_preview: String,  // Redacted preview
+    pub value_preview: String, // Redacted preview
     pub entropy: f64,
     pub confidence: f64,
 }
@@ -353,11 +353,16 @@ impl SecurityAnalyzer {
     }
 
     fn register_scanners(&mut self) {
-        self.scanners.insert("rust".to_string(), Box::new(RustSecurityScanner::new()));
-        self.scanners.insert("javascript".to_string(), Box::new(JsSecurityScanner::new()));
-        self.scanners.insert("python".to_string(), Box::new(PythonSecurityScanner::new()));
-        self.scanners.insert("go".to_string(), Box::new(GoSecurityScanner::new()));
-        self.scanners.insert("java".to_string(), Box::new(JavaSecurityScanner::new()));
+        self.scanners
+            .insert("rust".to_string(), Box::new(RustSecurityScanner::new()));
+        self.scanners
+            .insert("javascript".to_string(), Box::new(JsSecurityScanner::new()));
+        self.scanners
+            .insert("python".to_string(), Box::new(PythonSecurityScanner::new()));
+        self.scanners
+            .insert("go".to_string(), Box::new(GoSecurityScanner::new()));
+        self.scanners
+            .insert("java".to_string(), Box::new(JavaSecurityScanner::new()));
     }
 
     pub async fn analyze(
@@ -406,7 +411,8 @@ impl SecurityAnalyzer {
 
         // Check compliance
         let compliance = if config.check_compliance {
-            self.check_compliance(&config.compliance_standards, project_path).await?
+            self.check_compliance(&config.compliance_standards, project_path)
+                .await?
         } else {
             ComplianceReport {
                 standards: Vec::new(),
@@ -420,12 +426,9 @@ impl SecurityAnalyzer {
         let summary = self.calculate_summary(&vulnerabilities, &code_smells, &secrets);
 
         // Generate recommendations
-        let recommendations = self.generate_recommendations(
-            &vulnerabilities,
-            &code_smells,
-            &dependencies,
-            &compliance,
-        ).await?;
+        let recommendations = self
+            .generate_recommendations(&vulnerabilities, &code_smells, &dependencies, &compliance)
+            .await?;
 
         Ok(SecurityAnalysisReport {
             scan_id,
@@ -445,7 +448,9 @@ impl SecurityAnalyzer {
             Ok("rust".to_string())
         } else if project_path.join("package.json").exists() {
             Ok("javascript".to_string())
-        } else if project_path.join("requirements.txt").exists() || project_path.join("setup.py").exists() {
+        } else if project_path.join("requirements.txt").exists()
+            || project_path.join("setup.py").exists()
+        {
             Ok("python".to_string())
         } else if project_path.join("go.mod").exists() {
             Ok("go".to_string())
@@ -474,11 +479,14 @@ impl SecurityAnalyzer {
                 if let Ok(cargo_lock) = fs::read_to_string(project_path.join("Cargo.lock")).await {
                     analysis.total_dependencies = cargo_lock.matches("[[package]]").count();
                     // Check for known vulnerabilities
-                    analysis.vulnerable = self.vulnerability_db.check_rust_deps(&cargo_lock).await?;
+                    analysis.vulnerable =
+                        self.vulnerability_db.check_rust_deps(&cargo_lock).await?;
                 }
             }
             "javascript" => {
-                if let Ok(package_lock) = fs::read_to_string(project_path.join("package-lock.json")).await {
+                if let Ok(package_lock) =
+                    fs::read_to_string(project_path.join("package-lock.json")).await
+                {
                     // Parse and analyze npm dependencies
                     analysis.total_dependencies = package_lock.matches("\"version\"").count();
                 }
@@ -507,18 +515,24 @@ impl SecurityAnalyzer {
         }
 
         // Calculate compliance percentage
-        let total_checks = report.standards.iter()
+        let total_checks = report
+            .standards
+            .iter()
             .map(|s| s.checks.len())
             .sum::<usize>();
 
         if total_checks > 0 {
-            report.compliance_percentage = (report.passed_checks as f64 / total_checks as f64) * 100.0;
+            report.compliance_percentage =
+                (report.passed_checks as f64 / total_checks as f64) * 100.0;
         }
 
         Ok(report)
     }
 
-    async fn load_compliance_standard(&self, name: &str) -> Result<ComplianceStandard, ServiceError> {
+    async fn load_compliance_standard(
+        &self,
+        name: &str,
+    ) -> Result<ComplianceStandard, ServiceError> {
         // Load compliance standard definitions
         Ok(ComplianceStandard {
             name: name.to_string(),
@@ -549,11 +563,11 @@ impl SecurityAnalyzer {
         }
 
         // Calculate risk score (0-100)
-        let risk_score = (critical as f64 * 10.0) +
-                        (high as f64 * 5.0) +
-                        (medium as f64 * 2.0) +
-                        (low as f64 * 0.5) +
-                        (secrets.len() as f64 * 8.0);
+        let risk_score = (critical as f64 * 10.0)
+            + (high as f64 * 5.0)
+            + (medium as f64 * 2.0)
+            + (low as f64 * 0.5)
+            + (secrets.len() as f64 * 8.0);
 
         let risk_level = match risk_score {
             s if s >= 80.0 => RiskLevel::Critical,
@@ -584,7 +598,10 @@ impl SecurityAnalyzer {
         let mut recommendations = Vec::new();
 
         // Critical vulnerability recommendations
-        for vuln in vulnerabilities.iter().filter(|v| matches!(v.severity, Severity::Critical)) {
+        for vuln in vulnerabilities
+            .iter()
+            .filter(|v| matches!(v.severity, Severity::Critical))
+        {
             recommendations.push(SecurityRecommendation {
                 priority: Priority::Urgent,
                 category: "Vulnerability".to_string(),
@@ -602,7 +619,10 @@ impl SecurityAnalyzer {
                 priority: Priority::High,
                 category: "Dependencies".to_string(),
                 title: "Update vulnerable dependencies".to_string(),
-                description: format!("{} dependencies have known vulnerabilities", dependencies.vulnerable.len()),
+                description: format!(
+                    "{} dependencies have known vulnerabilities",
+                    dependencies.vulnerable.len()
+                ),
                 implementation: "Update dependencies to patched versions".to_string(),
                 effort: EffortLevel::Small,
                 impact: ImpactLevel::High,
@@ -634,7 +654,7 @@ impl Default for SecurityConfig {
             check_compliance: false,
             compliance_standards: vec!["OWASP".to_string()],
             severity_threshold: Severity::Low,
-            max_file_size: 10_000_000,  // 10MB
+            max_file_size: 10_000_000, // 10MB
             excluded_paths: vec!["node_modules".to_string(), "target".to_string()],
         }
     }
@@ -673,10 +693,12 @@ impl SecurityScanner for RustSecurityScanner {
         };
 
         // Scan for unsafe code
-        self.scan_unsafe_code(project_path, &mut result.vulnerabilities).await?;
+        self.scan_unsafe_code(project_path, &mut result.vulnerabilities)
+            .await?;
 
         // Check for common security issues
-        self.check_common_issues(project_path, &mut result.vulnerabilities).await?;
+        self.check_common_issues(project_path, &mut result.vulnerabilities)
+            .await?;
 
         Ok(result)
     }
@@ -687,30 +709,42 @@ impl SecurityScanner for RustSecurityScanner {
 }
 
 impl RustSecurityScanner {
-    async fn scan_unsafe_code(&self, project_path: &Path, vulnerabilities: &mut Vec<Vulnerability>) -> Result<(), ServiceError> {
-        let mut entries = fs::read_dir(project_path).await
+    async fn scan_unsafe_code(
+        &self,
+        project_path: &Path,
+        vulnerabilities: &mut Vec<Vulnerability>,
+    ) -> Result<(), ServiceError> {
+        let mut entries = fs::read_dir(project_path)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(project_path.to_path_buf()),
             })?;
 
-        while let Some(entry) = entries.next_entry().await
+        while let Some(entry) = entries
+            .next_entry()
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(project_path.to_path_buf()),
-            })? {
+            })?
+        {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-                let content = fs::read_to_string(&path).await
-                    .map_err(|e| ServiceError::IoError {
-                        message: e.to_string(),
-                        path: Some(path.clone()),
-                    })?;
+                let content =
+                    fs::read_to_string(&path)
+                        .await
+                        .map_err(|e| ServiceError::IoError {
+                            message: e.to_string(),
+                            path: Some(path.clone()),
+                        })?;
 
                 if content.contains("unsafe") {
                     vulnerabilities.push(Vulnerability {
                         id: uuid::Uuid::new_v4().to_string(),
-                        vulnerability_type: VulnerabilityType::Other("Unsafe code usage".to_string()),
+                        vulnerability_type: VulnerabilityType::Other(
+                            "Unsafe code usage".to_string(),
+                        ),
                         severity: Severity::Medium,
                         location: CodeLocation {
                             file: path,
@@ -734,7 +768,11 @@ impl RustSecurityScanner {
         Ok(())
     }
 
-    async fn check_common_issues(&self, _project_path: &Path, _vulnerabilities: &mut Vec<Vulnerability>) -> Result<(), ServiceError> {
+    async fn check_common_issues(
+        &self,
+        _project_path: &Path,
+        _vulnerabilities: &mut Vec<Vulnerability>,
+    ) -> Result<(), ServiceError> {
         // Check for common Rust security issues
         Ok(())
     }
@@ -837,7 +875,10 @@ impl VulnerabilityDatabase {
         Self
     }
 
-    async fn check_rust_deps(&self, _cargo_lock: &str) -> Result<Vec<VulnerableDependency>, ServiceError> {
+    async fn check_rust_deps(
+        &self,
+        _cargo_lock: &str,
+    ) -> Result<Vec<VulnerableDependency>, ServiceError> {
         // Check against known vulnerability databases
         Ok(Vec::new())
     }
@@ -861,7 +902,8 @@ impl SecretDetector {
     fn initialize_patterns(&mut self) {
         self.patterns.push(SecretPattern {
             name: "API Key".to_string(),
-            pattern: Regex::new(r#"(?i)(api[_-]?key|apikey)\s*[:=]\s*['\"]?([a-zA-Z0-9_-]{20,})"#).unwrap(),
+            pattern: Regex::new(r#"(?i)(api[_-]?key|apikey)\s*[:=]\s*['\"]?([a-zA-Z0-9_-]{20,})"#)
+                .unwrap(),
             secret_type: SecretType::ApiKey,
         });
 
@@ -878,18 +920,24 @@ impl SecretDetector {
         Ok(secrets)
     }
 
-    async fn scan_directory(&self, dir: &Path, secrets: &mut Vec<SecretLeak>) -> Result<(), ServiceError> {
-        let mut entries = fs::read_dir(dir).await
-            .map_err(|e| ServiceError::IoError {
-                message: e.to_string(),
-                path: Some(dir.to_path_buf()),
-            })?;
+    async fn scan_directory(
+        &self,
+        dir: &Path,
+        secrets: &mut Vec<SecretLeak>,
+    ) -> Result<(), ServiceError> {
+        let mut entries = fs::read_dir(dir).await.map_err(|e| ServiceError::IoError {
+            message: e.to_string(),
+            path: Some(dir.to_path_buf()),
+        })?;
 
-        while let Some(entry) = entries.next_entry().await
+        while let Some(entry) = entries
+            .next_entry()
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(dir.to_path_buf()),
-            })? {
+            })?
+        {
             let path = entry.path();
 
             if path.is_file() {
@@ -897,10 +945,9 @@ impl SecretDetector {
                     self.scan_content(&content, &path, secrets);
                 }
             } else if path.is_dir() {
-                let dir_name = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                if !dir_name.starts_with(".") && dir_name != "node_modules" && dir_name != "target" {
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !dir_name.starts_with(".") && dir_name != "node_modules" && dir_name != "target"
+                {
                     Box::pin(self.scan_directory(&path, secrets)).await?;
                 }
             }
@@ -940,7 +987,8 @@ impl SecretDetector {
         }
 
         let len = text.len() as f64;
-        frequencies.values()
+        frequencies
+            .values()
             .map(|&count| {
                 let p = count as f64 / len;
                 -p * p.log2()

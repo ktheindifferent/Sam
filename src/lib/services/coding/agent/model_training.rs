@@ -1,11 +1,11 @@
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use tokio::sync::{RwLock, mpsc};
 use tokio::fs;
+use tokio::sync::{mpsc, RwLock};
 
 use super::errors::CodingAgentError as ServiceError;
 use super::traits::provider::LLMProvider;
@@ -414,24 +414,21 @@ impl ModelTrainingEngine {
 
         trainers.insert(
             ModelType::CodeGeneration,
-            Box::new(CodeGenerationTrainer::new()) as Box<dyn ModelTrainer>
+            Box::new(CodeGenerationTrainer::new()) as Box<dyn ModelTrainer>,
         );
         trainers.insert(
             ModelType::CodeCompletion,
-            Box::new(CodeCompletionTrainer::new()) as Box<dyn ModelTrainer>
+            Box::new(CodeCompletionTrainer::new()) as Box<dyn ModelTrainer>,
         );
         trainers.insert(
             ModelType::BugDetection,
-            Box::new(BugDetectionTrainer::new()) as Box<dyn ModelTrainer>
+            Box::new(BugDetectionTrainer::new()) as Box<dyn ModelTrainer>,
         );
 
         trainers
     }
 
-    pub async fn start_training(
-        &self,
-        config: TrainingConfig,
-    ) -> Result<String, ServiceError> {
+    pub async fn start_training(&self, config: TrainingConfig) -> Result<String, ServiceError> {
         let session_id = uuid::Uuid::new_v4().to_string();
 
         // Prepare training data
@@ -441,11 +438,13 @@ impl ModelTrainingEngine {
         let model = self.model_builder.build(&config).await?;
 
         // Get appropriate trainer
-        let trainer = self.trainers.get(&config.model_type)
-            .ok_or_else(|| ServiceError::NotFound {
-                resource: "trainer".to_string(),
-                id: format!("{:?}", config.model_type),
-            })?;
+        let trainer =
+            self.trainers
+                .get(&config.model_type)
+                .ok_or_else(|| ServiceError::NotFound {
+                    resource: "trainer".to_string(),
+                    id: format!("{:?}", config.model_type),
+                })?;
 
         // Start training
         let session = TrainingSession {
@@ -506,13 +505,16 @@ impl ModelTrainingEngine {
         }
 
         // Apply preprocessing
-        let processed_samples = self.data_processor
-            .preprocess(samples, &config.preprocessing).await?;
+        let processed_samples = self
+            .data_processor
+            .preprocess(samples, &config.preprocessing)
+            .await?;
 
         // Apply augmentation
         let augmented_samples = if self.should_augment(&config.augmentation) {
             self.data_processor
-                .augment(processed_samples, &config.augmentation).await?
+                .augment(processed_samples, &config.augmentation)
+                .await?
         } else {
             processed_samples
         };
@@ -536,7 +538,8 @@ impl ModelTrainingEngine {
         languages: &[String],
     ) -> Result<Vec<TrainingSample>, ServiceError> {
         let mut samples = Vec::new();
-        self.load_samples_recursive(path, languages, &mut samples).await?;
+        self.load_samples_recursive(path, languages, &mut samples)
+            .await?;
         Ok(samples)
     }
 
@@ -546,17 +549,19 @@ impl ModelTrainingEngine {
         languages: &[String],
         samples: &mut Vec<TrainingSample>,
     ) -> Result<(), ServiceError> {
-        let mut entries = fs::read_dir(dir).await
-            .map_err(|e| ServiceError::IoError {
-                message: e.to_string(),
-                path: Some(dir.to_path_buf()),
-            })?;
+        let mut entries = fs::read_dir(dir).await.map_err(|e| ServiceError::IoError {
+            message: e.to_string(),
+            path: Some(dir.to_path_buf()),
+        })?;
 
-        while let Some(entry) = entries.next_entry().await
+        while let Some(entry) = entries
+            .next_entry()
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(dir.to_path_buf()),
-            })? {
+            })?
+        {
             let path = entry.path();
 
             if path.is_file() {
@@ -581,10 +586,9 @@ impl ModelTrainingEngine {
                     }
                 }
             } else if path.is_dir() {
-                let dir_name = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                if !dir_name.starts_with('.') && dir_name != "node_modules" && dir_name != "target" {
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !dir_name.starts_with('.') && dir_name != "node_modules" && dir_name != "target"
+                {
                     Box::pin(self.load_samples_recursive(&path, languages, samples)).await?;
                 }
             }
@@ -622,15 +626,18 @@ impl ModelTrainingEngine {
     }
 
     fn should_augment(&self, config: &AugmentationConfig) -> bool {
-        config.variable_renaming ||
-        config.code_formatting ||
-        config.comment_injection ||
-        config.synthetic_bugs ||
-        config.paraphrasing ||
-        config.back_translation
+        config.variable_renaming
+            || config.code_formatting
+            || config.comment_injection
+            || config.synthetic_bugs
+            || config.paraphrasing
+            || config.back_translation
     }
 
-    async fn build_vocabulary(&self, samples: &[TrainingSample]) -> Result<Vocabulary, ServiceError> {
+    async fn build_vocabulary(
+        &self,
+        samples: &[TrainingSample],
+    ) -> Result<Vocabulary, ServiceError> {
         let mut token_counts = HashMap::new();
 
         for sample in samples {
@@ -669,7 +676,8 @@ impl ModelTrainingEngine {
 
         // Add regular tokens
         let mut idx = 5;
-        for (token, _) in sorted_tokens.iter().take(50000) { // Max vocab size
+        for (token, _) in sorted_tokens.iter().take(50000) {
+            // Max vocab size
             tokens.insert(token.clone(), idx);
             reverse_tokens.insert(idx, token.clone());
             idx += 1;
@@ -683,7 +691,11 @@ impl ModelTrainingEngine {
         })
     }
 
-    fn calculate_statistics(&self, samples: &[TrainingSample], vocabulary: &Vocabulary) -> DatasetStatistics {
+    fn calculate_statistics(
+        &self,
+        samples: &[TrainingSample],
+        vocabulary: &Vocabulary,
+    ) -> DatasetStatistics {
         let mut total_tokens = 0;
         let mut max_length = 0;
         let mut language_dist = HashMap::new();
@@ -727,17 +739,17 @@ impl ModelTrainingEngine {
     }
 
     async fn load_model(&self, path: &Path) -> Result<ModelArchitecture, ServiceError> {
-        let content = fs::read_to_string(path).await
+        let content = fs::read_to_string(path)
+            .await
             .map_err(|e| ServiceError::IoError {
                 message: e.to_string(),
                 path: Some(path.to_path_buf()),
             })?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| ServiceError::ValidationError {
-                field: "model".to_string(),
-                message: e.to_string(),
-            })
+        serde_json::from_str(&content).map_err(|e| ServiceError::ValidationError {
+            field: "model".to_string(),
+            message: e.to_string(),
+        })
     }
 
     pub async fn evaluate_model(
@@ -758,7 +770,10 @@ impl ModelTrainingEngine {
         Ok(())
     }
 
-    pub async fn get_training_status(&self, session_id: &str) -> Result<TrainingSession, ServiceError> {
+    pub async fn get_training_status(
+        &self,
+        session_id: &str,
+    ) -> Result<TrainingSession, ServiceError> {
         // Get current training session status
         Err(ServiceError::NotFound {
             resource: "session".to_string(),
@@ -809,7 +824,11 @@ pub enum ExportFormat {
 // Trainer trait
 #[async_trait]
 trait ModelTrainer: Send + Sync {
-    async fn train(&self, session: TrainingSession, dataset: TrainingDataset) -> Result<(), ServiceError>;
+    async fn train(
+        &self,
+        session: TrainingSession,
+        dataset: TrainingDataset,
+    ) -> Result<(), ServiceError>;
     fn clone_box(&self) -> Box<dyn ModelTrainer>;
 }
 
@@ -824,7 +843,11 @@ impl CodeGenerationTrainer {
 
 #[async_trait]
 impl ModelTrainer for CodeGenerationTrainer {
-    async fn train(&self, _session: TrainingSession, _dataset: TrainingDataset) -> Result<(), ServiceError> {
+    async fn train(
+        &self,
+        _session: TrainingSession,
+        _dataset: TrainingDataset,
+    ) -> Result<(), ServiceError> {
         // Implement code generation training
         Ok(())
     }
@@ -844,7 +867,11 @@ impl CodeCompletionTrainer {
 
 #[async_trait]
 impl ModelTrainer for CodeCompletionTrainer {
-    async fn train(&self, _session: TrainingSession, _dataset: TrainingDataset) -> Result<(), ServiceError> {
+    async fn train(
+        &self,
+        _session: TrainingSession,
+        _dataset: TrainingDataset,
+    ) -> Result<(), ServiceError> {
         // Implement code completion training
         Ok(())
     }
@@ -864,7 +891,11 @@ impl BugDetectionTrainer {
 
 #[async_trait]
 impl ModelTrainer for BugDetectionTrainer {
-    async fn train(&self, _session: TrainingSession, _dataset: TrainingDataset) -> Result<(), ServiceError> {
+    async fn train(
+        &self,
+        _session: TrainingSession,
+        _dataset: TrainingDataset,
+    ) -> Result<(), ServiceError> {
         // Implement bug detection training
         Ok(())
     }

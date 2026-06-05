@@ -1,10 +1,10 @@
-use anyhow::{Result, Context};
-use log::{info, error};
+use crate::db::database_engine::{DatabaseEngine, DatabasePool, Row, Value};
+use crate::services::monitoring::report_service_error;
+use anyhow::{Context, Result};
+use log::{error, info};
+use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
-use crate::db::database_engine::{DatabaseEngine, DatabasePool, Value, Row};
-use crate::services::monitoring::report_service_error;
-use std::collections::BTreeMap;
 
 static DB_POOL: OnceLock<Arc<DatabasePool>> = OnceLock::new();
 
@@ -13,26 +13,27 @@ pub async fn connect() -> Result<Arc<DatabasePool>> {
         pool.health_check().await?;
         return Ok(pool.clone());
     }
-    
+
     let engine = DatabaseEngine::from_env();
     info!("Initializing database with engine: {:?}", engine);
-    
-    let pool = DatabasePool::new(engine).await
+
+    let pool = DatabasePool::new(engine)
+        .await
         .context("Failed to create database pool")?;
-    
+
     let pool = Arc::new(pool);
-    
+
     match DB_POOL.set(pool.clone()) {
         Ok(_) => {
             info!("Database pool initialized successfully");
-        },
+        }
         Err(_) => {
             if let Some(existing_pool) = DB_POOL.get() {
                 return Ok(existing_pool.clone());
             }
         }
     }
-    
+
     Ok(pool)
 }
 
@@ -46,17 +47,20 @@ pub async fn health_check() -> Result<()> {
 pub async fn initialize_schema() -> Result<()> {
     info!("Initializing database schema");
     let pool = connect().await?;
-    
+
     match pool.engine() {
         DatabaseEngine::SQLite => initialize_sqlite_schema(pool).await,
         DatabaseEngine::PostgreSQL => initialize_postgres_schema(pool).await,
-        _ => Err(anyhow::anyhow!("Schema initialization not implemented for {:?}", pool.engine())),
+        _ => Err(anyhow::anyhow!(
+            "Schema initialization not implemented for {:?}",
+            pool.engine()
+        )),
     }
 }
 
 async fn initialize_sqlite_schema(pool: Arc<DatabasePool>) -> Result<()> {
     info!("Initializing SQLite schema");
-    
+
     let schema = r#"
         -- Crawler tables
         CREATE TABLE IF NOT EXISTS crawl_jobs (
@@ -211,13 +215,14 @@ async fn initialize_sqlite_schema(pool: Arc<DatabasePool>) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
         CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key);
     "#;
-    
+
     for statement in schema.split(';').filter(|s| !s.trim().is_empty()) {
         let stmt = format!("{};", statement.trim());
-        pool.execute(&stmt, vec![]).await
+        pool.execute(&stmt, vec![])
+            .await
             .with_context(|| format!("Failed to execute schema statement: {}", stmt))?;
     }
-    
+
     info!("SQLite schema initialized successfully");
     Ok(())
 }
@@ -231,13 +236,11 @@ pub async fn execute_query(query: &str, params: Vec<Value>) -> Result<Vec<Row>> 
     let pool = connect().await?;
     let start = std::time::Instant::now();
     let params_count = params.len();
-    
-    let result = tokio::time::timeout(
-        Duration::from_secs(30),
-        pool.query(query, params)
-    ).await
+
+    let result = tokio::time::timeout(Duration::from_secs(30), pool.query(query, params))
+        .await
         .context("Query timeout")?;
-    
+
     match result {
         Ok(rows) => {
             info!("Query executed successfully in {:?}", start.elapsed());
@@ -259,16 +262,18 @@ pub async fn execute_statement(query: &str, params: Vec<Value>) -> Result<u64> {
     let pool = connect().await?;
     let start = std::time::Instant::now();
     let params_count = params.len();
-    
-    let result = tokio::time::timeout(
-        Duration::from_secs(30),
-        pool.execute(query, params)
-    ).await
+
+    let result = tokio::time::timeout(Duration::from_secs(30), pool.execute(query, params))
+        .await
         .context("Statement timeout")?;
-    
+
     match result {
         Ok(count) => {
-            info!("Statement executed successfully in {:?}, affected {} rows", start.elapsed(), count);
+            info!(
+                "Statement executed successfully in {:?}, affected {} rows",
+                start.elapsed(),
+                count
+            );
             Ok(count)
         }
         Err(e) => {
@@ -285,35 +290,39 @@ pub async fn execute_statement(query: &str, params: Vec<Value>) -> Result<u64> {
 
 pub async fn cleanup_old_sessions() -> Result<u64> {
     let pool = connect().await?;
-    
+
     let query = match pool.engine() {
-        DatabaseEngine::SQLite => {
-            "DELETE FROM user_sessions WHERE expires_at < datetime('now')"
+        DatabaseEngine::SQLite => "DELETE FROM user_sessions WHERE expires_at < datetime('now')",
+        DatabaseEngine::PostgreSQL => "DELETE FROM user_sessions WHERE expires_at < NOW()",
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Cleanup not implemented for {:?}",
+                pool.engine()
+            ))
         }
-        DatabaseEngine::PostgreSQL => {
-            "DELETE FROM user_sessions WHERE expires_at < NOW()"
-        }
-        _ => return Err(anyhow::anyhow!("Cleanup not implemented for {:?}", pool.engine())),
     };
-    
+
     execute_statement(query, vec![]).await
 }
 
 pub async fn cleanup_old_health_records(days: i32) -> Result<u64> {
     // Validate input to prevent negative or excessively large values
-    if !(0..=3650).contains(&days) {  // Max 10 years
-        return Err(anyhow::anyhow!("Invalid days parameter: must be between 0 and 3650"));
+    if !(0..=3650).contains(&days) {
+        // Max 10 years
+        return Err(anyhow::anyhow!(
+            "Invalid days parameter: must be between 0 and 3650"
+        ));
     }
-    
+
     let pool = connect().await?;
-    
+
     let (query, params) = match pool.engine() {
         DatabaseEngine::SQLite => {
             // SQLite doesn't support parameterized date intervals directly,
             // but we can use parameterized queries with julianday
             (
                 "DELETE FROM service_health WHERE julianday('now') - julianday(checked_at) > ?1",
-                vec![Value::Int32(days)]
+                vec![Value::Int32(days)],
             )
         }
         DatabaseEngine::PostgreSQL => {
@@ -323,9 +332,14 @@ pub async fn cleanup_old_health_records(days: i32) -> Result<u64> {
                 vec![Value::Int32(days)]
             )
         }
-        _ => return Err(anyhow::anyhow!("Cleanup not implemented for {:?}", pool.engine())),
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Cleanup not implemented for {:?}",
+                pool.engine()
+            ))
+        }
     };
-    
+
     execute_statement(query, params).await
 }
 

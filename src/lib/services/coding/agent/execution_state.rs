@@ -1,16 +1,26 @@
+use super::utils;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use super::utils;
 
 /// Execution state for incremental task processing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecutionState {
     Planning,
     GeneratingSteps,
-    ExecutingCommand { step: usize, total: usize, command: String },
-    WaitingForConfirmation { step: usize, total: usize, command: String },
+    ExecutingCommand {
+        step: usize,
+        total: usize,
+        command: String,
+    },
+    WaitingForConfirmation {
+        step: usize,
+        total: usize,
+        command: String,
+    },
     Completed,
-    Failed { error: String },
+    Failed {
+        error: String,
+    },
 }
 
 /// Individual execution step
@@ -38,7 +48,12 @@ impl ExecutionStep {
     }
 
     /// Create with step number
-    pub fn with_step_number(step_number: usize, description: String, command: String, timestamp: u64) -> Self {
+    pub fn with_step_number(
+        step_number: usize,
+        description: String,
+        command: String,
+        timestamp: u64,
+    ) -> Self {
         Self {
             step_number,
             description,
@@ -80,7 +95,7 @@ pub struct IncrementalExecution {
     pub spinner_active: bool,
     pub start_time: u64,
     pub auto_execute: bool,
-    pub raw_ai_response: Option<String>,  // Store raw AI output for debugging
+    pub raw_ai_response: Option<String>, // Store raw AI output for debugging
 }
 
 impl Default for IncrementalExecution {
@@ -118,10 +133,11 @@ impl IncrementalExecution {
     /// Update the execution state
     pub fn update_state(&mut self, new_state: ExecutionState) {
         self.state = new_state;
-        self.spinner_active = matches!(self.state,
-            ExecutionState::Planning |
-            ExecutionState::GeneratingSteps |
-            ExecutionState::ExecutingCommand { .. }
+        self.spinner_active = matches!(
+            self.state,
+            ExecutionState::Planning
+                | ExecutionState::GeneratingSteps
+                | ExecutionState::ExecutingCommand { .. }
         );
     }
 
@@ -151,11 +167,12 @@ impl IncrementalExecution {
 
     /// Check if execution is active
     pub fn is_active(&self) -> bool {
-        matches!(self.state,
-            ExecutionState::Planning |
-            ExecutionState::GeneratingSteps |
-            ExecutionState::ExecutingCommand { .. } |
-            ExecutionState::WaitingForConfirmation { .. }
+        matches!(
+            self.state,
+            ExecutionState::Planning
+                | ExecutionState::GeneratingSteps
+                | ExecutionState::ExecutingCommand { .. }
+                | ExecutionState::WaitingForConfirmation { .. }
         )
     }
 
@@ -164,12 +181,25 @@ impl IncrementalExecution {
         match &self.state {
             ExecutionState::Planning => "🤖 Planning task...".into(),
             ExecutionState::GeneratingSteps => "🧠 Generating execution steps...".into(),
-            ExecutionState::ExecutingCommand { step, total, command } => {
-                format!("⚡ [{}/{}] Executing: {}", step, total, Self::get_command_description(command))
-            },
-            ExecutionState::WaitingForConfirmation { step, total, command } => {
+            ExecutionState::ExecutingCommand {
+                step,
+                total,
+                command,
+            } => {
+                format!(
+                    "⚡ [{}/{}] Executing: {}",
+                    step,
+                    total,
+                    Self::get_command_description(command)
+                )
+            }
+            ExecutionState::WaitingForConfirmation {
+                step,
+                total,
+                command,
+            } => {
                 format!("⏳ [{}/{}] Confirm: {}", step, total, command)
-            },
+            }
             ExecutionState::Completed => "✅ Task completed!".into(),
             ExecutionState::Failed { error } => format!("❌ Failed: {}", error),
         }
@@ -186,8 +216,11 @@ impl IncrementalExecution {
             "mkdir" => format!("Creating directory {}", parts.get(1).unwrap_or(&"<name>")),
             "cd" => format!("Changing to directory {}", parts.get(1).unwrap_or(&"<dir>")),
             "cargo" if parts.get(1) == Some(&"new") => {
-                format!("Creating new Rust project {}", parts.get(2).unwrap_or(&"<name>"))
-            },
+                format!(
+                    "Creating new Rust project {}",
+                    parts.get(2).unwrap_or(&"<name>")
+                )
+            }
             "touch" => format!("Creating file {}", parts.get(1).unwrap_or(&"<file>")),
             "echo" => "Writing content to file".into(),
             "cp" => "Copying files".into(),
@@ -207,7 +240,11 @@ impl IncrementalExecution {
 
         for (i, step) in self.steps.iter().enumerate() {
             let status = if i < self.current_step {
-                if step.success { "✅" } else { "❌" }
+                if step.success {
+                    "✅"
+                } else {
+                    "❌"
+                }
             } else if i == self.current_step {
                 "⚡"
             } else {
@@ -299,7 +336,7 @@ impl IncrementalExecution {
     /// Cancel the execution
     pub fn cancel(&mut self) {
         self.state = ExecutionState::Failed {
-            error: "Cancelled by user".into()
+            error: "Cancelled by user".into(),
         };
         self.spinner_active = false;
     }
@@ -319,13 +356,14 @@ impl IncrementalExecution {
 
     /// Check if all steps are completed successfully
     pub fn is_successful(&self) -> bool {
-        matches!(self.state, ExecutionState::Completed) && 
-        self.steps.iter().all(|step| step.success)
+        matches!(self.state, ExecutionState::Completed)
+            && self.steps.iter().all(|step| step.success)
     }
 
     /// Get failed steps
     pub fn get_failed_steps(&self) -> Vec<(usize, &ExecutionStep)> {
-        self.steps.iter()
+        self.steps
+            .iter()
             .enumerate()
             .filter(|(_, step)| !step.success && step.output.is_some())
             .collect()
@@ -333,7 +371,8 @@ impl IncrementalExecution {
 
     /// Get successful steps
     pub fn get_successful_steps(&self) -> Vec<(usize, &ExecutionStep)> {
-        self.steps.iter()
+        self.steps
+            .iter()
             .enumerate()
             .filter(|(_, step)| step.success)
             .collect()
@@ -378,10 +417,10 @@ impl IncrementalExecution {
         match &self.state {
             ExecutionState::Completed => {
                 lines.push("🎉 All steps completed successfully!".into());
-            },
+            }
             ExecutionState::Failed { error } => {
                 lines.push(format!("💥 Execution failed: {}", error));
-            },
+            }
             _ => {}
         }
 

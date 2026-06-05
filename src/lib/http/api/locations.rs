@@ -24,7 +24,9 @@ pub fn handle(
         let url = request.url().clone();
         let split = url.split("/");
         let vec = split.collect::<Vec<&str>>();
-        let location_oid = vec[3];
+        let Some(location_oid) = vec.get(3).filter(|oid| !oid.is_empty()) else {
+            return Ok(Response::empty_404());
+        };
 
         if request.method() == "GET" {
             let mut pg_query = crate::memory::PostgresQueries::default();
@@ -45,8 +47,8 @@ pub fn handle(
 
             let mut room = crate::memory::Room::new();
             room.name = input.name;
-            room.location_oid = location_oid.to_string();
-            room.save().unwrap();
+            room.location_oid = (*location_oid).to_string();
+            room.save()?;
 
             let mut pg_query = crate::memory::PostgresQueries::default();
             pg_query
@@ -55,9 +57,9 @@ pub fn handle(
             pg_query.query_columns.push("oid =".to_string());
 
             let objects = crate::memory::Room::select(None, None, None, Some(pg_query))?;
-            if !objects.is_empty() {
+            if let Some(room) = objects.first() {
                 if request.url().contains(".json") {
-                    return Ok(Response::json(&objects[0]));
+                    return Ok(Response::json(room));
                 } else {
                     let response = Response::redirect_302("/locations.html");
                     return Ok(response);

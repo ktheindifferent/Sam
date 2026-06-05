@@ -116,8 +116,8 @@ impl RetryStrategy for ExponentialBackoffRetry {
         }
 
         // Check if error is retryable - simplified for now to avoid lifetime issues
-        true  // Always retry within max attempts
-        
+        true // Always retry within max attempts
+
         /* TODO: Re-enable when lifetime issues are resolved
         if let Some(io_error) = error.downcast_ref::<std::io::Error>() {
             matches!(
@@ -196,10 +196,7 @@ impl RetryStrategy for LinearBackoffRetry {
     }
 }
 
-pub async fn retry_with_backoff<F, Fut, T, E>(
-    operation: F,
-    max_attempts: u32,
-) -> Result<T, E>
+pub async fn retry_with_backoff<F, Fut, T, E>(operation: F, max_attempts: u32) -> Result<T, E>
 where
     F: Fn() -> Fut + Send,
     Fut: Future<Output = Result<T, E>> + Send,

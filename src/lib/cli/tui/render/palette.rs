@@ -1,10 +1,10 @@
+use super::{super::state::CommandPalette, centered_rect};
 use ratatui::{
     layout::Alignment,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
-use super::{centered_rect, super::state::CommandPalette};
 
 /// Render the command palette overlay
 pub fn render_command_palette(
@@ -28,18 +28,18 @@ pub fn render_command_palette(
         .split(popup);
 
     // Search input
-    let search = Paragraph::new(format!("{}|", palette.query))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Command Palette (Ctrl+P)")
-                .border_style(Style::default().fg(Color::Yellow)),
-        );
+    let search = Paragraph::new(format!("{}|", palette.query)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Command Palette (Ctrl+P)")
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
     f.render_widget(search, chunks[0]);
 
     // Filtered actions
     let query_lower = palette.query.to_lowercase();
-    let filtered: Vec<&super::super::state::PaletteAction> = palette.actions
+    let filtered: Vec<&super::super::state::PaletteAction> = palette
+        .actions
         .iter()
         .filter(|a| {
             query_lower.is_empty()
@@ -59,12 +59,14 @@ pub fn render_command_palette(
             };
             ListItem::new(Line::from(vec![
                 Span::styled(&action.label, style.add_modifier(Modifier::BOLD)),
-                Span::styled(format!("  {}", action.description), style.fg(Color::DarkGray)),
+                Span::styled(
+                    format!("  {}", action.description),
+                    style.fg(Color::DarkGray),
+                ),
             ]))
         })
         .collect();
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Actions"));
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Actions"));
     f.render_widget(list, chunks[1]);
 }

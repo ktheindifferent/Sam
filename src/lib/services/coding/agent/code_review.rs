@@ -1,16 +1,16 @@
 use super::{
-    types::*,
+    code_intelligence::CodeIntelligence,
     errors::{CodingAgentError, CodingAgentResult},
     providers::LLMProvider,
-    code_intelligence::CodeIntelligence,
     security_analyzer::{SecurityAnalyzer, SecurityConfig},
+    types::*,
 };
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
-use async_trait::async_trait;
 
 /// Intelligent code review system
 pub struct CodeReviewSystem {
@@ -414,7 +414,7 @@ impl CodeReviewSystem {
         let mut suggestions = Vec::new();
         let mut security_findings = Vec::new();
         let mut best_practices = Vec::new();
-        
+
         // Analyze each file change
         for file_change in &request.files_changed {
             let file_results = self.analyze_file_change(file_change, &request).await?;
@@ -423,19 +423,21 @@ impl CodeReviewSystem {
             security_findings.extend(file_results.security_findings);
             best_practices.extend(file_results.best_practices);
         }
-        
+
         // Calculate metrics
         let metrics = self.calculate_metrics(&request, &comments, &suggestions)?;
-        
+
         // Determine overall verdict
         let verdict = self.determine_verdict(&metrics, &security_findings, &comments)?;
-        
+
         // Generate learning points
-        let learning_points = self.generate_learning_points(&comments, &suggestions).await?;
-        
+        let learning_points = self
+            .generate_learning_points(&comments, &suggestions)
+            .await?;
+
         // Calculate confidence score
         let confidence_score = self.calculate_confidence(&request, &comments)?;
-        
+
         Ok(ReviewResult {
             review_id: uuid::Uuid::new_v4().to_string(),
             overall_verdict: verdict,
@@ -456,44 +458,50 @@ impl CodeReviewSystem {
         request: &ReviewRequest,
     ) -> CodingAgentResult<FileAnalysisResult> {
         let mut result = FileAnalysisResult::default();
-        
+
         // Perform different types of analysis based on review type
         match request.review_type {
             ReviewType::Security => {
                 let config = SecurityConfig::default();
-                let security = self.security_analyzer.analyze(&file_change.file_path, config).await?;
+                let security = self
+                    .security_analyzer
+                    .analyze(&file_change.file_path, config)
+                    .await?;
                 result.security_findings = self.convert_security_findings(security.vulnerabilities);
-            },
+            }
             ReviewType::Performance => {
                 result.comments = self.analyze_performance(file_change).await?;
-            },
+            }
             ReviewType::Architecture => {
                 result.comments = self.analyze_architecture(file_change).await?;
-            },
+            }
             _ => {
                 // Standard review
                 result.comments = self.analyze_standard(file_change).await?;
             }
         }
-        
+
         // Check best practices
         result.best_practices = self.check_best_practices(file_change).await?;
-        
+
         // Generate suggestions
         result.suggestions = self.generate_suggestions(file_change).await?;
-        
+
         Ok(result)
     }
 
-    async fn analyze_standard(&self, file_change: &FileChange) -> CodingAgentResult<Vec<ReviewComment>> {
+    async fn analyze_standard(
+        &self,
+        file_change: &FileChange,
+    ) -> CodingAgentResult<Vec<ReviewComment>> {
         let mut comments = Vec::new();
-        
+
         // Use AI to analyze the code
         let prompt = format!(
             "Review this code change and provide feedback:\n{}",
             file_change.diff
         );
-        
+
         // For now, return example comments
         comments.push(ReviewComment {
             comment_type: CommentType::Style,
@@ -505,44 +513,62 @@ impl CodeReviewSystem {
             code_snippet: None,
             references: vec![],
         });
-        
+
         Ok(comments)
     }
 
-    async fn analyze_performance(&self, file_change: &FileChange) -> CodingAgentResult<Vec<ReviewComment>> {
+    async fn analyze_performance(
+        &self,
+        file_change: &FileChange,
+    ) -> CodingAgentResult<Vec<ReviewComment>> {
         // Analyze performance-related issues
         Ok(vec![])
     }
 
-    async fn analyze_architecture(&self, file_change: &FileChange) -> CodingAgentResult<Vec<ReviewComment>> {
+    async fn analyze_architecture(
+        &self,
+        file_change: &FileChange,
+    ) -> CodingAgentResult<Vec<ReviewComment>> {
         // Analyze architectural concerns
         Ok(vec![])
     }
 
-    async fn check_best_practices(&self, file_change: &FileChange) -> CodingAgentResult<Vec<BestPracticeViolation>> {
+    async fn check_best_practices(
+        &self,
+        file_change: &FileChange,
+    ) -> CodingAgentResult<Vec<BestPracticeViolation>> {
         // Check for best practice violations
         Ok(vec![])
     }
 
-    async fn generate_suggestions(&self, file_change: &FileChange) -> CodingAgentResult<Vec<CodeSuggestion>> {
+    async fn generate_suggestions(
+        &self,
+        file_change: &FileChange,
+    ) -> CodingAgentResult<Vec<CodeSuggestion>> {
         // Generate code improvement suggestions
         Ok(vec![])
     }
 
-    fn convert_security_findings(&self, findings: Vec<super::security_analyzer::Vulnerability>) -> Vec<SecurityFinding> {
-        findings.into_iter().map(|f| SecurityFinding {
-            finding_type: SecurityIssueType::Other("General".to_string()),
-            severity: SecuritySeverity::Medium,
-            location: CodeLocation {
-                file: PathBuf::from("unknown"),
-                line: 0,
-                column: None,
-                context: None,
-            },
-            description: f.description,
-            cwe_id: None,
-            remediation: f.remediation,
-        }).collect()
+    fn convert_security_findings(
+        &self,
+        findings: Vec<super::security_analyzer::Vulnerability>,
+    ) -> Vec<SecurityFinding> {
+        findings
+            .into_iter()
+            .map(|f| SecurityFinding {
+                finding_type: SecurityIssueType::Other("General".to_string()),
+                severity: SecuritySeverity::Medium,
+                location: CodeLocation {
+                    file: PathBuf::from("unknown"),
+                    line: 0,
+                    column: None,
+                    context: None,
+                },
+                description: f.description,
+                cwe_id: None,
+                remediation: f.remediation,
+            })
+            .collect()
     }
 
     fn calculate_metrics(
@@ -551,10 +577,12 @@ impl CodeReviewSystem {
         comments: &[ReviewComment],
         suggestions: &[CodeSuggestion],
     ) -> CodingAgentResult<ReviewMetrics> {
-        let total_lines: usize = request.files_changed.iter()
+        let total_lines: usize = request
+            .files_changed
+            .iter()
             .map(|f| f.additions + f.deletions)
             .sum();
-        
+
         Ok(ReviewMetrics {
             code_quality_score: 85.0,
             complexity_score: 7.5,
@@ -575,25 +603,27 @@ impl CodeReviewSystem {
         comments: &[ReviewComment],
     ) -> CodingAgentResult<ReviewVerdict> {
         // Check for blocking issues
-        let has_blockers = comments.iter()
+        let has_blockers = comments
+            .iter()
             .any(|c| matches!(c.severity, CommentSeverity::Blocker));
-        
-        let has_critical_security = security_findings.iter()
+
+        let has_critical_security = security_findings
+            .iter()
             .any(|f| matches!(f.severity, SecuritySeverity::Critical));
-        
+
         if has_blockers || has_critical_security {
             return Ok(ReviewVerdict::RequestChanges);
         }
-        
+
         // Check overall quality
         if metrics.code_quality_score > 90.0 && metrics.issues_found == 0 {
             return Ok(ReviewVerdict::Approve);
         }
-        
+
         if metrics.code_quality_score > 75.0 && metrics.issues_found < 5 {
             return Ok(ReviewVerdict::ApproveWithSuggestions);
         }
-        
+
         Ok(ReviewVerdict::RequestChanges)
     }
 
@@ -603,9 +633,12 @@ impl CodeReviewSystem {
         suggestions: &[CodeSuggestion],
     ) -> CodingAgentResult<Vec<LearningPoint>> {
         let mut learning_points = Vec::new();
-        
+
         // Generate learning points based on patterns in comments
-        if comments.iter().any(|c| matches!(c.comment_type, CommentType::Security)) {
+        if comments
+            .iter()
+            .any(|c| matches!(c.comment_type, CommentType::Security))
+        {
             learning_points.push(LearningPoint {
                 topic: "Security Best Practices".to_string(),
                 insight: "Always validate input and sanitize output".to_string(),
@@ -613,7 +646,7 @@ impl CodeReviewSystem {
                 resources: vec!["OWASP Top 10".to_string()],
             });
         }
-        
+
         Ok(learning_points)
     }
 
@@ -624,14 +657,14 @@ impl CodeReviewSystem {
     ) -> CodingAgentResult<f32> {
         // Calculate confidence based on various factors
         let base_confidence = 0.7;
-        
+
         // Adjust based on review depth
         let depth_modifier = match request.review_depth {
             ReviewDepth::Deep => 0.2,
             ReviewDepth::Moderate => 0.1,
             ReviewDepth::Surface => 0.0,
         };
-        
+
         Ok(f32::min(base_confidence + depth_modifier, 1.0))
     }
 
@@ -670,13 +703,14 @@ impl ReviewLearningEngine {
 
     pub async fn add_feedback(&mut self, feedback: ReviewFeedback) -> CodingAgentResult<()> {
         self.feedback_history.push(feedback);
-        
+
         // Update patterns based on feedback
-        self.pattern_database.update_patterns(&self.feedback_history)?;
-        
+        self.pattern_database
+            .update_patterns(&self.feedback_history)?;
+
         // Schedule model update if needed
         self.model_updater.schedule_update()?;
-        
+
         Ok(())
     }
 }
@@ -719,14 +753,17 @@ impl ReviewMetricsCollector {
     }
 
     pub fn get_latest_metrics(&self) -> HistoricalMetrics {
-        self.metrics_history.last().cloned().unwrap_or_else(|| HistoricalMetrics {
-            timestamp: Utc::now(),
-            review_count: 0,
-            average_quality_score: 0.0,
-            issues_found_per_review: 0.0,
-            auto_approval_rate: 0.0,
-            false_positive_rate: 0.0,
-        })
+        self.metrics_history
+            .last()
+            .cloned()
+            .unwrap_or_else(|| HistoricalMetrics {
+                timestamp: Utc::now(),
+                review_count: 0,
+                average_quality_score: 0.0,
+                issues_found_per_review: 0.0,
+                auto_approval_rate: 0.0,
+                false_positive_rate: 0.0,
+            })
     }
 }
 

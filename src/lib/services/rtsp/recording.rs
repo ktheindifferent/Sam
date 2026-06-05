@@ -4,14 +4,14 @@
 // use crate::memory::{Thing, PostgresQueries, PGCol};
 // use crate::services::error_handling::ServiceError;
 use anyhow::Result;
-use chrono::{DateTime, Utc, Duration as ChronoDuration, Datelike};
+use chrono::{DateTime, Datelike, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 // use tokio::sync::mpsc;
 use tokio::task;
 use tokio::time;
@@ -94,7 +94,7 @@ pub enum RecordingTrigger {
 pub struct ScheduleTrigger {
     pub days_of_week: Vec<u8>, // 0 = Sunday, 6 = Saturday
     pub start_time: String,    // HH:MM format
-    pub end_time: String,       // HH:MM format
+    pub end_time: String,      // HH:MM format
 }
 
 // Recording Session
@@ -146,7 +146,7 @@ struct RecordingHandle {
 impl RecordingManager {
     pub fn new(base_storage_path: PathBuf) -> Result<Self> {
         fs::create_dir_all(&base_storage_path)?;
-        
+
         Ok(Self {
             configs: Arc::new(Mutex::new(HashMap::new())),
             active_recordings: Arc::new(Mutex::new(HashMap::new())),
@@ -156,7 +156,9 @@ impl RecordingManager {
     }
 
     pub fn add_camera(&mut self, config: RecordingConfig) -> Result<()> {
-        let mut configs = self.configs.lock()
+        let mut configs = self
+            .configs
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire configs lock: {}", e))?;
         configs.insert(config.thing_oid.clone(), config);
         Ok(())
@@ -167,9 +169,12 @@ impl RecordingManager {
         thing_oid: String,
         trigger: RecordingTrigger,
     ) -> Result<String> {
-        let configs = self.configs.lock()
+        let configs = self
+            .configs
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire configs lock: {}", e))?;
-        let config = configs.get(&thing_oid)
+        let config = configs
+            .get(&thing_oid)
             .ok_or_else(|| anyhow::anyhow!("Camera config not found"))?
             .clone();
         drop(configs);
@@ -182,7 +187,7 @@ impl RecordingManager {
 
         // Prepare FFmpeg command
         let ffmpeg_cmd = self.build_ffmpeg_command(&config, &file_path)?;
-        
+
         // Start recording process
         let process = Command::new("ffmpeg")
             .args(&ffmpeg_cmd)
@@ -202,7 +207,10 @@ impl RecordingManager {
             duration_seconds: None,
             metadata: RecordingMetadata {
                 codec: format!("{:?}", config.encoding.codec),
-                resolution: format!("{}x{}", config.encoding.resolution.width, config.encoding.resolution.height),
+                resolution: format!(
+                    "{}x{}",
+                    config.encoding.resolution.width, config.encoding.resolution.height
+                ),
                 fps: config.encoding.fps as f32,
                 bitrate: config.encoding.bitrate,
                 events: Vec::new(),
@@ -216,7 +224,9 @@ impl RecordingManager {
             start_time: SystemTime::now(),
         };
 
-        let mut recordings = self.active_recordings.lock()
+        let mut recordings = self
+            .active_recordings
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire recordings lock: {}", e))?;
         recordings.insert(session_id.clone(), handle);
 
@@ -240,9 +250,12 @@ impl RecordingManager {
     }
 
     pub async fn stop_recording(&self, session_id: &str) -> Result<RecordingSession> {
-        let mut recordings = self.active_recordings.lock()
+        let mut recordings = self
+            .active_recordings
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire recordings lock: {}", e))?;
-        let mut handle = recordings.remove(session_id)
+        let mut handle = recordings
+            .remove(session_id)
             .ok_or_else(|| anyhow::anyhow!("Recording not found"))?;
 
         // Stop the FFmpeg process gracefully
@@ -253,7 +266,7 @@ impl RecordingManager {
         let duration = handle.start_time.elapsed()?.as_secs();
         handle.session.end_time = Some(Utc::now());
         handle.session.duration_seconds = Some(duration);
-        
+
         // Get file size
         if let Ok(metadata) = fs::metadata(&handle.session.file_path) {
             handle.session.file_size = metadata.len();
@@ -268,8 +281,9 @@ impl RecordingManager {
         // Upload to network storage if configured
         if let Ok(configs_guard) = self.configs.lock() {
             if let Some(configs) = configs_guard.get(&handle.session.thing_oid) {
-            if let Some(network_storage) = &configs.network_storage {
-                self.upload_to_network_storage(&handle.session, network_storage).await?;
+                if let Some(network_storage) = &configs.network_storage {
+                    self.upload_to_network_storage(&handle.session, network_storage)
+                        .await?;
                 }
             }
         } else {
@@ -280,18 +294,21 @@ impl RecordingManager {
     }
 
     pub async fn check_triggers(&self) -> Result<()> {
-        let configs = self.configs.lock()
+        let configs = self
+            .configs
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire configs lock: {}", e))?
             .clone();
-        
+
         for (thing_oid, config) in configs {
             for trigger in &config.triggers {
                 if self.should_trigger(trigger).await? && !self.is_recording(&thing_oid) {
-                    self.start_recording(thing_oid.clone(), trigger.clone()).await?;
+                    self.start_recording(thing_oid.clone(), trigger.clone())
+                        .await?;
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -306,11 +323,11 @@ impl RecordingManager {
             RecordingTrigger::Schedule(schedule) => {
                 let now = Utc::now();
                 let weekday = now.weekday().num_days_from_monday() as u8;
-                
+
                 if !schedule.days_of_week.contains(&weekday) {
                     return Ok(false);
                 }
-                
+
                 let current_time = now.format("%H:%M").to_string();
                 Ok(current_time >= schedule.start_time && current_time <= schedule.end_time)
             }
@@ -321,7 +338,9 @@ impl RecordingManager {
 
     fn is_recording(&self, thing_oid: &str) -> bool {
         match self.active_recordings.lock() {
-            Ok(recordings) => recordings.values().any(|h| h.session.thing_oid == thing_oid),
+            Ok(recordings) => recordings
+                .values()
+                .any(|h| h.session.thing_oid == thing_oid),
             Err(e) => {
                 error!("Failed to acquire recordings lock: {}", e);
                 false
@@ -329,7 +348,11 @@ impl RecordingManager {
         }
     }
 
-    fn build_ffmpeg_command(&self, config: &RecordingConfig, output_path: &Path) -> Result<Vec<String>> {
+    fn build_ffmpeg_command(
+        &self,
+        config: &RecordingConfig,
+        output_path: &Path,
+    ) -> Result<Vec<String>> {
         let mut args = vec![
             "-i".to_string(),
             config.rtsp_url.clone(),
@@ -341,63 +364,85 @@ impl RecordingManager {
         match config.encoding.codec {
             VideoCodec::H264 => {
                 args.extend_from_slice(&[
-                    "-c:v".to_string(), "libx264".to_string(),
-                    "-preset".to_string(), "medium".to_string(),
-                    "-crf".to_string(), "23".to_string(),
+                    "-c:v".to_string(),
+                    "libx264".to_string(),
+                    "-preset".to_string(),
+                    "medium".to_string(),
+                    "-crf".to_string(),
+                    "23".to_string(),
                 ]);
             }
             VideoCodec::H265 => {
                 args.extend_from_slice(&[
-                    "-c:v".to_string(), "libx265".to_string(),
-                    "-preset".to_string(), "medium".to_string(),
-                    "-crf".to_string(), "28".to_string(),
+                    "-c:v".to_string(),
+                    "libx265".to_string(),
+                    "-preset".to_string(),
+                    "medium".to_string(),
+                    "-crf".to_string(),
+                    "28".to_string(),
                 ]);
             }
             VideoCodec::VP9 => {
                 args.extend_from_slice(&[
-                    "-c:v".to_string(), "libvpx-vp9".to_string(),
-                    "-crf".to_string(), "30".to_string(),
-                    "-b:v".to_string(), "0".to_string(),
+                    "-c:v".to_string(),
+                    "libvpx-vp9".to_string(),
+                    "-crf".to_string(),
+                    "30".to_string(),
+                    "-b:v".to_string(),
+                    "0".to_string(),
                 ]);
             }
             VideoCodec::AV1 => {
                 args.extend_from_slice(&[
-                    "-c:v".to_string(), "libaom-av1".to_string(),
-                    "-crf".to_string(), "30".to_string(),
+                    "-c:v".to_string(),
+                    "libaom-av1".to_string(),
+                    "-crf".to_string(),
+                    "30".to_string(),
                 ]);
             }
         }
 
         // Bitrate and FPS
         args.extend_from_slice(&[
-            "-b:v".to_string(), format!("{}k", config.encoding.bitrate),
-            "-r".to_string(), config.encoding.fps.to_string(),
+            "-b:v".to_string(),
+            format!("{}k", config.encoding.bitrate),
+            "-r".to_string(),
+            config.encoding.fps.to_string(),
         ]);
 
         // Resolution
         args.extend_from_slice(&[
             "-s".to_string(),
-            format!("{}x{}", config.encoding.resolution.width, config.encoding.resolution.height),
+            format!(
+                "{}x{}",
+                config.encoding.resolution.width, config.encoding.resolution.height
+            ),
         ]);
 
         // Audio encoding
         match config.encoding.audio_codec {
             AudioCodec::AAC => {
                 args.extend_from_slice(&[
-                    "-c:a".to_string(), "aac".to_string(),
-                    "-b:a".to_string(), format!("{}k", config.encoding.audio_bitrate),
+                    "-c:a".to_string(),
+                    "aac".to_string(),
+                    "-b:a".to_string(),
+                    format!("{}k", config.encoding.audio_bitrate),
                 ]);
             }
             AudioCodec::MP3 => {
                 args.extend_from_slice(&[
-                    "-c:a".to_string(), "libmp3lame".to_string(),
-                    "-b:a".to_string(), format!("{}k", config.encoding.audio_bitrate),
+                    "-c:a".to_string(),
+                    "libmp3lame".to_string(),
+                    "-b:a".to_string(),
+                    format!("{}k", config.encoding.audio_bitrate),
                 ]);
             }
             AudioCodec::Opus => {
                 args.extend_from_slice(&[
-                    "-c:a".to_string(), "libopus".to_string(),
-                    "-b:a".to_string(), format!("{}k", config.encoding.audio_bitrate),
+                    "-c:a".to_string(),
+                    "libopus".to_string(),
+                    "-b:a".to_string(),
+                    format!("{}k", config.encoding.audio_bitrate),
                 ]);
             }
             AudioCodec::None => {
@@ -407,7 +452,8 @@ impl RecordingManager {
 
         // Output settings
         args.extend_from_slice(&[
-            "-movflags".to_string(), "+faststart".to_string(),
+            "-movflags".to_string(),
+            "+faststart".to_string(),
             "-y".to_string(), // Overwrite output file
             output_path.to_string_lossy().to_string(),
         ]);
@@ -417,13 +463,17 @@ impl RecordingManager {
 
     async fn generate_thumbnail(&self, session: &RecordingSession) -> Result<()> {
         let thumbnail_path = session.file_path.with_extension("jpg");
-        
+
         let output = Command::new("ffmpeg")
             .args([
-                "-i", &session.file_path.to_string_lossy(),
-                "-ss", "00:00:01",
-                "-vframes", "1",
-                "-vf", "scale=320:240",
+                "-i",
+                &session.file_path.to_string_lossy(),
+                "-ss",
+                "00:00:01",
+                "-vframes",
+                "1",
+                "-vf",
+                "scale=320:240",
                 "-y",
                 &thumbnail_path.to_string_lossy(),
             ])
@@ -432,7 +482,10 @@ impl RecordingManager {
         if output.status.success() {
             log::info!("Generated thumbnail for session {}", session.session_id);
         } else {
-            log::error!("Failed to generate thumbnail: {:?}", String::from_utf8_lossy(&output.stderr));
+            log::error!(
+                "Failed to generate thumbnail: {:?}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         Ok(())
@@ -448,7 +501,7 @@ impl RecordingManager {
                 // Mount network drive and copy file
                 let mount_point = format!("/mnt/{}", session.thing_oid);
                 fs::create_dir_all(&mount_point)?;
-                
+
                 let mount_cmd = format!(
                     "mount -t cifs //{}/{} {} -o username={},password={}",
                     storage.host,
@@ -457,28 +510,28 @@ impl RecordingManager {
                     storage.username.as_deref().unwrap_or("guest"),
                     storage.password.as_deref().unwrap_or(""),
                 );
-                
+
                 Command::new("sh").arg("-c").arg(&mount_cmd).output()?;
-                
-                let file_name = session.file_path.file_name()
+
+                let file_name = session
+                    .file_path
+                    .file_name()
                     .ok_or_else(|| anyhow::anyhow!("Invalid file path: no filename"))?
                     .to_string_lossy();
                 let dest_path = format!("{}/{}", mount_point, file_name);
                 fs::copy(&session.file_path, &dest_path)?;
-                
+
                 Command::new("umount").arg(&mount_point).output()?;
             }
             StorageType::S3 => {
                 // Use AWS CLI or rusoto for S3 upload
-                let file_name = session.file_path.file_name()
+                let file_name = session
+                    .file_path
+                    .file_name()
                     .ok_or_else(|| anyhow::anyhow!("Invalid file path: no filename"))?
                     .to_string_lossy();
-                let s3_path = format!("s3://{}/{}/{}", 
-                    storage.host,
-                    storage.path,
-                    file_name
-                );
-                
+                let s3_path = format!("s3://{}/{}/{}", storage.host, storage.path, file_name);
+
                 Command::new("aws")
                     .args(["s3", "cp", &session.file_path.to_string_lossy(), &s3_path])
                     .output()?;
@@ -494,33 +547,38 @@ impl RecordingManager {
                     storage.username.as_deref().unwrap_or("anonymous"),
                     storage.password.as_deref().unwrap_or(""),
                 );
-                
+
                 Command::new("sh").arg("-c").arg(&ftp_cmd).output()?;
             }
             StorageType::WebDAV => {
                 // Use WebDAV client for upload
-                let file_name = session.file_path.file_name()
+                let file_name = session
+                    .file_path
+                    .file_name()
                     .ok_or_else(|| anyhow::anyhow!("Invalid file path: no filename"))?
                     .to_string_lossy();
-                let webdav_url = format!("https://{}/{}/{}",
-                    storage.host,
-                    storage.path,
-                    file_name
-                );
-                
+                let webdav_url = format!("https://{}/{}/{}", storage.host, storage.path, file_name);
+
                 Command::new("curl")
                     .args([
-                        "-T", &session.file_path.to_string_lossy(),
-                        "-u", &format!("{}:{}", 
+                        "-T",
+                        &session.file_path.to_string_lossy(),
+                        "-u",
+                        &format!(
+                            "{}:{}",
                             storage.username.as_deref().unwrap_or(""),
-                            storage.password.as_deref().unwrap_or("")),
+                            storage.password.as_deref().unwrap_or("")
+                        ),
                         &webdav_url,
                     ])
                     .output()?;
             }
         }
-        
-        log::info!("Uploaded recording {} to network storage", session.session_id);
+
+        log::info!(
+            "Uploaded recording {} to network storage",
+            session.session_id
+        );
         Ok(())
     }
 }
@@ -550,77 +608,82 @@ impl StorageManager {
 
     pub async fn cleanup_old_recordings(&self) -> Result<()> {
         let cutoff_date = Utc::now() - ChronoDuration::days(self.retention_policy.max_days as i64);
-        
+
         for entry in fs::read_dir(&self.base_path)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.extension() == Some(std::ffi::OsStr::new("mp4")) {
                 let metadata = fs::metadata(&path)?;
                 let modified = metadata.modified()?;
                 let modified_dt = DateTime::<Utc>::from(modified);
-                
+
                 if modified_dt < cutoff_date {
                     fs::remove_file(&path)?;
                     log::info!("Deleted old recording: {:?}", path);
                 }
             }
         }
-        
+
         Ok(())
     }
 
     pub async fn check_storage_usage(&self) -> Result<f64> {
         let mut total_size = 0u64;
-        
+
         for entry in fs::read_dir(&self.base_path)? {
             let entry = entry?;
             let metadata = fs::metadata(entry.path())?;
             total_size += metadata.len();
         }
-        
+
         let size_gb = total_size as f64 / (1024.0 * 1024.0 * 1024.0);
-        
+
         if size_gb > self.retention_policy.max_size_gb {
-            log::warn!("Storage usage ({:.2} GB) exceeds limit ({:.2} GB)", size_gb, self.retention_policy.max_size_gb);
-            self.cleanup_oldest_recordings(size_gb - self.retention_policy.max_size_gb).await?;
+            log::warn!(
+                "Storage usage ({:.2} GB) exceeds limit ({:.2} GB)",
+                size_gb,
+                self.retention_policy.max_size_gb
+            );
+            self.cleanup_oldest_recordings(size_gb - self.retention_policy.max_size_gb)
+                .await?;
         }
-        
+
         Ok(size_gb)
     }
 
     async fn cleanup_oldest_recordings(&self, size_to_free_gb: f64) -> Result<()> {
         let mut files: Vec<(PathBuf, SystemTime)> = Vec::new();
-        
+
         for entry in fs::read_dir(&self.base_path)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.extension() == Some(std::ffi::OsStr::new("mp4")) {
                 let metadata = fs::metadata(&path)?;
                 files.push((path, metadata.modified()?));
             }
         }
-        
+
         // Sort by modification time (oldest first)
         files.sort_by_key(|f| f.1);
-        
+
         let mut freed_size = 0f64;
         let size_to_free = size_to_free_gb * 1024.0 * 1024.0 * 1024.0;
-        
+
         for (path, _) in files {
             if freed_size >= size_to_free {
                 break;
             }
-            
+
             let metadata = fs::metadata(&path)?;
             let file_size = metadata.len() as f64;
-            
+
             fs::remove_file(&path)?;
             freed_size += file_size;
             log::info!("Deleted recording to free space: {:?}", path);
         }
-        
+
         Ok(())
     }
 }
@@ -663,7 +726,7 @@ impl MetadataStore {
                 Ok(())
             }
         }).await??;
-        
+
         Ok(())
     }
 
@@ -679,39 +742,40 @@ impl MetadataStore {
     ) -> Result<Vec<RecordingSession>> {
         task::spawn_blocking(move || -> Result<Vec<RecordingSession>> {
             let mut client = crate::memory::Config::client()?;
-            
+
             let mut query = "SELECT * FROM recording_sessions WHERE 1=1".to_string();
             let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
-            
+
             if let Some(oid) = thing_oid {
                 query.push_str(&format!(" AND thing_oid = ${}", params.len() + 1));
                 params.push(Box::new(oid));
             }
-            
+
             if let Some(start) = start_time {
                 query.push_str(&format!(" AND start_time >= ${}", params.len() + 1));
                 params.push(Box::new(start));
             }
-            
+
             if let Some(end) = end_time {
                 query.push_str(&format!(" AND start_time <= ${}", params.len() + 1));
                 params.push(Box::new(end));
             }
-            
+
             query.push_str(" ORDER BY start_time DESC");
-            
+
             // Note: This is a simplified query execution
             // In practice, you'd need to properly handle the dynamic parameters
             let rows = client.query(&query, &[])?;
-            
+
             let sessions = Vec::new();
             for row in rows {
                 // Parse row into RecordingSession
                 // This is simplified - you'd need proper parsing
             }
-            
+
             Ok(sessions)
-        }).await?
+        })
+        .await?
     }
 
     pub async fn add_event(&self, session_id: &str, event: RecordingEvent) -> Result<()> {
@@ -720,7 +784,7 @@ impl MetadataStore {
             let event = event.clone();
             move || -> Result<()> {
                 let mut client = crate::memory::Config::client()?;
-                
+
                 client.execute(
                     "UPDATE recording_sessions 
                      SET metadata = jsonb_set(metadata, '{events}', 
@@ -728,11 +792,12 @@ impl MetadataStore {
                      WHERE session_id = $2",
                     &[&serde_json::to_value(&event)?, &session_id],
                 )?;
-                
+
                 Ok(())
             }
-        }).await??;
-        
+        })
+        .await??;
+
         Ok(())
     }
 }
@@ -753,43 +818,53 @@ impl PlaybackService {
 
     pub async fn get_recording(&self, session_id: &str) -> Result<PathBuf> {
         let sessions = self.metadata_store.get_sessions(None, None, None).await?;
-        
-        let session = sessions.iter()
+
+        let session = sessions
+            .iter()
             .find(|s| s.session_id == session_id)
             .ok_or_else(|| anyhow::anyhow!("Recording not found"))?;
-        
+
         Ok(session.file_path.clone())
     }
 
     pub async fn get_stream_url(&self, session_id: &str) -> Result<String> {
         let file_path = self.get_recording(session_id).await?;
-        
+
         // Generate HLS stream for web playback
         let hls_path = file_path.with_extension("m3u8");
-        
+
         if !hls_path.exists() {
             self.generate_hls_stream(&file_path, &hls_path).await?;
         }
-        
+
         Ok(format!("/playback/{}", session_id))
     }
 
     async fn generate_hls_stream(&self, input: &Path, output: &Path) -> Result<()> {
         let output = Command::new("ffmpeg")
             .args([
-                "-i", &input.to_string_lossy(),
-                "-c:v", "copy",
-                "-c:a", "copy",
-                "-hls_time", "10",
-                "-hls_list_size", "0",
-                "-hls_segment_filename", &format!("{}.%03d.ts", output.with_extension("").to_string_lossy()),
+                "-i",
+                &input.to_string_lossy(),
+                "-c:v",
+                "copy",
+                "-c:a",
+                "copy",
+                "-hls_time",
+                "10",
+                "-hls_list_size",
+                "0",
+                "-hls_segment_filename",
+                &format!("{}.%03d.ts", output.with_extension("").to_string_lossy()),
                 "-y",
                 &output.to_string_lossy(),
             ])
             .output()?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to generate HLS stream: {:?}", String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Failed to generate HLS stream: {:?}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -802,14 +877,15 @@ impl PlaybackService {
         end_time: Option<DateTime<Utc>>,
         event_type: Option<String>,
     ) -> Result<Vec<RecordingSession>> {
-        let mut sessions = self.metadata_store.get_sessions(thing_oid, start_time, end_time).await?;
-        
+        let mut sessions = self
+            .metadata_store
+            .get_sessions(thing_oid, start_time, end_time)
+            .await?;
+
         if let Some(event) = event_type {
-            sessions.retain(|s| {
-                s.metadata.events.iter().any(|e| e.event_type == event)
-            });
+            sessions.retain(|s| s.metadata.events.iter().any(|e| e.event_type == event));
         }
-        
+
         Ok(sessions)
     }
 
@@ -820,45 +896,51 @@ impl PlaybackService {
     ) -> Result<PathBuf> {
         let input_path = self.get_recording(session_id).await?;
         let export_path = input_path.with_extension(format.extension());
-        
+
         let input_path_str = input_path.to_string_lossy().to_string();
         let export_path_str = export_path.to_string_lossy().to_string();
-        
+
         let ffmpeg_args = match format {
-            ExportFormat::MP4 => vec![
-                "-i", &input_path_str,
-                "-c", "copy",
-                "-y",
-                &export_path_str,
-            ],
+            ExportFormat::MP4 => vec!["-i", &input_path_str, "-c", "copy", "-y", &export_path_str],
             ExportFormat::AVI => vec![
-                "-i", &input_path_str,
-                "-c:v", "mpeg4",
-                "-c:a", "mp3",
+                "-i",
+                &input_path_str,
+                "-c:v",
+                "mpeg4",
+                "-c:a",
+                "mp3",
                 "-y",
                 &export_path_str,
             ],
             ExportFormat::WebM => vec![
-                "-i", &input_path_str,
-                "-c:v", "libvpx-vp9",
-                "-c:a", "libopus",
+                "-i",
+                &input_path_str,
+                "-c:v",
+                "libvpx-vp9",
+                "-c:a",
+                "libopus",
                 "-y",
                 &export_path_str,
             ],
             ExportFormat::GIF => vec![
-                "-i", &input_path_str,
-                "-vf", "fps=10,scale=320:-1:flags=lanczos",
+                "-i",
+                &input_path_str,
+                "-vf",
+                "fps=10,scale=320:-1:flags=lanczos",
                 "-y",
                 &export_path_str,
             ],
         };
-        
+
         let output = Command::new("ffmpeg").args(&ffmpeg_args).output()?;
-        
+
         if !output.status.success() {
-            return Err(anyhow::anyhow!("Export failed: {:?}", String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow::anyhow!(
+                "Export failed: {:?}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
-        
+
         Ok(export_path)
     }
 }
@@ -885,7 +967,7 @@ impl ExportFormat {
 // SQL table creation
 pub fn create_recording_tables() -> Result<()> {
     let mut client = crate::memory::Config::client()?;
-    
+
     client.execute(
         "CREATE TABLE IF NOT EXISTS recording_sessions (
             session_id VARCHAR PRIMARY KEY,
@@ -902,16 +984,16 @@ pub fn create_recording_tables() -> Result<()> {
         )",
         &[],
     )?;
-    
+
     client.execute(
         "CREATE INDEX IF NOT EXISTS idx_recording_sessions_thing_oid ON recording_sessions(thing_oid)",
         &[],
     )?;
-    
+
     client.execute(
         "CREATE INDEX IF NOT EXISTS idx_recording_sessions_start_time ON recording_sessions(start_time)",
         &[],
     )?;
-    
+
     Ok(())
 }

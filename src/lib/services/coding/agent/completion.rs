@@ -1,9 +1,9 @@
+use anyhow::Result;
+use log::{debug, info};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use log::{info, debug};
 
 /// Intelligent code completion engine
 pub struct CompletionEngine {
@@ -187,7 +187,10 @@ impl CompletionEngine {
         language: &str,
         trigger_char: Option<char>,
     ) -> Result<CompletionResult> {
-        info!("Getting completions for {} at position {}", language, position);
+        info!(
+            "Getting completions for {} at position {}",
+            language, position
+        );
 
         // Check cache first
         let cache_key = format!("{}:{}:{:?}", language, position, trigger_char);
@@ -218,10 +221,17 @@ impl CompletionEngine {
         }
 
         // Sort by relevance score
-        completions.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        completions.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Cache the results
-        self.cache.write().await.insert(cache_key, completions.clone());
+        self.cache
+            .write()
+            .await
+            .insert(cache_key, completions.clone());
 
         Ok(CompletionResult {
             completions,
@@ -232,7 +242,10 @@ impl CompletionEngine {
     }
 
     /// Get language-specific completions
-    async fn get_language_completions(&self, context: &CompletionContext) -> Result<Vec<Completion>> {
+    async fn get_language_completions(
+        &self,
+        context: &CompletionContext,
+    ) -> Result<Vec<Completion>> {
         let mut completions = Vec::new();
 
         // Add keyword completions
@@ -253,35 +266,37 @@ impl CompletionEngine {
     fn get_keyword_completions(&self, language: &str) -> Vec<Completion> {
         let keywords = match language {
             "rust" => vec![
-                "fn", "let", "mut", "const", "struct", "enum", "impl", "trait",
-                "pub", "mod", "use", "match", "if", "else", "while", "for", "loop",
-                "return", "async", "await", "move", "ref", "self", "super", "crate",
+                "fn", "let", "mut", "const", "struct", "enum", "impl", "trait", "pub", "mod",
+                "use", "match", "if", "else", "while", "for", "loop", "return", "async", "await",
+                "move", "ref", "self", "super", "crate",
             ],
             "python" => vec![
-                "def", "class", "import", "from", "if", "elif", "else", "for",
-                "while", "try", "except", "finally", "with", "as", "return",
-                "yield", "lambda", "pass", "break", "continue", "global", "nonlocal",
+                "def", "class", "import", "from", "if", "elif", "else", "for", "while", "try",
+                "except", "finally", "with", "as", "return", "yield", "lambda", "pass", "break",
+                "continue", "global", "nonlocal",
             ],
             "javascript" | "typescript" => vec![
-                "function", "const", "let", "var", "if", "else", "for", "while",
-                "do", "switch", "case", "break", "continue", "return", "try",
-                "catch", "finally", "throw", "async", "await", "class", "extends",
-                "import", "export", "default", "new", "this", "super",
+                "function", "const", "let", "var", "if", "else", "for", "while", "do", "switch",
+                "case", "break", "continue", "return", "try", "catch", "finally", "throw", "async",
+                "await", "class", "extends", "import", "export", "default", "new", "this", "super",
             ],
             _ => vec![],
         };
 
-        keywords.iter().map(|kw| Completion {
-            text: kw.to_string(),
-            display_text: kw.to_string(),
-            description: format!("{} keyword", language),
-            kind: CompletionKind::Keyword,
-            score: 0.7,
-            documentation: None,
-            insert_text: Some(kw.to_string()),
-            edit_range: None,
-            additional_edits: Vec::new(),
-        }).collect()
+        keywords
+            .iter()
+            .map(|kw| Completion {
+                text: kw.to_string(),
+                display_text: kw.to_string(),
+                description: format!("{} keyword", language),
+                kind: CompletionKind::Keyword,
+                score: 0.7,
+                documentation: None,
+                insert_text: Some(kw.to_string()),
+                edit_range: None,
+                additional_edits: Vec::new(),
+            })
+            .collect()
     }
 
     /// Get symbol completions from context
@@ -292,9 +307,13 @@ impl CompletionEngine {
         for var in &context.variables {
             completions.push(Completion {
                 text: var.name.clone(),
-                display_text: format!("{}{}",
+                display_text: format!(
+                    "{}{}",
                     var.name,
-                    var.var_type.as_ref().map(|t| format!(": {}", t)).unwrap_or_default()
+                    var.var_type
+                        .as_ref()
+                        .map(|t| format!(": {}", t))
+                        .unwrap_or_default()
                 ),
                 description: format!("{:?} variable", var.scope),
                 kind: CompletionKind::Variable,
@@ -313,31 +332,51 @@ impl CompletionEngine {
     fn get_import_completions(&self, context: &CompletionContext) -> Vec<Completion> {
         let modules = match context.language.as_str() {
             "python" => vec![
-                "os", "sys", "json", "math", "random", "datetime", "re",
-                "collections", "itertools", "functools", "typing", "pathlib",
+                "os",
+                "sys",
+                "json",
+                "math",
+                "random",
+                "datetime",
+                "re",
+                "collections",
+                "itertools",
+                "functools",
+                "typing",
+                "pathlib",
             ],
             "javascript" | "typescript" => vec![
-                "react", "vue", "express", "axios", "lodash", "moment",
-                "fs", "path", "http", "https", "crypto", "util",
+                "react", "vue", "express", "axios", "lodash", "moment", "fs", "path", "http",
+                "https", "crypto", "util",
             ],
             "rust" => vec![
-                "std::collections", "std::io", "std::fs", "std::path",
-                "std::sync", "std::thread", "tokio", "serde", "anyhow",
+                "std::collections",
+                "std::io",
+                "std::fs",
+                "std::path",
+                "std::sync",
+                "std::thread",
+                "tokio",
+                "serde",
+                "anyhow",
             ],
             _ => vec![],
         };
 
-        modules.iter().map(|module| Completion {
-            text: module.to_string(),
-            display_text: module.to_string(),
-            description: format!("Import {}", module),
-            kind: CompletionKind::Module,
-            score: 0.8,
-            documentation: None,
-            insert_text: Some(module.to_string()),
-            edit_range: None,
-            additional_edits: Vec::new(),
-        }).collect()
+        modules
+            .iter()
+            .map(|module| Completion {
+                text: module.to_string(),
+                display_text: module.to_string(),
+                description: format!("Import {}", module),
+                kind: CompletionKind::Module,
+                score: 0.8,
+                documentation: None,
+                insert_text: Some(module.to_string()),
+                edit_range: None,
+                additional_edits: Vec::new(),
+            })
+            .collect()
     }
 
     /// Get snippet completions
@@ -377,14 +416,35 @@ impl SnippetLibrary {
             Snippet {
                 name: "function".to_string(),
                 prefix: "fn".to_string(),
-                body: "fn ${1:name}(${2:params}) -> ${3:ReturnType} {\n    ${4:// body}\n}".to_string(),
+                body: "fn ${1:name}(${2:params}) -> ${3:ReturnType} {\n    ${4:// body}\n}"
+                    .to_string(),
                 description: "Function definition".to_string(),
                 language: "rust".to_string(),
                 placeholders: vec![
-                    Placeholder { id: 1, name: "name".to_string(), default_value: "function_name".to_string(), choices: vec![] },
-                    Placeholder { id: 2, name: "params".to_string(), default_value: "".to_string(), choices: vec![] },
-                    Placeholder { id: 3, name: "ReturnType".to_string(), default_value: "()".to_string(), choices: vec![] },
-                    Placeholder { id: 4, name: "body".to_string(), default_value: "// TODO".to_string(), choices: vec![] },
+                    Placeholder {
+                        id: 1,
+                        name: "name".to_string(),
+                        default_value: "function_name".to_string(),
+                        choices: vec![],
+                    },
+                    Placeholder {
+                        id: 2,
+                        name: "params".to_string(),
+                        default_value: "".to_string(),
+                        choices: vec![],
+                    },
+                    Placeholder {
+                        id: 3,
+                        name: "ReturnType".to_string(),
+                        default_value: "()".to_string(),
+                        choices: vec![],
+                    },
+                    Placeholder {
+                        id: 4,
+                        name: "body".to_string(),
+                        default_value: "// TODO".to_string(),
+                        choices: vec![],
+                    },
                 ],
                 context: SnippetContext {
                     scope: vec!["source.rust".to_string()],
@@ -399,8 +459,18 @@ impl SnippetLibrary {
                 description: "Implementation block".to_string(),
                 language: "rust".to_string(),
                 placeholders: vec![
-                    Placeholder { id: 1, name: "Type".to_string(), default_value: "MyStruct".to_string(), choices: vec![] },
-                    Placeholder { id: 2, name: "methods".to_string(), default_value: "".to_string(), choices: vec![] },
+                    Placeholder {
+                        id: 1,
+                        name: "Type".to_string(),
+                        default_value: "MyStruct".to_string(),
+                        choices: vec![],
+                    },
+                    Placeholder {
+                        id: 2,
+                        name: "methods".to_string(),
+                        default_value: "".to_string(),
+                        choices: vec![],
+                    },
                 ],
                 context: SnippetContext {
                     scope: vec!["source.rust".to_string()],
@@ -415,8 +485,18 @@ impl SnippetLibrary {
                 description: "Test function".to_string(),
                 language: "rust".to_string(),
                 placeholders: vec![
-                    Placeholder { id: 1, name: "test_name".to_string(), default_value: "test_something".to_string(), choices: vec![] },
-                    Placeholder { id: 2, name: "test body".to_string(), default_value: "assert_eq!(1, 1);".to_string(), choices: vec![] },
+                    Placeholder {
+                        id: 1,
+                        name: "test_name".to_string(),
+                        default_value: "test_something".to_string(),
+                        choices: vec![],
+                    },
+                    Placeholder {
+                        id: 2,
+                        name: "test body".to_string(),
+                        default_value: "assert_eq!(1, 1);".to_string(),
+                        choices: vec![],
+                    },
                 ],
                 context: SnippetContext {
                     scope: vec!["source.rust".to_string()],
@@ -562,7 +642,10 @@ impl ContextAnalyzer {
     }
 
     fn get_line_at_position(code: &str, position: usize) -> usize {
-        code[..position.min(code.len())].lines().count().saturating_sub(1)
+        code[..position.min(code.len())]
+            .lines()
+            .count()
+            .saturating_sub(1)
     }
 
     fn extract_word_before_position(line: &str, position: usize) -> String {

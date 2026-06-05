@@ -1,14 +1,14 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
-use tokio::sync::{RwLock, Mutex, broadcast};
-use chrono::{DateTime, Utc};
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::{broadcast, Mutex, RwLock};
 
 use crate::services::coding::agent::{
-    errors::{CodingAgentError, CodingAgentResult},
     code_review::CodeLocation,
+    errors::{CodingAgentError, CodingAgentResult},
 };
 
 /// Real-time collaborative coding engine with CRDT-based conflict resolution
@@ -431,8 +431,13 @@ impl DocumentStore {
     }
 
     pub async fn create_checkpoint(&mut self, document_id: &str) -> CodingAgentResult<Checkpoint> {
-        let doc = self.documents.get_mut(document_id)
-            .ok_or_else(|| CodingAgentError::NotFound { resource: "Document".to_string(), id: document_id.to_string() })?;
+        let doc =
+            self.documents
+                .get_mut(document_id)
+                .ok_or_else(|| CodingAgentError::NotFound {
+                    resource: "Document".to_string(),
+                    id: document_id.to_string(),
+                })?;
 
         let content_clone = doc.content.clone();
         let version = doc.version;
@@ -451,7 +456,7 @@ impl DocumentStore {
     }
 
     fn calculate_hash_static(content: &str) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(content.as_bytes());
         format!("{:x}", hasher.finalize())
@@ -484,7 +489,8 @@ impl ConflictResolver {
                 })
             }
             (Operation::Insert(i), Operation::Delete(d))
-                if i.position >= d.position && i.position < d.position + d.length => {
+                if i.position >= d.position && i.position < d.position + d.length =>
+            {
                 Some(Conflict {
                     id: uuid::Uuid::new_v4().to_string(),
                     conflict_type: ConflictType::InsertDelete,
@@ -497,32 +503,31 @@ impl ConflictResolver {
         }
     }
 
-    pub async fn resolve_conflict(&self, conflict: &Conflict, mode: ConflictResolutionMode) -> CodingAgentResult<Resolution> {
+    pub async fn resolve_conflict(
+        &self,
+        conflict: &Conflict,
+        mode: ConflictResolutionMode,
+    ) -> CodingAgentResult<Resolution> {
         match mode {
-            ConflictResolutionMode::LastWriteWins => {
-                self.resolve_last_write_wins(conflict).await
-            }
-            ConflictResolutionMode::CRDT => {
-                self.resolve_with_crdt(conflict).await
-            }
-            ConflictResolutionMode::ThreeWayMerge => {
-                self.resolve_three_way_merge(conflict).await
-            }
-            ConflictResolutionMode::Manual => {
-                Err(CodingAgentError::ExecutionError(
-                    "Manual conflict resolution required".to_string()
-                ))
-            }
+            ConflictResolutionMode::LastWriteWins => self.resolve_last_write_wins(conflict).await,
+            ConflictResolutionMode::CRDT => self.resolve_with_crdt(conflict).await,
+            ConflictResolutionMode::ThreeWayMerge => self.resolve_three_way_merge(conflict).await,
+            ConflictResolutionMode::Manual => Err(CodingAgentError::ExecutionError(
+                "Manual conflict resolution required".to_string(),
+            )),
         }
     }
 
     async fn resolve_last_write_wins(&self, conflict: &Conflict) -> CodingAgentResult<Resolution> {
         // Take the operation with the latest timestamp
-        let latest_op = conflict.operations.last()
-            .ok_or_else(|| CodingAgentError::ValidationError {
-                field: "conflict".to_string(),
-                message: "No operations in conflict".to_string()
-            })?;
+        let latest_op =
+            conflict
+                .operations
+                .last()
+                .ok_or_else(|| CodingAgentError::ValidationError {
+                    field: "conflict".to_string(),
+                    message: "No operations in conflict".to_string(),
+                })?;
 
         Ok(Resolution {
             strategy: ResolutionStrategy::AcceptTheirs,
@@ -535,9 +540,16 @@ impl ConflictResolver {
     async fn resolve_with_crdt(&self, conflict: &Conflict) -> CodingAgentResult<Resolution> {
         // Use CRDT properties to resolve conflict
         // This is a simplified implementation
+        let operation = conflict.operations.first().cloned().ok_or_else(|| {
+            CodingAgentError::ExecutionError(format!(
+                "Cannot resolve conflict {} without operations",
+                conflict.id
+            ))
+        })?;
+
         Ok(Resolution {
             strategy: ResolutionStrategy::Merge,
-            result: conflict.operations[0].clone(),
+            result: operation,
             resolved_by: "crdt".to_string(),
             resolved_at: Utc::now(),
         })
@@ -545,9 +557,16 @@ impl ConflictResolver {
 
     async fn resolve_three_way_merge(&self, conflict: &Conflict) -> CodingAgentResult<Resolution> {
         // Implement three-way merge algorithm
+        let operation = conflict.operations.first().cloned().ok_or_else(|| {
+            CodingAgentError::ExecutionError(format!(
+                "Cannot resolve conflict {} without operations",
+                conflict.id
+            ))
+        })?;
+
         Ok(Resolution {
             strategy: ResolutionStrategy::Merge,
-            result: conflict.operations[0].clone(),
+            result: operation,
             resolved_by: "three-way-merge".to_string(),
             resolved_at: Utc::now(),
         })
@@ -584,10 +603,9 @@ impl PresenceTracker {
         let tracker = self.presence.read().await;
         let now = Utc::now();
 
-        tracker.values()
-            .filter(|p| {
-                now.signed_duration_since(p.last_heartbeat).num_seconds() < 30
-            })
+        tracker
+            .values()
+            .filter(|p| now.signed_duration_since(p.last_heartbeat).num_seconds() < 30)
             .cloned()
             .collect()
     }
@@ -603,19 +621,13 @@ impl OperationTransformer {
 
     pub fn transform(&self, op1: &Operation, op2: &Operation) -> (Operation, Operation) {
         match (op1, op2) {
-            (Operation::Insert(i1), Operation::Insert(i2)) => {
-                self.transform_insert_insert(i1, i2)
-            }
-            (Operation::Insert(i), Operation::Delete(d)) => {
-                self.transform_insert_delete(i, d)
-            }
+            (Operation::Insert(i1), Operation::Insert(i2)) => self.transform_insert_insert(i1, i2),
+            (Operation::Insert(i), Operation::Delete(d)) => self.transform_insert_delete(i, d),
             (Operation::Delete(d), Operation::Insert(i)) => {
                 let (i_prime, d_prime) = self.transform_insert_delete(i, d);
                 (d_prime, i_prime)
             }
-            (Operation::Delete(d1), Operation::Delete(d2)) => {
-                self.transform_delete_delete(d1, d2)
-            }
+            (Operation::Delete(d1), Operation::Delete(d2)) => self.transform_delete_delete(d1, d2),
             _ => (op1.clone(), op2.clone()),
         }
     }
@@ -654,10 +666,14 @@ impl OperationTransformer {
 
         if d1.position < d2.position {
             d2_prime.position -= d1.length.min(d2.position - d1.position);
-            d2_prime.length -= (d1.position + d1.length - d2.position).max(0).min(d2.length);
+            d2_prime.length -= (d1.position + d1.length - d2.position)
+                .max(0)
+                .min(d2.length);
         } else if d2.position < d1.position {
             d1_prime.position -= d2.length.min(d1.position - d2.position);
-            d1_prime.length -= (d2.position + d2.length - d1.position).max(0).min(d1.length);
+            d1_prime.length -= (d2.position + d2.length - d1.position)
+                .max(0)
+                .min(d1.length);
         } else {
             let overlap = d1.length.min(d2.length);
             d1_prime.length -= overlap;
@@ -682,7 +698,11 @@ impl RealtimeCollaborationEngine {
         }
     }
 
-    pub async fn create_session(&self, project_id: &str, settings: SessionSettings) -> CodingAgentResult<CollaborationSession> {
+    pub async fn create_session(
+        &self,
+        project_id: &str,
+        settings: SessionSettings,
+    ) -> CodingAgentResult<CollaborationSession> {
         let session = CollaborationSession {
             session_id: uuid::Uuid::new_v4().to_string(),
             project_id: project_id.to_string(),
@@ -699,16 +719,24 @@ impl RealtimeCollaborationEngine {
         Ok(session)
     }
 
-    pub async fn join_session(&self, session_id: &str, participant: Participant) -> CodingAgentResult<()> {
+    pub async fn join_session(
+        &self,
+        session_id: &str,
+        participant: Participant,
+    ) -> CodingAgentResult<()> {
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(session_id)
-            .ok_or_else(|| CodingAgentError::NotFound { resource: "Session".to_string(), id: session_id.to_string() })?;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| CodingAgentError::NotFound {
+                resource: "Session".to_string(),
+                id: session_id.to_string(),
+            })?;
 
         if session.participants.len() >= session.settings.max_participants {
             return Err(CodingAgentError::ResourceLimitExceeded {
                 resource: "session_participants".to_string(),
                 limit: "100".to_string(),
-                current: session.participants.len().to_string()
+                current: session.participants.len().to_string(),
             });
         }
 
@@ -725,17 +753,36 @@ impl RealtimeCollaborationEngine {
         Ok(())
     }
 
-    pub async fn apply_operation(&self, session_id: &str, document_id: &str, operation: Operation) -> CodingAgentResult<()> {
+    pub async fn apply_operation(
+        &self,
+        session_id: &str,
+        document_id: &str,
+        operation: Operation,
+    ) -> CodingAgentResult<()> {
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(session_id)
-            .ok_or_else(|| CodingAgentError::NotFound { resource: "Session".to_string(), id: session_id.to_string() })?;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| CodingAgentError::NotFound {
+                resource: "Session".to_string(),
+                id: session_id.to_string(),
+            })?;
 
-        let document = session.documents.get_mut(document_id)
-            .ok_or_else(|| CodingAgentError::NotFound { resource: "Document".to_string(), id: document_id.to_string() })?;
+        let document =
+            session
+                .documents
+                .get_mut(document_id)
+                .ok_or_else(|| CodingAgentError::NotFound {
+                    resource: "Document".to_string(),
+                    id: document_id.to_string(),
+                })?;
 
         // Check for conflicts with pending operations
         for pending_op in &document.operations {
-            if let Some(conflict) = self.conflict_resolver.detect_conflict(&operation, pending_op).await {
+            if let Some(conflict) = self
+                .conflict_resolver
+                .detect_conflict(&operation, pending_op)
+                .await
+            {
                 // Broadcast conflict event
                 let event = CollaborationEvent::ConflictDetected(ConflictDetected {
                     document_id: document_id.to_string(),
@@ -744,7 +791,10 @@ impl RealtimeCollaborationEngine {
                 let _ = self.broadcast_channel.send(event);
 
                 // Resolve conflict
-                let resolution = self.conflict_resolver.resolve_conflict(&conflict, session.settings.conflict_resolution_mode.clone()).await?;
+                let resolution = self
+                    .conflict_resolver
+                    .resolve_conflict(&conflict, session.settings.conflict_resolution_mode.clone())
+                    .await?;
 
                 // Broadcast resolution
                 let event = CollaborationEvent::ConflictResolved(ConflictResolved {
@@ -772,13 +822,17 @@ impl RealtimeCollaborationEngine {
         Ok(())
     }
 
-    fn apply_operation_to_document(&self, document: &mut SharedDocument, operation: &Operation) -> CodingAgentResult<()> {
+    fn apply_operation_to_document(
+        &self,
+        document: &mut SharedDocument,
+        operation: &Operation,
+    ) -> CodingAgentResult<()> {
         match operation {
             Operation::Insert(op) => {
                 if op.position > document.content.len() {
                     return Err(CodingAgentError::ValidationError {
                         field: "position".to_string(),
-                        message: "Insert position out of bounds".to_string()
+                        message: "Insert position out of bounds".to_string(),
                     });
                 }
                 document.content.insert_str(op.position, &op.text);
@@ -787,7 +841,7 @@ impl RealtimeCollaborationEngine {
                 if op.position + op.length > document.content.len() {
                     return Err(CodingAgentError::ValidationError {
                         field: "range".to_string(),
-                        message: "Delete range out of bounds".to_string()
+                        message: "Delete range out of bounds".to_string(),
                     });
                 }
                 document.content.drain(op.position..op.position + op.length);
@@ -811,18 +865,35 @@ impl RealtimeCollaborationEngine {
         self.broadcast_channel.subscribe()
     }
 
-    pub async fn acquire_lock(&self, session_id: &str, document_id: &str, lock: DocumentLock) -> CodingAgentResult<()> {
+    pub async fn acquire_lock(
+        &self,
+        session_id: &str,
+        document_id: &str,
+        lock: DocumentLock,
+    ) -> CodingAgentResult<()> {
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(session_id)
-            .ok_or_else(|| CodingAgentError::NotFound { resource: "Session".to_string(), id: session_id.to_string() })?;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| CodingAgentError::NotFound {
+                resource: "Session".to_string(),
+                id: session_id.to_string(),
+            })?;
 
-        let document = session.documents.get_mut(document_id)
-            .ok_or_else(|| CodingAgentError::NotFound { resource: "Document".to_string(), id: document_id.to_string() })?;
+        let document =
+            session
+                .documents
+                .get_mut(document_id)
+                .ok_or_else(|| CodingAgentError::NotFound {
+                    resource: "Document".to_string(),
+                    id: document_id.to_string(),
+                })?;
 
         // Check for conflicting locks
         for existing_lock in document.locks.values() {
             if self.locks_conflict(&lock, existing_lock) {
-                return Err(CodingAgentError::ExecutionError("Lock conflict".to_string()));
+                return Err(CodingAgentError::ExecutionError(
+                    "Lock conflict".to_string(),
+                ));
             }
         }
 

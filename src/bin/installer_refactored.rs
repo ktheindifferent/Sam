@@ -8,8 +8,8 @@
 // Licensed under GPLv3....see LICENSE file.
 
 use serde::{Deserialize, Serialize};
-use tokio::fs as async_fs;
 use thiserror::Error;
+use tokio::fs as async_fs;
 
 use dialoguer::Confirm;
 use git2::{Cred, FetchOptions, RemoteCallbacks, Repository};
@@ -45,14 +45,14 @@ pub enum InstallerError {
 async fn main() -> Result<()> {
     initialize_logging();
     setup_environment();
-    
+
     log::info!("Starting preinstallation...");
     pre_install().await?;
-    
+
     post_install_setup().await?;
     install_services().await?;
     build_and_deploy_binary().await?;
-    
+
     log::info!("Installation complete!");
     Ok(())
 }
@@ -94,28 +94,28 @@ fn setup_environment() {
 #[cfg(target_os = "windows")]
 async fn pre_install() -> Result<()> {
     log::info!("Starting Windows pre-installation steps...");
-    
+
     // 1. Ensure Chocolatey is installed and available
     ensure_chocolatey_installed().await?;
-    
+
     // 2. Install required system packages via Chocolatey
     install_chocolatey_packages().await?;
-    
+
     // 3. Ensure vcpkg is installed and bootstrapped & install deps
     install_vcpkg_dependencies().await?;
-    
+
     // 4. Refresh environment variables
     refresh_env_vars();
-    
+
     // 5. Ensure Python is installed and available in PATH
     ensure_python();
-    
+
     // 6. Install required Python packages
     install_python_packages();
-    
+
     // 7. Ensure git is installed and available in PATH
     ensure_git_installed().await?;
-    
+
     // 8. Create all required /opt/sam directories
     create_opt_sam_directories().await;
 
@@ -125,13 +125,13 @@ async fn pre_install() -> Result<()> {
 #[cfg(target_os = "linux")]
 async fn pre_install() -> Result<()> {
     log::debug!("Installing system dependencies for Linux...");
-    
+
     // Install system packages
     install_linux_packages().await?;
-    
+
     // Install Python packages
     install_python_packages_linux().await?;
-    
+
     // Create directories and set permissions
     create_opt_sam_directories().await;
     set_linux_permissions().await?;
@@ -143,15 +143,15 @@ async fn pre_install() -> Result<()> {
 async fn pre_install() -> Result<()> {
     // Install package managers
     install_package_managers().await?;
-    
+
     log::debug!("Installing system dependencies for MacOS...");
-    
+
     // Install system packages
     install_macos_packages().await?;
-    
+
     // Install Python packages
     install_python_packages_macos().await?;
-    
+
     // Create directories and set permissions
     create_opt_sam_directories().await;
     set_macos_permissions().await?;
@@ -163,13 +163,13 @@ async fn pre_install() -> Result<()> {
 async fn post_install_setup() -> Result<()> {
     let user = env::var("SAM_USER").unwrap_or_else(|_| whoami::username());
     libsam::print_banner(user.clone());
-    
+
     // Create whoismyhuman file if needed
     create_whoismyhuman_file(&user).await?;
-    
+
     // Check for GPU devices
     check_gpu_devices().await?;
-    
+
     Ok(())
 }
 
@@ -178,7 +178,7 @@ async fn create_whoismyhuman_file(user: &str) -> Result<()> {
     if user != "root" {
         let opt_sam_path = Path::new("/opt/sam/");
         let file_path = opt_sam_path.join("whoismyhuman");
-        
+
         if opt_sam_path.exists() && opt_sam_path.is_dir() {
             if let Err(e) = fs::write(&file_path, user) {
                 log::error!("Failed to write whoismyhuman: {}", e);
@@ -191,27 +191,27 @@ async fn create_whoismyhuman_file(user: &str) -> Result<()> {
 /// Install all services required by Sam
 async fn install_services() -> Result<()> {
     log::info!("Installing services...");
-    
+
     // Install core services
     libsam::services::snapcast::install().await?;
     libsam::services::darknet::install(None).await?;
     libsam::services::stt::install(None).await?;
     libsam::services::http::install().await?;
     libsam::services::emulators::install().await?;
-    
+
     // Install Who.io with error handling
     match libsam::services::who::install() {
         Ok(_) => log::info!("Who.io installed successfully"),
         Err(e) => log::error!("Failed to install Who.io: {}", e),
     }
-    
+
     Ok(())
 }
 
 /// Build the Sam binary and deploy it to the appropriate location
 async fn build_and_deploy_binary() -> Result<()> {
     log::info!("Building Sam in release mode...");
-    
+
     let build_status = Command::new("cargo")
         .args(["build", "--bin", "sam", "--release"])
         .status();
@@ -228,7 +228,7 @@ async fn build_and_deploy_binary() -> Result<()> {
             log::error!("Failed to run cargo build: {}", e);
         }
     }
-    
+
     Ok(())
 }
 
@@ -247,7 +247,7 @@ async fn deploy_binary() -> Result<()> {
         Ok(_) => log::info!("Moved binary to {}", dest_bin.display()),
         Err(e) => log::error!("Failed to move binary: {}", e),
     }
-    
+
     Ok(())
 }
 
@@ -268,11 +268,15 @@ fn update_path_if_needed() {
 async fn ensure_chocolatey_installed() -> Result<()> {
     let _ = libsam::services::package_managers::windows::chocolatey::install().await?;
     let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
-    
+
     log::info!("Verifying Chocolatey installation...");
     if !std::path::Path::new(choco_path).exists() {
         log::error!("Chocolatey is still not available after attempted install. Please ensure C:\\ProgramData\\chocolatey\\bin is in your PATH and choco.exe exists.");
-        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Chocolatey not found after install").into());
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Chocolatey not found after install",
+        )
+        .into());
     } else {
         log::info!("Chocolatey found at {}", choco_path);
     }
@@ -281,14 +285,25 @@ async fn ensure_chocolatey_installed() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 async fn install_chocolatey_packages() -> Result<()> {
-    let choco_packages = vec!["ffmpeg", "git-lfs", "opencv", "python3", "make", "unzip", "curl"];
-    libsam::services::package_managers::windows::chocolatey::install_packages(choco_packages).await?;
+    let choco_packages = vec![
+        "ffmpeg", "git-lfs", "opencv", "python3", "make", "unzip", "curl",
+    ];
+    libsam::services::package_managers::windows::chocolatey::install_packages(choco_packages)
+        .await?;
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
 async fn install_vcpkg_dependencies() -> Result<()> {
-    let vcpkg_deps = ["libflac", "libogg", "libvorbis", "opus", "soxr", "boost", "curl"];
+    let vcpkg_deps = [
+        "libflac",
+        "libogg",
+        "libvorbis",
+        "opus",
+        "soxr",
+        "boost",
+        "curl",
+    ];
     libsam::services::vcpkg::install_packages(&vcpkg_deps, "x64-windows").await?;
     Ok(())
 }
@@ -310,7 +325,10 @@ fn ensure_python() {
     // Check if Python is installed and available in PATH
     let python_path = "C:\\ProgramData\\chocolatey\\bin\\python3.13.exe";
     if !std::path::Path::new(python_path).exists() {
-        log::error!("Python not found at {}. Please install Python 3.13 or later.", python_path);
+        log::error!(
+            "Python not found at {}. Please install Python 3.13 or later.",
+            python_path
+        );
         return;
     } else {
         log::info!("Python found at {}", python_path);
@@ -326,9 +344,9 @@ fn install_python_packages() {
         Ok(_) => log::info!("pip upgraded successfully."),
         Err(e) => log::error!("Failed to upgrade pip: {}", e),
     }
-    
+
     refresh_env_vars();
-    
+
     // Install required packages
     let pip_args = ["install", "rivescript", "pexpect"];
     log::info!("Running: {} {}", "pip3", pip_args.join(" "));
@@ -343,12 +361,12 @@ fn install_python_packages() {
 #[cfg(target_os = "windows")]
 async fn ensure_git_installed() -> Result<()> {
     let choco_path = "C:\\ProgramData\\chocolatey\\bin\\choco.exe";
-    
+
     // Try to find existing git installation
     if try_find_existing_git().await {
         return verify_git_installation().await;
     }
-    
+
     // Install git via Chocolatey if not found
     log::warn!("git.exe not found. Installing Git for Windows using Chocolatey...");
     let result = libsam::run_and_log(choco_path, &["install", "git", "-y"]);
@@ -359,23 +377,24 @@ async fn ensure_git_installed() -> Result<()> {
             return Err(e.into());
         }
     }
-    
+
     // Try to find git again after installation
     if !try_find_existing_git().await {
         log::error!("git.exe not found after Chocolatey install. Please install Git for Windows manually and add it to your PATH.");
-        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "git not found after Chocolatey install").into());
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "git not found after Chocolatey install",
+        )
+        .into());
     }
-    
+
     verify_git_installation().await
 }
 
 #[cfg(target_os = "windows")]
 async fn try_find_existing_git() -> bool {
-    let search_dirs = [
-        "C:\\Program Files",
-        "C:\\Program Files (x86)",
-    ];
-    
+    let search_dirs = ["C:\\Program Files", "C:\\Program Files (x86)"];
+
     for base in &search_dirs {
         if let Ok(entries) = std::fs::read_dir(base) {
             for entry in entries.flatten() {
@@ -407,7 +426,11 @@ async fn verify_git_installation() -> Result<()> {
         Ok(_) => log::info!("git is installed and working."),
         Err(e) => {
             log::error!("git is not working: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "git not working after install").into());
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "git not working after install",
+            )
+            .into());
         }
     }
     Ok(())
@@ -541,7 +564,7 @@ async fn create_opt_sam_directories() {
         "/opt/sam/tmp/observations",
         "/opt/sam/tmp/observations/vwav",
     ];
-    
+
     for dir in directories {
         if let Err(e) = async_fs::create_dir_all(dir).await {
             log::warn!("Failed to create directory {}: {}", dir, e);
@@ -566,7 +589,7 @@ pub async fn update() -> Result<()> {
 
     // Open the repository at the Cargo crate root (where Cargo.toml is located)
     let repo = Repository::open(crate_root)?;
-    
+
     // Get local commit info first
     let local_short = {
         let head = repo.head()?;
@@ -601,7 +624,7 @@ pub async fn update() -> Result<()> {
             local_short,
             remote_short
         );
-        
+
         if Confirm::new()
             .with_prompt("Would you like to update Sam using git?")
             .interact()
@@ -632,8 +655,8 @@ async fn perform_update(repo: &mut Repository, remote_commit: git2::Commit<'_>) 
 #[cfg(target_os = "windows")]
 pub fn configure_opencl_and_clang_paths() -> Result<()> {
     use std::env;
-    use std::io::{self, Write};
     use std::fs;
+    use std::io::{self, Write};
     use std::path::{Path, PathBuf};
 
     fn prompt_for_path(lib_name: &str) -> Option<PathBuf> {
@@ -650,7 +673,11 @@ pub fn configure_opencl_and_clang_paths() -> Result<()> {
                 return None;
             }
             let path = PathBuf::from(trimmed);
-            if path.exists() && path.file_name().map_or(false, |f| f.eq_ignore_ascii_case(lib_name)) {
+            if path.exists()
+                && path
+                    .file_name()
+                    .map_or(false, |f| f.eq_ignore_ascii_case(lib_name))
+            {
                 return Some(path);
             } else {
                 println!("Invalid path or file name. Please try again.");
@@ -659,7 +686,11 @@ pub fn configure_opencl_and_clang_paths() -> Result<()> {
     }
 
     fn get_arch() -> &'static str {
-        if cfg!(target_pointer_width = "64") { "x64" } else { "x86" }
+        if cfg!(target_pointer_width = "64") {
+            "x64"
+        } else {
+            "x86"
+        }
     }
 
     // Search for opencl.lib
@@ -684,7 +715,9 @@ pub fn configure_opencl_and_clang_paths() -> Result<()> {
                 }
             }
         }
-        if opencl_lib.is_some() { break; }
+        if opencl_lib.is_some() {
+            break;
+        }
     }
     if opencl_lib.is_none() {
         opencl_lib = prompt_for_path("opencl.lib");
@@ -715,7 +748,9 @@ pub fn configure_opencl_and_clang_paths() -> Result<()> {
                 }
             }
         }
-        if clang_dll.is_some() { break; }
+        if clang_dll.is_some() {
+            break;
+        }
     }
     if clang_dll.is_none() {
         clang_dll = prompt_for_path("libclang.dll");
@@ -723,7 +758,10 @@ pub fn configure_opencl_and_clang_paths() -> Result<()> {
     if let Some(dll_path) = &clang_dll {
         if let Some(parent) = dll_path.parent() {
             env::set_var("LIBCLANG_PATH", parent);
-            println!("LIBCLANG_PATH environment variable set to {}", parent.display());
+            println!(
+                "LIBCLANG_PATH environment variable set to {}",
+                parent.display()
+            );
         }
     } else {
         println!("libclang.dll not found and not provided. LIBCLANG_PATH will not be set.");

@@ -20,7 +20,8 @@ impl GitHubClient {
 
     pub async fn get_user(&self, username: &str) -> Result<GitHubUser, Error> {
         let url = format!("https://api.github.com/users/{}", username);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -41,7 +42,8 @@ impl GitHubClient {
             "query": query,
             "variables": variables,
         });
-        let resp = self.client
+        let resp = self
+            .client
             .post(url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -55,7 +57,8 @@ impl GitHubClient {
 
     pub async fn get_repo(&self, owner: &str, repo: &str) -> Result<GitHubRepo, Error> {
         let url = format!("https://api.github.com/repos/{}/{}", owner, repo);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -68,7 +71,8 @@ impl GitHubClient {
 
     pub async fn list_repos_for_user(&self, username: &str) -> Result<Vec<GitHubRepo>, Error> {
         let url = format!("https://api.github.com/users/{}/repos", username);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -91,7 +95,8 @@ impl GitHubClient {
         if let Some(b) = body {
             json_body["body"] = serde_json::Value::String(b.to_string());
         }
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -103,13 +108,10 @@ impl GitHubClient {
         Ok(resp)
     }
 
-    pub async fn list_issues(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Vec<GitHubIssue>, Error> {
+    pub async fn list_issues(&self, owner: &str, repo: &str) -> Result<Vec<GitHubIssue>, Error> {
         let url = format!("https://api.github.com/repos/{}/{}/issues", owner, repo);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -130,7 +132,8 @@ impl GitHubClient {
             "https://api.github.com/repos/{}/{}/pulls/{}",
             owner, repo, pr_number
         );
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -147,7 +150,8 @@ impl GitHubClient {
         repo: &str,
     ) -> Result<Vec<GitHubPullRequest>, Error> {
         let url = format!("https://api.github.com/repos/{}/{}/pulls", owner, repo);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -171,9 +175,13 @@ impl GitHubClient {
         );
         let mut json_body = serde_json::Map::new();
         if let Some(msg) = commit_message {
-            json_body.insert("commit_message".to_string(), serde_json::Value::String(msg.to_string()));
+            json_body.insert(
+                "commit_message".to_string(),
+                serde_json::Value::String(msg.to_string()),
+            );
         }
-        let resp = self.client
+        let resp = self
+            .client
             .put(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -185,13 +193,10 @@ impl GitHubClient {
         Ok(resp)
     }
 
-    pub async fn list_commits(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Vec<GitHubCommit>, Error> {
+    pub async fn list_commits(&self, owner: &str, repo: &str) -> Result<Vec<GitHubCommit>, Error> {
         let url = format!("https://api.github.com/repos/{}/{}/commits", owner, repo);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -208,8 +213,12 @@ impl GitHubClient {
         repo: &str,
         sha: &str,
     ) -> Result<GitHubCommit, Error> {
-        let url = format!("https://api.github.com/repos/{}/{}/commits/{}", owner, repo, sha);
-        let resp = self.client
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/commits/{}",
+            owner, repo, sha
+        );
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -226,8 +235,12 @@ impl GitHubClient {
         repo: &str,
         branch: &str,
     ) -> Result<GitHubBranch, Error> {
-        let url = format!("https://api.github.com/repos/{}/{}/branches/{}", owner, repo, branch);
-        let resp = self.client
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/branches/{}",
+            owner, repo, branch
+        );
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -238,13 +251,10 @@ impl GitHubClient {
         Ok(resp)
     }
 
-    pub async fn list_branches(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Vec<GitHubBranch>, Error> {
+    pub async fn list_branches(&self, owner: &str, repo: &str) -> Result<Vec<GitHubBranch>, Error> {
         let url = format!("https://api.github.com/repos/{}/{}/branches", owner, repo);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -261,8 +271,12 @@ impl GitHubClient {
         repo: &str,
         release_id: u64,
     ) -> Result<GitHubRelease, Error> {
-        let url = format!("https://api.github.com/repos/{}/{}/releases/{}", owner, repo, release_id);
-        let resp = self.client
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/releases/{}",
+            owner, repo, release_id
+        );
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -279,7 +293,8 @@ impl GitHubClient {
         repo: &str,
     ) -> Result<Vec<GitHubRelease>, Error> {
         let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -312,7 +327,8 @@ impl GitHubClient {
         if let Some(b) = body {
             json_body["body"] = serde_json::Value::String(b.to_string());
         }
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("Authorization", self.auth_header())
             .header("User-Agent", "sam-github-client")
@@ -324,11 +340,7 @@ impl GitHubClient {
         Ok(resp)
     }
 
-    pub async fn delete_repo(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<(), Error> {
+    pub async fn delete_repo(&self, owner: &str, repo: &str) -> Result<(), Error> {
         let url = format!("https://api.github.com/repos/{}/{}", owner, repo);
         self.client
             .delete(&url)

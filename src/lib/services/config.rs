@@ -72,9 +72,9 @@ impl ConfigLoader for FileConfigLoader {
                 }
                 Ok(fs::read_to_string(path)?)
             }
-            ConfigSource::Environment => {
-                Err(ConfigError::NotFound("Environment source not supported by FileConfigLoader".to_string()))
-            }
+            ConfigSource::Environment => Err(ConfigError::NotFound(
+                "Environment source not supported by FileConfigLoader".to_string(),
+            )),
             ConfigSource::Memory(content) => Ok(content.clone()),
         }
     }
@@ -182,7 +182,8 @@ impl ConfigManager {
     }
 
     fn parse_config(content: &str, path: &Path) -> Result<GlobalConfig, ConfigError> {
-        let extension = path.extension()
+        let extension = path
+            .extension()
             .and_then(|ext| ext.to_str())
             .ok_or_else(|| ConfigError::Parse("Unknown file extension".to_string()))?;
 
@@ -190,7 +191,10 @@ impl ConfigManager {
             "json" => JsonConfigParser.parse(content),
             "toml" => TomlConfigParser.parse(content),
             "yaml" | "yml" => YamlConfigParser.parse(content),
-            _ => Err(ConfigError::Parse(format!("Unsupported config format: {}", extension))),
+            _ => Err(ConfigError::Parse(format!(
+                "Unsupported config format: {}",
+                extension
+            ))),
         }
     }
 
@@ -249,24 +253,35 @@ impl ConfigManager {
         self.config.read().ok()?.services.get(service_name).cloned()
     }
 
-    pub fn update_service_config(&self, service_name: &str, config: ServiceConfig) -> Result<(), ConfigError> {
-        let mut global_config = self.config.write()
+    pub fn update_service_config(
+        &self,
+        service_name: &str,
+        config: ServiceConfig,
+    ) -> Result<(), ConfigError> {
+        let mut global_config = self
+            .config
+            .write()
             .map_err(|_| ConfigError::Parse("Failed to acquire write lock".to_string()))?;
-        global_config.services.insert(service_name.to_string(), config);
+        global_config
+            .services
+            .insert(service_name.to_string(), config);
         Ok(())
     }
 
     pub fn reload(&mut self, source: ConfigSource) -> Result<(), ConfigError> {
         let loader = FileConfigLoader;
         let content = loader.load(&source)?;
-        
+
         let new_config = match source {
             ConfigSource::File(ref path) => Self::parse_config(&content, path)?,
             _ => JsonConfigParser.parse(&content)?,
         };
 
-        *self.config.write()
-            .map_err(|_| ConfigError::Parse("Failed to acquire write lock".to_string()))? = new_config;
+        *self
+            .config
+            .write()
+            .map_err(|_| ConfigError::Parse("Failed to acquire write lock".to_string()))? =
+            new_config;
 
         // Notify watchers
         for watcher in &self.watchers {
@@ -281,19 +296,27 @@ impl ConfigManager {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
-        let config = self.config.read()
+        let config = self
+            .config
+            .read()
             .map_err(|_| ConfigError::Parse("Failed to acquire read lock".to_string()))?;
 
         if config.environment.is_empty() {
-            return Err(ConfigError::Validation("Environment cannot be empty".to_string()));
+            return Err(ConfigError::Validation(
+                "Environment cannot be empty".to_string(),
+            ));
         }
 
         if let Some(ref db_config) = config.database {
             if db_config.url.is_empty() {
-                return Err(ConfigError::Validation("Database URL cannot be empty".to_string()));
+                return Err(ConfigError::Validation(
+                    "Database URL cannot be empty".to_string(),
+                ));
             }
             if db_config.max_connections == 0 {
-                return Err(ConfigError::Validation("Max connections must be greater than 0".to_string()));
+                return Err(ConfigError::Validation(
+                    "Max connections must be greater than 0".to_string(),
+                ));
             }
         }
 
@@ -373,7 +396,9 @@ impl ConfigBuilder {
 
     pub fn build(self) -> GlobalConfig {
         GlobalConfig {
-            environment: self.environment.unwrap_or_else(|| "development".to_string()),
+            environment: self
+                .environment
+                .unwrap_or_else(|| "development".to_string()),
             log_level: self.log_level.unwrap_or_else(|| "info".to_string()),
             services: self.services,
             database: self.database,
@@ -467,7 +492,10 @@ impl SamUserConfig {
     }
 
     pub fn vim_keybindings(&self) -> bool {
-        self.tui.as_ref().and_then(|t| t.vim_keybindings).unwrap_or(false)
+        self.tui
+            .as_ref()
+            .and_then(|t| t.vim_keybindings)
+            .unwrap_or(false)
     }
 
     pub fn poll_interval_secs(&self) -> u64 {
@@ -482,7 +510,10 @@ impl SamUserConfig {
     }
 
     pub fn theme(&self) -> String {
-        self.tui.as_ref().and_then(|t| t.theme.clone()).unwrap_or_else(|| "dark".to_string())
+        self.tui
+            .as_ref()
+            .and_then(|t| t.theme.clone())
+            .unwrap_or_else(|| "dark".to_string())
     }
 
     /// Determine the database engine: env var > config file > default "sqlite".

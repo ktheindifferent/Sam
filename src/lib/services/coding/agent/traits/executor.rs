@@ -1,7 +1,7 @@
 //! Executor traits
 
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 use std::path::Path;
 use std::time::Duration;
 

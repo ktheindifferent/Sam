@@ -67,7 +67,7 @@ impl WebSessions {
             .push(crate::memory::PGCol::String(self.oid.clone()));
         pg_query.query_columns.push("oid".to_string());
         let mut rows = Self::select(None, None, None, Some(pg_query))?;
-        
+
         // If not found by oid, check by sid
         if rows.is_empty() {
             let mut pg_query_sid = PostgresQueries::default();

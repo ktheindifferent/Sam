@@ -6,7 +6,7 @@
 use super::manifest::PluginManifest;
 use super::wasm_runtime::{WasmPlugin, WasmPluginConfig};
 use super::PluginRegistry;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher, Event, EventKind};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -51,7 +51,10 @@ impl PluginLoader {
     pub async fn load_all(&self) -> Result<usize, String> {
         let plugins_dir = &self.config.plugins_dir;
         if !plugins_dir.exists() {
-            log::info!("Plugins directory does not exist: {}", plugins_dir.display());
+            log::info!(
+                "Plugins directory does not exist: {}",
+                plugins_dir.display()
+            );
             let _ = std::fs::create_dir_all(plugins_dir);
             return Ok(0);
         }
@@ -168,7 +171,10 @@ impl PluginLoader {
                     return;
                 }
 
-                log::info!("Plugin hot-reload watcher started on {}", watch_dir.display());
+                log::info!(
+                    "Plugin hot-reload watcher started on {}",
+                    watch_dir.display()
+                );
 
                 // Keep the thread alive so the watcher stays active
                 loop {
@@ -191,9 +197,7 @@ impl PluginLoader {
                         });
 
                         if relevant && last_reload.elapsed() > std::time::Duration::from_secs(2) {
-                            log::info!(
-                                "Plugin file change detected, reloading plugins..."
-                            );
+                            log::info!("Plugin file change detected, reloading plugins...");
                             last_reload = std::time::Instant::now();
                             // Short delay for writes to complete
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;

@@ -1,10 +1,10 @@
-use anyhow::{Result, Context};
-use serde::{Deserialize, Serialize};
+use super::{AudioFormat, TtsRequest, TtsResult};
+use crate::services::environment::get_env_config;
+use anyhow::{Context, Result};
 use log::{info, warn};
 use reqwest;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use super::{TtsRequest, TtsResult, AudioFormat};
-use crate::services::environment::get_env_config;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalTTSConfig {
@@ -42,22 +42,22 @@ impl ExternalTTSService {
             .timeout(config.timeout)
             .build()
             .context("Failed to build HTTP client for TTS")?;
-        
+
         Ok(Self { config, client })
     }
-    
+
     pub fn with_config(config: ExternalTTSConfig) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(config.timeout)
             .build()
             .context("Failed to build HTTP client for TTS")?;
-        
+
         Ok(Self { config, client })
     }
-    
+
     pub async fn synthesize(&self, request: TtsRequest) -> Result<TtsResult> {
         let env_config = get_env_config();
-        
+
         if env_config.is_caprover && env_config.tts_url.is_none() {
             warn!("TTS_URL not configured in CapRover mode - TTS service unavailable");
             return Ok(TtsResult {
@@ -67,52 +67,53 @@ impl ExternalTTSService {
                 cached: false,
             });
         }
-        
-        let endpoint = env_config.tts_url
-            .as_ref()
-            .unwrap_or(&self.config.endpoint);
-        
+
+        let endpoint = env_config.tts_url.as_ref().unwrap_or(&self.config.endpoint);
+
         info!("Sending text to external TTS service: {}", endpoint);
-        
+
         let tts_request = ExternalTTSRequest {
             text: request.text,
             voice: request.voice.unwrap_or(self.config.default_voice.clone()),
-            language: request.language.unwrap_or(self.config.default_language.clone()),
+            language: request
+                .language
+                .unwrap_or(self.config.default_language.clone()),
             speed: request.speed.unwrap_or(1.0),
             pitch: request.pitch.unwrap_or(1.0),
             volume: request.volume.unwrap_or(1.0),
             format: format_to_string(&request.format),
         };
-        
-        let mut http_request = self.client
-            .post(endpoint)
-            .json(&tts_request);
-        
+
+        let mut http_request = self.client.post(endpoint).json(&tts_request);
+
         if let Some(api_key) = &self.config.api_key {
             http_request = http_request.header("Authorization", format!("Bearer {}", api_key));
         }
-        
+
         let start_time = std::time::Instant::now();
         let response = http_request
             .send()
             .await
             .context("Failed to send request to TTS service")?;
-        
+
         let duration_ms = start_time.elapsed().as_millis();
-        
+
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
             return Err(anyhow::anyhow!(
-                "TTS service returned error {}: {}", 
-                status, error_text
+                "TTS service returned error {}: {}",
+                status,
+                error_text
             ));
         }
-        
-        let audio_data = response.bytes().await
+
+        let audio_data = response
+            .bytes()
+            .await
             .context("Failed to read TTS response")?
             .to_vec();
-        
+
         Ok(TtsResult {
             audio_data,
             format: request.format,
@@ -120,50 +121,56 @@ impl ExternalTTSService {
             cached: false,
         })
     }
-    
+
     pub async fn health_check(&self) -> Result<()> {
         let env_config = get_env_config();
-        let endpoint = env_config.tts_url
-            .as_ref()
-            .unwrap_or(&self.config.endpoint);
-        
+        let endpoint = env_config.tts_url.as_ref().unwrap_or(&self.config.endpoint);
+
         let health_url = format!("{}/health", endpoint.trim_end_matches("/tts"));
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&health_url)
             .send()
             .await
             .context("Failed to check TTS service health")?;
-        
+
         if response.status().is_success() {
             info!("External TTS service is healthy");
             Ok(())
         } else {
-            Err(anyhow::anyhow!("TTS service health check failed: {}", response.status()))
+            Err(anyhow::anyhow!(
+                "TTS service health check failed: {}",
+                response.status()
+            ))
         }
     }
-    
+
     pub async fn list_voices(&self) -> Result<Vec<VoiceInfo>> {
         let env_config = get_env_config();
-        let endpoint = env_config.tts_url
-            .as_ref()
-            .unwrap_or(&self.config.endpoint);
-        
+        let endpoint = env_config.tts_url.as_ref().unwrap_or(&self.config.endpoint);
+
         let voices_url = format!("{}/voices", endpoint.trim_end_matches("/tts"));
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&voices_url)
             .send()
             .await
             .context("Failed to fetch voice list")?;
-        
+
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Failed to fetch voices: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "Failed to fetch voices: {}",
+                response.status()
+            ));
         }
-        
-        let voices: Vec<VoiceInfo> = response.json().await
+
+        let voices: Vec<VoiceInfo> = response
+            .json()
+            .await
             .context("Failed to parse voices response")?;
-        
+
         Ok(voices)
     }
 }
@@ -193,13 +200,14 @@ fn format_to_string(format: &AudioFormat) -> String {
         AudioFormat::Mp3 => "mp3",
         AudioFormat::Ogg => "ogg",
         AudioFormat::Flac => "flac",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Get the appropriate TTS service based on environment configuration
 pub async fn get_tts_service() -> Result<Box<dyn TTSServiceTrait>> {
     let env_config = get_env_config();
-    
+
     if env_config.is_caprover || env_config.tts_url.is_some() {
         info!("Using external TTS service");
         Ok(Box::new(ExternalTTSService::new()?))
@@ -217,8 +225,7 @@ pub trait TTSServiceTrait: Send + Sync {
 
 impl TTSServiceTrait for ExternalTTSService {
     fn synthesize_sync(&self, request: TtsRequest) -> Result<TtsResult> {
-        tokio::runtime::Handle::current()
-            .block_on(self.synthesize(request))
+        tokio::runtime::Handle::current().block_on(self.synthesize(request))
     }
 }
 

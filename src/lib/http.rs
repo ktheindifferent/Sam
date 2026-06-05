@@ -14,8 +14,8 @@
 
 // use error_chain::error_chain;
 use anyhow::Result;
-use thiserror::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
 use rouille::post_input;
 use rouille::session;
@@ -161,7 +161,10 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                                         )
                                         .with_additional_header(
                                             "Access-Control-Allow-Origin",
-                                            request.header("Origin").unwrap_or("http://localhost:8080").to_string(),
+                                            request
+                                                .header("Origin")
+                                                .unwrap_or("http://localhost:8080")
+                                                .to_string(),
                                         ));
                                 }
                             }
@@ -170,7 +173,13 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                         // No Range header, serve the whole file
                         return Ok(Response::from_file("video/mp4", file)
                             .with_additional_header("Accept-Ranges", "bytes")
-                            .with_additional_header("Access-Control-Allow-Origin", request.header("Origin").unwrap_or("http://localhost:8080").to_string()));
+                            .with_additional_header(
+                                "Access-Control-Allow-Origin",
+                                request
+                                    .header("Origin")
+                                    .unwrap_or("http://localhost:8080")
+                                    .to_string(),
+                            ));
                     }
                 }
             }
@@ -182,10 +191,16 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
         {
             let xresponse = rouille::match_assets(request, "./www/");
             if xresponse.is_success() {
-                let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
+                let origin = request
+                    .header("Origin")
+                    .unwrap_or("http://localhost:8080")
+                    .to_string();
                 return Ok(xresponse
                     .with_additional_header("Access-Control-Allow-Origin", origin)
-                    .with_additional_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                    .with_additional_header(
+                        "Cache-Control",
+                        "no-cache, no-store, must-revalidate, max-age=0",
+                    )
                     .with_additional_header("Pragma", "no-cache")
                     .with_additional_header("Expires", "0")
                     .with_no_cache());
@@ -198,16 +213,22 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
             // Try /app/www first (Docker/CapRover path)
             let xresponse = rouille::match_assets(&request, "/app/www/");
             if xresponse.is_success() {
-                let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
+                let origin = request
+                    .header("Origin")
+                    .unwrap_or("http://localhost:8080")
+                    .to_string();
                 return Ok(xresponse
                     .with_additional_header("Access-Control-Allow-Origin", origin)
                     .with_no_cache());
             }
-            
+
             // Fallback to /opt/sam/www for traditional installations
             let xresponse = rouille::match_assets(&request, "/opt/sam/www/");
             if xresponse.is_success() {
-                let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
+                let origin = request
+                    .header("Origin")
+                    .unwrap_or("http://localhost:8080")
+                    .to_string();
                 return Ok(xresponse
                     .with_additional_header("Access-Control-Allow-Origin", origin)
                     .with_no_cache());
@@ -217,11 +238,13 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
 
     // Limit by timestamp field to 24 hours ago to improve query performance
     let right_now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_secs() as i64;
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs() as i64;
     let mut pg_query = crate::memory::PostgresQueries::default();
-    pg_query.queries.push(crate::memory::PGCol::Timestamp(right_now - 86400)); // 24 hours ago
+    pg_query
+        .queries
+        .push(crate::memory::PGCol::Timestamp(right_now - 86400)); // 24 hours ago
     pg_query.query_columns.push("timestamp >".to_string());
 
     // Fetch sessions
@@ -251,7 +274,7 @@ pub fn handle(request: &Request) -> Result<Response, Error> {
                     Response::empty_404()
                 }
             }
-        }
+        },
     ))
 }
 
@@ -267,7 +290,6 @@ pub fn handle_with_session(
     let locations: Vec<crate::memory::Location> =
         crate::memory::Location::select(None, None, None, None)?;
     let is_initial_setup = locations.is_empty();
-
 
     // Setup: POST
     if request.url() == "/setup" && is_initial_setup {
@@ -318,7 +340,7 @@ pub fn handle_with_session(
         // TODO - Save Services
 
         // TODO - Authenticate
-        
+
         // Redirect to login page after successful setup
         let response = Response::redirect_302("/login.html");
         return Ok(response);
@@ -332,7 +354,8 @@ pub fn handle_with_session(
         })?;
 
         // Get IP address for rate limiting
-        let ip_address = request.headers()
+        let ip_address = request
+            .headers()
             .find(|h| h.0.contains("X-Forwarded-For"))
             .map(|h| h.1.to_string())
             .unwrap_or_else(|| request.remote_addr().to_string());
@@ -340,8 +363,7 @@ pub fn handle_with_session(
         // Check rate limit
         let rate_limit_key = format!("auth:{}:{}", ip_address, input.email.to_lowercase());
         if !crate::security::Auth::check_auth_rate_limit(&rate_limit_key) {
-            let wait_time = crate::security::Auth::get_wait_time(&rate_limit_key)
-                .unwrap_or(60);
+            let wait_time = crate::security::Auth::get_wait_time(&rate_limit_key).unwrap_or(60);
             let response = Response::json(&serde_json::json!({
                 "error": "Too many authentication attempts. Please try again later.",
                 "wait_seconds": wait_time
@@ -371,7 +393,7 @@ pub fn handle_with_session(
                         editable_session.authenticated = true;
                         editable_session.human_oid = humans[0].oid.clone();
                         editable_session.ip_address = ip_address.clone();
-                        
+
                         // Clear rate limit on successful authentication
                         crate::security::Auth::clear_auth_rate_limit(&rate_limit_key);
                     }
@@ -400,12 +422,8 @@ pub fn handle_with_session(
     // Checkpoint -- Redirect the user as required
     // =================================================================
 
-
-    
     // During initial setup, redirect to setup page UNLESS already on setup-related URLs
-    if is_initial_setup && 
-       request.url() != "/setup.html" && 
-       request.url() != "/setup" {
+    if is_initial_setup && request.url() != "/setup.html" && request.url() != "/setup" {
         let response = Response::redirect_302("/setup.html");
         return Ok(response);
     }
@@ -418,7 +436,8 @@ pub fn handle_with_session(
        request.url() != "/setup" &&
        !request.url().starts_with("/api/services/") &&  // Allow service status API calls
        !request.url().starts_with("/health") &&          // Allow health checks
-       !current_session.authenticated {
+       !current_session.authenticated
+    {
         let response = Response::redirect_302("/login.html");
         return Ok(response);
     }
@@ -436,11 +455,11 @@ pub fn handle_with_session(
             "timestamp": chrono::Utc::now().to_rfc3339()
         })));
     }
-    
+
     if request.url() == "/health/detailed" {
         let cpu_usage = crate::tools::get_cpu_usage().unwrap_or(0.0);
         let memory_usage = crate::tools::get_memory_usage().unwrap_or(0.0);
-        
+
         return Ok(Response::json(&serde_json::json!({
             "status": "healthy",
             "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -450,7 +469,7 @@ pub fn handle_with_session(
             }
         })));
     }
-    
+
     // WebSocket endpoint - return proper upgrade response (no auth required)
     if request.url() == "/ws" {
         // WebSocket connections need special handling
@@ -458,14 +477,15 @@ pub fn handle_with_session(
         return Ok(Response::json(&serde_json::json!({
             "error": "WebSocket endpoint - use WebSocket protocol",
             "message": "Connect using ws:// or wss:// protocol on port 8080"
-        })).with_status_code(426)); // 426 Upgrade Required
+        }))
+        .with_status_code(426)); // 426 Upgrade Required
     }
-    
+
     // Service control API endpoints (allow without auth for dashboard functionality)
     if request.url().starts_with("/api/services/") {
         return api::handle_api_request(current_session, request);
     }
-    
+
     // Environment API endpoint (no auth required)
     if request.url() == "/api/environment" {
         return api::handle_api_request(current_session, request);
@@ -491,7 +511,7 @@ pub fn handle_with_session(
     //     let device = tch::Cuda::device_count();
     //     return Ok(Response::text(device.to_string()));
     // }
-    
+
     if request.url().contains("/api") {
         return api::handle_api_request(current_session, request);
     }
@@ -499,7 +519,10 @@ pub fn handle_with_session(
     if request.url().contains("/streams") {
         let xresponse = rouille::match_assets(request, "/opt/sam/");
         if xresponse.is_success() {
-            let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
+            let origin = request
+                .header("Origin")
+                .unwrap_or("http://localhost:8080")
+                .to_string();
             return Ok(xresponse
                 .with_additional_header("Access-Control-Allow-Origin", origin)
                 .with_no_cache());
@@ -512,28 +535,34 @@ pub fn handle_with_session(
     {
         let xresponse = rouille::match_assets(request, "/opt/sam/");
         if xresponse.is_success() {
-            let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
+            let origin = request
+                .header("Origin")
+                .unwrap_or("http://localhost:8080")
+                .to_string();
             return Ok(xresponse
                 .with_additional_header("Access-Control-Allow-Origin", origin)
                 .with_no_cache());
         }
     }
 
-
     let xresponse = rouille::match_assets(request, "./www/");
     if xresponse.is_success() {
-        let origin = request.header("Origin").unwrap_or("http://localhost:8080").to_string();
+        let origin = request
+            .header("Origin")
+            .unwrap_or("http://localhost:8080")
+            .to_string();
         return Ok(xresponse
             .with_additional_header("Access-Control-Allow-Origin", origin)
             .with_no_cache());
     }
-    
+
     // For unmatched API routes, return 404 JSON instead of redirecting
     if request.url().starts_with("/api/") || request.url().starts_with("/ws") {
         return Ok(Response::json(&serde_json::json!({
             "error": "Not found",
             "path": request.url()
-        })).with_status_code(404));
+        }))
+        .with_status_code(404));
     }
 
     // Only redirect to index.html for non-API routes

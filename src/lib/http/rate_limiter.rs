@@ -1,9 +1,9 @@
+use log::{debug, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
-use log::{debug, warn, info};
 
 /// Rate limiting configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -23,43 +23,58 @@ pub struct RateLimitConfig {
 impl Default for RateLimitConfig {
     fn default() -> Self {
         let mut endpoint_limits = HashMap::new();
-        
+
         // Configure specific endpoint limits
-        endpoint_limits.insert("/api/auth/login".to_string(), EndpointLimit {
-            authenticated: 10,
-            anonymous: 5,
-            window_seconds: 300, // 5 minutes
-            burst_size: 3,
-        });
-        
-        endpoint_limits.insert("/api/auth/register".to_string(), EndpointLimit {
-            authenticated: 5,
-            anonymous: 3,
-            window_seconds: 3600, // 1 hour
-            burst_size: 2,
-        });
-        
-        endpoint_limits.insert("/api/voice/transcribe".to_string(), EndpointLimit {
-            authenticated: 100,
-            anonymous: 10,
-            window_seconds: 60,
-            burst_size: 5,
-        });
-        
-        endpoint_limits.insert("/api/crawler/crawl".to_string(), EndpointLimit {
-            authenticated: 50,
-            anonymous: 5,
-            window_seconds: 300,
-            burst_size: 3,
-        });
-        
-        endpoint_limits.insert("/api/ai/generate".to_string(), EndpointLimit {
-            authenticated: 30,
-            anonymous: 0, // No access for anonymous
-            window_seconds: 60,
-            burst_size: 5,
-        });
-        
+        endpoint_limits.insert(
+            "/api/auth/login".to_string(),
+            EndpointLimit {
+                authenticated: 10,
+                anonymous: 5,
+                window_seconds: 300, // 5 minutes
+                burst_size: 3,
+            },
+        );
+
+        endpoint_limits.insert(
+            "/api/auth/register".to_string(),
+            EndpointLimit {
+                authenticated: 5,
+                anonymous: 3,
+                window_seconds: 3600, // 1 hour
+                burst_size: 2,
+            },
+        );
+
+        endpoint_limits.insert(
+            "/api/voice/transcribe".to_string(),
+            EndpointLimit {
+                authenticated: 100,
+                anonymous: 10,
+                window_seconds: 60,
+                burst_size: 5,
+            },
+        );
+
+        endpoint_limits.insert(
+            "/api/crawler/crawl".to_string(),
+            EndpointLimit {
+                authenticated: 50,
+                anonymous: 5,
+                window_seconds: 300,
+                burst_size: 3,
+            },
+        );
+
+        endpoint_limits.insert(
+            "/api/ai/generate".to_string(),
+            EndpointLimit {
+                authenticated: 30,
+                anonymous: 0, // No access for anonymous
+                window_seconds: 60,
+                burst_size: 5,
+            },
+        );
+
         RateLimitConfig {
             default_authenticated_limit: 1000,
             default_anonymous_limit: 100,
@@ -96,19 +111,19 @@ impl RateLimitBucket {
             last_refill: Instant::now(),
         }
     }
-    
+
     fn reset(&mut self, burst_size: u32) {
         self.count = 0;
         self.window_start = Instant::now();
         self.burst_tokens = burst_size;
         self.last_refill = Instant::now();
     }
-    
+
     fn refill_burst(&mut self, burst_size: u32, refill_rate: Duration) {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_refill);
         let tokens_to_add = (elapsed.as_secs_f64() / refill_rate.as_secs_f64()) as u32;
-        
+
         if tokens_to_add > 0 {
             self.burst_tokens = (self.burst_tokens + tokens_to_add).min(burst_size);
             self.last_refill = now;
@@ -131,19 +146,19 @@ impl RateLimiter {
         } else {
             None
         };
-        
+
         RateLimiter {
             config,
             buckets: Arc::new(RwLock::new(HashMap::new())),
             redis_client,
         }
     }
-    
+
     /// Initialize Redis client for distributed rate limiting
     fn init_redis_client() -> Option<Arc<RwLock<redis::Client>>> {
-        let redis_url = std::env::var("REDIS_URL")
-            .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-        
+        let redis_url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+
         match redis::Client::open(redis_url) {
             Ok(client) => {
                 info!("Redis client initialized for distributed rate limiting");
@@ -155,7 +170,7 @@ impl RateLimiter {
             }
         }
     }
-    
+
     /// Check if a request should be rate limited
     pub async fn check_rate_limit(
         &self,
@@ -164,14 +179,17 @@ impl RateLimiter {
         is_authenticated: bool,
     ) -> Result<RateLimitStatus, RateLimitError> {
         // Use Redis if available
-        if let Some(redis_client) = &self.redis_client {
-            return self.check_redis_rate_limit(endpoint, client_id, is_authenticated).await;
+        if self.redis_client.is_some() {
+            return self
+                .check_redis_rate_limit(endpoint, client_id, is_authenticated)
+                .await;
         }
-        
+
         // Fall back to in-memory rate limiting
-        self.check_memory_rate_limit(endpoint, client_id, is_authenticated).await
+        self.check_memory_rate_limit(endpoint, client_id, is_authenticated)
+            .await
     }
-    
+
     /// Check rate limit using Redis
     async fn check_redis_rate_limit(
         &self,
@@ -179,25 +197,27 @@ impl RateLimiter {
         client_id: &str,
         is_authenticated: bool,
     ) -> Result<RateLimitStatus, RateLimitError> {
-        let redis_client = self.redis_client.as_ref().unwrap();
+        let redis_client = self.redis_client.as_ref().ok_or_else(|| {
+            RateLimitError::RedisError("Redis client is not configured".to_string())
+        })?;
         let mut conn = redis_client
             .read()
             .await
             .get_async_connection()
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
-        
+
         let limit_config = self.get_limit_config(endpoint, is_authenticated);
         let key = format!("rate_limit:{}:{}", endpoint, client_id);
         let window = Duration::from_secs(limit_config.window_seconds);
-        
+
         // Use Redis INCR with TTL
         let count: u32 = deadpool_redis::redis::cmd("INCR")
             .arg(&key)
             .query_async::<u32>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
-        
+
         if count == 1 {
             // First request in window, set TTL
             deadpool_redis::redis::cmd("EXPIRE")
@@ -207,7 +227,7 @@ impl RateLimiter {
                 .await
                 .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
         }
-        
+
         if count > limit_config.limit {
             // Get TTL for retry-after header
             let ttl: i64 = deadpool_redis::redis::cmd("TTL")
@@ -215,7 +235,7 @@ impl RateLimiter {
                 .query_async::<i64>(&mut conn)
                 .await
                 .unwrap_or(window.as_secs() as i64);
-            
+
             Ok(RateLimitStatus::Limited {
                 retry_after_seconds: ttl.max(1) as u64,
                 limit: limit_config.limit,
@@ -230,7 +250,7 @@ impl RateLimiter {
             })
         }
     }
-    
+
     /// Check rate limit using in-memory storage
     async fn check_memory_rate_limit(
         &self,
@@ -241,29 +261,29 @@ impl RateLimiter {
         let limit_config = self.get_limit_config(endpoint, is_authenticated);
         let key = format!("{}:{}", endpoint, client_id);
         let window = Duration::from_secs(limit_config.window_seconds);
-        
+
         let mut buckets = self.buckets.write().await;
-        let bucket = buckets.entry(key).or_insert_with(|| {
-            RateLimitBucket::new(limit_config.burst_size)
-        });
-        
+        let bucket = buckets
+            .entry(key)
+            .or_insert_with(|| RateLimitBucket::new(limit_config.burst_size));
+
         let now = Instant::now();
-        
+
         // Check if window has expired
         if now.duration_since(bucket.window_start) >= window {
             bucket.reset(limit_config.burst_size);
         }
-        
+
         // Refill burst tokens
         bucket.refill_burst(limit_config.burst_size, Duration::from_secs(1));
-        
+
         // Check if request can proceed
         if bucket.count >= limit_config.limit {
             // Check burst tokens
             if bucket.burst_tokens > 0 {
                 bucket.burst_tokens -= 1;
                 bucket.count += 1;
-                
+
                 Ok(RateLimitStatus::AllowedWithBurst {
                     limit: limit_config.limit,
                     remaining: 0,
@@ -272,7 +292,7 @@ impl RateLimiter {
                 })
             } else {
                 let retry_after = window - now.duration_since(bucket.window_start);
-                
+
                 Ok(RateLimitStatus::Limited {
                     retry_after_seconds: retry_after.as_secs(),
                     limit: limit_config.limit,
@@ -282,7 +302,7 @@ impl RateLimiter {
             }
         } else {
             bucket.count += 1;
-            
+
             Ok(RateLimitStatus::Allowed {
                 limit: limit_config.limit,
                 remaining: limit_config.limit - bucket.count,
@@ -290,7 +310,7 @@ impl RateLimiter {
             })
         }
     }
-    
+
     /// Get limit configuration for an endpoint
     fn get_limit_config(&self, endpoint: &str, is_authenticated: bool) -> LimitConfig {
         if let Some(endpoint_limit) = self.config.endpoint_limits.get(endpoint) {
@@ -315,23 +335,26 @@ impl RateLimiter {
             }
         }
     }
-    
+
     /// Clean up old buckets (for memory-based rate limiting)
     pub async fn cleanup_old_buckets(&self) {
         let mut buckets = self.buckets.write().await;
         let now = Instant::now();
-        
+
         buckets.retain(|_, bucket| {
             now.duration_since(bucket.window_start) < Duration::from_secs(3600) // Keep for 1 hour
         });
-        
-        debug!("Cleaned up old rate limit buckets. Remaining: {}", buckets.len());
+
+        debug!(
+            "Cleaned up old rate limit buckets. Remaining: {}",
+            buckets.len()
+        );
     }
-    
+
     /// Get statistics about rate limiting
     pub async fn get_stats(&self) -> RateLimitStats {
         let buckets = self.buckets.read().await;
-        
+
         RateLimitStats {
             total_buckets: buckets.len(),
             redis_enabled: self.redis_client.is_some(),
@@ -372,25 +395,36 @@ pub enum RateLimitStatus {
 
 impl RateLimitStatus {
     pub fn is_allowed(&self) -> bool {
-        matches!(self, RateLimitStatus::Allowed { .. } | RateLimitStatus::AllowedWithBurst { .. })
+        matches!(
+            self,
+            RateLimitStatus::Allowed { .. } | RateLimitStatus::AllowedWithBurst { .. }
+        )
     }
-    
+
     pub fn to_headers(&self) -> HashMap<String, String> {
         let mut headers = HashMap::new();
-        
+
         match self {
-            RateLimitStatus::Allowed { limit, remaining, .. } |
-            RateLimitStatus::AllowedWithBurst { limit, remaining, .. } => {
+            RateLimitStatus::Allowed {
+                limit, remaining, ..
+            }
+            | RateLimitStatus::AllowedWithBurst {
+                limit, remaining, ..
+            } => {
                 headers.insert("X-RateLimit-Limit".to_string(), limit.to_string());
                 headers.insert("X-RateLimit-Remaining".to_string(), remaining.to_string());
             }
-            RateLimitStatus::Limited { retry_after_seconds, limit, .. } => {
+            RateLimitStatus::Limited {
+                retry_after_seconds,
+                limit,
+                ..
+            } => {
                 headers.insert("X-RateLimit-Limit".to_string(), limit.to_string());
                 headers.insert("X-RateLimit-Remaining".to_string(), "0".to_string());
                 headers.insert("Retry-After".to_string(), retry_after_seconds.to_string());
             }
         }
-        
+
         headers
     }
 }
@@ -429,18 +463,21 @@ pub async fn rate_limit_middleware(
     let endpoint = request.url();
     let client_id = get_client_id(request);
     let is_authenticated = is_authenticated_request(request);
-    
-    match rate_limiter.check_rate_limit(endpoint, &client_id, is_authenticated).await {
+
+    match rate_limiter
+        .check_rate_limit(endpoint, &client_id, is_authenticated)
+        .await
+    {
         Ok(status) => {
             if !status.is_allowed() {
                 let headers = status.to_headers();
-                let mut response = rouille::Response::text("Rate limit exceeded")
-                    .with_status_code(429);
-                
+                let mut response =
+                    rouille::Response::text("Rate limit exceeded").with_status_code(429);
+
                 for (key, value) in headers {
                     response = response.with_additional_header(key, value);
                 }
-                
+
                 Some(response)
             } else {
                 None // Allow request to proceed
@@ -459,21 +496,21 @@ fn get_client_id(request: &rouille::Request) -> String {
     if let Some(user_id) = request.header("X-User-Id") {
         return user_id.to_string();
     }
-    
+
     // Try to get session ID
     if let Some(session_id) = request.header("X-Session-Id") {
         return session_id.to_string();
     }
-    
+
     // Fall back to IP address
     request.remote_addr().to_string()
 }
 
 /// Check if request is authenticated
 fn is_authenticated_request(request: &rouille::Request) -> bool {
-    request.header("Authorization").is_some() || 
-    request.header("X-API-Key").is_some() ||
-    request.header("X-User-Id").is_some()
+    request.header("Authorization").is_some()
+        || request.header("X-API-Key").is_some()
+        || request.header("X-User-Id").is_some()
 }
 
 #[cfg(test)]
@@ -492,7 +529,7 @@ mod tests {
     async fn test_rate_limiter_creation() {
         let config = RateLimitConfig::default();
         let limiter = RateLimiter::new(config);
-        
+
         let stats = limiter.get_stats().await;
         assert_eq!(stats.total_buckets, 0);
     }
@@ -503,25 +540,37 @@ mod tests {
         config.use_redis = false;
         config.default_anonymous_limit = 3;
         config.window_seconds = 1;
-        
+
         let limiter = RateLimiter::new(config);
-        
+
         // First 3 requests should be allowed
         for i in 1..=3 {
-            let status = limiter.check_rate_limit("/api/test", "client1", false).await.unwrap();
+            let status = limiter
+                .check_rate_limit("/api/test", "client1", false)
+                .await
+                .unwrap();
             assert!(status.is_allowed(), "Request {} should be allowed", i);
         }
-        
+
         // 4th request should be limited
-        let status = limiter.check_rate_limit("/api/test", "client1", false).await.unwrap();
+        let status = limiter
+            .check_rate_limit("/api/test", "client1", false)
+            .await
+            .unwrap();
         assert!(!status.is_allowed(), "4th request should be limited");
-        
+
         // Wait for window to reset
         tokio::time::sleep(Duration::from_secs(2)).await;
-        
+
         // Should be allowed again
-        let status = limiter.check_rate_limit("/api/test", "client1", false).await.unwrap();
-        assert!(status.is_allowed(), "Request should be allowed after window reset");
+        let status = limiter
+            .check_rate_limit("/api/test", "client1", false)
+            .await
+            .unwrap();
+        assert!(
+            status.is_allowed(),
+            "Request should be allowed after window reset"
+        );
     }
 
     #[test]
@@ -531,7 +580,7 @@ mod tests {
             remaining: 75,
             reset_at: Instant::now() + Duration::from_secs(60),
         };
-        
+
         let headers = status.to_headers();
         assert_eq!(headers.get("X-RateLimit-Limit").unwrap(), "100");
         assert_eq!(headers.get("X-RateLimit-Remaining").unwrap(), "75");

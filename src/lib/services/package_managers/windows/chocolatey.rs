@@ -1,13 +1,12 @@
 use log;
 
-
 pub async fn set_path() -> Result<(), anyhow::Error> {
     let choco_bin = "C:\\ProgramData\\chocolatey\\bin";
     log::info!("Adding Chocolatey bin to PATH: {}", choco_bin);
     let paths = std::env::var_os("PATH").unwrap_or_default();
     let mut new_path = std::env::split_paths(&paths).collect::<Vec<_>>();
     new_path.push(std::path::PathBuf::from(choco_bin));
-    let joined = std::env::join_paths(new_path).unwrap();
+    let joined = std::env::join_paths(new_path)?;
     std::env::set_var("PATH", &joined);
     Ok(())
 }
@@ -72,7 +71,11 @@ pub async fn verify() -> Result<(), anyhow::Error> {
     log::info!("Verifying Chocolatey installation...");
     if tokio::fs::metadata(choco_path).await.is_err() {
         log::error!("Chocolatey is still not available after attempted install. Please ensure C:\\ProgramData\\chocolatey\\bin is in your PATH and choco.exe exists.");
-        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Chocolatey not found after install").into());
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Chocolatey not found after install",
+        )
+        .into());
     } else {
         log::info!("Chocolatey found at {}", choco_path);
     }

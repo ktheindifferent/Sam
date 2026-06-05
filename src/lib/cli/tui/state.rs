@@ -59,6 +59,110 @@ pub struct ServiceStatus {
     pub memory_history: RingBuffer,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ServiceCatalogEntry {
+    pub key: &'static str,
+    pub label: &'static str,
+}
+
+pub const SERVICE_CATALOG: [ServiceCatalogEntry; 13] = [
+    ServiceCatalogEntry {
+        key: "crawler",
+        label: "Crawler",
+    },
+    ServiceCatalogEntry {
+        key: "redis",
+        label: "Redis",
+    },
+    ServiceCatalogEntry {
+        key: "docker",
+        label: "Docker",
+    },
+    ServiceCatalogEntry {
+        key: "sms",
+        label: "SMS",
+    },
+    ServiceCatalogEntry {
+        key: "postgres",
+        label: "PostgreSQL",
+    },
+    ServiceCatalogEntry {
+        key: "lifx",
+        label: "LIFX",
+    },
+    ServiceCatalogEntry {
+        key: "http_server",
+        label: "HTTP Server",
+    },
+    ServiceCatalogEntry {
+        key: "ollama",
+        label: "Ollama AI",
+    },
+    ServiceCatalogEntry {
+        key: "tts",
+        label: "TTS",
+    },
+    ServiceCatalogEntry {
+        key: "stt",
+        label: "STT",
+    },
+    ServiceCatalogEntry {
+        key: "ssh_server",
+        label: "SSH Server",
+    },
+    ServiceCatalogEntry {
+        key: "media",
+        label: "Media Center",
+    },
+    ServiceCatalogEntry {
+        key: "snapcast",
+        label: "Snapcast",
+    },
+];
+
+pub fn is_healthy_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "running" | "connected" | "online"
+    )
+}
+
+impl ServiceStatus {
+    pub fn status_for(&self, key: &str) -> &str {
+        match key {
+            "crawler" => &self.crawler,
+            "redis" => &self.redis,
+            "docker" => &self.docker,
+            "sms" => &self.sms,
+            "postgres" => &self.postgres,
+            "lifx" => &self.lifx,
+            "http_server" => &self.http_server,
+            "ollama" => &self.ollama,
+            "tts" => &self.tts,
+            "stt" => &self.stt,
+            "ssh_server" => &self.ssh_server,
+            "media" => &self.media,
+            "snapcast" => &self.snapcast,
+            _ => "unknown",
+        }
+    }
+
+    pub fn service_rows(&self) -> Vec<(ServiceCatalogEntry, &str)> {
+        SERVICE_CATALOG
+            .iter()
+            .copied()
+            .map(|entry| (entry, self.status_for(entry.key)))
+            .collect()
+    }
+
+    pub fn healthy_service_count(&self) -> usize {
+        SERVICE_CATALOG
+            .iter()
+            .filter(|entry| is_healthy_status(self.status_for(entry.key)))
+            .count()
+    }
+}
+
 /// Notification toast
 #[derive(Debug, Clone)]
 pub struct Notification {
@@ -117,6 +221,7 @@ pub struct TuiState {
     pub log_input_mode: bool,
     pub help_scroll: u16,
     pub file_browser_path: std::path::PathBuf,
+    pub selected_file: usize,
     pub db_table_list: Vec<String>,
     pub selected_table: usize,
     // Coding agent state
@@ -163,6 +268,7 @@ impl Default for TuiState {
             log_input_mode: false,
             help_scroll: 0,
             file_browser_path: std::path::PathBuf::from("."),
+            selected_file: 0,
             db_table_list: Vec::new(),
             selected_table: 0,
             coding_agent_input: String::new(),

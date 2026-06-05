@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use tokio::sync::RwLock;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 
-use super::gpu_offload::{GpuOffloadManager, GpuInstance};
+use super::gpu_offload::{GpuInstance, GpuOffloadManager};
 use super::traits::provider::LLMProvider;
 
 /// Remote Ollama configuration
@@ -28,7 +28,7 @@ impl Default for RemoteOllamaConfig {
             use_gpu_offload: false,
             fallback_to_local: true,
             health_check_interval_secs: 30,
-            request_timeout_secs: 300, // 5 minutes for large models
+            request_timeout_secs: 300,       // 5 minutes for large models
             model_loading_timeout_secs: 600, // 10 minutes for initial model load
         }
     }
@@ -56,8 +56,10 @@ impl RemoteOllamaProvider {
             .unwrap_or_else(|_| Client::new());
 
         let current_endpoint = Arc::new(RwLock::new(
-            config.remote_endpoint.clone()
-                .unwrap_or_else(|| config.local_endpoint.clone())
+            config
+                .remote_endpoint
+                .clone()
+                .unwrap_or_else(|| config.local_endpoint.clone()),
         ));
 
         Self {
@@ -89,7 +91,11 @@ impl RemoteOllamaProvider {
             let mut healthy = self.is_remote_healthy.write().await;
             *healthy = true;
 
-            log::info!("GPU instance started for session {}: {}", self.session_id, instance.endpoint);
+            log::info!(
+                "GPU instance started for session {}: {}",
+                self.session_id,
+                instance.endpoint
+            );
         }
 
         Ok(())
@@ -137,7 +143,8 @@ impl RemoteOllamaProvider {
 
     /// Check health of an Ollama endpoint
     async fn check_health(&self, endpoint: &str) -> Result<bool> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/api/tags", endpoint))
             .timeout(Duration::from_secs(5))
             .send()
@@ -155,7 +162,8 @@ impl RemoteOllamaProvider {
             "stream": false
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/pull", endpoint))
             .json(&request_body)
             .timeout(Duration::from_secs(self.config.model_loading_timeout_secs))
@@ -191,14 +199,22 @@ impl RemoteOllamaProvider {
 
         // Fallback to local if configured
         if self.config.fallback_to_local {
-            self.generate_from_endpoint(&self.config.local_endpoint, prompt, model).await
+            self.generate_from_endpoint(&self.config.local_endpoint, prompt, model)
+                .await
         } else {
-            Err(anyhow::anyhow!("Remote endpoint unavailable and fallback disabled"))
+            Err(anyhow::anyhow!(
+                "Remote endpoint unavailable and fallback disabled"
+            ))
         }
     }
 
     /// Generate from specific endpoint
-    async fn generate_from_endpoint(&self, endpoint: &str, prompt: &str, model: &str) -> Result<String> {
+    async fn generate_from_endpoint(
+        &self,
+        endpoint: &str,
+        prompt: &str,
+        model: &str,
+    ) -> Result<String> {
         let request_body = serde_json::json!({
             "model": model,
             "prompt": prompt,
@@ -210,7 +226,8 @@ impl RemoteOllamaProvider {
             }
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/generate", endpoint))
             .json(&request_body)
             .send()
@@ -273,7 +290,8 @@ impl RemoteOllamaProvider {
 
         if use_remote {
             if let Some(gpu_manager) = &self.gpu_manager {
-                if let Some(gpu_endpoint) = gpu_manager.get_ollama_endpoint(&self.session_id).await {
+                if let Some(gpu_endpoint) = gpu_manager.get_ollama_endpoint(&self.session_id).await
+                {
                     *endpoint = gpu_endpoint;
                 } else if let Some(remote) = &self.config.remote_endpoint {
                     *endpoint = remote.clone();
@@ -295,9 +313,8 @@ impl RemoteOllamaProvider {
 }
 
 use super::traits::provider::{
-    GenerateRequest, GenerateResponse, Model, ProviderInfo,
-    ProviderMetrics, ProviderType, ResponseStream, StreamChunk,
-    TokenUsage, FinishReason,
+    FinishReason, GenerateRequest, GenerateResponse, Model, ProviderInfo, ProviderMetrics,
+    ProviderType, ResponseStream, StreamChunk, TokenUsage,
 };
 
 #[async_trait::async_trait]
@@ -313,7 +330,9 @@ impl LLMProvider for RemoteOllamaProvider {
             }
         }
 
-        let text = self.generate_with_failover(&request.prompt, &request.model).await?;
+        let text = self
+            .generate_with_failover(&request.prompt, &request.model)
+            .await?;
 
         Ok(GenerateResponse {
             text,
@@ -335,11 +354,13 @@ impl LLMProvider for RemoteOllamaProvider {
         let response = self.generate(request).await?;
 
         tokio::spawn(async move {
-            let _ = tx.send(StreamChunk {
-                delta: response.text,
-                is_final: true,
-                metadata: Some(response.metadata),
-            }).await;
+            let _ = tx
+                .send(StreamChunk {
+                    delta: response.text,
+                    is_final: true,
+                    metadata: Some(response.metadata),
+                })
+                .await;
         });
 
         Ok(ResponseStream::new(rx))
@@ -379,7 +400,8 @@ impl LLMProvider for RemoteOllamaProvider {
     async fn list_models(&self) -> Result<Vec<Model>> {
         let endpoint = self.current_endpoint.read().await.clone();
 
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/api/tags", endpoint))
             .send()
             .await?;

@@ -18,7 +18,7 @@ async fn handle_ssh_unix(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 
     // Build SSH command string
     let ssh_command = format!("ssh -o StrictHostKeyChecking=ask -tt {}", ssh_args);
-    
+
     {
         let mut lines = output_lines.lock().await;
         lines.push(format!("[ssh] Starting: {}", ssh_command));
@@ -26,10 +26,10 @@ async fn handle_ssh_unix(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 
     // Use the TUI takeover to handle the SSH session
     let needs_restart = crate::cli::tui::tui_takeover_ssh_session(&ssh_command);
-    
+
     let mut lines = output_lines.lock().await;
     lines.push("[ssh] SSH session completed".to_string());
-    
+
     // Add special marker if TUI needs restart
     if needs_restart {
         lines.push("__TUI_RESTART_NEEDED__".to_string());
@@ -37,15 +37,12 @@ async fn handle_ssh_unix(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
 }
 
 #[cfg(windows)]
-pub async fn handle_ssh_windows(
-    cmd: &str,
-    output_lines: &Arc<Mutex<Vec<String>>>,
-) {
+pub async fn handle_ssh_windows(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     use std::process::{Command, Stdio};
     use tokio::io::{AsyncBufReadExt, BufReader};
 
     let ssh_args = cmd.trim_start_matches("ssh ").trim();
-    
+
     if ssh_args.is_empty() {
         let mut lines = output_lines.lock().await;
         lines.push("[ssh] Error: No SSH arguments provided".to_string());
@@ -77,7 +74,7 @@ pub async fn handle_ssh_windows(
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
         let mut lines_stream = reader.lines();
-        
+
         while let Ok(Some(line)) = lines_stream.next_line().await {
             let mut lines = output_lines.lock().await;
             lines.push(format!("[ssh] {}", line));

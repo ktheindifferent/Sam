@@ -45,8 +45,8 @@ pub fn handle(
             let rooms = crate::memory::Room::select(None, None, None, Some(pg_query));
             match rooms {
                 Ok(r) => {
-                    if !r.is_empty() {
-                        room = Some(r[0].clone());
+                    if let Some(found_room) = r.first() {
+                        room = Some(found_room.clone());
                     }
                 }
                 Err(e) => {
@@ -86,7 +86,7 @@ pub fn handle(
         thing.username = input.new_thing_username;
         thing.password = input.new_thing_password;
         thing.thing_type = input.new_thing_type;
-        thing.save().unwrap();
+        thing.save()?;
 
         let mut pg_query = crate::memory::PostgresQueries::default();
         pg_query
@@ -95,9 +95,9 @@ pub fn handle(
         pg_query.query_columns.push("oid =".to_string());
 
         let objects = crate::memory::Thing::select(None, None, None, Some(pg_query))?;
-        if !objects.is_empty() {
+        if let Some(thing) = objects.first() {
             if request.url().contains(".json") {
-                return Ok(Response::json(&objects[0]));
+                return Ok(Response::json(thing));
             } else {
                 let response = Response::redirect_302("/things.html");
                 return Ok(response);

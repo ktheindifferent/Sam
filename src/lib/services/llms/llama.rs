@@ -9,35 +9,35 @@ impl LlamaService {
     fn ensure_repository_cloned() -> io::Result<()> {
         let repositories_dir = Path::new("/opt/sam/repositories");
         let llama_repo_dir = repositories_dir.join("llama.cpp");
-        
+
         if llama_repo_dir.exists() {
             return Ok(());
         }
-        
+
         // Create repositories directory if it doesn't exist
         fs::create_dir_all(repositories_dir)?;
-        
+
         // Clone the repository
         let output = Command::new("git")
             .arg("clone")
             .arg("https://github.com/ggml-org/llama.cpp.git")
             .arg(&llama_repo_dir)
             .output()?;
-        
+
         if !output.status.success() {
             return Err(io::Error::other(format!(
                 "Failed to clone llama.cpp repository: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
-        
+
         Ok(())
     }
 
     pub fn ensure_llama_binary_with_output() -> io::Result<String> {
         let llama_src = Path::new("/opt/sam/repositories/llama.cpp");
         let llama_bin = Path::new("/opt/sam/bin/llama-cli");
-        
+
         // Ensure repository is cloned first
         Self::ensure_repository_cloned()?;
 
@@ -81,7 +81,7 @@ impl LlamaService {
         // Copy binaries from repository root (matching CLI version)
         let mut found_any = false;
         fs::create_dir_all("/opt/sam/bin")?;
-        
+
         // Read directory contents to find built binaries
         let entries = fs::read_dir(llama_src)?;
         for entry in entries {
@@ -95,7 +95,8 @@ impl LlamaService {
                         fs::copy(&path, &target_bin)?;
                         let _ = Command::new("chmod").arg("+x").arg(&target_bin).output();
                         found_any = true;
-                        output_log.push_str(&format!("Installed binary: {}\n", target_bin.display()));
+                        output_log
+                            .push_str(&format!("Installed binary: {}\n", target_bin.display()));
                     }
                 }
             }

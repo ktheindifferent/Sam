@@ -11,20 +11,20 @@ use tokio::io::{self as async_io, AsyncWriteExt};
 use tokio::process::Command as TokioCommand;
 use zip::read::ZipArchive;
 
-pub mod services;
 pub mod cli;
+pub mod db;
 pub mod http;
+pub mod jobs;
+pub mod logging;
 pub mod memory;
+pub mod monitoring;
+pub mod network_config;
+pub mod network_monitor;
+pub mod resource_management;
+pub mod security;
+pub mod services;
 pub mod tools;
 pub mod websocket;
-pub mod network_monitor;
-pub mod network_config;
-pub mod db;
-pub mod jobs;
-pub mod security;
-pub mod logging;
-pub mod monitoring;
-pub mod resource_management;
 
 // pub use self::cmd_async;
 
@@ -56,8 +56,7 @@ pub async fn cmd_async(command: &str) -> Result<String> {
             .arg(command)
             .output()
             .await?;
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
     #[cfg(target_os = "windows")]
     {
@@ -66,9 +65,8 @@ pub async fn cmd_async(command: &str) -> Result<String> {
             .arg(command)
             .output()
             .await?;
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
-
 }
 /// Asynchronously determines the current human user for SAM.
 /// Tries `/opt/sam/whoismyhuman`, then `SAM_USER` env var, then falls back to "unknown_human".
@@ -92,10 +90,7 @@ pub async fn get_human() -> String {
 }
 
 pub async fn run_and_log_async(cmd: &str, args: &[&str]) -> Result<()> {
-    let output = TokioCommand::new(cmd)
-        .args(args)
-        .output()
-        .await;
+    let output = TokioCommand::new(cmd).args(args).output().await;
 
     match output {
         Ok(output) => {
@@ -127,9 +122,7 @@ pub async fn run_and_log_async(cmd: &str, args: &[&str]) -> Result<()> {
                     io::ErrorKind::Other,
                     format!(
                         "Command `{}` failed with status {}: {}",
-                        cmd,
-                        output.status,
-                        stderr
+                        cmd, output.status, stderr
                     ),
                 ));
             }
@@ -148,9 +141,7 @@ pub async fn run_and_log_async(cmd: &str, args: &[&str]) -> Result<()> {
 }
 
 pub fn run_and_log(cmd: &str, args: &[&str]) -> Result<()> {
-    let output = Command::new(cmd)
-        .args(args)
-        .output();
+    let output = Command::new(cmd).args(args).output();
 
     match output {
         Ok(output) => {
@@ -185,7 +176,10 @@ pub fn run_and_log(cmd: &str, args: &[&str]) -> Result<()> {
     }
 }
 
-pub async fn println(output_lines: Option<&std::sync::Arc<tokio::sync::Mutex<Vec<String>>>>, line: String) {
+pub async fn println(
+    output_lines: Option<&std::sync::Arc<tokio::sync::Mutex<Vec<String>>>>,
+    line: String,
+) {
     if let Some(lines) = output_lines {
         let mut linesx = lines.lock().await;
         linesx.push(line);

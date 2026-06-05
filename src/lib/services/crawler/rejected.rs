@@ -1,14 +1,14 @@
 //! Storage for URLs rejected by robots.txt or other policies
-//! 
+//!
 //! This module provides persistent storage for URLs that were rejected during crawling,
 //! primarily due to robots.txt restrictions. This helps avoid repeated checks and
 //! provides data for analysis of crawling patterns.
 
 use anyhow::Result;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::Row;
-use log::{debug, info};
 
 /// Reasons why a URL was rejected from crawling
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,7 +46,7 @@ impl RejectionReason {
             Self::Other(desc) => format!("other:{}", desc),
         }
     }
-    
+
     /// Parse from database string
     pub fn from_string(s: &str) -> Self {
         match s {
@@ -81,7 +81,7 @@ pub struct CrawlRejected {
     pub crawl_job_oid: Option<String>,
     pub rejected_at: i64,
     pub retry_after: Option<i64>, // Timestamp when retry might be allowed
-    pub rejection_count: i32, // How many times this URL has been rejected
+    pub rejection_count: i32,     // How many times this URL has been rejected
 }
 
 impl CrawlRejected {
@@ -96,7 +96,7 @@ impl CrawlRejected {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        
+
         // Parse URL to extract domain and path
         let (domain, path) = if let Ok(parsed) = url::Url::parse(&url) {
             (
@@ -106,7 +106,7 @@ impl CrawlRejected {
         } else {
             ("".to_string(), "".to_string())
         };
-        
+
         Self {
             id: 0,
             url,
@@ -121,7 +121,7 @@ impl CrawlRejected {
             rejection_count: 1,
         }
     }
-    
+
     /// Create a rejection specifically for robots.txt
     pub fn robots_blocked(
         url: String,
@@ -133,12 +133,12 @@ impl CrawlRejected {
         rejection.robots_rule = rule;
         rejection
     }
-    
+
     /// SQL table name
     pub fn sql_table_name() -> String {
         "crawl_rejected".to_string()
     }
-    
+
     /// SQL table creation statement
     pub fn sql_build_statement() -> &'static str {
         "CREATE TABLE IF NOT EXISTS crawl_rejected (
@@ -156,12 +156,12 @@ impl CrawlRejected {
             UNIQUE(url, user_agent)
         );"
     }
-    
+
     /// SQL migrations
     pub fn migrations() -> Vec<&'static str> {
         vec![]
     }
-    
+
     /// SQL indexes for efficient lookups
     pub fn sql_indexes() -> Vec<&'static str> {
         vec![
@@ -179,7 +179,7 @@ impl CrawlRejected {
             "CREATE INDEX IF NOT EXISTS idx_crawl_rejected_job ON crawl_rejected(crawl_job_oid);",
         ]
     }
-    
+
     /// Build from database row
     pub fn from_row(row: &Row) -> Result<Self> {
         Ok(Self {
@@ -196,16 +196,18 @@ impl CrawlRejected {
             rejection_count: row.get("rejection_count"),
         })
     }
-    
+
     /// Save or update rejection to database
     pub async fn save(&mut self) -> Result<()> {
         // Get database connection from crawler pool
-        let client = super::get_db_connection().await
+        let client = super::get_db_connection()
+            .await
             .ok_or_else(|| anyhow::anyhow!("Failed to get database connection"))?;
-        
+
         // Try to insert, on conflict update the count and timestamp
-        let result = client.query_one(
-            "INSERT INTO crawl_rejected (
+        let result = client
+            .query_one(
+                "INSERT INTO crawl_rejected (
                 url, domain, path, reason, robots_rule, user_agent,
                 crawl_job_oid, rejected_at, retry_after, rejection_count
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -216,88 +218,108 @@ impl CrawlRejected {
                 robots_rule = EXCLUDED.robots_rule,
                 reason = EXCLUDED.reason
             RETURNING id, rejection_count",
-            &[
-                &self.url,
-                &self.domain,
-                &self.path,
-                &self.reason.to_string(),
-                &self.robots_rule,
-                &self.user_agent,
-                &self.crawl_job_oid,
-                &self.rejected_at,
-                &self.retry_after,
-                &self.rejection_count,
-            ]
-        ).await?;
-        
+                &[
+                    &self.url,
+                    &self.domain,
+                    &self.path,
+                    &self.reason.to_string(),
+                    &self.robots_rule,
+                    &self.user_agent,
+                    &self.crawl_job_oid,
+                    &self.rejected_at,
+                    &self.retry_after,
+                    &self.rejection_count,
+                ],
+            )
+            .await?;
+
         self.id = result.get("id");
         self.rejection_count = result.get("rejection_count");
-        
+
         if self.rejection_count > 1 {
-            debug!("URL {} rejected {} times for user agent {}", 
-                   self.url, self.rejection_count, self.user_agent);
+            debug!(
+                "URL {} rejected {} times for user agent {}",
+                self.url, self.rejection_count, self.user_agent
+            );
         }
-        
+
         Ok(())
     }
-    
+
     /// Check if a URL has been rejected before
     pub async fn is_rejected(url: &str, user_agent: &str) -> Result<Option<Self>> {
-        let client = super::get_db_connection().await
+        let client = super::get_db_connection()
+            .await
             .ok_or_else(|| anyhow::anyhow!("Failed to get database connection"))?;
-        
-        let rows = client.query(
-            "SELECT * FROM crawl_rejected WHERE url = $1 AND user_agent = $2",
-            &[&url, &user_agent]
-        ).await?;
-        
+
+        let rows = client
+            .query(
+                "SELECT * FROM crawl_rejected WHERE url = $1 AND user_agent = $2",
+                &[&url, &user_agent],
+            )
+            .await?;
+
         if let Some(row) = rows.first() {
             Ok(Some(Self::from_row(row)?))
         } else {
             Ok(None)
         }
     }
-    
+
     /// Get all rejections for a domain
     pub async fn get_domain_rejections(domain: &str) -> Result<Vec<Self>> {
-        let client = super::get_db_connection().await
+        let client = super::get_db_connection()
+            .await
             .ok_or_else(|| anyhow::anyhow!("Failed to get database connection"))?;
-        
-        let rows = client.query(
-            "SELECT * FROM crawl_rejected WHERE domain = $1 ORDER BY rejected_at DESC",
-            &[&domain]
-        ).await?;
-        
-        rows.iter()
-            .map(Self::from_row)
-            .collect()
+
+        let rows = client
+            .query(
+                "SELECT * FROM crawl_rejected WHERE domain = $1 ORDER BY rejected_at DESC",
+                &[&domain],
+            )
+            .await?;
+
+        rows.iter().map(Self::from_row).collect()
     }
-    
+
     /// Get rejection statistics
     pub async fn get_stats() -> Result<serde_json::Value> {
-        let client = super::get_db_connection().await
+        let client = super::get_db_connection()
+            .await
             .ok_or_else(|| anyhow::anyhow!("Failed to get database connection"))?;
-        
+
         // Get counts by reason
-        let reason_counts = client.query(
-            "SELECT reason, COUNT(*) as count FROM crawl_rejected GROUP BY reason",
-            &[]
-        ).await?;
-        
+        let reason_counts = client
+            .query(
+                "SELECT reason, COUNT(*) as count FROM crawl_rejected GROUP BY reason",
+                &[],
+            )
+            .await?;
+
         // Get top rejected domains
-        let top_domains = client.query(
-            "SELECT domain, COUNT(*) as count FROM crawl_rejected 
+        let top_domains = client
+            .query(
+                "SELECT domain, COUNT(*) as count FROM crawl_rejected
              GROUP BY domain ORDER BY count DESC LIMIT 10",
-            &[]
-        ).await?;
-        
+                &[],
+            )
+            .await?;
+
         // Get recent rejections
-        let recent_count: i64 = client.query_one(
-            "SELECT COUNT(*) FROM crawl_rejected 
+        let one_hour_ago = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as i64 - 3600)
+            .unwrap_or(0);
+
+        let recent_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*) FROM crawl_rejected
              WHERE rejected_at > $1",
-            &[&(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - 3600)]
-        ).await?.get(0);
-        
+                &[&one_hour_ago],
+            )
+            .await?
+            .get(0);
+
         Ok(serde_json::json!({
             "total_rejections": client.query_one("SELECT COUNT(*) FROM crawl_rejected", &[]).await?.get::<_, i64>(0),
             "unique_urls": client.query_one("SELECT COUNT(DISTINCT url) FROM crawl_rejected", &[]).await?.get::<_, i64>(0),
@@ -316,22 +338,26 @@ impl CrawlRejected {
             }).collect::<Vec<_>>(),
         }))
     }
-    
+
     /// Clean up old rejection records (optional maintenance)
     pub async fn cleanup_old_records(days_to_keep: i64) -> Result<i64> {
-        let client = super::get_db_connection().await
+        let client = super::get_db_connection()
+            .await
             .ok_or_else(|| anyhow::anyhow!("Failed to get database connection"))?;
-        
+
         let cutoff = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs() as i64 - (days_to_keep * 86400);
-        
-        let deleted = client.execute(
-            "DELETE FROM crawl_rejected WHERE rejected_at < $1",
-            &[&cutoff]
-        ).await?;
-        
+            .as_secs() as i64
+            - (days_to_keep * 86400);
+
+        let deleted = client
+            .execute(
+                "DELETE FROM crawl_rejected WHERE rejected_at < $1",
+                &[&cutoff],
+            )
+            .await?;
+
         info!("Cleaned up {} old rejection records", deleted);
         Ok(deleted as i64)
     }

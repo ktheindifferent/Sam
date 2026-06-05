@@ -162,7 +162,13 @@ impl Observation {
             if self.deep_vision_json.is_some() {
                 client.execute(
                     "UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
-                    &[&self.deep_vision_json.as_ref().expect("deep_vision_json should be Some"), &self.oid],
+                    &[
+                        &self
+                            .deep_vision_json
+                            .as_ref()
+                            .expect("deep_vision_json should be Some"),
+                        &self.oid,
+                    ],
                 )?;
             }
 
@@ -198,7 +204,13 @@ impl Observation {
             if self.deep_vision_json.is_some() {
                 client.execute(
                     "UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
-                    &[&self.deep_vision_json.as_ref().expect("deep_vision_json should be Some"), &self.oid],
+                    &[
+                        &self
+                            .deep_vision_json
+                            .as_ref()
+                            .expect("deep_vision_json should be Some"),
+                        &self.oid,
+                    ],
                 )?;
             }
 
@@ -250,7 +262,13 @@ impl Observation {
                 client
                     .execute(
                         "UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
-                        &[&self.deep_vision_json.as_ref().expect("deep_vision_json should be Some"), &self.oid],
+                        &[
+                            &self
+                                .deep_vision_json
+                                .as_ref()
+                                .expect("deep_vision_json should be Some"),
+                            &self.oid,
+                        ],
                     )
                     .await?;
             }
@@ -269,7 +287,13 @@ impl Observation {
                 client
                     .execute(
                         "UPDATE observations SET deep_vision_json = $1 WHERE oid = $2;",
-                        &[&self.deep_vision_json.as_ref().expect("deep_vision_json should be Some"), &self.oid],
+                        &[
+                            &self
+                                .deep_vision_json
+                                .as_ref()
+                                .expect("deep_vision_json should be Some"),
+                            &self.oid,
+                        ],
                     )
                     .await?;
             }
@@ -383,8 +407,7 @@ impl Observation {
         let mut observation_type = ObservationType::UNKNOWN;
         let sql_observation_type: Option<String> = row.get("observation_type");
         if let Some(object) = sql_observation_type {
-            let obj = ObservationType::from_str(&object)
-                .map_err(|e| anyhow::anyhow!(e))?;
+            let obj = ObservationType::from_str(&object).map_err(|e| anyhow::anyhow!(e))?;
             observation_type = obj.clone();
         }
 
@@ -409,7 +432,7 @@ impl Observation {
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string())
                 .collect();
-            
+
             if !human_oids.is_empty() {
                 // Build a single query for all human OIDs
                 let mut pg_query = PostgresQueries::default();
@@ -419,9 +442,11 @@ impl Observation {
                     } else {
                         pg_query.query_columns.push("oid ilike".to_string());
                     }
-                    pg_query.queries.push(crate::memory::PGCol::String(oid.clone()));
+                    pg_query
+                        .queries
+                        .push(crate::memory::PGCol::String(oid.clone()));
                 }
-                
+
                 // Execute single query to get all humans
                 let all_humans = Human::select(None, None, None, Some(pg_query))?;
                 observation_humans = all_humans;
@@ -471,8 +496,7 @@ impl Observation {
         let mut observation_type = ObservationType::UNKNOWN;
         let sql_observation_type: Option<String> = row.get("observation_type");
         if let Some(object) = sql_observation_type {
-            let obj = ObservationType::from_str(&object)
-                .map_err(|e| anyhow::anyhow!(e))?;
+            let obj = ObservationType::from_str(&object).map_err(|e| anyhow::anyhow!(e))?;
             observation_type = obj.clone();
         }
 
@@ -548,7 +572,7 @@ impl Observation {
     pub async fn destroy_async(oid: String) -> Result<bool> {
         crate::memory::Config::destroy_row_async(oid, "observations".to_string()).await
     }
-    
+
     /// Batch loads observations with their related humans in a single optimized query
     pub async fn select_with_humans_batch(
         limit: Option<usize>,
@@ -558,21 +582,22 @@ impl Observation {
     ) -> Result<Vec<Self>> {
         // First get the observations
         let observations = Self::select_async(limit, offset, order, query).await?;
-        
+
         if observations.is_empty() {
             return Ok(observations);
         }
-        
+
         // Collect all unique human OIDs from all observations
         let mut all_human_oids = std::collections::HashSet::new();
         for obs in &observations {
-            let sql_observation_humans = obs.observation_humans
+            let sql_observation_humans = obs
+                .observation_humans
                 .iter()
                 .map(|h| h.oid.clone())
                 .collect::<Vec<String>>();
             all_human_oids.extend(sql_observation_humans);
         }
-        
+
         // Batch load all humans in a single query
         let mut humans_map = std::collections::HashMap::new();
         if !all_human_oids.is_empty() {
@@ -585,15 +610,17 @@ impl Observation {
                     pg_query.query_columns.push("oid =".to_string());
                     first = false;
                 }
-                pg_query.queries.push(crate::memory::PGCol::String(oid.clone()));
+                pg_query
+                    .queries
+                    .push(crate::memory::PGCol::String(oid.clone()));
             }
-            
+
             let all_humans = Human::select_async(None, None, None, Some(pg_query)).await?;
             for human in all_humans {
                 humans_map.insert(human.oid.clone(), human);
             }
         }
-        
+
         // Map humans back to observations
         let mut result = Vec::new();
         for mut obs in observations {
@@ -606,7 +633,7 @@ impl Observation {
             obs.observation_humans = updated_humans;
             result.push(obs);
         }
-        
+
         Ok(result)
     }
 }

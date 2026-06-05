@@ -1,6 +1,3 @@
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -16,6 +13,9 @@ use ratatui::{
 };
 use std::fs;
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Cursor position in the editor
 #[derive(Debug, Clone, Copy)]
@@ -252,27 +252,27 @@ impl EditorState {
 /// Render the editor interface
 fn render_editor(f: &mut Frame, state: &EditorState) {
     let size = f.area();
-    
+
     // Main layout - always reserve space for key help at bottom
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(3),      // Main editor area
-            Constraint::Length(2),   // Status line
-            Constraint::Length(3),   // Key help at bottom
+            Constraint::Min(3),                                      // Main editor area
+            Constraint::Length(2),                                   // Status line
+            Constraint::Length(3),                                   // Key help at bottom
             Constraint::Length(if state.show_help { 6 } else { 0 }), // Extended help area
         ])
         .split(size);
 
     // Render main editor area
     render_main_editor(f, chunks[0], state);
-    
+
     // Render status line
     render_status_line(f, chunks[1], state);
-    
+
     // Always render key help at bottom
     render_key_help(f, chunks[2], state);
-    
+
     // Render extended help if requested
     if state.show_help {
         render_help(f, chunks[3]);
@@ -282,54 +282,61 @@ fn render_editor(f: &mut Frame, state: &EditorState) {
 /// Render the main editor text area
 fn render_main_editor(f: &mut Frame, area: Rect, state: &EditorState) {
     let mut text_lines = Vec::new();
-    
+
     // Calculate visible lines
     let start_line = state.scroll_offset;
     let end_line = (start_line + area.height as usize).min(state.lines.len());
-    
+
     for (line_idx, line) in state.lines[start_line..end_line].iter().enumerate() {
         let actual_line_idx = start_line + line_idx;
-        
+
         // Apply horizontal scrolling
         let visible_text = if state.horizontal_offset < line.len() {
             &line[state.horizontal_offset..]
         } else {
             ""
         };
-        
+
         // Truncate to viewport width
         let truncated_text = if visible_text.len() > area.width as usize {
             &visible_text[..area.width as usize]
         } else {
             visible_text
         };
-        
+
         // Highlight current line
         let style = if actual_line_idx == state.cursor.row {
             Style::default().bg(Color::DarkGray)
         } else {
             Style::default()
         };
-        
+
         text_lines.push(Line::from(Span::styled(truncated_text, style)));
     }
-    
+
     let title = match &state.file_path {
-        Some(path) => format!("nano - {} {}", path.display(), if state.modified { "*" } else { "" }),
+        Some(path) => format!(
+            "nano - {} {}",
+            path.display(),
+            if state.modified { "*" } else { "" }
+        ),
         None => format!("nano - New File {}", if state.modified { "*" } else { "" }),
     };
-    
+
     let paragraph = Paragraph::new(text_lines)
         .block(Block::default().borders(Borders::ALL).title(title))
         .wrap(Wrap { trim: false });
-    
+
     f.render_widget(paragraph, area);
 }
 
 /// Render the status line
 fn render_status_line(f: &mut Frame, area: Rect, state: &EditorState) {
     let status_text = if state.exit_confirm {
-        format!("Save changes before closing? (Y)es/(N)o/(C)ancel: {}", state.status_message)
+        format!(
+            "Save changes before closing? (Y)es/(N)o/(C)ancel: {}",
+            state.status_message
+        )
     } else {
         format!(
             "Line {}/{} Col {} | {}",
@@ -339,11 +346,11 @@ fn render_status_line(f: &mut Frame, area: Rect, state: &EditorState) {
             state.status_message
         )
     };
-    
+
     let status = Paragraph::new(status_text)
         .style(Style::default().bg(Color::Blue).fg(Color::White))
         .block(Block::default().borders(Borders::ALL));
-    
+
     f.render_widget(status, area);
 }
 
@@ -354,11 +361,11 @@ fn render_key_help(f: &mut Frame, area: Rect, state: &EditorState) {
     } else {
         "^X Exit   ^O Save   ^G Help   ^K Cut Line   ^U Uncut   ^W Search   ^V Page Down   ^Y Page Up"
     };
-    
+
     let help = Paragraph::new(help_text)
         .style(Style::default().bg(Color::DarkGray).fg(Color::White))
         .block(Block::default().borders(Borders::ALL).title("Key Help"));
-    
+
     f.render_widget(help, area);
 }
 
@@ -372,11 +379,11 @@ fn render_help(f: &mut Frame, area: Rect) {
         Line::from("Arrow keys: Navigate   Home/End: Line start/end"),
         Line::from("Enter: New line        Backspace: Delete     Delete: Delete forward"),
     ];
-    
+
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: false });
-    
+
     f.render_widget(help, area);
 }
 
@@ -425,19 +432,19 @@ async fn handle_key_event(
             }
             return Ok(true);
         }
-        
+
         // Save file
         (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
             if let Err(e) = state.save() {
                 state.status_message = format!("Error saving: {}", e);
             }
         }
-        
+
         // Toggle help
         (KeyCode::Char('g'), KeyModifiers::CONTROL) => {
             state.show_help = !state.show_help;
         }
-        
+
         // Navigation
         (KeyCode::Up, _) => state.move_up(),
         (KeyCode::Down, _) => state.move_down(),
@@ -445,12 +452,12 @@ async fn handle_key_event(
         (KeyCode::Right, _) => state.move_right(),
         (KeyCode::Home, _) => state.move_home(),
         (KeyCode::End, _) => state.move_end(),
-        
+
         // Text editing
         (KeyCode::Enter, _) => state.insert_newline(),
         (KeyCode::Backspace, _) => state.delete_char(),
         (KeyCode::Char(ch), _) => state.insert_char(ch),
-        
+
         // Page navigation
         (KeyCode::PageUp, _) => {
             for _ in 0..state.viewport_height {
@@ -462,10 +469,10 @@ async fn handle_key_event(
                 state.move_down();
             }
         }
-        
+
         _ => {} // Ignore other keys
     }
-    
+
     Ok(false)
 }
 
@@ -529,7 +536,7 @@ async fn run_editor_loop(
         let reserved_height = if state.show_help { 11 } else { 5 };
         state.viewport_height = size.height.saturating_sub(reserved_height) as usize;
         state.viewport_width = size.width.saturating_sub(2) as usize;
-        
+
         // Update scroll to keep cursor visible
         state.update_scroll();
 
@@ -539,12 +546,9 @@ async fn run_editor_loop(
         // Handle events
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key_event) = event::read()? {
-                let should_exit = handle_key_event(
-                    key_event.code,
-                    key_event.modifiers,
-                    state,
-                ).await?;
-                
+                let should_exit =
+                    handle_key_event(key_event.code, key_event.modifiers, state).await?;
+
                 if should_exit {
                     break;
                 }
@@ -558,21 +562,25 @@ async fn run_editor_loop(
 /// Handle nano command from CLI
 pub async fn handle_nano(cmd: &str, output_lines: &Arc<Mutex<Vec<String>>>) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
-    
+
     if parts.len() > 2 {
         let mut lines = output_lines.lock().await;
         lines.push("Usage: nano [filename]".to_string());
         return;
     }
-    
-    let file_path = if parts.len() == 2 { Some(parts[1]) } else { None };
-    
+
+    let file_path = if parts.len() == 2 {
+        Some(parts[1])
+    } else {
+        None
+    };
+
     {
         let mut lines = output_lines.lock().await;
         lines.push("Starting nano editor...".to_string());
         lines.push("__TUI_RESTART_NEEDED__".to_string()); // Signal TUI restart
     }
-    
+
     // Run the editor
     if let Err(e) = run_nano_editor(file_path).await {
         let mut lines = output_lines.lock().await;

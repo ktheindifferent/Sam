@@ -13,8 +13,8 @@ pub mod room;
 // pub mod cached_wikipedia_summary;
 // pub mod human_face_encoding;
 pub mod cache;
-pub mod storage;
 pub mod observation_objects;
+pub mod storage;
 
 // Re-export types for convenience
 pub use config::Config;
@@ -42,7 +42,7 @@ pub type Result<T> = anyhow::Result<T>;
 pub fn is_connected() -> Result<bool> {
     // Check if we can connect to PostgreSQL
     let _config = Config::new();
-    
+
     // Try to establish a connection using blocking client
     match postgres::Client::connect(
         &format!(

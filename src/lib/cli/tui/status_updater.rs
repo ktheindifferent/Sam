@@ -22,23 +22,24 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
             sys.refresh_cpu_all();
 
             // Service statuses with better error handling
-            let crawler = match std::panic::catch_unwind(|| {
-                crate::services::crawler::service_status()
-            }) {
-                Ok(status) => {
-                    log::debug!("Crawler service status: {}", status);
-                    status.to_string()
-                }
-                Err(e) => {
-                    log::error!("Failed to get crawler status: {:?}", e);
-                    "error".to_string()
-                }
-            };
+            let crawler =
+                match std::panic::catch_unwind(|| crate::services::crawler::service_status()) {
+                    Ok(status) => {
+                        log::debug!("Crawler service status: {}", status);
+                        status.to_string()
+                    }
+                    Err(e) => {
+                        log::error!("Failed to get crawler status: {:?}", e);
+                        "error".to_string()
+                    }
+                };
 
             let redis = match tokio::time::timeout(
                 Duration::from_millis(500),
-                crate::services::redis::status()
-            ).await {
+                crate::services::redis::status(),
+            )
+            .await
+            {
                 Ok(status) => status.to_string(),
                 Err(_) => {
                     log::debug!("Redis status check timed out");
@@ -52,8 +53,10 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
             } else {
                 match tokio::time::timeout(
                     Duration::from_millis(1000),
-                    crate::services::docker::is_running_async()
-                ).await {
+                    crate::services::docker::is_running_async(),
+                )
+                .await
+                {
                     Ok(Ok(true)) => "running".to_string(),
                     Ok(Ok(false)) => "stopped".to_string(),
                     Ok(Err(_)) => "error".to_string(),
@@ -61,18 +64,18 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
                 }
             };
 
-            let sms = match std::panic::catch_unwind(|| {
-                crate::services::sms::status()
-            }) {
+            let sms = match std::panic::catch_unwind(|| crate::services::sms::status()) {
                 Ok(status) => status.to_string(),
-                Err(_) => "error".to_string()
+                Err(_) => "error".to_string(),
             };
 
             // PostgreSQL status
             let postgres = match tokio::time::timeout(
                 Duration::from_millis(500),
-                crate::services::pg::health_check()
-            ).await {
+                crate::services::pg::health_check(),
+            )
+            .await
+            {
                 Ok(Ok(_)) => "connected".to_string(),
                 Ok(Err(_)) => "disconnected".to_string(),
                 Err(_) => "timeout".to_string(),
@@ -94,21 +97,20 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
             };
 
             // Ollama service with timeout
-            let ollama = match tokio::time::timeout(
-                Duration::from_millis(1000),
-                async {
-                    let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
-                    if service.is_installed().await {
-                        if service.is_running().await {
-                            "running"
-                        } else {
-                            "stopped"
-                        }
+            let ollama = match tokio::time::timeout(Duration::from_millis(1000), async {
+                let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
+                if service.is_installed().await {
+                    if service.is_running().await {
+                        "running"
                     } else {
-                        "not installed"
+                        "stopped"
                     }
+                } else {
+                    "not installed"
                 }
-            ).await {
+            })
+            .await
+            {
                 Ok(status) => status.to_string(),
                 Err(_) => "timeout".to_string(),
             };
@@ -119,7 +121,19 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
                 "running"
             } else {
                 "stopped"
-            }.to_string();
+            }
+            .to_string();
+
+            let media = match crate::services::media::status() {
+                Ok(_) => "running".to_string(),
+                Err(_) => "stopped".to_string(),
+            };
+
+            let snapcast = match crate::services::snapcast::status() {
+                Ok(true) => "running".to_string(),
+                Ok(false) => "stopped".to_string(),
+                Err(_) => "error".to_string(),
+            };
 
             // System metrics
             let memory_usage = {
@@ -181,6 +195,8 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
                 ("tts", &tts),
                 ("stt", &stt),
                 ("ssh_server", &ssh_server),
+                ("media", &media),
+                ("snapcast", &snapcast),
             ]
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -202,10 +218,9 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
             prev_statuses = current_statuses;
 
             // Use lock with timeout to avoid deadlocks
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(100),
-                service_status.lock()
-            ).await {
+            match tokio::time::timeout(std::time::Duration::from_millis(100), service_status.lock())
+                .await
+            {
                 Ok(mut status) => {
                     status.crawler = crawler;
                     status.redis = redis;
@@ -218,15 +233,8 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
                     status.tts = tts;
                     status.stt = stt;
                     status.ssh_server = ssh_server;
-                    status.media = match crate::services::media::status() {
-                        Ok(_) => "running".to_string(),
-                        Err(_) => "stopped".to_string(),
-                    };
-                    status.snapcast = match crate::services::snapcast::status() {
-                        Ok(true) => "running".to_string(),
-                        Ok(false) => "stopped".to_string(),
-                        Err(_) => "error".to_string(),
-                    };
+                    status.media = media;
+                    status.snapcast = snapcast;
                     status.memory_usage = memory_usage;
                     status.cpu_usage = cpu_usage;
                     status.disk_usage = disk_usage;
@@ -238,7 +246,8 @@ pub fn spawn_status_updater(service_status: Arc<Mutex<ServiceStatus>>) {
                     // Parse memory percentage from "X/Y MB (Z%)" format
                     if let Some(start) = status.memory_usage.find('(') {
                         if let Some(end) = status.memory_usage.find("%)") {
-                            if let Ok(mem_val) = status.memory_usage[start+1..end].parse::<f64>() {
+                            if let Ok(mem_val) = status.memory_usage[start + 1..end].parse::<f64>()
+                            {
                                 status.memory_history.push(mem_val);
                             }
                         }

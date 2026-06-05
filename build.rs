@@ -1,5 +1,6 @@
 fn main() {
-    #[cfg(target_os = "windows")]{
+    #[cfg(target_os = "windows")]
+    {
         // Set the path to the directory containing OpenCL.lib
         println!("cargo:rustc-link-search=native=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/lib/x64");
         // Link to the OpenCL library
@@ -13,9 +14,13 @@ fn main() {
     {
         // If the user is trying to build with NST feature, provide guidance
         if std::env::var("LIBTORCH").is_err() && std::env::var("LIBTORCH_USE_PYTORCH").is_err() {
-            eprintln!("================================================================================");
+            eprintln!(
+                "================================================================================"
+            );
             eprintln!("🔥 Neural Style Transfer (NST) Feature Enabled");
-            eprintln!("================================================================================");
+            eprintln!(
+                "================================================================================"
+            );
             eprintln!("");
             eprintln!("The NST feature requires PyTorch/LibTorch to be installed.");
             eprintln!("");
@@ -31,7 +36,9 @@ fn main() {
             eprintln!("   export LIBTORCH_USE_PYTORCH=1");
             eprintln!("");
             eprintln!("📚 More info: docs/features/NST_MODULE.md");
-            eprintln!("================================================================================");
+            eprintln!(
+                "================================================================================"
+            );
         }
     }
 }

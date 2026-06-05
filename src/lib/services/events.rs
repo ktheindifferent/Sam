@@ -27,10 +27,7 @@ pub enum ServiceEvent {
         value: f64,
     },
     /// Service error
-    Error {
-        service: String,
-        message: String,
-    },
+    Error { service: String, message: String },
 }
 
 /// Service group categorization
@@ -62,8 +59,12 @@ impl ServiceGroup {
 /// Mapping of service names to their groups
 pub fn service_group(name: &str) -> ServiceGroup {
     match name.to_lowercase().as_str() {
-        "redis" | "postgres" | "postgresql" | "docker" | "http_server" | "ssh_server" => ServiceGroup::Core,
-        "ollama" | "openai" | "llama" | "rivescript" | "coding_agent" | "copilot" => ServiceGroup::AI,
+        "redis" | "postgres" | "postgresql" | "docker" | "http_server" | "ssh_server" => {
+            ServiceGroup::Core
+        }
+        "ollama" | "openai" | "llama" | "rivescript" | "coding_agent" | "copilot" => {
+            ServiceGroup::AI
+        }
         "lifx" | "matter" | "mdns" => ServiceGroup::Home,
         "spotify" | "youtube" | "tts" | "stt" | "snapcast" | "rtsp" => ServiceGroup::Media,
         "clamav" | "vulnerability_scanner" => ServiceGroup::Security,
@@ -78,10 +79,12 @@ static EVENT_BUS: std::sync::OnceLock<broadcast::Sender<ServiceEvent>> = std::sy
 
 /// Get or initialize the global event bus
 pub fn event_bus() -> broadcast::Sender<ServiceEvent> {
-    EVENT_BUS.get_or_init(|| {
-        let (tx, _) = broadcast::channel(256);
-        tx
-    }).clone()
+    EVENT_BUS
+        .get_or_init(|| {
+            let (tx, _) = broadcast::channel(256);
+            tx
+        })
+        .clone()
 }
 
 /// Subscribe to service events
@@ -166,43 +169,59 @@ impl ServiceAutoRecovery {
                             None => continue,
                         };
 
-                        let should_restart = {
-                            let mut guard = states.lock().unwrap();
-                            let state = guard.entry(service.clone()).or_insert(RecoveryState {
-                                attempt_count: 0,
-                                last_failure: None,
-                            });
+                        let should_restart =
+                            {
+                                let mut guard = match states.lock() {
+                                    Ok(guard) => guard,
+                                    Err(e) => {
+                                        log::error!("Recovery monitor state lock poisoned: {}", e);
+                                        continue;
+                                    }
+                                };
+                                let state = guard.entry(service.clone()).or_insert(RecoveryState {
+                                    attempt_count: 0,
+                                    last_failure: None,
+                                });
 
-                            // Reset counter if cooldown has elapsed
-                            if let Some(last) = state.last_failure {
-                                if last.elapsed() > config.cooldown {
-                                    state.attempt_count = 0;
+                                // Reset counter if cooldown has elapsed
+                                if let Some(last) = state.last_failure {
+                                    if last.elapsed() > config.cooldown {
+                                        state.attempt_count = 0;
+                                    }
                                 }
-                            }
 
-                            if state.attempt_count < config.max_restarts {
-                                state.attempt_count += 1;
-                                state.last_failure = Some(std::time::Instant::now());
-                                true
-                            } else {
-                                log::warn!(
+                                if state.attempt_count < config.max_restarts {
+                                    state.attempt_count += 1;
+                                    state.last_failure = Some(std::time::Instant::now());
+                                    true
+                                } else {
+                                    log::warn!(
                                     "Service '{}' exceeded max restarts ({}), not recovering: {}",
                                     service, config.max_restarts, message
                                 );
-                                false
-                            }
-                        };
+                                    false
+                                }
+                            };
 
                         if should_restart {
-                            let attempt = states.lock().unwrap()
-                                .get(&service)
-                                .map(|s| s.attempt_count)
-                                .unwrap_or(1);
+                            let attempt = match states.lock() {
+                                Ok(guard) => {
+                                    guard.get(&service).map(|s| s.attempt_count).unwrap_or(1)
+                                }
+                                Err(e) => {
+                                    log::error!("Recovery monitor state lock poisoned: {}", e);
+                                    continue;
+                                }
+                            };
                             let delay = Self::backoff_delay(&config, attempt);
 
                             log::info!(
                                 "Scheduling restart for '{}' in {:?} (attempt {}/{}): {}",
-                                service, delay, attempt, config.max_restarts, message
+                                service,
+                                delay,
+                                attempt,
+                                config.max_restarts,
+                                message
                             );
 
                             let svc = service.clone();

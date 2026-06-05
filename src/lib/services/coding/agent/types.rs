@@ -1,14 +1,14 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Risk level assessment for command execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RiskLevel {
-    Safe,      // No risk operations (ls, cat, etc.)
-    Low,       // Minor modifications (formatting, simple edits)
-    Medium,    // Significant changes (dependency additions, file creation)
-    High,      // Potentially destructive (file deletion, major refactoring)
-    Critical,  // System-level operations (chmod, rm -rf, etc.)
+    Safe,     // No risk operations (ls, cat, etc.)
+    Low,      // Minor modifications (formatting, simple edits)
+    Medium,   // Significant changes (dependency additions, file creation)
+    High,     // Potentially destructive (file deletion, major refactoring)
+    Critical, // System-level operations (chmod, rm -rf, etc.)
 }
 
 /// Code execution request with metadata
@@ -162,7 +162,7 @@ pub struct PerformanceMetrics {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LearningMetrics {
     pub command_success_patterns: HashMap<String, f32>, // command -> success rate
-    pub user_preferences: HashMap<String, String>,     // preference -> value
+    pub user_preferences: HashMap<String, String>,      // preference -> value
     pub task_completion_times: HashMap<String, Vec<u64>>, // task_type -> [completion_times]
     pub error_resolution_patterns: HashMap<String, Vec<String>>, // error_pattern -> [successful_resolutions]
 }

@@ -1,8 +1,8 @@
+use anyhow::Result;
+use log::{debug, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use log::{info, debug, warn};
 
 /// Advanced refactoring engine
 pub struct RefactoringEngine {
@@ -236,7 +236,9 @@ impl RefactoringEngine {
         opportunities.sort_by(|a, b| {
             let a_score = self.calculate_opportunity_score(a);
             let b_score = self.calculate_opportunity_score(b);
-            b_score.partial_cmp(&a_score).unwrap()
+            b_score
+                .partial_cmp(&a_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         opportunities
@@ -249,7 +251,10 @@ impl RefactoringEngine {
         // Validate operation
         let validation = self.validate_operation(&operation)?;
         if !validation.is_valid {
-            return Err(anyhow::anyhow!("Invalid refactoring operation: {:?}", validation.errors));
+            return Err(anyhow::anyhow!(
+                "Invalid refactoring operation: {:?}",
+                validation.errors
+            ));
         }
 
         // Create backup if requested
@@ -260,8 +265,12 @@ impl RefactoringEngine {
         };
 
         // Get transformer for language
-        let transformer = self.transformers.get(&operation.target.language)
-            .ok_or_else(|| anyhow::anyhow!("No transformer for language: {}", operation.target.language))?;
+        let transformer = self
+            .transformers
+            .get(&operation.target.language)
+            .ok_or_else(|| {
+                anyhow::anyhow!("No transformer for language: {}", operation.target.language)
+            })?;
 
         // Perform transformation
         let refactored_code = transformer.transform(&operation.target.code, &operation)?;
@@ -280,8 +289,12 @@ impl RefactoringEngine {
 
     /// Preview refactoring without applying
     pub async fn preview(&self, operation: RefactoringOperation) -> Result<RefactoringPreview> {
-        let transformer = self.transformers.get(&operation.target.language)
-            .ok_or_else(|| anyhow::anyhow!("No transformer for language: {}", operation.target.language))?;
+        let transformer = self
+            .transformers
+            .get(&operation.target.language)
+            .ok_or_else(|| {
+                anyhow::anyhow!("No transformer for language: {}", operation.target.language)
+            })?;
 
         transformer.preview(&operation.target.code, &operation)
     }
@@ -303,9 +316,7 @@ impl RefactoringEngine {
                 language: language.to_string(),
                 context: None,
             },
-            parameters: HashMap::from([
-                ("method_name".to_string(), method_name),
-            ]),
+            parameters: HashMap::from([("method_name".to_string(), method_name)]),
             options: RefactoringOptions::default(),
         };
 
@@ -315,9 +326,18 @@ impl RefactoringEngine {
 
         // Create method signature based on language
         let method_signature = match language {
-            "rust" => format!("fn {}() {{\n{}\n}}", operation.parameters["method_name"], extracted_code),
-            "python" => format!("def {}():\n{}", operation.parameters["method_name"], extracted_code),
-            "javascript" => format!("function {}() {{\n{}\n}}", operation.parameters["method_name"], extracted_code),
+            "rust" => format!(
+                "fn {}() {{\n{}\n}}",
+                operation.parameters["method_name"], extracted_code
+            ),
+            "python" => format!(
+                "def {}():\n{}",
+                operation.parameters["method_name"], extracted_code
+            ),
+            "javascript" => format!(
+                "function {}() {{\n{}\n}}",
+                operation.parameters["method_name"], extracted_code
+            ),
             _ => extracted_code.clone(),
         };
 
@@ -406,9 +426,13 @@ impl RefactoringEngine {
         let simplified = if conditional_line.contains("== true") {
             conditional_line.replace("== true", "")
         } else if conditional_line.contains("== false") {
-            conditional_line.replace("== false", "").replace("if ", "if !")
+            conditional_line
+                .replace("== false", "")
+                .replace("if ", "if !")
         } else if conditional_line.contains("!= true") {
-            conditional_line.replace("!= true", "").replace("if ", "if !")
+            conditional_line
+                .replace("!= true", "")
+                .replace("if ", "if !")
         } else if conditional_line.contains("!= false") {
             conditional_line.replace("!= false", "")
         } else {
@@ -467,7 +491,9 @@ impl RefactoringEngine {
                             end_line: i,
                             end_column: 0,
                         },
-                        description: "Long method detected. Consider extracting parts into separate methods.".to_string(),
+                        description:
+                            "Long method detected. Consider extracting parts into separate methods."
+                                .to_string(),
                         impact: ImpactLevel::Moderate,
                         confidence: 0.8,
                         automated: true,
@@ -497,7 +523,9 @@ impl RefactoringEngine {
                             end_line: i,
                             end_column: line.len(),
                         },
-                        description: "Duplicate code detected. Consider extracting to a shared function.".to_string(),
+                        description:
+                            "Duplicate code detected. Consider extracting to a shared function."
+                                .to_string(),
                         impact: ImpactLevel::Minor,
                         confidence: 0.7,
                         automated: false,
@@ -593,12 +621,12 @@ impl RefactoringEngine {
 
     fn calculate_complexity(&self, code: &str) -> f32 {
         // Simple cyclomatic complexity calculation
-        let decision_points = code.matches("if ").count() +
-                            code.matches("else").count() +
-                            code.matches("while").count() +
-                            code.matches("for").count() +
-                            code.matches("match").count() +
-                            code.matches("?").count();
+        let decision_points = code.matches("if ").count()
+            + code.matches("else").count()
+            + code.matches("while").count()
+            + code.matches("for").count()
+            + code.matches("match").count()
+            + code.matches("?").count();
 
         1.0 + decision_points as f32
     }

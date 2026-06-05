@@ -1,13 +1,13 @@
 use super::bulb::BulbInfo;
 use super::protocol::ProtocolHandler;
+use crate::services::thread_manager::{self, ThreadConfig};
 use get_if_addrs::{get_if_addrs, IfAddr, Ifv4Addr};
 use lifx_rs::lan::{Message, RawMessage};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use crate::services::thread_manager::{self, ThreadConfig};
 
 pub struct DiscoveryService {
     bulbs: Arc<Mutex<HashMap<u64, BulbInfo>>>,
@@ -36,14 +36,19 @@ impl DiscoveryService {
             max_memory_mb: None,
             cpu_affinity: None,
         };
-        
+
         thread_manager::spawn_with_config(discovery_config, move |shutdown_signal, _health_rx| {
             log::info!("LIFX discovery worker started");
             // Note: We can't clone UdpSocket, so we need a different approach
             // For now, create a new socket for the worker
             match UdpSocket::bind("0.0.0.0:56701") {
                 Ok(worker_sock) => {
-                    Self::discovery_worker_with_shutdown(worker_sock, source, receiver_bulbs, shutdown_signal);
+                    Self::discovery_worker_with_shutdown(
+                        worker_sock,
+                        source,
+                        receiver_bulbs,
+                        shutdown_signal,
+                    );
                 }
                 Err(e) => {
                     log::error!("Failed to create worker socket: {}", e);
@@ -109,7 +114,7 @@ impl DiscoveryService {
             log::error!("Failed to set socket to non-blocking: {}", e);
             return;
         }
-        
+
         let mut buf = [0; 1024];
         while !shutdown_signal.load(Ordering::Relaxed) {
             match recv_sock.recv_from(&mut buf) {
@@ -123,7 +128,9 @@ impl DiscoveryService {
                             let bulb = bulbs
                                 .entry(raw.frame_addr.target)
                                 .and_modify(|bulb| bulb.update(addr))
-                                .or_insert_with(|| BulbInfo::new(source, raw.frame_addr.target, addr));
+                                .or_insert_with(|| {
+                                    BulbInfo::new(source, raw.frame_addr.target, addr)
+                                });
 
                             if let Ok(message) = Message::from_raw(&raw) {
                                 if let Err(e) = bulb.update_from_message(message) {
@@ -150,7 +157,7 @@ impl DiscoveryService {
             }
         }
     }
-    
+
     // Keep the original method for backward compatibility
     fn discovery_worker(
         recv_sock: UdpSocket,

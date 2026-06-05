@@ -1,16 +1,16 @@
 use super::{
-    types::*,
     errors::{CodingAgentError, CodingAgentResult},
-    providers::LLMProvider,
     execution_context::ExecutionContext,
+    providers::LLMProvider,
+    types::*,
 };
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
 use tokio::fs;
-use async_trait::async_trait;
 
 /// Automated debugging framework for identifying and fixing bugs
 pub struct AutomatedDebuggingEngine {
@@ -415,7 +415,7 @@ impl AutomatedDebuggingEngine {
         session_type: DebugSessionType,
     ) -> CodingAgentResult<String> {
         let session_id = uuid::Uuid::new_v4().to_string();
-        
+
         let session = DebugSession {
             id: session_id.clone(),
             target_file,
@@ -428,12 +428,12 @@ impl AutomatedDebuggingEngine {
             started_at: Utc::now(),
             completed_at: None,
         };
-        
+
         self.debug_sessions.insert(session_id.clone(), session);
-        
+
         // Start automatic debugging
         self.run_debugging_pipeline(&session_id).await?;
-        
+
         Ok(session_id)
     }
 
@@ -441,70 +441,81 @@ impl AutomatedDebuggingEngine {
     async fn run_debugging_pipeline(&mut self, session_id: &str) -> CodingAgentResult<()> {
         // Update status
         self.update_session_status(session_id, DebugSessionStatus::CollectingData)?;
-        
+
         // Collect execution traces
         let traces = self.collect_execution_traces(session_id).await?;
-        
+
         // Update status
         self.update_session_status(session_id, DebugSessionStatus::Analyzing)?;
-        
+
         // Analyze traces for issues
         let findings = self.analyze_traces(&traces).await?;
-        
+
         // Update session with findings
         if let Some(session) = self.debug_sessions.get_mut(session_id) {
             session.findings = findings.clone();
             session.execution_traces = traces;
         }
-        
+
         // Update status
         self.update_session_status(session_id, DebugSessionStatus::GeneratingFixes)?;
-        
+
         // Generate fixes for findings
         let fixes = self.generate_fixes(&findings).await?;
-        
+
         // Update status
         self.update_session_status(session_id, DebugSessionStatus::TestingFixes)?;
-        
+
         // Test the fixes
         let tested_fixes = self.test_fixes(fixes).await?;
-        
+
         // Update session with fixes
         if let Some(session) = self.debug_sessions.get_mut(session_id) {
             session.suggested_fixes = tested_fixes;
             session.status = DebugSessionStatus::Completed;
             session.completed_at = Some(Utc::now());
         }
-        
+
         Ok(())
     }
 
     /// Collect execution traces
-    async fn collect_execution_traces(&self, session_id: &str) -> CodingAgentResult<Vec<ExecutionTrace>> {
-        let session = self.debug_sessions.get(session_id)
-            .ok_or(CodingAgentError::NotFound { resource: "Session".to_string(), id: "current".to_string() })?;
-        
+    async fn collect_execution_traces(
+        &self,
+        session_id: &str,
+    ) -> CodingAgentResult<Vec<ExecutionTrace>> {
+        let session = self
+            .debug_sessions
+            .get(session_id)
+            .ok_or(CodingAgentError::NotFound {
+                resource: "Session".to_string(),
+                id: "current".to_string(),
+            })?;
+
         // Instrument the code
         let instrumented_code = self.instrument_code(&session.target_file).await?;
-        
+
         // Execute with tracing
         let traces = self.execute_with_tracing(instrumented_code).await?;
-        
+
         Ok(traces)
     }
 
     /// Instrument code for debugging
     async fn instrument_code(&self, file: &Path) -> CodingAgentResult<String> {
         let content = fs::read_to_string(file).await?;
-        
+
         // Add tracing instrumentation
         // This would parse the AST and add logging/tracing calls
         let prompt = format!(
             "Instrument this code for debugging by adding trace points: {}",
             content
         );
-        
-        let instrumented = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+
+        let instrumented = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
         Ok(instrumented)
     }
 
@@ -512,30 +523,31 @@ impl AutomatedDebuggingEngine {
     async fn execute_with_tracing(&self, code: String) -> CodingAgentResult<Vec<ExecutionTrace>> {
         // This would execute the instrumented code and collect traces
         // Simplified for example
-        Ok(vec![
-            ExecutionTrace {
-                trace_id: uuid::Uuid::new_v4().to_string(),
-                timestamp: Utc::now(),
-                call_stack: Vec::new(),
-                variables: HashMap::new(),
-                memory_usage: MemorySnapshot {
-                    heap_used: 1024 * 1024,
-                    stack_used: 8192,
-                    total_allocated: 2 * 1024 * 1024,
-                    allocations: Vec::new(),
-                },
-                cpu_usage: 25.0,
-            }
-        ])
+        Ok(vec![ExecutionTrace {
+            trace_id: uuid::Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            call_stack: Vec::new(),
+            variables: HashMap::new(),
+            memory_usage: MemorySnapshot {
+                heap_used: 1024 * 1024,
+                stack_used: 8192,
+                total_allocated: 2 * 1024 * 1024,
+                allocations: Vec::new(),
+            },
+            cpu_usage: 25.0,
+        }])
     }
 
     /// Analyze traces for issues
-    async fn analyze_traces(&self, traces: &[ExecutionTrace]) -> CodingAgentResult<Vec<DebugFinding>> {
+    async fn analyze_traces(
+        &self,
+        traces: &[ExecutionTrace],
+    ) -> CodingAgentResult<Vec<DebugFinding>> {
         let mut findings = Vec::new();
-        
+
         // Analyze for patterns
         let patterns = self.trace_analyzer.detect_patterns(traces)?;
-        
+
         for pattern in patterns {
             findings.push(DebugFinding {
                 finding_type: self.pattern_to_finding_type(&pattern),
@@ -555,7 +567,7 @@ impl AutomatedDebuggingEngine {
                 confidence: 0.8,
             });
         }
-        
+
         Ok(findings)
     }
 
@@ -570,27 +582,30 @@ impl AutomatedDebuggingEngine {
     }
 
     /// Generate fixes for findings
-    async fn generate_fixes(&self, findings: &[DebugFinding]) -> CodingAgentResult<Vec<SuggestedFix>> {
+    async fn generate_fixes(
+        &self,
+        findings: &[DebugFinding],
+    ) -> CodingAgentResult<Vec<SuggestedFix>> {
         let mut fixes = Vec::new();
-        
+
         for finding in findings {
             let fix = self.fix_suggester.suggest_fix(finding).await?;
             fixes.push(fix);
         }
-        
+
         Ok(fixes)
     }
 
     /// Test fixes
     async fn test_fixes(&self, fixes: Vec<SuggestedFix>) -> CodingAgentResult<Vec<SuggestedFix>> {
         let mut tested_fixes = Vec::new();
-        
+
         for mut fix in fixes {
             let test_results = self.test_runner.run_tests(&fix).await?;
             fix.test_results = Some(test_results);
             tested_fixes.push(fix);
         }
-        
+
         Ok(tested_fixes)
     }
 
@@ -604,7 +619,10 @@ impl AutomatedDebuggingEngine {
             session.status = status;
             Ok(())
         } else {
-            Err(CodingAgentError::NotFound { resource: "Session".to_string(), id: "current".to_string() })
+            Err(CodingAgentError::NotFound {
+                resource: "Session".to_string(),
+                id: "current".to_string(),
+            })
         }
     }
 
@@ -625,7 +643,8 @@ impl AutomatedDebuggingEngine {
 
     /// Add watchpoint
     pub fn add_watchpoint(&mut self, variable_name: String, watch_type: WatchType) -> String {
-        self.breakpoint_manager.add_watchpoint(variable_name, watch_type)
+        self.breakpoint_manager
+            .add_watchpoint(variable_name, watch_type)
     }
 }
 
@@ -647,10 +666,13 @@ impl BreakpointManager {
             hit_count: 0,
             log_expression: None,
         };
-        
+
         let file_path = location.file.to_string_lossy().to_string();
-        self.breakpoints.entry(file_path).or_insert_with(Vec::new).push(breakpoint);
-        
+        self.breakpoints
+            .entry(file_path)
+            .or_insert_with(Vec::new)
+            .push(breakpoint);
+
         id
     }
 
@@ -673,7 +695,7 @@ impl BreakpointManager {
             current_value: None,
             hit_count: 0,
         };
-        
+
         self.watchpoints.push(watchpoint);
         id
     }
@@ -687,9 +709,12 @@ impl TraceAnalyzer {
         }
     }
 
-    pub fn detect_patterns(&self, traces: &[ExecutionTrace]) -> CodingAgentResult<Vec<TracePattern>> {
+    pub fn detect_patterns(
+        &self,
+        traces: &[ExecutionTrace],
+    ) -> CodingAgentResult<Vec<TracePattern>> {
         let mut detected = Vec::new();
-        
+
         // Check for infinite loops
         if self.detect_infinite_loop(traces) {
             detected.push(TracePattern {
@@ -699,7 +724,7 @@ impl TraceAnalyzer {
                 indicators: vec!["same_stack_repeated".to_string()],
             });
         }
-        
+
         // Check for memory leaks
         if self.detect_memory_leak(traces) {
             detected.push(TracePattern {
@@ -709,7 +734,7 @@ impl TraceAnalyzer {
                 indicators: vec!["no_deallocations".to_string()],
             });
         }
-        
+
         Ok(detected)
     }
 
@@ -723,10 +748,10 @@ impl TraceAnalyzer {
         if traces.len() < 2 {
             return false;
         }
-        
+
         let first_mem = traces.first().unwrap().memory_usage.heap_used;
         let last_mem = traces.last().unwrap().memory_usage.heap_used;
-        
+
         last_mem > first_mem * 2
     }
 }
@@ -756,23 +781,23 @@ impl FixSuggester {
     pub async fn suggest_fix(&self, finding: &DebugFinding) -> CodingAgentResult<SuggestedFix> {
         let prompt = format!(
             "Suggest a fix for this bug: {:?}\nLocation: {:?}",
-            finding.finding_type,
-            finding.location
+            finding.finding_type, finding.location
         );
-        
-        let suggested_code = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
-        
+
+        let suggested_code = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
+
         Ok(SuggestedFix {
             fix_type: self.finding_to_fix_type(&finding.finding_type),
             description: "AI-generated fix".to_string(),
-            code_changes: vec![
-                CodeChange {
-                    location: finding.location.clone(),
-                    original_code: String::new(),
-                    fixed_code: suggested_code,
-                    explanation: "Fix generated based on analysis".to_string(),
-                }
-            ],
+            code_changes: vec![CodeChange {
+                location: finding.location.clone(),
+                original_code: String::new(),
+                fixed_code: suggested_code,
+                explanation: "Fix generated based on analysis".to_string(),
+            }],
             confidence: 0.75,
             test_results: None,
             side_effects: Vec::new(),
@@ -814,15 +839,13 @@ impl TestRunner {
             total_tests: 10,
             passed: 8,
             failed: 2,
-            test_details: vec![
-                TestDetail {
-                    test_name: "test_basic_functionality".to_string(),
-                    status: TestStatus::Passed,
-                    duration: Duration::from_millis(50),
-                    output: None,
-                    error_message: None,
-                },
-            ],
+            test_details: vec![TestDetail {
+                test_name: "test_basic_functionality".to_string(),
+                status: TestStatus::Passed,
+                duration: Duration::from_millis(50),
+                output: None,
+                error_message: None,
+            }],
         })
     }
 }
@@ -854,7 +877,7 @@ mod tests {
             function_name: None,
             class_name: None,
         };
-        
+
         let id = manager.add_breakpoint(location);
         assert!(manager.remove_breakpoint(&id));
     }
@@ -862,22 +885,20 @@ mod tests {
     #[test]
     fn test_pattern_detection() {
         let analyzer = TraceAnalyzer::new();
-        let traces = vec![
-            ExecutionTrace {
-                trace_id: "1".to_string(),
-                timestamp: Utc::now(),
-                call_stack: Vec::new(),
-                variables: HashMap::new(),
-                memory_usage: MemorySnapshot {
-                    heap_used: 1024,
-                    stack_used: 512,
-                    total_allocated: 2048,
-                    allocations: Vec::new(),
-                },
-                cpu_usage: 10.0,
+        let traces = vec![ExecutionTrace {
+            trace_id: "1".to_string(),
+            timestamp: Utc::now(),
+            call_stack: Vec::new(),
+            variables: HashMap::new(),
+            memory_usage: MemorySnapshot {
+                heap_used: 1024,
+                stack_used: 512,
+                total_allocated: 2048,
+                allocations: Vec::new(),
             },
-        ];
-        
+            cpu_usage: 10.0,
+        }];
+
         let patterns = analyzer.detect_patterns(&traces).unwrap();
         assert!(patterns.is_empty() || !patterns.is_empty());
     }

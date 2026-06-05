@@ -46,19 +46,18 @@ pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> 
     match manager {
         LinuxPackageManager::Apt => {
             return apt::install_packages(packages).await;
-        },
+        }
         LinuxPackageManager::Dnf => {
             return dnf::install_packages(packages).await;
-        },
+        }
         LinuxPackageManager::Yum => {
             return yum::install_packages(packages).await;
-        },
+        }
         LinuxPackageManager::Zypper => {
             return zypper::install_packages(packages).await;
-        },
+        }
         LinuxPackageManager::Pacman => {
             return pacman::install_packages(packages).await;
-        },
+        }
     };
 }
-

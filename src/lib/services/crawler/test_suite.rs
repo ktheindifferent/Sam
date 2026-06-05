@@ -3,13 +3,13 @@
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     // ============================================================================
     // Circuit Breaker Tests
     // ============================================================================
-    
+
     mod circuit_breaker_tests {
         use super::*;
         use crate::services::crawler::circuit_breaker::*;
@@ -23,7 +23,7 @@ mod tests {
                 open_duration: Duration::from_millis(200),
                 half_open_success_threshold: 2,
             };
-            
+
             let breaker = CircuitBreaker::with_config(config);
             let domain = "test.com";
 
@@ -34,10 +34,10 @@ mod tests {
             // Record failures
             breaker.record_failure(domain).await;
             assert!(breaker.is_allowed(domain).await); // Still closed after 1 failure
-            
+
             breaker.record_failure(domain).await;
             assert!(breaker.is_allowed(domain).await); // Still closed after 2 failures
-            
+
             breaker.record_failure(domain).await;
             assert_eq!(breaker.get_state(domain).await, CircuitState::Open);
             assert!(!breaker.is_allowed(domain).await); // Now open, requests blocked
@@ -52,7 +52,7 @@ mod tests {
                 open_duration: Duration::from_millis(100),
                 half_open_success_threshold: 2,
             };
-            
+
             let breaker = CircuitBreaker::with_config(config);
             let domain = "test.com";
 
@@ -63,7 +63,7 @@ mod tests {
 
             // Wait for cooldown
             tokio::time::sleep(Duration::from_millis(60)).await;
-            
+
             // Should transition to half-open on next check
             assert!(breaker.is_allowed(domain).await);
             assert_eq!(breaker.get_state(domain).await, CircuitState::HalfOpen);
@@ -78,22 +78,22 @@ mod tests {
                 open_duration: Duration::from_millis(100),
                 half_open_success_threshold: 2,
             };
-            
+
             let breaker = CircuitBreaker::with_config(config);
             let domain = "test.com";
 
             // Open circuit
             breaker.record_failure(domain).await;
             breaker.record_failure(domain).await;
-            
+
             // Wait and transition to half-open
             tokio::time::sleep(Duration::from_millis(60)).await;
             assert!(breaker.is_allowed(domain).await);
-            
+
             // Record successes to close circuit
             breaker.record_success(domain).await;
             assert_eq!(breaker.get_state(domain).await, CircuitState::HalfOpen);
-            
+
             breaker.record_success(domain).await;
             assert_eq!(breaker.get_state(domain).await, CircuitState::Closed);
         }
@@ -118,7 +118,7 @@ mod tests {
     // ============================================================================
     // Rate Limiter Tests
     // ============================================================================
-    
+
     mod rate_limiter_tests {
         use super::*;
         use crate::services::crawler::rate_limiter::*;
@@ -145,7 +145,10 @@ mod tests {
             assert!(start.elapsed() < Duration::from_millis(10));
 
             // Record the request completion
-            limiter.record_request_complete(url, Duration::from_millis(100), Some(200), None).await.unwrap();
+            limiter
+                .record_request_complete(url, Duration::from_millis(100), Some(200), None)
+                .await
+                .unwrap();
 
             // Next request should be delayed
             let start = std::time::Instant::now();
@@ -172,7 +175,10 @@ mod tests {
             // Fast responses should decrease delay
             for _ in 0..5 {
                 limiter.wait_for_slot(url, None).await.unwrap();
-                limiter.record_request_complete(url, Duration::from_millis(50), Some(200), None).await.unwrap();
+                limiter
+                    .record_request_complete(url, Duration::from_millis(50), Some(200), None)
+                    .await
+                    .unwrap();
             }
 
             let stats = limiter.get_domain_stats("test.com").await;
@@ -183,7 +189,10 @@ mod tests {
             // Slow responses should increase delay
             for _ in 0..5 {
                 limiter.wait_for_slot(url, None).await.unwrap();
-                limiter.record_request_complete(url, Duration::from_secs(2), Some(200), None).await.unwrap();
+                limiter
+                    .record_request_complete(url, Duration::from_secs(2), Some(200), None)
+                    .await
+                    .unwrap();
             }
 
             let stats = limiter.get_domain_stats("test.com").await.unwrap();
@@ -197,7 +206,10 @@ mod tests {
 
             // Record a request with retry-after header
             limiter.wait_for_slot(url, None).await.unwrap();
-            limiter.record_request_complete(url, Duration::from_millis(100), Some(429), Some(2)).await.unwrap();
+            limiter
+                .record_request_complete(url, Duration::from_millis(100), Some(429), Some(2))
+                .await
+                .unwrap();
 
             // Next request should be delayed due to retry-after
             let start = std::time::Instant::now();
@@ -209,7 +221,7 @@ mod tests {
     // ============================================================================
     // URL Pattern Tests
     // ============================================================================
-    
+
     mod url_pattern_tests {
 
         #[tokio::test]
@@ -219,7 +231,7 @@ mod tests {
             let url2 = "https://example.com/calendar/2024-01";
             let url3 = "https://example.com/events/2024/january";
             let url4 = "https://example.com/about";
-            
+
             // Basic pattern matching
             assert!(url1.contains("2024"));
             assert!(url2.contains("calendar"));
@@ -234,7 +246,7 @@ mod tests {
             let url2 = "https://example.com/results?p=10";
             let url3 = "https://example.com/items?offset=100";
             let url4 = "https://example.com/about";
-            
+
             // Basic pattern matching
             assert!(url1.contains("page="));
             assert!(url2.contains("p="));
@@ -249,7 +261,7 @@ mod tests {
             let url2 = "https://example.com/page?sessionid=abc123&data=value";
             let url3 = "https://example.com/page#section";
             let url4 = "https://example.com/page/";
-            
+
             // Basic checks
             assert!(url1.contains("utm_source"));
             assert!(url2.contains("sessionid"));
@@ -261,13 +273,13 @@ mod tests {
         async fn test_infinite_pattern_detection() {
             // Test pattern detection logic
             let mut urls = Vec::new();
-            
+
             // Generate similar patterns
             for i in 1..20 {
                 let url = format!("https://example.com/page/{}", i);
                 urls.push(url);
             }
-            
+
             // Check pattern consistency
             assert!(urls.len() > 15);
             assert!(urls[0].contains("page/1"));
@@ -278,7 +290,7 @@ mod tests {
     // ============================================================================
     // Content Storage Tests
     // ============================================================================
-    
+
     mod content_storage_tests {
         use crate::services::crawler::content_storage::*;
 
@@ -354,10 +366,11 @@ mod tests {
         #[tokio::test]
         async fn test_content_decompression() {
             let html = "This is a test HTML content that will be compressed. ".repeat(100);
-            
+
             // Create content with HTML
-            let content = CrawledContent::new("https://test.com".to_string(), "test", Some(&html), 200);
-            
+            let content =
+                CrawledContent::new("https://test.com".to_string(), "test", Some(&html), 200);
+
             // Try to decompress
             if let Some(decompressed) = content.decompress_html() {
                 assert!(!decompressed.is_empty());
@@ -371,32 +384,33 @@ mod tests {
     // ============================================================================
     // User Agent Tests
     // ============================================================================
-    
+
     mod user_agent_tests {
         use crate::services::crawler::user_agents::*;
 
         #[tokio::test]
         async fn test_random_rotation() {
             let rotator = UserAgentRotator::new(RotationStrategy::Random, UserAgentType::Desktop);
-            
+
             let mut agents = std::collections::HashSet::new();
             for _ in 0..10 {
                 let agent = rotator.get_user_agent("https://example.com").await;
                 agents.insert(agent);
             }
-            
+
             // Should have multiple different agents
             assert!(agents.len() > 1);
         }
 
         #[tokio::test]
         async fn test_round_robin_rotation() {
-            let rotator = UserAgentRotator::new(RotationStrategy::RoundRobin, UserAgentType::Desktop);
-            
+            let rotator =
+                UserAgentRotator::new(RotationStrategy::RoundRobin, UserAgentType::Desktop);
+
             let agent1 = rotator.get_user_agent("https://example.com").await;
             let agent2 = rotator.get_user_agent("https://example.com").await;
             let agent3 = rotator.get_user_agent("https://example.com").await;
-            
+
             // Should be different agents in sequence
             assert_ne!(agent1, agent2);
             assert_ne!(agent2, agent3);
@@ -404,12 +418,13 @@ mod tests {
 
         #[tokio::test]
         async fn test_per_domain_consistency() {
-            let rotator = UserAgentRotator::new(RotationStrategy::PerDomain, UserAgentType::Desktop);
-            
+            let rotator =
+                UserAgentRotator::new(RotationStrategy::PerDomain, UserAgentType::Desktop);
+
             let agent1 = rotator.get_user_agent("https://example.com/page1").await;
             let agent2 = rotator.get_user_agent("https://example.com/page2").await;
             let agent3 = rotator.get_user_agent("https://other.com/page").await;
-            
+
             // Same domain should get same agent
             assert_eq!(agent1, agent2);
             // Different domain might get different agent
@@ -419,16 +434,19 @@ mod tests {
 
         #[tokio::test]
         async fn test_content_aware_selection() {
-            let rotator = UserAgentRotator::new(RotationStrategy::ContentAware, UserAgentType::Desktop);
-            
+            let rotator =
+                UserAgentRotator::new(RotationStrategy::ContentAware, UserAgentType::Desktop);
+
             // API endpoint should get bot user agent
-            let api_agent = rotator.get_user_agent("https://api.example.com/v1/data").await;
+            let api_agent = rotator
+                .get_user_agent("https://api.example.com/v1/data")
+                .await;
             assert!(!api_agent.is_empty());
-            
+
             // Regular page might get desktop agent
             let page_agent = rotator.get_user_agent("https://example.com/page").await;
             let _ = page_agent; // Just ensure it works
-            
+
             // Mobile site might get mobile agent
             let mobile_agent = rotator.get_user_agent("https://m.example.com/").await;
             let _ = mobile_agent; // Just ensure it works
@@ -438,7 +456,7 @@ mod tests {
     // ============================================================================
     // Feed Parser Tests
     // ============================================================================
-    
+
     mod feed_parser_tests {
         use crate::services::crawler::feed_parser::*;
 
@@ -463,7 +481,10 @@ mod tests {
             assert_eq!(feed.title, Some("Test Feed".to_string()));
             assert_eq!(feed.items.len(), 1);
             assert_eq!(feed.items[0].title, Some("Test Article".to_string()));
-            assert_eq!(feed.items[0].link, "https://example.com/article1".to_string());
+            assert_eq!(
+                feed.items[0].link,
+                "https://example.com/article1".to_string()
+            );
         }
 
         #[tokio::test]
@@ -508,16 +529,16 @@ mod tests {
     // ============================================================================
     // Job Queue Tests
     // ============================================================================
-    
+
     mod job_queue_tests {
-        use crate::services::crawler::job_queue::*;
         use crate::services::crawler::job::*;
+        use crate::services::crawler::job_queue::*;
 
         #[tokio::test]
         async fn test_job_creation() {
             // This would require Redis mock or test container
             // For now, just test the structures
-            
+
             let mut crawl_job = CrawlJob::new();
             crawl_job.start_url = "https://example.com".to_string();
             let job = QueuedJob::new(crawl_job);
@@ -554,7 +575,7 @@ mod tests {
     // ============================================================================
     // Memory Optimization Tests
     // ============================================================================
-    
+
     mod memory_optimization_tests {
         use crate::services::crawler::memory_optimized::*;
 
@@ -564,13 +585,15 @@ mod tests {
 
             // First visit should not be detected as visited
             assert!(!tracker.has_visited("https://example.com/page1").await);
-            
+
             // Mark as visited
-            tracker.mark_visited("https://example.com/page1".to_string()).await;
-            
+            tracker
+                .mark_visited("https://example.com/page1".to_string())
+                .await;
+
             // Second visit should be detected
             assert!(tracker.has_visited("https://example.com/page1").await);
-            
+
             // New URL should not be visited
             assert!(!tracker.has_visited("https://example.com/page2").await);
         }
@@ -583,7 +606,7 @@ mod tests {
             assert!(queue.push("url1".to_string(), 0).await.is_ok());
             assert!(queue.push("url2".to_string(), 0).await.is_ok());
             assert!(queue.push("url3".to_string(), 0).await.is_ok());
-            
+
             // Queue might spill to Redis or memory based on implementation
             let result4 = queue.push("url4".to_string(), 0).await;
             let _ = result4; // May succeed or not depending on Redis availability
@@ -610,7 +633,7 @@ mod tests {
     // ============================================================================
     // Content Type Tests
     // ============================================================================
-    
+
     mod content_type_tests {
         use crate::services::crawler::content_types::*;
 
@@ -620,22 +643,22 @@ mod tests {
                 ContentType::from_mime("text/html"),
                 ContentType::Html
             ));
-            
+
             assert!(matches!(
                 ContentType::from_mime("application/pdf"),
                 ContentType::Pdf
             ));
-            
+
             assert!(matches!(
                 ContentType::from_mime("image/jpeg"),
                 ContentType::Image(ImageType::Jpeg)
             ));
-            
+
             assert!(matches!(
                 ContentType::from_mime("application/json"),
                 ContentType::Json
             ));
-            
+
             assert!(matches!(
                 ContentType::from_mime("application/unknown"),
                 ContentType::Unknown(_)
@@ -648,17 +671,17 @@ mod tests {
                 ContentType::from_extension("html"),
                 ContentType::Html
             ));
-            
+
             assert!(matches!(
                 ContentType::from_extension("pdf"),
                 ContentType::Pdf
             ));
-            
+
             assert!(matches!(
                 ContentType::from_extension("jpg"),
                 ContentType::Image(ImageType::Jpeg)
             ));
-            
+
             assert!(matches!(
                 ContentType::from_extension("docx"),
                 ContentType::Document(DocumentType::Word)
@@ -667,14 +690,32 @@ mod tests {
 
         #[tokio::test]
         async fn test_storage_strategy() {
-            assert!(matches!(ContentType::Html.storage_strategy(), StorageStrategy::FullText));
-            assert!(matches!(ContentType::Pdf.storage_strategy(), StorageStrategy::ExtractedText));
-            assert!(matches!(ContentType::Json.storage_strategy(), StorageStrategy::FullText));
-            assert!(matches!(ContentType::Xml.storage_strategy(), StorageStrategy::FullText));
-            
+            assert!(matches!(
+                ContentType::Html.storage_strategy(),
+                StorageStrategy::FullText
+            ));
+            assert!(matches!(
+                ContentType::Pdf.storage_strategy(),
+                StorageStrategy::ExtractedText
+            ));
+            assert!(matches!(
+                ContentType::Json.storage_strategy(),
+                StorageStrategy::FullText
+            ));
+            assert!(matches!(
+                ContentType::Xml.storage_strategy(),
+                StorageStrategy::FullText
+            ));
+
             // Large media files use different strategies
-            assert!(matches!(ContentType::Video.storage_strategy(), StorageStrategy::Metadata));
-            assert!(matches!(ContentType::Audio.storage_strategy(), StorageStrategy::Metadata));
+            assert!(matches!(
+                ContentType::Video.storage_strategy(),
+                StorageStrategy::Metadata
+            ));
+            assert!(matches!(
+                ContentType::Audio.storage_strategy(),
+                StorageStrategy::Metadata
+            ));
         }
 
         #[tokio::test]
@@ -683,12 +724,12 @@ mod tests {
             let html = ContentType::Html;
             let pdf = ContentType::Pdf;
             let image = ContentType::Image(ImageType::Jpeg);
-            
+
             // Just verify they don't panic when used
             let _ = html.storage_strategy();
             let _ = pdf.storage_strategy();
             let _ = image.storage_strategy();
-            
+
             assert!(true); // Basic check that types work
         }
     }
@@ -696,24 +737,24 @@ mod tests {
     // ============================================================================
     // JavaScript Renderer Tests
     // ============================================================================
-    
+
     mod js_renderer_tests {
         use crate::services::crawler::js_renderer::*;
 
         #[tokio::test]
         async fn test_spa_detection() {
             let renderer = JsRenderer::new(JsRendererConfig::default());
-            
+
             // Test React detection
             let react_html = r#"<div id="root"></div><script>React.createElement</script>"#;
             let frameworks = renderer.detect_frameworks(react_html).await;
             assert!(frameworks.contains(&"React".to_string()));
-            
+
             // Test Angular detection
             let angular_html = r#"<div ng-app="myApp"></div>"#;
             let frameworks = renderer.detect_frameworks(angular_html).await;
             assert!(frameworks.contains(&"Angular".to_string()));
-            
+
             // Test Vue detection
             let vue_html = r#"<div id="app" v-app></div>"#;
             let frameworks = renderer.detect_frameworks(vue_html).await;
@@ -730,7 +771,7 @@ mod tests {
                 ],
                 ..Default::default()
             };
-            
+
             assert!(config.blocked_resources.contains(&ResourceType::Image));
             assert!(config.blocked_resources.contains(&ResourceType::Font));
             assert!(!config.blocked_resources.contains(&ResourceType::Script));
@@ -742,13 +783,13 @@ mod tests {
                 max_browsers: 2,
                 ..Default::default()
             };
-            
+
             let renderer = JsRenderer::new(config);
-            
-            // Should be able to get stats without initialization  
+
+            // Should be able to get stats without initialization
             // Note: get_stats() returns a private type, so we just verify it doesn't panic
             // Stats are available but fields are private
-            
+
             // Note: Initialization requires actual browser binaries, so we skip it in tests
         }
     }
@@ -756,7 +797,7 @@ mod tests {
     // ============================================================================
     // Integration Tests
     // ============================================================================
-    
+
     mod integration_tests {
         use super::*;
 
@@ -765,13 +806,15 @@ mod tests {
         async fn test_full_crawl_workflow() {
             // This test would require a mock HTTP server
             // Using mockito or similar library
-            
+
             let mock_server = MockServer::start().await;
-            
+
             Mock::given(method("GET"))
                 .and(path("/"))
-                .respond_with(ResponseTemplate::new(200)
-                    .set_body_string(r#"
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_string(
+                            r#"
                         <html>
                             <head><title>Test Page</title></head>
                             <body>
@@ -779,8 +822,10 @@ mod tests {
                                 <a href="/page2">Page 2</a>
                             </body>
                         </html>
-                    "#)
-                    .insert_header("content-type", "text/html"))
+                    "#,
+                        )
+                        .insert_header("content-type", "text/html"),
+                )
                 .mount(&mock_server)
                 .await;
 
@@ -794,7 +839,7 @@ mod tests {
             //     url,
             //     client
             // ).await;
-            
+
             // assert!(result.is_ok());
             // let pages = result.unwrap();
             // assert!(!pages.is_empty());
@@ -804,19 +849,23 @@ mod tests {
         async fn test_robots_txt_compliance() {
             // Test that crawler respects robots.txt
             let mock_server = MockServer::start().await;
-            
+
             Mock::given(method("GET"))
                 .and(path("/robots.txt"))
-                .respond_with(ResponseTemplate::new(200)
-                    .set_body_string("User-agent: *\nDisallow: /private/"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_string("User-agent: *\nDisallow: /private/"),
+                )
                 .mount(&mock_server)
                 .await;
 
             // Verify /private/ URLs - just test that the function exists
-            let _allowed = crate::services::crawler::robots::is_url_allowed(
-                &format!("{}/private/data", mock_server.uri())
-            ).await;
-            
+            let _allowed = crate::services::crawler::robots::is_url_allowed(&format!(
+                "{}/private/data",
+                mock_server.uri()
+            ))
+            .await;
+
             // Note: This would need actual robots.txt loading implementation
             // For now just verify the function exists and doesn't panic
             assert!(true);

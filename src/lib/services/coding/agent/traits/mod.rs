@@ -3,8 +3,8 @@
 //! This module defines traits that components can implement to ensure
 //! consistency and reduce coupling between modules.
 
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 
 pub mod analyzer;

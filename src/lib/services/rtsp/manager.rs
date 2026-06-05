@@ -9,21 +9,21 @@
 
 use std::path::Path;
 // use std::thread;
+use crate::services::thread_manager::{self, ThreadConfig};
 use std::sync::atomic::Ordering;
 use tokio::sync::mpsc;
-use crate::services::thread_manager::{self, ThreadConfig};
 
 // Import deep learning and recording modules from rtsp submodule
-use crate::services::rtsp::dl_simple::{Alert, start_deep_learning_processor};
+use crate::services::rtsp::dl_simple::{start_deep_learning_processor, Alert};
 use crate::services::rtsp::recording::{
-    RecordingManager, RecordingConfig, RecordingTrigger, VideoEncoding, 
-    VideoCodec, AudioCodec, Resolution, create_recording_tables
+    create_recording_tables, AudioCodec, RecordingConfig, RecordingManager, RecordingTrigger,
+    Resolution, VideoCodec, VideoEncoding,
 };
 
 pub fn init() {
     // Initialize RTSP Cameras
     // TODO - Customizable Port and Path
-    
+
     let config = ThreadConfig {
         name: "rtsp_manager".to_string(),
         restart_on_panic: true,
@@ -35,10 +35,10 @@ pub fn init() {
         max_memory_mb: None,
         cpu_affinity: None,
     };
-    
+
     thread_manager::spawn_with_config(config, move |shutdown_signal, _health_rx| {
         log::info!("RTSP manager thread started");
-        
+
         let mut pg_query = crate::memory::PostgresQueries::default();
         pg_query
             .queries
@@ -53,7 +53,7 @@ pub fn init() {
                         log::info!("RTSP manager received shutdown signal");
                         break;
                     }
-                    
+
                     // Convert RTSP to /streams http api
                     let rtsp_http_thing = thing.clone();
                     let http_config = ThreadConfig {
@@ -67,10 +67,10 @@ pub fn init() {
                         max_memory_mb: None,
                         cpu_affinity: None,
                     };
-                    
+
                     thread_manager::spawn_with_config(http_config, move |shutdown, _health_rx| {
                         log::info!("Starting RTSP HTTP stream for {}", rtsp_http_thing.oid);
-                        
+
                         while !shutdown.load(Ordering::Relaxed) {
                             let rtsp_address = format!(
                                 "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
@@ -78,15 +78,16 @@ pub fn init() {
                                 rtsp_http_thing.password,
                                 rtsp_http_thing.ip_address
                             );
-                            let script = crate::services::rtsp::manager::gen_rtsp_to_http_stream_script(
-                                rtsp_address,
-                                rtsp_http_thing.oid.clone(),
-                            );
-                            
+                            let script =
+                                crate::services::rtsp::manager::gen_rtsp_to_http_stream_script(
+                                    rtsp_address,
+                                    rtsp_http_thing.oid.clone(),
+                                );
+
                             // Split script into program and args for safe execution
                             let program = "bash";
                             let args = ["-c", &script];
-                            
+
                             match std::panic::catch_unwind(|| {
                                 crate::tools::safe_uinx_cmd(program, &args)
                             }) {
@@ -98,11 +99,11 @@ pub fn init() {
                                     break;
                                 }
                             }
-                            
+
                             // Check for shutdown every second while ffmpeg runs
                             std::thread::sleep(std::time::Duration::from_secs(1));
                         }
-                        
+
                         log::info!("RTSP HTTP stream thread {} stopped", rtsp_http_thing.oid);
                     });
 
@@ -119,10 +120,10 @@ pub fn init() {
                         max_memory_mb: None,
                         cpu_affinity: None,
                     };
-                    
+
                     thread_manager::spawn_with_config(wav_config, move |shutdown, _health_rx| {
                         log::info!("Starting RTSP WAV conversion for {}", rtsp_wav_thing.oid);
-                        
+
                         while !shutdown.load(Ordering::Relaxed) {
                             let rtsp_address = format!(
                                 "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
@@ -134,27 +135,30 @@ pub fn init() {
                                 rtsp_address,
                                 rtsp_wav_thing.oid.clone(),
                             );
-                            
+
                             // Split script into program and args for safe execution
                             let program = "bash";
                             let args = ["-c", &script];
-                            
+
                             match std::panic::catch_unwind(|| {
                                 crate::tools::safe_uinx_cmd(program, &args)
                             }) {
                                 Ok(result) => {
-                                    log::debug!("RTSP WAV conversion command completed: {:?}", result);
+                                    log::debug!(
+                                        "RTSP WAV conversion command completed: {:?}",
+                                        result
+                                    );
                                 }
                                 Err(e) => {
                                     log::error!("RTSP WAV conversion command panicked: {:?}", e);
                                     break;
                                 }
                             }
-                            
+
                             // Check for shutdown every second while ffmpeg runs
                             std::thread::sleep(std::time::Duration::from_secs(1));
                         }
-                        
+
                         log::info!("RTSP WAV conversion thread {} stopped", rtsp_wav_thing.oid);
                     });
 
@@ -173,12 +177,18 @@ pub fn init() {
                     };
                     thread_manager::spawn_with_config(dl_config, move |shutdown, _health_rx| {
                         // Create runtime for async operations
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        
+                        let rt = match tokio::runtime::Runtime::new() {
+                            Ok(rt) => rt,
+                            Err(e) => {
+                                log::error!("Failed to create RTSP deep learning runtime: {}", e);
+                                return;
+                            }
+                        };
+
                         rt.block_on(async {
                             // Create alert channel
                             let (alert_tx, mut alert_rx) = mpsc::channel::<Alert>(100);
-                            
+
                             // Spawn alert handler
                             tokio::spawn(async move {
                                 while let Some(alert) = alert_rx.recv().await {
@@ -186,7 +196,7 @@ pub fn init() {
                                     // Here you could send notifications, update UI, etc.
                                 }
                             });
-                            
+
                             // Start deep learning processor
                             let rtsp_address = format!(
                                 "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
@@ -194,13 +204,19 @@ pub fn init() {
                                 rtsp_dl_thing.password,
                                 rtsp_dl_thing.ip_address
                             );
-                            
+
                             if let Err(e) = start_deep_learning_processor(
                                 rtsp_dl_thing.oid.clone(),
                                 rtsp_address,
                                 alert_tx,
-                            ).await {
-                                log::error!("Deep learning processor error for {}: {}", rtsp_dl_thing.oid, e);
+                            )
+                            .await
+                            {
+                                log::error!(
+                                    "Deep learning processor error for {}: {}",
+                                    rtsp_dl_thing.oid,
+                                    e
+                                );
                             }
                         });
                     });
@@ -219,25 +235,35 @@ pub fn init() {
                         cpu_affinity: None,
                     };
                     thread_manager::spawn_with_config(rec_config, move |shutdown, _health_rx| {
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        
+                        let rt = match tokio::runtime::Runtime::new() {
+                            Ok(rt) => rt,
+                            Err(e) => {
+                                log::error!("Failed to create RTSP recording runtime: {}", e);
+                                return;
+                            }
+                        };
+
                         rt.block_on(async {
                             // Create recording tables if not exists
                             if let Err(e) = create_recording_tables() {
                                 log::error!("Failed to create recording tables: {}", e);
                                 return;
                             }
-                            
+
                             // Initialize recording manager
-                            let storage_path = std::path::PathBuf::from(format!("/opt/sam/recordings/{}", rtsp_rec_thing.oid));
-                            let mut recording_manager = match RecordingManager::new(storage_path.clone()) {
-                                Ok(mgr) => mgr,
-                                Err(e) => {
-                                    log::error!("Failed to create recording manager: {}", e);
-                                    return;
-                                }
-                            };
-                            
+                            let storage_path = std::path::PathBuf::from(format!(
+                                "/opt/sam/recordings/{}",
+                                rtsp_rec_thing.oid
+                            ));
+                            let mut recording_manager =
+                                match RecordingManager::new(storage_path.clone()) {
+                                    Ok(mgr) => mgr,
+                                    Err(e) => {
+                                        log::error!("Failed to create recording manager: {}", e);
+                                        return;
+                                    }
+                                };
+
                             // Configure recording for this camera
                             let rtsp_address = format!(
                                 "rtsp://{}:{}@{}:554/cam/realmonitor?channel=1&subtype=0",
@@ -245,7 +271,7 @@ pub fn init() {
                                 rtsp_rec_thing.password,
                                 rtsp_rec_thing.ip_address
                             );
-                            
+
                             let config = RecordingConfig {
                                 thing_oid: rtsp_rec_thing.oid.clone(),
                                 rtsp_url: rtsp_address,
@@ -255,7 +281,10 @@ pub fn init() {
                                     codec: VideoCodec::H264,
                                     bitrate: 2000,
                                     fps: 25,
-                                    resolution: Resolution { width: 1920, height: 1080 },
+                                    resolution: Resolution {
+                                        width: 1920,
+                                        height: 1080,
+                                    },
                                     audio_codec: AudioCodec::AAC,
                                     audio_bitrate: 128,
                                 },
@@ -267,12 +296,12 @@ pub fn init() {
                                 ],
                                 max_storage_gb: 100.0,
                             };
-                            
+
                             if let Err(e) = recording_manager.add_camera(config) {
                                 log::error!("Failed to add camera config: {}", e);
                                 return;
                             }
-                            
+
                             // Start checking triggers periodically
                             loop {
                                 if let Err(e) = recording_manager.check_triggers().await {
@@ -288,7 +317,7 @@ pub fn init() {
                 log::error!("Failed to query RTSP things: {}", e);
             }
         }
-        
+
         log::info!("RTSP manager thread completed");
     });
 }

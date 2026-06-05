@@ -1,5 +1,5 @@
+use git2::{Commit, Error, Repository};
 use std::path::Path;
-use git2::{Repository, Error, Commit};
 
 pub struct GitRepo {
     repo: Repository,
@@ -13,7 +13,9 @@ impl GitRepo {
 
     pub fn latest_commit(&self) -> Result<Commit, Error> {
         let head = self.repo.head()?;
-        let oid = head.target().ok_or_else(|| Error::from_str("No HEAD target"))?;
+        let oid = head
+            .target()
+            .ok_or_else(|| Error::from_str("No HEAD target"))?;
         self.repo.find_commit(oid)
     }
 

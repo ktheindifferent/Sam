@@ -1,19 +1,19 @@
 //! Refactored Ollama provider using base class
 
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
+use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
-use std::any::Any;
-use anyhow::{Result, Context};
-use async_trait::async_trait;
-use log::{info, debug, warn, error};
-use serde::{Deserialize, Serialize};
 
-use crate::services::llms::ollama::{OllamaService, OllamaConfig};
 use super::super::provider_base::{BaseProvider, ProviderImpl, RetryConfig};
 use super::super::traits::provider::{
-    GenerateRequest, GenerateResponse, Model, ModelCapability, ProviderInfo, ProviderMetrics,
-    ProviderType, TokenUsage, FinishReason, ResponseStream, StreamChunk,
+    FinishReason, GenerateRequest, GenerateResponse, Model, ModelCapability, ProviderInfo,
+    ProviderMetrics, ProviderType, ResponseStream, StreamChunk, TokenUsage,
 };
+use crate::services::llms::ollama::{OllamaConfig, OllamaService};
 
 /// Ollama provider implementation
 pub struct OllamaProviderImpl {
@@ -37,16 +37,22 @@ impl OllamaProviderImpl {
 #[async_trait]
 impl ProviderImpl for OllamaProviderImpl {
     async fn generate_impl(&self, prompt: &str, model: &str) -> Result<String> {
-        debug!("Generating response with Ollama - model: {}, prompt length: {}",
-               model, prompt.len());
+        debug!(
+            "Generating response with Ollama - model: {}, prompt length: {}",
+            model,
+            prompt.len()
+        );
 
-        let response = self.service
+        let response = self
+            .service
             .generate(model, prompt, None)
             .await
             .context("Failed to generate response from Ollama")?;
 
-        info!("Successfully generated response from Ollama (length: {} chars)",
-              response.response.len());
+        info!(
+            "Successfully generated response from Ollama (length: {} chars)",
+            response.response.len()
+        );
 
         Ok(response.response)
     }
@@ -118,7 +124,8 @@ impl OllamaProvider {
 
         // Build prompt from messages if provided
         let prompt = if !request.messages.is_empty() {
-            request.messages
+            request
+                .messages
                 .iter()
                 .map(|msg| format!("{:?}: {}", msg.role, msg.content))
                 .collect::<Vec<_>>()
@@ -162,20 +169,24 @@ impl OllamaProvider {
             // Simulate streaming by sending chunks
             for chunk in response.text.chars().collect::<Vec<_>>().chunks(10) {
                 let chunk_str: String = chunk.iter().collect();
-                let _ = tx.send(StreamChunk {
-                    delta: chunk_str,
-                    is_final: false,
-                    metadata: None,
-                }).await;
+                let _ = tx
+                    .send(StreamChunk {
+                        delta: chunk_str,
+                        is_final: false,
+                        metadata: None,
+                    })
+                    .await;
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
 
             // Send final chunk
-            let _ = tx.send(StreamChunk {
-                delta: String::new(),
-                is_final: true,
-                metadata: Some(response.metadata),
-            }).await;
+            let _ = tx
+                .send(StreamChunk {
+                    delta: String::new(),
+                    is_final: true,
+                    metadata: Some(response.metadata),
+                })
+                .await;
         });
 
         Ok(ResponseStream::new(rx))
@@ -197,10 +208,7 @@ impl OllamaProvider {
                 name: name.clone(),
                 description: Some(format!("Ollama model: {}", name)),
                 context_length: 4096, // Default, should query from Ollama
-                capabilities: vec![
-                    ModelCapability::Chat,
-                    ModelCapability::Completion,
-                ],
+                capabilities: vec![ModelCapability::Chat, ModelCapability::Completion],
             })
             .collect())
     }
@@ -227,11 +235,12 @@ impl OllamaProvider {
             average_latency: Duration::from_millis(metrics.avg_response_time_ms as u64),
             tokens_processed: 0, // Would need to track this
             uptime: Duration::from_secs(
-                metrics.last_success
+                metrics
+                    .last_success
                     .or(metrics.last_failure)
                     .and_then(|t| t.elapsed().ok())
                     .map(|d| d.as_secs())
-                    .unwrap_or(0)
+                    .unwrap_or(0),
             ),
             error_rate: if metrics.total_requests > 0 {
                 metrics.failure_count as f32 / metrics.total_requests as f32

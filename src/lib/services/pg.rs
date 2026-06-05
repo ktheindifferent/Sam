@@ -1,13 +1,13 @@
-use anyhow::{Result, Context};
+use crate::monitoring::report_service_error;
+use anyhow::{Context, Result};
 use deadpool_postgres::{Config, Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
-use tokio_postgres::{NoTls, Row};
-use log::{info, warn, error};
-use std::time::Duration;
+use log::{error, info, warn};
+use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
-use crate::monitoring::report_service_error;
+use tokio_postgres::{NoTls, Row};
 
 static POOL: OnceLock<Arc<Pool>> = OnceLock::new();
 static POOL_METRICS: OnceLock<Arc<RwLock<PoolMetrics>>> = OnceLock::new();
@@ -22,7 +22,6 @@ pub struct PoolMetrics {
     pub last_health_check: Option<std::time::Instant>,
 }
 
-
 pub async fn connect() -> Result<Arc<Pool>> {
     // Try to get existing pool first
     if let Some(pool) = POOL.get() {
@@ -30,20 +29,21 @@ pub async fn connect() -> Result<Arc<Pool>> {
         perform_health_check_if_needed(pool).await?;
         return Ok(pool.clone());
     }
-    
+
     // Initialize pool with retry logic
-    let pool = retry_with_backoff(create_pool, 3, Duration::from_secs(1)).await
+    let pool = retry_with_backoff(create_pool, 3, Duration::from_secs(1))
+        .await
         .context("Failed to create connection pool after retries")?;
-    
+
     let pool = Arc::new(pool);
-    
+
     // Try to set the pool, but if another thread beat us, use theirs
     match POOL.set(pool.clone()) {
         Ok(_) => {
             info!("Database connection pool initialized successfully");
             // Initialize metrics
             let _ = POOL_METRICS.set(Arc::new(RwLock::new(PoolMetrics::default())));
-        },
+        }
         Err(_) => {
             // Another thread initialized it, use theirs
             if let Some(existing_pool) = POOL.get() {
@@ -51,21 +51,17 @@ pub async fn connect() -> Result<Arc<Pool>> {
             }
         }
     }
-    
+
     Ok(pool)
 }
 
-async fn retry_with_backoff<F, T>(
-    mut f: F,
-    max_retries: u32,
-    initial_delay: Duration,
-) -> Result<T>
+async fn retry_with_backoff<F, T>(mut f: F, max_retries: u32, initial_delay: Duration) -> Result<T>
 where
     F: FnMut() -> futures::future::BoxFuture<'static, Result<T>>,
 {
     let mut delay = initial_delay;
     let mut last_error = None;
-    
+
     for attempt in 0..max_retries {
         match f().await {
             Ok(result) => return Ok(result),
@@ -79,7 +75,7 @@ where
             }
         }
     }
-    
+
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("All retry attempts failed")))
 }
 
@@ -87,11 +83,11 @@ async fn perform_health_check_if_needed(pool: &Arc<Pool>) -> Result<()> {
     if let Some(metrics) = POOL_METRICS.get() {
         let should_check = {
             let metrics = metrics.read().await;
-            metrics.last_health_check.is_none_or(|last| {
-                last.elapsed() > Duration::from_secs(30)
-            })
+            metrics
+                .last_health_check
+                .is_none_or(|last| last.elapsed() > Duration::from_secs(30))
         };
-        
+
         if should_check {
             // Perform quick health check
             let start = std::time::Instant::now();
@@ -101,7 +97,9 @@ async fn perform_health_check_if_needed(pool: &Arc<Pool>) -> Result<()> {
                         Ok(_) => {
                             let mut metrics = metrics.write().await;
                             metrics.last_health_check = Some(std::time::Instant::now());
-                            metrics.connection_wait_time_ms.push(start.elapsed().as_millis() as u64);
+                            metrics
+                                .connection_wait_time_ms
+                                .push(start.elapsed().as_millis() as u64);
                             // Keep only last 100 measurements
                             if metrics.connection_wait_time_ms.len() > 100 {
                                 metrics.connection_wait_time_ms.remove(0);
@@ -125,102 +123,112 @@ async fn perform_health_check_if_needed(pool: &Arc<Pool>) -> Result<()> {
 
 fn create_pool() -> futures::future::BoxFuture<'static, Result<Pool>> {
     Box::pin(async move {
-    let mut cfg = Config::new();
-    
-    // Get database configuration from environment or use defaults
-    cfg.host = Some(env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string()));
-    cfg.port = Some(env::var("POSTGRES_PORT")
-        .unwrap_or_else(|_| "5432".to_string())
-        .parse()
-        .unwrap_or(5432));
-    cfg.dbname = Some(env::var("POSTGRES_DB").unwrap_or_else(|_| "sam".to_string()));
-    cfg.user = Some(env::var("POSTGRES_USER").unwrap_or_else(|_| "postgres".to_string()));
-    cfg.password = Some(env::var("POSTGRES_PASSWORD").unwrap_or_else(|_| "sampassword".to_string()));
-    
-    // Pool configuration
-    cfg.pool = Some(deadpool_postgres::PoolConfig {
-        max_size: 32,
-        timeouts: deadpool_postgres::Timeouts {
-            wait: Some(Duration::from_secs(5)),
-            create: Some(Duration::from_secs(5)),
-            recycle: Some(Duration::from_secs(5)),
-        },
-        queue_mode: deadpool::managed::QueueMode::Fifo,
-    });
-    
-    // Manager configuration
-    let mgr_config = ManagerConfig {
-        recycling_method: RecyclingMethod::Fast,
-    };
-    
-    // Convert deadpool config to tokio_postgres config
-    let mut pg_config = tokio_postgres::Config::new();
-    if let Some(host) = &cfg.host {
-        pg_config.host(host);
-    }
-    if let Some(port) = cfg.port {
-        pg_config.port(port);
-    }
-    if let Some(dbname) = &cfg.dbname {
-        pg_config.dbname(dbname);
-    }
-    if let Some(user) = &cfg.user {
-        pg_config.user(user);
-    }
-    if let Some(password) = &cfg.password {
-        pg_config.password(password);
-    }
-    
-    let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-    let pool = Pool::builder(mgr)
-        .max_size(32)
-        .runtime(Runtime::Tokio1)
-        .build()
-        .context("Failed to create PostgreSQL connection pool")?;
-    
-    // Test the connection
-    let client = pool.get().await
-        .context("Failed to get client from pool")?;
-    
-    client.simple_query("SELECT 1")
-        .await
-        .context("Failed to execute test query")?;
-    
-    info!("PostgreSQL connection pool created successfully");
-    Ok(pool)
+        let mut cfg = Config::new();
+
+        // Get database configuration from environment or use defaults
+        cfg.host = Some(env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string()));
+        cfg.port = Some(
+            env::var("POSTGRES_PORT")
+                .unwrap_or_else(|_| "5432".to_string())
+                .parse()
+                .unwrap_or(5432),
+        );
+        cfg.dbname = Some(env::var("POSTGRES_DB").unwrap_or_else(|_| "sam".to_string()));
+        cfg.user = Some(env::var("POSTGRES_USER").unwrap_or_else(|_| "postgres".to_string()));
+        cfg.password =
+            Some(env::var("POSTGRES_PASSWORD").unwrap_or_else(|_| "sampassword".to_string()));
+
+        // Pool configuration
+        cfg.pool = Some(deadpool_postgres::PoolConfig {
+            max_size: 32,
+            timeouts: deadpool_postgres::Timeouts {
+                wait: Some(Duration::from_secs(5)),
+                create: Some(Duration::from_secs(5)),
+                recycle: Some(Duration::from_secs(5)),
+            },
+            queue_mode: deadpool::managed::QueueMode::Fifo,
+        });
+
+        // Manager configuration
+        let mgr_config = ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        };
+
+        // Convert deadpool config to tokio_postgres config
+        let mut pg_config = tokio_postgres::Config::new();
+        if let Some(host) = &cfg.host {
+            pg_config.host(host);
+        }
+        if let Some(port) = cfg.port {
+            pg_config.port(port);
+        }
+        if let Some(dbname) = &cfg.dbname {
+            pg_config.dbname(dbname);
+        }
+        if let Some(user) = &cfg.user {
+            pg_config.user(user);
+        }
+        if let Some(password) = &cfg.password {
+            pg_config.password(password);
+        }
+
+        let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+        let pool = Pool::builder(mgr)
+            .max_size(32)
+            .runtime(Runtime::Tokio1)
+            .build()
+            .context("Failed to create PostgreSQL connection pool")?;
+
+        // Test the connection
+        let client = pool.get().await.context("Failed to get client from pool")?;
+
+        client
+            .simple_query("SELECT 1")
+            .await
+            .context("Failed to execute test query")?;
+
+        info!("PostgreSQL connection pool created successfully");
+        Ok(pool)
     })
 }
 
 pub async fn health_check() -> Result<()> {
     let pool = connect().await?;
     let start = std::time::Instant::now();
-    
+
     // Try to get a connection with timeout
-    let client = tokio::time::timeout(
-        Duration::from_secs(5),
-        pool.get()
-    ).await
+    let client = tokio::time::timeout(Duration::from_secs(5), pool.get())
+        .await
         .context("Connection timeout during health check")?
         .context("Failed to get client for health check")?;
-    
-    let rows = client.query("SELECT version(), current_database(), pg_is_in_recovery()", &[])
+
+    let rows = client
+        .query(
+            "SELECT version(), current_database(), pg_is_in_recovery()",
+            &[],
+        )
         .await
         .context("Health check query failed")?;
-    
-    if !rows.is_empty() {
-        let version: &str = rows[0].get(0);
-        let database: &str = rows[0].get(1);
-        let is_replica: bool = rows[0].get(2);
-        
-        info!("PostgreSQL health check passed: {} (database: {}, replica: {}, latency: {:?})", 
-              version, database, is_replica, start.elapsed());
-        
+
+    if let Some(row) = rows.first() {
+        let version: &str = row.get(0);
+        let database: &str = row.get(1);
+        let is_replica: bool = row.get(2);
+
+        info!(
+            "PostgreSQL health check passed: {} (database: {}, replica: {}, latency: {:?})",
+            version,
+            database,
+            is_replica,
+            start.elapsed()
+        );
+
         // Update metrics
         if let Some(metrics) = POOL_METRICS.get() {
             let mut metrics = metrics.write().await;
             metrics.successful_queries += 1;
         }
-        
+
         Ok(())
     } else {
         let err = anyhow::anyhow!("PostgreSQL health check failed: no results returned");
@@ -231,35 +239,41 @@ pub async fn health_check() -> Result<()> {
 
 pub async fn initialize_schema() -> Result<()> {
     info!("Initializing database schema using migration system");
-    
+
     // Get connection pool
     let pool = connect().await?;
-    
+
     // Load all migrations
     let migrations = crate::db::migrations::load_migrations();
-    
+
     // Create migration runner
     let runner = crate::db::migrations::MigrationRunner::new(pool)
         .with_migrations(migrations)
         .dry_run(false)
         .auto_backup(false); // Don't auto-backup during initial setup
-    
+
     // Run migrations
     match runner.run().await {
         Ok(_) => {
             info!("Database schema initialized successfully using migrations");
-            
+
             // Log migration status
             if let Ok(status) = runner.status().await {
                 info!("Applied {} migration(s)", status.applied.len());
                 if !status.pending.is_empty() {
-                    warn!("Warning: {} migration(s) are still pending", status.pending.len());
+                    warn!(
+                        "Warning: {} migration(s) are still pending",
+                        status.pending.len()
+                    );
                 }
                 if !status.conflicts.is_empty() {
-                    error!("Warning: {} migration(s) have checksum conflicts", status.conflicts.len());
+                    error!(
+                        "Warning: {} migration(s) have checksum conflicts",
+                        status.conflicts.len()
+                    );
                 }
             }
-            
+
             Ok(())
         }
         Err(e) => {
@@ -269,25 +283,24 @@ pub async fn initialize_schema() -> Result<()> {
     }
 }
 
-pub async fn execute_query(query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<Vec<Row>> {
+pub async fn execute_query(
+    query: &str,
+    params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+) -> Result<Vec<Row>> {
     let pool = connect().await?;
     let start = std::time::Instant::now();
-    
+
     // Get connection with timeout
-    let client = tokio::time::timeout(
-        Duration::from_secs(5),
-        pool.get()
-    ).await
+    let client = tokio::time::timeout(Duration::from_secs(5), pool.get())
+        .await
         .context("Connection timeout")?
         .context("Failed to get client")?;
-    
+
     // Execute query with timeout
-    let result = tokio::time::timeout(
-        Duration::from_secs(30),
-        client.query(query, params)
-    ).await
+    let result = tokio::time::timeout(Duration::from_secs(30), client.query(query, params))
+        .await
         .context("Query timeout")?;
-    
+
     match result {
         Ok(rows) => {
             // Update metrics
@@ -311,25 +324,24 @@ pub async fn execute_query(query: &str, params: &[&(dyn tokio_postgres::types::T
     }
 }
 
-pub async fn execute_statement(query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<u64> {
+pub async fn execute_statement(
+    query: &str,
+    params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+) -> Result<u64> {
     let pool = connect().await?;
     let start = std::time::Instant::now();
-    
+
     // Get connection with timeout
-    let client = tokio::time::timeout(
-        Duration::from_secs(5),
-        pool.get()
-    ).await
+    let client = tokio::time::timeout(Duration::from_secs(5), pool.get())
+        .await
         .context("Connection timeout")?
         .context("Failed to get client")?;
-    
+
     // Execute statement with timeout
-    let result = tokio::time::timeout(
-        Duration::from_secs(30),
-        client.execute(query, params)
-    ).await
+    let result = tokio::time::timeout(Duration::from_secs(30), client.execute(query, params))
+        .await
         .context("Statement timeout")?;
-    
+
     match result {
         Ok(count) => {
             // Update metrics
@@ -338,7 +350,11 @@ pub async fn execute_statement(query: &str, params: &[&(dyn tokio_postgres::type
                 metrics.successful_queries += 1;
                 metrics.total_connections += 1;
             }
-            info!("Statement executed successfully in {:?}, affected {} rows", start.elapsed(), count);
+            info!(
+                "Statement executed successfully in {:?}, affected {} rows",
+                start.elapsed(),
+                count
+            );
             Ok(count)
         }
         Err(e) => {
@@ -360,7 +376,7 @@ where
     let pool = connect().await?;
     let mut client = pool.get().await?;
     let transaction = client.transaction().await?;
-    
+
     match f(transaction).await {
         Ok(result) => Ok(result),
         Err(e) => Err(e),
@@ -370,15 +386,16 @@ where
 pub async fn get_pool_status() -> Result<String> {
     let pool = connect().await?;
     let status = pool.status();
-    
+
     let metrics_str = if let Some(metrics) = POOL_METRICS.get() {
         let metrics = metrics.read().await;
         let avg_wait = if !metrics.connection_wait_time_ms.is_empty() {
-            metrics.connection_wait_time_ms.iter().sum::<u64>() / metrics.connection_wait_time_ms.len() as u64
+            metrics.connection_wait_time_ms.iter().sum::<u64>()
+                / metrics.connection_wait_time_ms.len() as u64
         } else {
             0
         };
-        
+
         format!(
             "\nMetrics - Total Connections: {}, Failed: {}, Successful Queries: {}, Failed Queries: {}, Avg Wait: {}ms",
             metrics.total_connections,
@@ -390,7 +407,7 @@ pub async fn get_pool_status() -> Result<String> {
     } else {
         String::new()
     };
-    
+
     Ok(format!(
         "Pool Status - Size: {}, Available: {}, Waiting: {}{}",
         status.size, status.available, status.waiting, metrics_str
@@ -408,17 +425,15 @@ pub async fn reset_pool() -> Result<()> {
 }
 
 pub async fn cleanup_old_sessions() -> Result<u64> {
-    execute_statement(
-        "DELETE FROM user_sessions WHERE expires_at < NOW()",
-        &[]
-    ).await
+    execute_statement("DELETE FROM user_sessions WHERE expires_at < NOW()", &[]).await
 }
 
 pub async fn cleanup_old_health_records(days: i32) -> Result<u64> {
     execute_statement(
         "DELETE FROM service_health WHERE checked_at < NOW() - INTERVAL '$1 days'",
-        &[&days]
-    ).await
+        &[&days],
+    )
+    .await
 }
 
 pub async fn execute_batch_query<T, F>(
@@ -431,42 +446,50 @@ where
 {
     let pool = connect().await?;
     let start = std::time::Instant::now();
-    
+
     // Get connection with timeout
-    let mut client = tokio::time::timeout(
-        Duration::from_secs(5),
-        pool.get()
-    ).await
+    let mut client = tokio::time::timeout(Duration::from_secs(5), pool.get())
+        .await
         .context("Connection timeout")?
         .context("Failed to get client")?;
-    
+
     let mut all_results = Vec::new();
     let batch_len = params_batch.len();
-    
+
     // Execute all queries in a single transaction for better performance
-    let transaction = client.transaction().await
+    let transaction = client
+        .transaction()
+        .await
         .context("Failed to start transaction")?;
-    
+
     for params in params_batch {
-        let rows = transaction.query(query, &params[..]).await
+        let rows = transaction
+            .query(query, &params[..])
+            .await
             .context("Failed to execute batch query")?;
-        
+
         for row in rows {
             all_results.push(row_mapper(&row)?);
         }
     }
-    
-    transaction.commit().await
+
+    transaction
+        .commit()
+        .await
         .context("Failed to commit batch transaction")?;
-    
+
     // Update metrics
     if let Some(metrics) = POOL_METRICS.get() {
         let mut metrics = metrics.write().await;
         metrics.successful_queries += batch_len as u64;
         metrics.total_connections += 1;
     }
-    
-    info!("Batch query executed {} queries in {:?}", batch_len, start.elapsed());
+
+    info!(
+        "Batch query executed {} queries in {:?}",
+        batch_len,
+        start.elapsed()
+    );
     Ok(all_results)
 }
 
@@ -483,12 +506,11 @@ where
 {
     // Simple in-memory cache using a static HashMap
     // In production, consider using a proper caching solution like Redis
-    static QUERY_CACHE: OnceLock<Arc<RwLock<HashMap<String, (std::time::Instant, Vec<Vec<u8>>)>>>> = OnceLock::new();
-    
-    let cache = QUERY_CACHE.get_or_init(|| {
-        Arc::new(RwLock::new(HashMap::new()))
-    });
-    
+    static QUERY_CACHE: OnceLock<Arc<RwLock<HashMap<String, (std::time::Instant, Vec<Vec<u8>>)>>>> =
+        OnceLock::new();
+
+    let cache = QUERY_CACHE.get_or_init(|| Arc::new(RwLock::new(HashMap::new())));
+
     // Check cache
     {
         let cache_read = cache.read().await;
@@ -500,23 +522,26 @@ where
             }
         }
     }
-    
+
     // Cache miss - execute query
     let rows = execute_query(query, params).await?;
     let mut results = Vec::new();
-    
+
     for row in rows {
         results.push(row_mapper(&row)?);
     }
-    
+
     // Update cache
     {
         let mut cache_write = cache.write().await;
         // For simplicity, we're not implementing full serialization here
         // In production, you'd serialize the results
-        cache_write.insert(cache_key.to_string(), (std::time::Instant::now(), Vec::new()));
+        cache_write.insert(
+            cache_key.to_string(),
+            (std::time::Instant::now(), Vec::new()),
+        );
     }
-    
+
     Ok(results)
 }
 
@@ -528,28 +553,27 @@ pub async fn execute_query_batch_join(
 ) -> Result<Vec<Row>> {
     let pool = connect().await?;
     let start = std::time::Instant::now();
-    
+
     // Get connection with timeout
-    let client = tokio::time::timeout(
-        Duration::from_secs(5),
-        pool.get()
-    ).await
+    let client = tokio::time::timeout(Duration::from_secs(5), pool.get())
+        .await
         .context("Connection timeout")?
         .context("Failed to get client")?;
-    
+
     // Build optimized query with JOIN instead of N+1
     let combined_query = format!(
         "{} LEFT JOIN ({}) AS joined ON base.{} = joined.{}",
         base_query, join_query, join_column, join_column
     );
-    
+
     // Execute combined query
     let result = tokio::time::timeout(
         Duration::from_secs(30),
-        client.query(&combined_query, base_params)
-    ).await
-        .context("Query timeout")?;
-    
+        client.query(&combined_query, base_params),
+    )
+    .await
+    .context("Query timeout")?;
+
     match result {
         Ok(rows) => {
             // Update metrics
@@ -558,7 +582,11 @@ pub async fn execute_query_batch_join(
                 metrics.successful_queries += 1;
                 metrics.total_connections += 1;
             }
-            info!("Batch JOIN query executed in {:?}, returned {} rows", start.elapsed(), rows.len());
+            info!(
+                "Batch JOIN query executed in {:?}, returned {} rows",
+                start.elapsed(),
+                rows.len()
+            );
             Ok(rows)
         }
         Err(e) => {

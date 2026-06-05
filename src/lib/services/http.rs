@@ -1,11 +1,8 @@
-
 // use std::io::Write;
 use tokio::fs::File as TokioFile;
 use tokio::io::AsyncWriteExt;
 
-
 pub async fn install() -> std::io::Result<()> {
-
     let data = include_bytes!("../../../packages/www.zip");
     let mut pos = 0;
     let mut buffer = TokioFile::create("/opt/sam/www.zip").await?;

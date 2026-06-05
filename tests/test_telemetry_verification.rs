@@ -20,7 +20,11 @@ fn main() {
         id: 0,
         crawl_job_oid: "test-job-123".to_string(),
         url: "https://example.com".to_string(),
-        tokens: vec!["example".to_string(), "test".to_string(), "page".to_string()],
+        tokens: vec![
+            "example".to_string(),
+            "test".to_string(),
+            "page".to_string(),
+        ],
         links: vec![
             "https://example.com/page1".to_string(),
             "https://example.com/page2".to_string(),

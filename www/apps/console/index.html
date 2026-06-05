@@ -189,28 +189,48 @@ Licensed under GPLv3....see LICENSE file. -->
 
         <!-- Database Mode -->
         <section id="mode-database" class="tui-mode">
-          <div class="placeholder-content">
-            <div class="block-title">Database Management</div>
-            <div class="placeholder-text">
-              Database management mode<br/><br/>
-              Features coming soon:<br/>
-              - Table browser<br/>
-              - Query executor<br/>
-              - Schema viewer
+          <div class="database-layout">
+            <div class="database-summary-block">
+              <div class="block-title">Database Summary</div>
+              <div class="database-summary-content" id="database-summary">
+                <div class="metric-row">
+                  <span class="metric-label">Status:</span>
+                  <span class="metric-value">Loading...</span>
+                </div>
+              </div>
+            </div>
+            <div class="database-table-block">
+              <div class="block-title">Config Tables</div>
+              <div class="database-table-content" id="database-table-list"></div>
+            </div>
+            <div class="database-records-block">
+              <div class="block-title" id="database-records-title">Records</div>
+              <div class="database-records-content" id="database-records"></div>
             </div>
           </div>
         </section>
 
         <!-- Files Mode -->
         <section id="mode-files" class="tui-mode">
-          <div class="placeholder-content">
-            <div class="block-title">File Browser</div>
-            <div class="placeholder-text">
-              File browser mode<br/><br/>
-              Features coming soon:<br/>
-              - Directory navigation<br/>
-              - File operations<br/>
-              - Quick file viewer
+          <div class="files-layout">
+            <div class="files-toolbar-block">
+              <div class="block-title">File Browser</div>
+              <div class="files-toolbar">
+                <span class="detail-label">Path:</span>
+                <span class="detail-value" id="files-current-path">~</span>
+                <button type="button" id="files-parent-button" class="console-button">Parent</button>
+                <button type="button" id="files-refresh-button" class="console-button">Refresh</button>
+              </div>
+            </div>
+            <div class="files-list-block">
+              <div class="block-title">Directory Listing</div>
+              <div class="files-list-content" id="files-list-content">Loading...</div>
+            </div>
+            <div class="files-preview-block">
+              <div class="block-title">Controls</div>
+              <div class="files-help-content">
+                R: refresh directory | Backspace: parent directory | F1-F7: switch modes
+              </div>
             </div>
           </div>
         </section>

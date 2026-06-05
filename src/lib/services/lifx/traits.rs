@@ -39,10 +39,25 @@ pub struct ColorCommand {
 
 #[async_trait]
 pub trait LightControl: Send + Sync {
-    async fn set_power(&self, device_id: &str, power: PowerLevel) -> Result<(), Box<dyn std::error::Error>>;
-    async fn set_color(&self, device_id: &str, command: ColorCommand) -> Result<(), Box<dyn std::error::Error>>;
-    async fn set_infrared(&self, device_id: &str, brightness: u16) -> Result<(), Box<dyn std::error::Error>>;
-    async fn get_device_info(&self, device_id: &str) -> Result<DeviceInfo, Box<dyn std::error::Error>>;
+    async fn set_power(
+        &self,
+        device_id: &str,
+        power: PowerLevel,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+    async fn set_color(
+        &self,
+        device_id: &str,
+        command: ColorCommand,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+    async fn set_infrared(
+        &self,
+        device_id: &str,
+        brightness: u16,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+    async fn get_device_info(
+        &self,
+        device_id: &str,
+    ) -> Result<DeviceInfo, Box<dyn std::error::Error>>;
     async fn list_devices(&self) -> Result<Vec<DeviceInfo>, Box<dyn std::error::Error>>;
     async fn discover_devices(&self) -> Result<(), Box<dyn std::error::Error>>;
 }

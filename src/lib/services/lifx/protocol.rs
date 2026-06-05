@@ -10,7 +10,11 @@ impl ProtocolHandler {
         Self { source }
     }
 
-    pub fn build_message(&self, target: u64, message: Message) -> Result<Vec<u8>, lifx_rs::lan::Error> {
+    pub fn build_message(
+        &self,
+        target: u64,
+        message: Message,
+    ) -> Result<Vec<u8>, lifx_rs::lan::Error> {
         let options = BuildOptions {
             target: Some(target),
             res_required: true,

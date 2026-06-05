@@ -1,8 +1,8 @@
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
 use tokio::fs;
 
 use super::errors::CodingAgentError as ServiceError;
@@ -23,24 +23,24 @@ pub struct ExplanationRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ExplanationType {
-    General,           // Overall code explanation
-    LineByLine,        // Detailed line-by-line breakdown
-    Conceptual,        // High-level concepts and patterns
-    Algorithm,         // Algorithm analysis and complexity
-    DataFlow,          // How data moves through the code
-    ControlFlow,       // Execution paths and branches
-    Architecture,      // Design patterns and structure
-    Security,          // Security implications
-    Performance,       // Performance characteristics
-    BestPractices,     // Code quality and standards
+    General,       // Overall code explanation
+    LineByLine,    // Detailed line-by-line breakdown
+    Conceptual,    // High-level concepts and patterns
+    Algorithm,     // Algorithm analysis and complexity
+    DataFlow,      // How data moves through the code
+    ControlFlow,   // Execution paths and branches
+    Architecture,  // Design patterns and structure
+    Security,      // Security implications
+    Performance,   // Performance characteristics
+    BestPractices, // Code quality and standards
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DetailLevel {
-    Beginner,      // Very detailed, assumes no prior knowledge
-    Intermediate,  // Moderate detail, assumes basic understanding
-    Advanced,      // Concise, assumes strong background
-    Expert,        // Technical depth, assumes expertise
+    Beginner,     // Very detailed, assumes no prior knowledge
+    Intermediate, // Moderate detail, assumes basic understanding
+    Advanced,     // Concise, assumes strong background
+    Expert,       // Technical depth, assumes expertise
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,7 +233,7 @@ pub struct AlgorithmAnalysis {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplexityAnalysis {
-    pub notation: String,  // e.g., "O(n log n)"
+    pub notation: String, // e.g., "O(n log n)"
     pub explanation: String,
     pub factors: Vec<ComplexityFactor>,
 }
@@ -339,52 +339,67 @@ impl CodeExplanationEngine {
     fn initialize_analyzers() -> HashMap<String, Box<dyn CodeAnalyzer>> {
         let mut analyzers = HashMap::new();
 
-        analyzers.insert("rust".to_string(), Box::new(RustAnalyzer::new()) as Box<dyn CodeAnalyzer>);
-        analyzers.insert("python".to_string(), Box::new(PythonAnalyzer::new()) as Box<dyn CodeAnalyzer>);
-        analyzers.insert("javascript".to_string(), Box::new(JsAnalyzer::new()) as Box<dyn CodeAnalyzer>);
-        analyzers.insert("go".to_string(), Box::new(GoAnalyzer::new()) as Box<dyn CodeAnalyzer>);
+        analyzers.insert(
+            "rust".to_string(),
+            Box::new(RustAnalyzer::new()) as Box<dyn CodeAnalyzer>,
+        );
+        analyzers.insert(
+            "python".to_string(),
+            Box::new(PythonAnalyzer::new()) as Box<dyn CodeAnalyzer>,
+        );
+        analyzers.insert(
+            "javascript".to_string(),
+            Box::new(JsAnalyzer::new()) as Box<dyn CodeAnalyzer>,
+        );
+        analyzers.insert(
+            "go".to_string(),
+            Box::new(GoAnalyzer::new()) as Box<dyn CodeAnalyzer>,
+        );
 
         analyzers
     }
 
-    fn initialize_explainers(llm_provider: Arc<dyn LLMProvider>) -> HashMap<ExplanationType, Box<dyn Explainer>> {
+    fn initialize_explainers(
+        llm_provider: Arc<dyn LLMProvider>,
+    ) -> HashMap<ExplanationType, Box<dyn Explainer>> {
         let mut explainers = HashMap::new();
 
         explainers.insert(
             ExplanationType::General,
-            Box::new(GeneralExplainer::new(llm_provider.clone())) as Box<dyn Explainer>
+            Box::new(GeneralExplainer::new(llm_provider.clone())) as Box<dyn Explainer>,
         );
         explainers.insert(
             ExplanationType::LineByLine,
-            Box::new(LineByLineExplainer::new(llm_provider.clone())) as Box<dyn Explainer>
+            Box::new(LineByLineExplainer::new(llm_provider.clone())) as Box<dyn Explainer>,
         );
         explainers.insert(
             ExplanationType::Algorithm,
-            Box::new(AlgorithmExplainer::new(llm_provider.clone())) as Box<dyn Explainer>
+            Box::new(AlgorithmExplainer::new(llm_provider.clone())) as Box<dyn Explainer>,
         );
         explainers.insert(
             ExplanationType::DataFlow,
-            Box::new(DataFlowExplainer::new(llm_provider.clone())) as Box<dyn Explainer>
+            Box::new(DataFlowExplainer::new(llm_provider.clone())) as Box<dyn Explainer>,
         );
 
         explainers
     }
 
-    pub async fn explain(
-        &self,
-        request: ExplanationRequest,
-    ) -> Result<Explanation, ServiceError> {
+    pub async fn explain(&self, request: ExplanationRequest) -> Result<Explanation, ServiceError> {
         // Analyze code structure
-        let analyzer = self.analyzers.get(&request.language)
-            .ok_or_else(|| ServiceError::NotFound {
-                resource: "analyzer".to_string(),
-                id: request.language.clone(),
-            })?;
+        let analyzer =
+            self.analyzers
+                .get(&request.language)
+                .ok_or_else(|| ServiceError::NotFound {
+                    resource: "analyzer".to_string(),
+                    id: request.language.clone(),
+                })?;
 
         let analysis = analyzer.analyze(&request.code).await?;
 
         // Get appropriate explainer
-        let explainer = self.explainers.get(&request.explanation_type)
+        let explainer = self
+            .explainers
+            .get(&request.explanation_type)
             .ok_or_else(|| ServiceError::NotFound {
                 resource: "explainer".to_string(),
                 id: format!("{:?}", request.explanation_type),
@@ -417,15 +432,13 @@ impl CodeExplanationEngine {
         request: &ExplanationRequest,
         _analysis: &CodeAnalysis,
     ) -> Result<Vec<LearningResource>, ServiceError> {
-        let resources = vec![
-            LearningResource {
-                resource_type: ResourceType::Documentation,
-                title: format!("{} Documentation", request.language),
-                url: self.get_doc_url(&request.language),
-                difficulty: DetailLevel::Intermediate,
-                estimated_time: "30 minutes".to_string(),
-            },
-        ];
+        let resources = vec![LearningResource {
+            resource_type: ResourceType::Documentation,
+            title: format!("{} Documentation", request.language),
+            url: self.get_doc_url(&request.language),
+            difficulty: DetailLevel::Intermediate,
+            estimated_time: "30 minutes".to_string(),
+        }];
 
         Ok(resources)
     }
@@ -440,8 +453,8 @@ impl CodeExplanationEngine {
     }
 
     fn should_generate_quiz(&self, request: &ExplanationRequest) -> bool {
-        matches!(request.target_audience, TargetAudience::Student) ||
-        matches!(request.detail_level, DetailLevel::Beginner)
+        matches!(request.target_audience, TargetAudience::Student)
+            || matches!(request.detail_level, DetailLevel::Beginner)
     }
 
     async fn generate_quiz(
@@ -457,25 +470,26 @@ impl CodeExplanationEngine {
             self.detail_level_to_string(&request.detail_level)
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         // Parse response into quiz questions
         Ok(Quiz {
-            questions: vec![
-                QuizQuestion {
-                    question: "What does this code do?".to_string(),
-                    question_type: QuestionType::MultipleChoice,
-                    options: vec![
-                        "Option A".to_string(),
-                        "Option B".to_string(),
-                        "Option C".to_string(),
-                        "Option D".to_string(),
-                    ],
-                    correct_answer: "Option A".to_string(),
-                    explanation: "This code...".to_string(),
-                    difficulty: request.detail_level.clone(),
-                },
-            ],
+            questions: vec![QuizQuestion {
+                question: "What does this code do?".to_string(),
+                question_type: QuestionType::MultipleChoice,
+                options: vec![
+                    "Option A".to_string(),
+                    "Option B".to_string(),
+                    "Option C".to_string(),
+                    "Option D".to_string(),
+                ],
+                correct_answer: "Option A".to_string(),
+                explanation: "This code...".to_string(),
+                difficulty: request.detail_level.clone(),
+            }],
             passing_score: 0.7,
         })
     }
@@ -504,7 +518,10 @@ impl CodeExplanationEngine {
             language, code
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         // Parse response into algorithm analysis
         Ok(AlgorithmAnalysis {
@@ -552,25 +569,26 @@ impl CodeExplanationEngine {
             language, code
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         // Parse response into pattern analysis
         Ok(DesignPatternAnalysis {
-            patterns: vec![
-                DetectedPattern {
-                    pattern_name: "Singleton".to_string(),
-                    pattern_type: PatternType::Creational,
-                    location: CodeReference {
-                        start_line: 1,
-                        end_line: 10,
-                        description: "Singleton implementation".to_string(),
-                        purpose: "Ensure single instance".to_string(),
-                    },
-                    confidence: 0.9,
-                    explanation: response,
-                    benefits: vec!["Controlled access".to_string()],
+            patterns: vec![DetectedPattern {
+                pattern_name: "Singleton".to_string(),
+                pattern_type: PatternType::Creational,
+                location: CodeReference {
+                    start_line: 1,
+                    end_line: 10,
+                    description: "Singleton implementation".to_string(),
+                    purpose: "Ensure single instance".to_string(),
                 },
-            ],
+                confidence: 0.9,
+                explanation: response,
+                benefits: vec!["Controlled access".to_string()],
+            }],
             anti_patterns: Vec::new(),
             suggestions: Vec::new(),
         })
@@ -582,23 +600,21 @@ impl CodeExplanationEngine {
         language: &str,
     ) -> Result<InteractiveExplanation, ServiceError> {
         Ok(InteractiveExplanation {
-            steps: vec![
-                InteractiveStep {
-                    step_number: 1,
-                    title: "Overview".to_string(),
-                    content: "Let's understand this code step by step".to_string(),
-                    code_highlight: Some(CodeHighlight {
-                        start_line: 1,
-                        end_line: 5,
-                        color: "#ffff00".to_string(),
-                    }),
-                    interactive_elements: vec![],
-                    checkpoint: Some(Checkpoint {
-                        question: "Do you understand the basic structure?".to_string(),
-                        hints: vec!["Look at the function signature".to_string()],
-                    }),
-                },
-            ],
+            steps: vec![InteractiveStep {
+                step_number: 1,
+                title: "Overview".to_string(),
+                content: "Let's understand this code step by step".to_string(),
+                code_highlight: Some(CodeHighlight {
+                    start_line: 1,
+                    end_line: 5,
+                    color: "#ffff00".to_string(),
+                }),
+                interactive_elements: vec![],
+                checkpoint: Some(Checkpoint {
+                    question: "Do you understand the basic structure?".to_string(),
+                    hints: vec!["Look at the function signature".to_string()],
+                }),
+            }],
             total_duration: "10 minutes".to_string(),
             difficulty_progression: vec![DetailLevel::Beginner, DetailLevel::Intermediate],
         })
@@ -631,9 +647,16 @@ pub struct CodeHighlight {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InteractiveElement {
-    CodeEditor { initial_code: String, solution: String },
-    Debugger { breakpoints: Vec<usize> },
-    Visualizer { data: String },
+    CodeEditor {
+        initial_code: String,
+        solution: String,
+    },
+    Debugger {
+        breakpoints: Vec<usize>,
+    },
+    Visualizer {
+        data: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -777,7 +800,11 @@ impl CodeAnalyzer for GoAnalyzer {
 // Explainer trait
 #[async_trait]
 trait Explainer: Send + Sync {
-    async fn explain(&self, request: &ExplanationRequest, analysis: &CodeAnalysis) -> Result<Explanation, ServiceError>;
+    async fn explain(
+        &self,
+        request: &ExplanationRequest,
+        analysis: &CodeAnalysis,
+    ) -> Result<Explanation, ServiceError>;
 }
 
 // Explainer implementations
@@ -793,7 +820,11 @@ impl GeneralExplainer {
 
 #[async_trait]
 impl Explainer for GeneralExplainer {
-    async fn explain(&self, request: &ExplanationRequest, _analysis: &CodeAnalysis) -> Result<Explanation, ServiceError> {
+    async fn explain(
+        &self,
+        request: &ExplanationRequest,
+        _analysis: &CodeAnalysis,
+    ) -> Result<Explanation, ServiceError> {
         let prompt = format!(
             "Explain this {} code for a {} audience:\n{}",
             request.language,
@@ -801,7 +832,10 @@ impl Explainer for GeneralExplainer {
             request.code
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(Explanation {
             summary: response,
@@ -827,13 +861,20 @@ impl LineByLineExplainer {
 
 #[async_trait]
 impl Explainer for LineByLineExplainer {
-    async fn explain(&self, request: &ExplanationRequest, _analysis: &CodeAnalysis) -> Result<Explanation, ServiceError> {
+    async fn explain(
+        &self,
+        request: &ExplanationRequest,
+        _analysis: &CodeAnalysis,
+    ) -> Result<Explanation, ServiceError> {
         let prompt = format!(
             "Provide a line-by-line explanation of this {} code:\n{}",
             request.language, request.code
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(Explanation {
             summary: response,
@@ -859,13 +900,20 @@ impl AlgorithmExplainer {
 
 #[async_trait]
 impl Explainer for AlgorithmExplainer {
-    async fn explain(&self, request: &ExplanationRequest, _analysis: &CodeAnalysis) -> Result<Explanation, ServiceError> {
+    async fn explain(
+        &self,
+        request: &ExplanationRequest,
+        _analysis: &CodeAnalysis,
+    ) -> Result<Explanation, ServiceError> {
         let prompt = format!(
             "Explain the algorithm in this {} code:\n{}",
             request.language, request.code
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(Explanation {
             summary: response,
@@ -891,13 +939,20 @@ impl DataFlowExplainer {
 
 #[async_trait]
 impl Explainer for DataFlowExplainer {
-    async fn explain(&self, request: &ExplanationRequest, _analysis: &CodeAnalysis) -> Result<Explanation, ServiceError> {
+    async fn explain(
+        &self,
+        request: &ExplanationRequest,
+        _analysis: &CodeAnalysis,
+    ) -> Result<Explanation, ServiceError> {
         let prompt = format!(
             "Explain how data flows through this {} code:\n{}",
             request.language, request.code
         );
 
-        let response = self.llm_provider.generate_response(&prompt, "gpt-4").await?;
+        let response = self
+            .llm_provider
+            .generate_response(&prompt, "gpt-4")
+            .await?;
 
         Ok(Explanation {
             summary: response,
@@ -919,17 +974,19 @@ impl CodeVisualizer {
         Self
     }
 
-    async fn generate(&self, _code: &str, _analysis: &CodeAnalysis) -> Result<Vec<Visualization>, ServiceError> {
-        Ok(vec![
-            Visualization {
-                viz_type: VisualizationType::Flowchart,
-                title: "Code Flow".to_string(),
-                description: "Visual representation of code execution".to_string(),
-                data: VisualizationData::Mermaid(
-                    "graph TD\n    A[Start] --> B[Process]\n    B --> C[End]".to_string()
-                ),
-            }
-        ])
+    async fn generate(
+        &self,
+        _code: &str,
+        _analysis: &CodeAnalysis,
+    ) -> Result<Vec<Visualization>, ServiceError> {
+        Ok(vec![Visualization {
+            viz_type: VisualizationType::Flowchart,
+            title: "Code Flow".to_string(),
+            description: "Visual representation of code execution".to_string(),
+            data: VisualizationData::Mermaid(
+                "graph TD\n    A[Start] --> B[Process]\n    B --> C[End]".to_string(),
+            ),
+        }])
     }
 }
 
@@ -940,14 +997,15 @@ impl ConceptMapper {
         Self
     }
 
-    async fn map_concepts(&self, _analysis: &CodeAnalysis) -> Result<Vec<RelatedConcept>, ServiceError> {
-        Ok(vec![
-            RelatedConcept {
-                name: "Functions".to_string(),
-                description: "Reusable blocks of code".to_string(),
-                relevance: 0.9,
-                link: Some("https://example.com/functions".to_string()),
-            }
-        ])
+    async fn map_concepts(
+        &self,
+        _analysis: &CodeAnalysis,
+    ) -> Result<Vec<RelatedConcept>, ServiceError> {
+        Ok(vec![RelatedConcept {
+            name: "Functions".to_string(),
+            description: "Reusable blocks of code".to_string(),
+            relevance: 0.9,
+            link: Some("https://example.com/functions".to_string()),
+        }])
     }
 }

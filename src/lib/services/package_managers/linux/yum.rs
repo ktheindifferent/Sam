@@ -21,7 +21,9 @@ pub async fn install_packages(packages: Vec<&str>) -> Result<(), anyhow::Error> 
     if status.success() {
         Ok(())
     } else {
-        Err(anyhow::anyhow!(format!("yum install failed with status: {}", status)))
+        Err(anyhow::anyhow!(format!(
+            "yum install failed with status: {}",
+            status
+        )))
     }
 }
-

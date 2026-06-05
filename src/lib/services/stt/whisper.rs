@@ -11,8 +11,8 @@
 // Cloud -> Internal Cloud -> Localhost
 // TODO - Don't start docker unless localhost has been called
 
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
 use crate::services::Error;
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
 
 pub struct WhisperWorker {
     pub pid: u32,
@@ -27,7 +27,8 @@ impl WhisperWorker {
         let params = whisper_rs::WhisperContextParameters::default();
         let ctx = WhisperContext::new_with_params("/opt/sam/models/ggml-base.bin", params)
             .map_err(|e| Error::from(format!("Failed to load Whisper model: {}", e)))?;
-        let state = ctx.create_state()
+        let state = ctx
+            .create_state()
             .map_err(|e| Error::from(format!("Failed to create Whisper state: {}", e)))?;
         Ok(WhisperWorker {
             pid: 0,

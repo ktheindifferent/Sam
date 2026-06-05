@@ -1,7 +1,7 @@
 //! Provider traits
 
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 use std::time::Duration;
 
 /// Unified LLM provider trait
