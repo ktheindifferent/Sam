@@ -82,9 +82,9 @@ impl WebSessions {
             client.execute("INSERT INTO cache_web_sessions (oid, sid, human_oid, ip_address, authenticated, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
                 &[&self.oid.clone(),
                 &self.sid,
-                &self.human_oid, 
-                &self.ip_address.to_string(), 
-                &self.authenticated, 
+                &self.human_oid,
+                &self.ip_address.to_string(),
+                &self.authenticated,
                 &self.timestamp]
             ).unwrap();
 

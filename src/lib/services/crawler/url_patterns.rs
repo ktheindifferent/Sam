@@ -125,9 +125,12 @@ impl UrlPatternAnalyzer {
     pub fn is_potentially_infinite(&mut self, url: &str) -> bool {
         // Check against known infinite patterns
         for detector in &self.infinite_patterns {
-            if let Some(captures) = detector.pattern.captures(url) {
-                let pattern_key =
-                    format!("{}:{}", detector.name, captures.get(0).unwrap().as_str());
+            if detector.pattern.is_match(url) {
+                let domain = Url::parse(url)
+                    .ok()
+                    .and_then(|parsed| parsed.host_str().map(ToString::to_string))
+                    .unwrap_or_default();
+                let pattern_key = format!("{}:{}", detector.name, domain);
 
                 let count = self
                     .pattern_frequency

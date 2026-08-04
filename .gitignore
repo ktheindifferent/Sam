@@ -1,7 +1,54 @@
-/target
-/tmp
-*.weights
-*.dSYM
+# Rust build output
+/target/
+
+# Local scratch/runtime output
+/tmp/
+/logs/
+*.log
+*.pid
+*.sock
+websocket_audit.log
+
+# Local environment files
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Native build artifacts
+*.dSYM/
 *.out
+*.o
+*.so
+*.dylib
+*.dll
+
+# ML/model artifacts
+*.weights
+*.gguf
+*.bin
+*.onnx
+
+# JavaScript dependencies/build output
+node_modules/
+www/node_modules/
+www/assets/dist/
+
+# Python cache output from vendored scripts
+__pycache__/
+*.py[cod]
+
+# Project-specific generated files
 TaskTemplate:.yml
-scripts/llama.cpp # llama.cpp has mystery changes... can't find them... ignoring it.... :)
+
+# Keep local submodule worktrees from showing as ordinary changes.
+scripts/llama.cpp/
+scripts/whisper.cpp/
+scripts/px1-sam/

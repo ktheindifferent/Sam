@@ -536,7 +536,7 @@ mod tests {
 
     #[test]
     fn test_content_truncation() {
-        let long_content = "A".repeat(3000);
+        let long_content = "word ".repeat(700);
         let mut content =
             CrawledContent::new("https://example.com".to_string(), &long_content, None, 200);
         content.id = 1;
@@ -545,7 +545,7 @@ mod tests {
 
         assert!(telemetry_content.content_text.len() < long_content.len());
         assert!(telemetry_content.content_text.contains("[truncated]"));
-        assert!(telemetry_content.content_text.starts_with("A"));
+        assert!(telemetry_content.content_text.starts_with("word"));
         // Verify it's truncated at character boundary (should be exactly 2000 chars + truncation suffix)
         let content_without_suffix = telemetry_content.content_text.replace("...[truncated]", "");
         assert_eq!(content_without_suffix.chars().count(), 2000);

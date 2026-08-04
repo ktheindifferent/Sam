@@ -13,11 +13,13 @@ This document describes the organized directory structure of the S.A.M. (Smart A
 ├── .gitmodules              # Git submodules configuration
 ├── .vscode/                 # VSCode workspace settings
 ├── .dockerignore            # Docker ignore patterns
+├── AGENTS.md                # Codex/agent project instructions
 ├── benches/                 # Rust benchmarks
 ├── build.rs                 # Rust build script
 ├── captain-definition       # CapRover deployment configuration
 ├── Cargo.lock              # Dependency lock file
 ├── Cargo.toml              # Rust project configuration
+├── CLAUDE.md               # Claude project instructions
 ├── cfg/                    # Application configuration files
 ├── config/                 # Build and development configuration
 ├── data/                   # Data files, models, and assets
@@ -35,6 +37,9 @@ This document describes the organized directory structure of the S.A.M. (Smart A
 ├── tools/                 # Development tools and utilities
 └── www/                   # Web frontend assets
 ```
+
+Generated directories such as `target/`, `logs/`, `www/node_modules/`, and
+`www/assets/dist/` are intentionally ignored and should be rebuilt locally.
 
 ## Detailed Directory Descriptions
 
@@ -69,14 +74,16 @@ docs/
 │   ├── CAPROVER_DEPLOYMENT.md # CapRover deployment guide
 │   └── DATABASE_SETUP.md      # Database setup instructions
 ├── development/
+│   ├── coding-agent/          # Coding agent design/refactor notes
+│   ├── refactoring/           # Historical refactor plans and summaries
+│   ├── reports/               # Generated analysis reports retained for reference
+│   ├── test-notes/            # Test notes that are not executable tests
 │   ├── CACHE_IMPLEMENTATION.md
 │   ├── CRAWLER_ENHANCEMENTS.md
 │   ├── MIGRATION_SYSTEM.md
 │   ├── REDIS_REFACTORING_SUMMARY.md
 │   ├── RESOURCE_MANAGEMENT_IMPLEMENTATION.md
 │   ├── RESTART_IMPLEMENTATION.md
-│   ├── SESSION_SUMMARY_*.md
-│   ├── TEST_*.md
 │   ├── THREAD_*.md
 │   └── WEBSOCKET_SECURITY.md
 ├── features/
@@ -116,10 +123,11 @@ tests/
 ├── run_tests.sh             # Test runner script
 ├── test_*.sh                # Specific test scripts
 ├── test_*.rs                # Rust test files
-├── test_*.md                # Test documentation
 ├── test_runner              # Compiled test runner
 └── verify_sql_fixes.sh      # SQL injection test verification
 ```
+
+Markdown-only test notes live under `docs/development/test-notes/`.
 
 ### `/tools/` - Development Tools
 Development utilities and helper tools:

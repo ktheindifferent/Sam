@@ -18,8 +18,9 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-// TODO: Wrap in a feature just in case we dont want it
+#[cfg(feature = "opencl")]
 use opencl3::device::get_all_devices;
+#[cfg(feature = "opencl")]
 use opencl3::device::CL_DEVICE_TYPE_GPU;
 
 pub type Result<T> = anyhow::Result<T>;
@@ -468,7 +469,7 @@ async fn install_linux_packages() -> Result<()> {
         "libexpat1-dev",
         "libfdk-aac-dev",
     ];
-    libsam::services::package_managers::linux::install_packages(&packages).await?;
+    libsam::services::package_managers::linux::install_packages(packages).await?;
     Ok(())
 }
 
@@ -574,13 +575,22 @@ async fn create_opt_sam_directories() {
 
 // Check for GPU devices and create a marker file if found
 async fn check_gpu_devices() -> Result<()> {
-    let devices = get_all_devices(CL_DEVICE_TYPE_GPU);
-    if devices.is_err() {
-        log::info!("No GPU devices found!");
-    } else {
-        let _ = libsam::cmd_async("touch /opt/sam/gpu").await?;
+    #[cfg(not(feature = "opencl"))]
+    {
+        log::info!("OpenCL support is not enabled; skipping GPU detection.");
+        return Ok(());
     }
-    Ok(())
+
+    #[cfg(feature = "opencl")]
+    {
+        let devices = get_all_devices(CL_DEVICE_TYPE_GPU);
+        if devices.is_err() {
+            log::info!("No GPU devices found!");
+        } else {
+            let _ = libsam::cmd_async("touch /opt/sam/gpu").await?;
+        }
+        Ok(())
+    }
 }
 
 // Check for updates from the Sam GitHub repository using git2
@@ -767,24 +777,29 @@ pub fn configure_opencl_and_clang_paths() -> Result<()> {
         println!("libclang.dll not found and not provided. LIBCLANG_PATH will not be set.");
     }
 
-    // Use opencl3 to verify OpenCL is available
-    #[link(name = "opencl")]
-    #[link(name = "clang")]
-    use opencl3::platform::get_platforms;
-    match get_platforms() {
-        Ok(platforms) if !platforms.is_empty() => {
-            println!("OpenCL platforms found: {}", platforms.len());
-            for (i, p) in platforms.iter().enumerate() {
-                println!("Platform {}: {}", i, p.name().unwrap_or_default());
+    #[cfg(feature = "opencl")]
+    {
+        use opencl3::platform::get_platforms;
+
+        match get_platforms() {
+            Ok(platforms) if !platforms.is_empty() => {
+                println!("OpenCL platforms found: {}", platforms.len());
+                for (i, p) in platforms.iter().enumerate() {
+                    println!("Platform {}: {}", i, p.name().unwrap_or_default());
+                }
+            }
+            Ok(_) => {
+                println!("No OpenCL platforms found. Check your LIB path and OpenCL installation.");
+            }
+            Err(e) => {
+                println!("Error querying OpenCL platforms: {e}");
             }
         }
-        Ok(_) => {
-            println!("No OpenCL platforms found. Check your LIB path and OpenCL installation.");
-        }
-        Err(e) => {
-            println!("Error querying OpenCL platforms: {e}");
-        }
     }
+
+    #[cfg(not(feature = "opencl"))]
+    println!("OpenCL verification skipped; build installer with --features opencl to enable it.");
+
     Ok(())
 }
 

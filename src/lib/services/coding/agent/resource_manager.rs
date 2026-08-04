@@ -155,8 +155,15 @@ impl ResourcePool {
             }
         });
 
-        let mut handles = tokio::runtime::Handle::current().block_on(self.cleanup_handles.write());
-        handles.push(handle);
+        match self.cleanup_handles.try_write() {
+            Ok(mut handles) => handles.push(handle),
+            Err(_) => {
+                handle.abort();
+                warn!(
+                    "Resource cleanup task was not registered because cleanup handle lock was busy"
+                );
+            }
+        }
     }
 
     /// Allocate resources with automatic cleanup

@@ -66,7 +66,7 @@ validate_directories() {
             log_success "Directory exists: $dir/"
         else
             log_error "Missing required directory: $dir/"
-            ((ERRORS++))
+            ((ERRORS+=1))
         fi
     done
     
@@ -77,7 +77,7 @@ validate_directories() {
             log_success "Documentation category exists: docs/$subdir/"
         else
             log_warning "Documentation category missing: docs/$subdir/"
-            ((WARNINGS++))
+            ((WARNINGS+=1))
         fi
     done
 }
@@ -102,7 +102,7 @@ validate_file_locations() {
             log_success "Root file exists: $file"
         else
             log_error "Missing root file: $file"
-            ((ERRORS++))
+            ((ERRORS+=1))
         fi
     done
     
@@ -118,7 +118,7 @@ validate_file_locations() {
             log_success "Deploy file exists: $file"
         else
             log_error "Missing deploy file: $file"
-            ((ERRORS++))
+            ((ERRORS+=1))
         fi
     done
     
@@ -135,7 +135,7 @@ validate_file_locations() {
             log_success "Documentation exists: $file"
         else
             log_warning "Documentation missing: $file"
-            ((WARNINGS++))
+            ((WARNINGS+=1))
         fi
     done
 }
@@ -159,11 +159,16 @@ validate_clean_root() {
     
     for pattern in "${unwanted_patterns[@]}"; do
         # Use find to check for unwanted files
-        found_files=$(find . -maxdepth 1 -name "$pattern" -not -name "README.md" -not -name "LICENSE.md" 2>/dev/null || true)
+        found_files=$(find . -maxdepth 1 -name "$pattern" \
+            -not -name "README.md" \
+            -not -name "LICENSE.md" \
+            -not -name "AGENTS.md" \
+            -not -name "CLAUDE.md" \
+            2>/dev/null || true)
         if [[ -n "$found_files" ]]; then
             log_warning "Files matching '$pattern' found in root: $found_files"
             root_clean=false
-            ((WARNINGS++))
+            ((WARNINGS+=1))
         fi
     done
     
@@ -217,7 +222,7 @@ validate_docker_context() {
             log_success "captain-definition references correct Dockerfile path"
         else
             log_error "captain-definition should reference ./deploy/Dockerfile"
-            ((ERRORS++))
+            ((ERRORS+=1))
         fi
     fi
     
@@ -228,7 +233,7 @@ validate_docker_context() {
                 log_success "Docker Compose file has correct build context: $(basename $compose_file)"
             else
                 log_warning "Docker Compose file may have incorrect build context: $(basename $compose_file)"
-                ((WARNINGS++))
+                ((WARNINGS+=1))
             fi
         fi
     done

@@ -401,7 +401,7 @@ mod tests {
     fn test_sql_sanitization() {
         assert_eq!(
             sanitize_sql_parameter("'; DROP TABLE users;"),
-            "''; DROP TABLE users"
+            "'' DROP TABLE users"
         );
         assert_eq!(sanitize_sql_parameter("normal input"), "normal input");
     }

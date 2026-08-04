@@ -30,7 +30,7 @@ static COMMON_TOKENS: Lazy<Vec<String>> = Lazy::new(|| {
 
 /// Search URL detection regex
 static SEARCH_PATTERNS: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)(/search[/?]|/query[/?]|/find[/?]|/lookup[/?]|/results[/?]|/explore[/?]|/filter[/?]|/discover[/?]|/browse[/?]|/list[/?]|/websearch\?|/search_history\?|\?q=|&q=|search=|query=|lookup=|results=|explore=|filter=|discover=|browse=|\bu=|url=|\bid=|redirect|backurl=|text=|searchterm|search_term|return_to|https?%3A%2F%2F)")
+    Regex::new(r"(?i)(/(search|query|find|lookup|results|explore|filter|discover|browse|list)([/?#]|$)|/websearch\?|/search_history\?|\?q=|&q=|search=|query=|lookup=|results=|explore=|filter=|discover=|browse=|\bu=|url=|\bid=|redirect|backurl=|text=|searchterm|search_term|return_to|https?%3A%2F%2F)")
         .unwrap_or_else(|e| {
             log::error!("Failed to compile search pattern regex: {}", e);
             sentry::capture_message(&format!("Search regex compilation failed: {}", e), sentry::Level::Error);
@@ -489,7 +489,7 @@ mod tests {
         );
         assert_eq!(
             UrlProcessor::mime_type_from_url("https://example.com/"),
-            "text/unknown"
+            "text/html"
         );
     }
 

@@ -60,14 +60,21 @@ impl MetricsManager {
             .or_insert(0) += 1;
 
         // Update learning metrics - command success patterns
-        let current_success_rate = self
+        let command_count = self
+            .performance_metrics
+            .most_used_commands
+            .get(base_command)
+            .copied()
+            .unwrap_or(1) as f32;
+        let previous_success_rate = self
             .learning_metrics
             .command_success_patterns
             .get(base_command)
             .copied()
-            .unwrap_or(0.5);
+            .unwrap_or(0.0);
+        let previous_success_count = previous_success_rate * (command_count - 1.0);
 
-        let new_success_rate = (current_success_rate + success_count as f32) / 2.0;
+        let new_success_rate = (previous_success_count + success_count as f32) / command_count;
         self.learning_metrics
             .command_success_patterns
             .insert(base_command.to_string(), new_success_rate);

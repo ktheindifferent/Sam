@@ -190,6 +190,10 @@ pub fn validate_path_param(path: &str) -> Result<String, Response> {
 
 /// Validate ID parameter (UUID or numeric)
 pub fn validate_id_param(id: &str) -> Result<String, Response> {
+    if id.contains("..") || id.contains('/') || id.contains('\\') {
+        return Err(error_response("Invalid ID parameter", 400));
+    }
+
     // Check if it's a valid UUID
     if id.len() == 36 {
         // Basic UUID format check
@@ -208,16 +212,16 @@ pub fn validate_id_param(id: &str) -> Result<String, Response> {
     }
 
     // Check if it's an alphanumeric OID
-    let sanitized: String = id
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-        .collect();
-
-    if sanitized.is_empty() || sanitized.len() > 64 {
+    if id.is_empty()
+        || id.len() > 64
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(error_response("Invalid ID parameter", 400));
     }
 
-    Ok(sanitized)
+    Ok(id.to_string())
 }
 
 #[cfg(test)]

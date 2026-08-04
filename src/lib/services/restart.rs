@@ -430,6 +430,7 @@ impl RestartManager {
         if success {
             m.successful_restarts += 1;
             m.last_success = Some(Instant::now());
+            m.consecutive_failures = 0;
 
             // Update average restart time
             let total_time =
@@ -439,6 +440,7 @@ impl RestartManager {
         } else {
             m.failed_restarts += 1;
             m.last_failure = Some(Instant::now());
+            m.consecutive_failures += 1;
         }
     }
 

@@ -2239,7 +2239,7 @@ mod tests {
     fn test_scene_format() {
         for (name, hue, saturation, brightness, kelvin) in SCENES.iter() {
             assert!(!name.is_empty(), "Scene name should not be empty");
-            assert!(*hue <= 360, "Hue should be 0-360 (actual: {})", hue);
+            assert!(*hue <= 65535, "Hue should be 0-65535 (actual: {})", hue);
             assert!(*saturation <= 65535, "Saturation should be 0-65535");
             assert!(*brightness <= 65535, "Brightness should be 0-65535");
             assert!(

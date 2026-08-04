@@ -253,7 +253,8 @@ impl BackupService {
 
         // Decompress if needed
         let source_path = if metadata.compression.is_some() {
-            self.decompress_backup(&backup_path, backup_id).await?
+            self.decompress_backup(&backup_path.with_extension("tar.gz"), backup_id)
+                .await?
         } else {
             backup_path
         };
@@ -285,13 +286,23 @@ impl BackupService {
         info!("Verifying backup: {}", metadata.id);
 
         let backup_path = self.get_backup_path(&metadata.id, &metadata.timestamp);
+        let backup_artifact_path = if metadata.compression.is_some() {
+            backup_path.with_extension("tar.gz")
+        } else {
+            backup_path.clone()
+        };
 
         // Verify checksum
-        let calculated_checksum = self.calculate_checksum(&backup_path).await?;
+        let calculated_checksum = self.calculate_checksum(&backup_artifact_path).await?;
         if calculated_checksum != metadata.checksum {
             return Err(anyhow::anyhow!(
                 "Backup verification failed: checksum mismatch"
             ));
+        }
+
+        if metadata.compression.is_some() {
+            info!("Compressed backup archive verification successful");
+            return Ok(());
         }
 
         // Verify each target

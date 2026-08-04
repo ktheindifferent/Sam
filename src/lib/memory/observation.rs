@@ -150,11 +150,11 @@ impl Observation {
             client.execute("INSERT INTO observations (oid, timestamp, observation_type, thing_oid, web_session_id, observation_objects, observation_humans, observation_notes, observation_file) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                 &[&self.oid.clone(),
                 &self.timestamp,
-                &self.observation_type.to_string(), 
-                &obb_thing_str, 
+                &self.observation_type.to_string(),
+                &obb_thing_str,
                 &obb_web_session_str,
-                &obb_obv_str, 
-                &obb_humans_str, 
+                &obb_obv_str,
+                &obb_humans_str,
                 &self.observation_notes.join(","),
                 &self.observation_file]
             )?;
@@ -193,10 +193,10 @@ impl Observation {
                 obb_humans_str += format!("{},", hum.oid).as_str();
             }
 
-            client.execute("UPDATE observations SET observation_type = $1, observation_objects = $2, observation_humans = $3, observation_notes = $4, observation_file = $5 WHERE oid = $6;", 
-            &[&self.observation_type.to_string(), 
-            &obb_obv_str, 
-            &obb_humans_str, 
+            client.execute("UPDATE observations SET observation_type = $1, observation_objects = $2, observation_humans = $3, observation_notes = $4, observation_file = $5 WHERE oid = $6;",
+            &[&self.observation_type.to_string(),
+            &obb_obv_str,
+            &obb_humans_str,
             &self.observation_notes.join(","),
             &self.observation_file,
             &ads.oid])?;

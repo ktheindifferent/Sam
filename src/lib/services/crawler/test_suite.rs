@@ -173,7 +173,7 @@ mod tests {
             let url = "https://test.com/page";
 
             // Fast responses should decrease delay
-            for _ in 0..5 {
+            for _ in 0..11 {
                 limiter.wait_for_slot(url, None).await.unwrap();
                 limiter
                     .record_request_complete(url, Duration::from_millis(50), Some(200), None)

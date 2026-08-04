@@ -161,9 +161,13 @@ pub fn parse_feed(content: &str) -> Result<Feed> {
 
 /// Detect the type of feed from content
 fn detect_feed_type(content: &str) -> FeedType {
-    if content.contains("<rss") || content.contains("<channel>") {
+    let content_lower = content.to_ascii_lowercase();
+    if content_lower.contains("<rss") || content_lower.contains("<channel>") {
         FeedType::RSS
-    } else if content.contains("<feed") && content.contains("xmlns") && content.contains("atom") {
+    } else if content_lower.contains("<feed")
+        && content_lower.contains("xmlns")
+        && content_lower.contains("atom")
+    {
         FeedType::Atom
     } else {
         FeedType::Unknown
@@ -225,6 +229,34 @@ fn parse_rss(content: &str) -> Result<Feed> {
                         }
                     }
                     _ => {}
+                }
+            }
+            Ok(Event::Empty(ref e)) => {
+                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+
+                if name == "link" {
+                    let mut href = String::new();
+                    let mut rel = String::new();
+
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"href" => href = String::from_utf8_lossy(&attr.value).to_string(),
+                            b"rel" => rel = String::from_utf8_lossy(&attr.value).to_string(),
+                            _ => {}
+                        }
+                    }
+
+                    if in_entry {
+                        if let Some(ref mut item) = current_item {
+                            if rel.is_empty() || rel == "alternate" {
+                                item.link = href;
+                            } else if rel == "enclosure" {
+                                item.enclosures.push(href);
+                            }
+                        }
+                    } else if rel.is_empty() || rel == "alternate" {
+                        feed.link = Some(href);
+                    }
                 }
             }
             Ok(Event::Text(e)) => {

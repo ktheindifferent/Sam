@@ -402,13 +402,13 @@ mod tests {
     fn test_parse_symbolic_operation() {
         // Test basic operations
         assert_eq!(parse_symbolic_operation(0o644, "u+x").unwrap(), 0o744);
-        assert_eq!(parse_symbolic_operation(0o755, "g-w").unwrap(), 0o735);
+        assert_eq!(parse_symbolic_operation(0o755, "g-w").unwrap(), 0o755);
         assert_eq!(parse_symbolic_operation(0o644, "o=rwx").unwrap(), 0o647);
     }
 
     #[test]
     fn test_parse_chmod_mode_invalid() {
         assert!(parse_chmod_mode("999").is_err());
-        assert!(parse_chmod_mode("abc").is_ok()); // Will be parsed as symbolic
+        assert!(parse_chmod_mode("abc").is_err());
     }
 }

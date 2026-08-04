@@ -1,7 +1,7 @@
 use rouille::Request;
 use rouille::Response;
 
-use invidious::reqwest::blocking::Client;
+use invidious::{ClientSync, ClientSyncTrait};
 
 pub fn handle(
     current_session: crate::memory::cache::WebSessions,
@@ -12,7 +12,7 @@ pub fn handle(
 
         match q_param {
             Some(q) => {
-                let client = Client::new(String::from("https://vid.puffyan.us"));
+                let client = ClientSync::new(String::from("https://vid.puffyan.us"));
                 let search_results = client
                     .search(Some(format!("q={q}").as_str()))
                     .map_err(|e| {
@@ -32,7 +32,7 @@ pub fn handle(
 
         match q_param {
             Some(q) => {
-                let client = Client::new(String::from("https://vid.puffyan.us"));
+                let client = ClientSync::new(String::from("https://vid.puffyan.us"));
                 let search_results = client
                     .search(Some(format!("q={q}").as_str()))
                     .map_err(|e| {

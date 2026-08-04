@@ -191,7 +191,7 @@ impl<C: PooledConnection> ConnectionPool<C> {
 
                         let mut metrics = self.metrics.write().await;
                         metrics.total_closed += 1;
-                        metrics.current_size -= 1;
+                        metrics.current_size = metrics.current_size.saturating_sub(1);
                     }
                 } else {
                     break None;
@@ -261,8 +261,8 @@ impl<C: PooledConnection> ConnectionPool<C> {
 
             let mut metrics = self.metrics.write().await;
             metrics.total_closed += 1;
-            metrics.current_size -= 1;
-            metrics.active_connections -= 1;
+            metrics.current_size = metrics.current_size.saturating_sub(1);
+            metrics.active_connections = metrics.active_connections.saturating_sub(1);
 
             return;
         }
@@ -272,7 +272,7 @@ impl<C: PooledConnection> ConnectionPool<C> {
 
         let mut metrics = self.metrics.write().await;
         metrics.total_returns += 1;
-        metrics.active_connections -= 1;
+        metrics.active_connections = metrics.active_connections.saturating_sub(1);
         metrics.idle_connections = connections.len();
     }
 
@@ -305,7 +305,7 @@ impl<C: PooledConnection> ConnectionPool<C> {
 
                         let mut metrics = metrics.write().await;
                         metrics.total_closed += 1;
-                        metrics.current_size -= 1;
+                        metrics.current_size = metrics.current_size.saturating_sub(1);
                     }
                 }
 

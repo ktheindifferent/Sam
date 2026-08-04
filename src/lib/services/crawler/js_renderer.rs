@@ -404,34 +404,44 @@ impl JsRenderer {
     /// Detect JavaScript frameworks
     pub async fn detect_frameworks(&self, html: &str) -> Vec<String> {
         let mut frameworks = Vec::new();
+        let html_lower = html.to_ascii_lowercase();
 
         // React
-        if html.contains("react") || html.contains("_reactRoot") || html.contains("__REACT") {
+        if html_lower.contains("react")
+            || html_lower.contains("_reactroot")
+            || html_lower.contains("__react")
+        {
             frameworks.push("React".to_string());
         }
 
         // Angular
-        if html.contains("ng-app") || html.contains("ng-controller") || html.contains("angular") {
+        if html_lower.contains("ng-app")
+            || html_lower.contains("ng-controller")
+            || html_lower.contains("angular")
+        {
             frameworks.push("Angular".to_string());
         }
 
         // Vue
-        if html.contains("v-app") || html.contains("vue") || html.contains("__vue__") {
+        if html_lower.contains("v-app")
+            || html_lower.contains("vue")
+            || html_lower.contains("__vue__")
+        {
             frameworks.push("Vue".to_string());
         }
 
         // Svelte
-        if html.contains("svelte") || html.contains("__svelte") {
+        if html_lower.contains("svelte") || html_lower.contains("__svelte") {
             frameworks.push("Svelte".to_string());
         }
 
         // Next.js
-        if html.contains("__NEXT_DATA__") || html.contains("_next") {
+        if html_lower.contains("__next_data__") || html_lower.contains("_next") {
             frameworks.push("Next.js".to_string());
         }
 
         // Gatsby
-        if html.contains("gatsby") || html.contains("___gatsby") {
+        if html_lower.contains("gatsby") || html_lower.contains("___gatsby") {
             frameworks.push("Gatsby".to_string());
         }
 

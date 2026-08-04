@@ -704,9 +704,9 @@ impl MetadataStore {
             let session = session.clone();
             move || -> Result<()> {
                 let mut client = crate::memory::Config::client()?;
-                
+
                 client.execute(
-                    "INSERT INTO recording_sessions (session_id, thing_oid, start_time, trigger, file_path, metadata) 
+                    "INSERT INTO recording_sessions (session_id, thing_oid, start_time, trigger, file_path, metadata)
                      VALUES ($1, $2, $3, $4, $5, $6)
                      ON CONFLICT (session_id) DO UPDATE SET
                      end_time = EXCLUDED.end_time,
@@ -722,7 +722,7 @@ impl MetadataStore {
                         &serde_json::to_value(&session.metadata)?,
                     ],
                 )?;
-                
+
                 Ok(())
             }
         }).await??;
@@ -786,8 +786,8 @@ impl MetadataStore {
                 let mut client = crate::memory::Config::client()?;
 
                 client.execute(
-                    "UPDATE recording_sessions 
-                     SET metadata = jsonb_set(metadata, '{events}', 
+                    "UPDATE recording_sessions
+                     SET metadata = jsonb_set(metadata, '{events}',
                          coalesce(metadata->'events', '[]'::jsonb) || $1::jsonb)
                      WHERE session_id = $2",
                     &[&serde_json::to_value(&event)?, &session_id],

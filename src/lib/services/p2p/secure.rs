@@ -15,7 +15,7 @@ use log::{info, warn};
 use rcgen::CertificateParams;
 use ring::signature::{Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
 use ring::{agreement, rand};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls::{ClientConfig, ServerConfig};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -159,22 +159,30 @@ impl SecureP2P {
         })
     }
 
-    fn create_tls_server_config(_identity: &PeerIdentity) -> Result<ServerConfig, SecureError> {
-        // Basic TLS server configuration - would need proper certificate handling in production
-        let config = ServerConfig::builder()
+    fn create_tls_server_config(identity: &PeerIdentity) -> Result<ServerConfig, SecureError> {
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let cert_key_pair = rcgen::KeyPair::generate()?;
+        let mut cert_params = CertificateParams::new(vec![identity.peer_id.0.clone()])?;
+        cert_params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, identity.peer_id.0.as_str());
+        let cert = cert_params.self_signed(&cert_key_pair)?;
+        let key = PrivateKeyDer::from(PrivatePkcs8KeyDer::from(cert_key_pair.serialize_der()));
+
+        let config = ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| format!("Failed to configure TLS protocol versions: {}", e))?
             .with_no_client_auth()
-            .with_single_cert(
-                vec![CertificateDer::from(vec![])], // Empty cert for now
-                PrivateKeyDer::try_from(vec![])
-                    .map_err(|e| format!("Invalid private key: {:?}", e))?, // Empty key for now
-            )
+            .with_single_cert(vec![CertificateDer::from(cert.der().to_vec())], key)
             .map_err(|e| format!("Failed to create TLS server config: {}", e))?;
         Ok(config)
     }
 
     fn create_tls_client_config() -> Result<ClientConfig, SecureError> {
-        // Basic TLS client configuration
-        let config = ClientConfig::builder()
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let config = ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| format!("Failed to configure TLS protocol versions: {}", e))?
             .with_root_certificates(rustls::RootCertStore::empty())
             .with_no_client_auth();
         Ok(config)

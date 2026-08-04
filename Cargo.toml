@@ -44,13 +44,13 @@ hound = "3.4.0"
 noise-gate = { git = "https://github.com/Michael-F-Bryan/noise-gate.git", version = "0.1.1-alpha.0" }
 dasp = "0.11.0"
 dropbox-sdk = { git = "https://github.com/PixelCoda/dropbox-sdk-rust.git", version = "0.16.2", features = ["dbx_files"] }
-invidious = "0.4.0"
+invidious = { version = "0.7.8", default-features = true }
 rustube = { version = "0.6.0", features = ["blocking"] }
 whoami = "1.6.0"
 gethostname = "0.4.3"
 anyhow = "1.0.66"
 titlecase = "2.2.1"
-opencl3 = "0.9.3"
+opencl3 = { version = "0.9.3", optional = true }
 colored = "3.0.0"
 nanoid = "0.4"
 crossbeam-channel = "0.5"
@@ -159,6 +159,7 @@ default = ["rustls"]
 rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
 nst = ["tch", "image"]
 plugins = ["wasmtime", "notify"]
+opencl = ["opencl3"]
 
 [[bin]]
 name = "installer"

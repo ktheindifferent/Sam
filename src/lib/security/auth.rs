@@ -221,8 +221,8 @@ mod tests {
         // 4th attempt within a minute should be blocked
         assert!(!Auth::check_auth_rate_limit(identifier));
 
-        // Check that we have 4 attempts recorded (3 successful checks + 1 failed)
-        assert_eq!(Auth::get_failed_attempts(identifier), 4);
+        // Blocked attempts are not recorded as failed attempts.
+        assert_eq!(Auth::get_failed_attempts(identifier), 3);
 
         // Clear rate limit
         Auth::clear_auth_rate_limit(identifier);

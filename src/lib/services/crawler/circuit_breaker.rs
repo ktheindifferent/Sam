@@ -212,6 +212,7 @@ impl CircuitBreaker {
                     );
                     stats.state = CircuitState::Open;
                     stats.circuit_opened_at = Some(SystemTime::now());
+                    stats.backoff_duration = self.config.initial_backoff;
                 }
             }
             CircuitState::HalfOpen => {

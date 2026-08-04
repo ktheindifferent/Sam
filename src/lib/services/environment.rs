@@ -148,6 +148,8 @@ mod tests {
 
     #[test]
     fn test_caprover_detection() {
+        env::set_var("DATABASE_ENGINE", "sqlite");
+
         // Test with CAPROVER=true
         env::set_var("CAPROVER", "true");
         let config = EnvironmentConfig::from_env().unwrap();
@@ -162,6 +164,7 @@ mod tests {
 
         // Cleanup
         env::remove_var("CAPROVER");
+        env::remove_var("DATABASE_ENGINE");
     }
 
     #[test]
