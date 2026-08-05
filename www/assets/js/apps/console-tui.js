@@ -748,7 +748,12 @@ function connectWebSocket() {
   }
   
   var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  var wsUrl = protocol + '//' + window.location.hostname + ':8080/ws';
+  var isLocalHost = window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '::1';
+  var wsUrl = isLocalHost
+    ? protocol + '//' + window.location.hostname + ':8080/ws'
+    : protocol + '//' + window.location.host + '/ws';
   
   websocket = new WebSocket(wsUrl);
   
@@ -796,9 +801,10 @@ function connectWebSocket() {
     }
   };
   
-  websocket.onclose = function() {
+  websocket.onclose = function(event) {
     console.log('WebSocket disconnected');
-    appendToOutput('Disconnected from WebSocket server');
+    appendToOutput('Disconnected from WebSocket server' +
+      (event && event.code ? ' (' + event.code + ')' : ''));
 
     // Clear heartbeat
     if (heartbeatInterval) {
@@ -817,7 +823,7 @@ function connectWebSocket() {
   
   websocket.onerror = function(error) {
     console.error('WebSocket error:', error);
-    appendToOutput('WebSocket error: ' + error);
+    appendToOutput('WebSocket error while connecting to ' + wsUrl);
   };
 }
 

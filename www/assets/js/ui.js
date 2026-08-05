@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Highlight "Humans" if URL contains "humans.html"
+    // Highlight active standalone page in the global sidebar.
     var sidebarHtml = `
         <div class="sidebar-wrapper">
             <ul class="nav">

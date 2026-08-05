@@ -1001,6 +1001,14 @@ async fn should_send_to_client(
 }
 
 /// Process commands from WebSocket clients
+fn arg_or_env(args: &serde_json::Value, arg_name: &str, env_name: &str, default: &str) -> String {
+    args.get(arg_name)
+        .and_then(|s| s.as_str())
+        .map(String::from)
+        .or_else(|| std::env::var(env_name).ok())
+        .unwrap_or_else(|| default.to_string())
+}
+
 async fn process_command(
     command: &str,
     args: serde_json::Value,
@@ -1625,6 +1633,193 @@ async fn process_command(
                 }
             } else {
                 Ok(serde_json::json!({ "success": false, "error": "Missing server_url" }))
+            }
+        }
+
+        // SeaweedFS commands
+        "seaweedfs_test_connection" => {
+            let master_url = arg_or_env(
+                &args,
+                "master_url",
+                "SEAWEEDFS_MASTER_URL",
+                "http://localhost:9333",
+            );
+            let filer_url = arg_or_env(
+                &args,
+                "filer_url",
+                "SEAWEEDFS_FILER_URL",
+                "http://localhost:8888",
+            );
+
+            let service = crate::services::fs::seaweedfs::SeaweedFSService::new(
+                crate::services::fs::seaweedfs::SeaweedFSConfig {
+                    master_url: master_url.to_string(),
+                    filer_url: filer_url.to_string(),
+                    volume_server_url: std::env::var("SEAWEEDFS_VOLUME_URL")
+                        .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+                    ..Default::default()
+                },
+            );
+
+            match service.test_connection().await {
+                Ok(true) => {
+                    Ok(serde_json::json!({ "success": true, "message": "Connection successful" }))
+                }
+                Ok(false) => Ok(serde_json::json!({
+                    "success": false,
+                    "error": "Connection failed"
+                })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+            }
+        }
+
+        "seaweedfs_list_files" => {
+            let master_url = arg_or_env(
+                &args,
+                "master_url",
+                "SEAWEEDFS_MASTER_URL",
+                "http://localhost:9333",
+            );
+            let filer_url = arg_or_env(
+                &args,
+                "filer_url",
+                "SEAWEEDFS_FILER_URL",
+                "http://localhost:8888",
+            );
+            let path = args.get("path").and_then(|s| s.as_str()).unwrap_or("/");
+            let limit = args
+                .get("limit")
+                .and_then(|value| value.as_u64())
+                .map(|value| value as u32);
+
+            let service = crate::services::fs::seaweedfs::SeaweedFSService::new(
+                crate::services::fs::seaweedfs::SeaweedFSConfig {
+                    master_url: master_url.to_string(),
+                    filer_url: filer_url.to_string(),
+                    volume_server_url: std::env::var("SEAWEEDFS_VOLUME_URL")
+                        .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+                    ..Default::default()
+                },
+            );
+
+            match service.list_files(path, limit).await {
+                Ok(files) => Ok(serde_json::json!({ "success": true, "files": files })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+            }
+        }
+
+        "seaweedfs_upload_file" => {
+            let master_url = arg_or_env(
+                &args,
+                "master_url",
+                "SEAWEEDFS_MASTER_URL",
+                "http://localhost:9333",
+            );
+            let filer_url = arg_or_env(
+                &args,
+                "filer_url",
+                "SEAWEEDFS_FILER_URL",
+                "http://localhost:8888",
+            );
+            let remote_path = args
+                .get("remote_path")
+                .and_then(|s| s.as_str())
+                .ok_or("Missing remote_path")?;
+            let filename = args
+                .get("filename")
+                .and_then(|s| s.as_str())
+                .unwrap_or(remote_path.trim_start_matches('/'));
+            let content_base64 = args
+                .get("content")
+                .and_then(|s| s.as_str())
+                .ok_or("Missing content")?;
+            let content = match general_purpose::STANDARD.decode(content_base64) {
+                Ok(content) => content,
+                Err(_) => {
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Invalid base64 content"
+                    }))
+                }
+            };
+
+            let service = crate::services::fs::seaweedfs::SeaweedFSService::new(
+                crate::services::fs::seaweedfs::SeaweedFSConfig {
+                    master_url: master_url.to_string(),
+                    filer_url: filer_url.to_string(),
+                    volume_server_url: std::env::var("SEAWEEDFS_VOLUME_URL")
+                        .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+                    collection: args
+                        .get("collection")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("sam")
+                        .to_string(),
+                    replication: args
+                        .get("replication")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("000")
+                        .to_string(),
+                    ..Default::default()
+                },
+            );
+
+            match service
+                .upload_file(std::path::Path::new(filename), remote_path, &content)
+                .await
+            {
+                Ok(file) => Ok(serde_json::json!({ "success": true, "file": file })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+            }
+        }
+
+        "seaweedfs_delete_file" => {
+            let filer_url = arg_or_env(
+                &args,
+                "filer_url",
+                "SEAWEEDFS_FILER_URL",
+                "http://localhost:8888",
+            );
+            let path = args
+                .get("path")
+                .and_then(|s| s.as_str())
+                .ok_or("Missing path")?;
+            let service = crate::services::fs::seaweedfs::SeaweedFSService::new(
+                crate::services::fs::seaweedfs::SeaweedFSConfig {
+                    filer_url: filer_url.to_string(),
+                    ..Default::default()
+                },
+            );
+
+            match service.delete_file(path).await {
+                Ok(_) => Ok(serde_json::json!({
+                    "success": true,
+                    "message": "File deleted successfully"
+                })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
+            }
+        }
+
+        "seaweedfs_create_folder" => {
+            let filer_url = arg_or_env(
+                &args,
+                "filer_url",
+                "SEAWEEDFS_FILER_URL",
+                "http://localhost:8888",
+            );
+            let path = args
+                .get("path")
+                .and_then(|s| s.as_str())
+                .ok_or("Missing path")?;
+            let service = crate::services::fs::seaweedfs::SeaweedFSService::new(
+                crate::services::fs::seaweedfs::SeaweedFSConfig {
+                    filer_url: filer_url.to_string(),
+                    ..Default::default()
+                },
+            );
+
+            match service.create_folder(path).await {
+                Ok(folder) => Ok(serde_json::json!({ "success": true, "folder": folder })),
+                Err(e) => Ok(serde_json::json!({ "success": false, "error": e.to_string() })),
             }
         }
 

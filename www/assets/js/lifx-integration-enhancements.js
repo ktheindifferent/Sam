@@ -127,7 +127,13 @@
 
         setupWebSocketListener() {
             if (window.WebSocket) {
-                const wsUrl = `ws://${window.location.hostname}:8080/ws`;
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const isLocalHost = window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' ||
+                    window.location.hostname === '::1';
+                const wsUrl = isLocalHost
+                    ? `${wsProtocol}//${window.location.hostname}:8080/ws`
+                    : `${wsProtocol}//${window.location.host}/ws`;
                 try {
                     const ws = new WebSocket(wsUrl);
                     ws.onopen = () => {

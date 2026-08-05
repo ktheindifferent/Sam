@@ -1214,7 +1214,8 @@ function initSnapcastStatus() {
 function initSnapcastWebSocket() {
     if (typeof WebSocket !== 'undefined') {
         try {
-            const ws = new WebSocket(`ws://${window.location.host}/ws`);
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
             
             ws.onopen = () => {
                 console.log('Snapcast WebSocket connected');

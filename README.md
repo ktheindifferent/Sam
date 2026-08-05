@@ -223,7 +223,9 @@ Create `/opt/sam/config.json` with your settings:
 
 ## 🚢 CapRover Deployment
 
-CapRover is a Platform-as-a-Service (PaaS) solution that makes deploying applications easy. S.A.M. is optimized for CapRover deployment with built-in support for containerization and scalability.
+CapRover is a Platform-as-a-Service (PaaS) solution that makes deploying applications easy. S.A.M. supports CapRover as a rapid local development and testing target, especially when iterating on the web UI, API surface, and service wiring.
+
+S.A.M.'s primary deployment target is a direct Linux host install. In direct host mode, S.A.M. can use the full feature set: orchestrating local containers, discovering and communicating with LAN devices and services, controlling LIFX through offline LAN APIs, integrating with Snapcast, and managing local runtime dependencies directly. CapRover mode is intentionally narrower. When `CAPROVER=true`, local Docker orchestration should be hidden or disabled in the UI, and infrastructure such as Redis and PostgreSQL should be reached through CapRover-managed apps, external service URLs, or the CapRover API rather than being treated as local Docker resources.
 
 ### Prerequisites for CapRover Deployment
 
@@ -261,8 +263,17 @@ CapRover is a Platform-as-a-Service (PaaS) solution that makes deploying applica
    # DATABASE_URL=postgresql://user:pass@hostname:5432/sam_db
    
    # Redis Configuration (optional)
-   # REDIS_URL=redis://your-redis-instance:6379
+   REDIS_URL=redis://srv-captain--sam-redis:6379
    # REDIS_DISABLED=false
+
+   # Voice companion service
+   TTS_URL=http://srv-captain--sam-voice:8002/tts
+   STT_URL=http://srv-captain--sam-voice:8002/stt
+
+   # SeaweedFS companion services
+   SEAWEEDFS_MASTER_URL=http://srv-captain--sam-seaweed-master:9333
+   SEAWEEDFS_VOLUME_URL=http://srv-captain--sam-seaweed-volume:8080
+   SEAWEEDFS_FILER_URL=http://srv-captain--sam-seaweed-filer:8888
    
    # Application Configuration
    PORT=8000

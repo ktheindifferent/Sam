@@ -20,7 +20,12 @@ let websocketConnection = null;
 // Initialize WebSocket connection for NextCloud commands
 function initializeWebSocket() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.hostname}:8080/ws`;
+    const isLocalHost = window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '::1';
+    const wsUrl = isLocalHost
+        ? `${wsProtocol}//${window.location.hostname}:8080/ws`
+        : `${wsProtocol}//${window.location.host}/ws`;
 
     websocketConnection = new WebSocket(wsUrl);
     window.ws = websocketConnection;

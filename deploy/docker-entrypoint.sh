@@ -34,8 +34,11 @@ elif [ "${DATABASE_ENGINE}" = "postgresql" ]; then
     fi
 fi
 
-# Start Redis if not running externally and not disabled
-if [ "${REDIS_DISABLED:-false}" != "true" ] && [ -z "$REDIS_URL" ]; then
+# Start Redis if not running externally and not disabled.
+# In CapRover mode Redis must be provided as a companion app or external service.
+if [ "${CAPROVER:-false}" = "true" ] && [ -z "$REDIS_URL" ]; then
+    echo "CapRover mode detected and REDIS_URL is not set; embedded Redis will not be started."
+elif [ "${REDIS_DISABLED:-false}" != "true" ] && [ -z "$REDIS_URL" ]; then
     echo "Starting local Redis server..."
     redis-server --daemonize yes --bind 127.0.0.1 --port 6379 --dir /tmp/sam
     export REDIS_URL="redis://localhost:6379"

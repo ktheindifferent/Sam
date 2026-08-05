@@ -60,6 +60,63 @@ Licensed under GPLv3....see LICENSE file. -->
       --border-accent: rgba(39, 160, 185, 0.3);
     }
 
+    html,
+    body {
+      min-height: 100%;
+      overflow-y: auto !important;
+    }
+
+    body.perfect-scrollbar-on .main-panel,
+    body.perfect-scrollbar-on .sidebar {
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+
+    .wrapper,
+    .main-panel {
+      min-height: 100vh;
+      overflow: visible !important;
+    }
+
+    .content,
+    .main-panel .content,
+    .ops-main,
+    .navbar,
+    .mobile-bottom-nav {
+      position: relative;
+      z-index: 2;
+    }
+
+    .sidebar {
+      position: fixed !important;
+      z-index: 1060 !important;
+      pointer-events: auto !important;
+    }
+
+    .sidebar .sidebar-wrapper,
+    .sidebar .nav,
+    .sidebar .nav li,
+    .sidebar .nav li > a {
+      pointer-events: auto !important;
+    }
+
+    .sidebar .nav li > a:hover,
+    .sidebar .nav li > a:focus {
+      background: rgba(39, 160, 185, 0.18);
+      color: var(--text-primary) !important;
+      transform: translateX(3px);
+    }
+
+    .sidebar .nav li > a {
+      transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    }
+
+    .bg-animation {
+      z-index: 0 !important;
+      pointer-events: none !important;
+    }
+
     /* Light Theme */
     [data-theme="light"] {
       --bg-primary: #f5f6fa;
@@ -145,7 +202,7 @@ Licensed under GPLv3....see LICENSE file. -->
     .dashboard-card {
       background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-card) 100%);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 8px;
       box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
       transition: all 0.3s ease;
       margin-bottom: 20px;
@@ -153,8 +210,8 @@ Licensed under GPLv3....see LICENSE file. -->
     }
     
     .dashboard-card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.4);
+      transform: translateY(-1px);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36);
       border-color: var(--accent-primary);
     }
 
@@ -272,6 +329,304 @@ Licensed under GPLv3....see LICENSE file. -->
       grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
       gap: 20px;
       margin-bottom: 30px;
+    }
+
+    /* Operations cockpit */
+    .ops-shell {
+      display: block;
+    }
+
+    .ops-rail {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(30, 30, 45, 0.76);
+      backdrop-filter: blur(10px);
+    }
+
+    .ops-rail a {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 8px;
+      align-items: center;
+      min-height: 38px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      border: 1px solid transparent;
+      font-size: 0.82rem;
+      font-weight: 600;
+      flex: 1 1 112px;
+      cursor: pointer;
+    }
+
+    .ops-rail a:hover,
+    .ops-rail a.active {
+      color: var(--text-primary);
+      background: rgba(39, 160, 185, 0.14);
+      border-color: var(--border-accent);
+    }
+
+    .ops-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .ops-title h1 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: 1.6rem;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .ops-title p {
+      margin: 5px 0 0;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .ops-command {
+      flex: 1;
+      max-width: 560px;
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.22);
+    }
+
+    .ops-command input {
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text-primary);
+      padding: 7px 8px;
+    }
+
+    .icon-action {
+      width: 36px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      cursor: pointer;
+    }
+
+    .icon-action:hover {
+      border-color: var(--border-accent);
+      color: var(--accent-primary);
+    }
+
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(116px, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .status-tile {
+      min-height: 82px;
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(42, 42, 58, 0.72);
+    }
+
+    .status-tile .metric-value {
+      font-size: 1.3rem;
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    .status-tile .metric-label {
+      margin-top: 5px;
+      font-size: 0.68rem;
+      letter-spacing: 0;
+    }
+
+    .domain-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+      gap: 16px;
+    }
+
+    .domain-band {
+      margin-bottom: 18px;
+    }
+
+    .domain-band h5,
+    .panel-title {
+      margin: 0 0 12px;
+      color: var(--text-primary);
+      font-size: 0.98rem;
+      letter-spacing: 0;
+    }
+
+    .panel-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .ops-panel {
+      padding: 15px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(42, 42, 58, 0.72);
+      min-width: 0;
+    }
+
+    .ops-panel.ai { border-left: 3px solid #8f6fff; }
+    .ops-panel.home { border-left: 3px solid #f7b731; }
+    .ops-panel.crawler { border-left: 3px solid #26de81; }
+    .ops-panel.media { border-left: 3px solid #45aaf2; }
+    .ops-panel.security { border-left: 3px solid #eb3b5a; }
+
+    .signal-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .signal-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      color: var(--text-secondary);
+      font-size: 0.86rem;
+    }
+
+    .signal-row:last-child {
+      border-bottom: 0;
+    }
+
+    .signal-row strong,
+    .signal-value {
+      color: var(--text-primary);
+      font-weight: 600;
+      text-align: right;
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      padding: 3px 9px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-secondary);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .status-chip.running { color: var(--success); border-color: rgba(40, 167, 69, 0.32); }
+    .status-chip.stopped { color: var(--error); border-color: rgba(220, 53, 69, 0.32); }
+    .status-chip.warning { color: var(--warning); border-color: rgba(253, 126, 20, 0.32); }
+
+    .attention-list {
+      min-height: 138px;
+    }
+
+    .attention-item {
+      display: grid;
+      grid-template-columns: 22px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      color: var(--text-secondary);
+    }
+
+    .attention-item:last-child {
+      border-bottom: 0;
+    }
+
+    .service-grid.ops-service-table {
+      display: block;
+      margin-bottom: 0;
+    }
+
+    .service-row {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr 0.7fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .service-row:last-child {
+      border-bottom: 0;
+    }
+
+    .service-name {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+
+    .service-name i {
+      width: 20px;
+      color: var(--accent-primary);
+      text-align: center;
+    }
+
+    .service-controls.compact {
+      justify-content: flex-end;
+      flex-wrap: nowrap;
+    }
+
+    .service-controls.compact .btn {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+    }
+
+    .scene-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      gap: 8px;
+    }
+
+    .scene-strip .btn {
+      min-height: 54px;
+      padding: 8px;
+      border-radius: 6px;
+    }
+
+    .lifx-mobile-nav {
+      display: none !important;
     }
 
     /* Enhanced Buttons */
@@ -424,6 +779,48 @@ Licensed under GPLv3....see LICENSE file. -->
       .sidebar {
         display: none !important;
       }
+      .ops-shell {
+        display: block;
+      }
+      .ops-rail {
+        display: none;
+      }
+      .ops-title h1 {
+        font-size: 1.28rem;
+        line-height: 1.18;
+      }
+      .ops-title p {
+        font-size: 0.78rem;
+      }
+      .ops-command {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+      }
+      .ops-header,
+      .domain-grid,
+      .panel-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+      .ops-command {
+        max-width: none;
+      }
+      .status-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .status-tile .metric-value {
+        font-size: 1.18rem;
+      }
+      .service-row {
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+      .service-row .service-meta {
+        grid-column: 1 / -1;
+      }
+      .service-controls.compact {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+      }
       .main-panel {
         width: 100% !important;
         margin-left: 0 !important;
@@ -511,6 +908,15 @@ Licensed under GPLv3....see LICENSE file. -->
       }
     }
 
+    @media (max-width: 1199px) and (min-width: 992px) {
+      .status-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .domain-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 480px) {
       .row > .col-xl-3 {
         flex: 0 0 50%;
@@ -571,17 +977,12 @@ Licensed under GPLv3....see LICENSE file. -->
       background: rgba(39, 160, 185, 0.1);
     }
 
-    /* Mobile sections (toggled by bottom nav) */
+    /* Dashboard tab panels */
     .mobile-section {
-      /* Visible by default on desktop */
+      display: none;
     }
-    @media (max-width: 991px) {
-      .mobile-section {
-        display: none;
-      }
-      .mobile-section.mobile-active {
-        display: block;
-      }
+    .mobile-section.mobile-active {
+      display: block;
     }
 
     /* Loading Spinner */
@@ -1075,74 +1476,273 @@ Licensed under GPLv3....see LICENSE file. -->
         </div>
       </nav>
       
-      <!-- Main Dashboard Content -->
       <div class="content">
+        <div class="ops-shell">
+          <aside class="ops-rail" aria-label="SAM domains">
+            <a class="active" href="#mobile-section-dashboard" data-section="dashboard" onclick="switchMobileSection('dashboard'); return false;"><i class="fas fa-satellite-dish"></i><span>Now</span></a>
+            <a href="#mobile-section-ai" data-section="ai" onclick="switchMobileSection('ai'); return false;"><i class="fas fa-brain"></i><span>AI</span></a>
+            <a href="#mobile-section-home" data-section="home" onclick="switchMobileSection('home'); return false;"><i class="fas fa-home"></i><span>Home</span></a>
+            <a href="#mobile-section-services" data-section="services" onclick="switchMobileSection('services'); return false;"><i class="fas fa-server"></i><span>Services</span></a>
+            <a href="#mobile-section-logs" data-section="logs" onclick="switchMobileSection('logs'); return false;"><i class="fas fa-stream"></i><span>Logs</span></a>
+            <a href="#mobile-section-settings" data-section="settings" onclick="switchMobileSection('settings'); return false;"><i class="fas fa-cog"></i><span>Settings</span></a>
+          </aside>
 
-        <!-- System Status Overview (mobile-section: dashboard) -->
-        <div class="mobile-section mobile-active" id="mobile-section-dashboard">
-        <div class="row">
-          <div class="col-xl-3 col-lg-6 col-md-6">
-            <div class="dashboard-card">
-              <div class="metric-value" id="uptime">0d 0h</div>
-              <div class="metric-label">System Uptime</div>
-            </div>
-          </div>
-          <div class="col-xl-3 col-lg-6 col-md-6">
-            <div class="dashboard-card">
-              <div class="metric-value" id="cpu-usage">0%</div>
-              <div class="metric-label">CPU Usage</div>
-              <div class="progress-custom">
-                <div class="progress-bar-custom" id="cpu-progress" style="width: 0%"></div>
+          <main class="ops-main">
+            <section class="mobile-section mobile-active" id="mobile-section-dashboard">
+              <div class="ops-header">
+                <div class="ops-title">
+                  <h1>SAM Operations</h1>
+                  <p>Live control surface for assistant, automation, knowledge, and services.</p>
+                </div>
+                <div class="ops-command">
+                  <input id="sam-command-input" type="text" placeholder="Ask SAM or run a command">
+                  <button class="icon-action" onclick="runSamCommand()" title="Run command"><i class="fas fa-arrow-right"></i></button>
+                  <button class="icon-action" onclick="openTerminal()" title="Open terminal"><i class="fas fa-terminal"></i></button>
+                </div>
               </div>
-            </div>
-          </div>
-          <div class="col-xl-3 col-lg-6 col-md-6">
-            <div class="dashboard-card">
-              <div class="metric-value" id="memory-usage">0 MB</div>
-              <div class="metric-label">Memory Usage</div>
-              <div class="progress-custom">
-                <div class="progress-bar-custom" id="memory-progress" style="width: 0%"></div>
+
+              <div class="status-strip">
+                <div class="status-tile">
+                  <div class="metric-value" id="uptime">0d 0h</div>
+                  <div class="metric-label">Uptime</div>
+                </div>
+                <div class="status-tile">
+                  <div class="metric-value" id="cpu-usage">0%</div>
+                  <div class="metric-label">CPU</div>
+                  <div class="progress-custom">
+                    <div class="progress-bar-custom" id="cpu-progress" style="width: 0%"></div>
+                  </div>
+                </div>
+                <div class="status-tile">
+                  <div class="metric-value" id="memory-usage">0 MB</div>
+                  <div class="metric-label">Memory</div>
+                  <div class="progress-custom">
+                    <div class="progress-bar-custom" id="memory-progress" style="width: 0%"></div>
+                  </div>
+                </div>
+                <div class="status-tile">
+                  <div class="metric-value" id="active-services">0/0</div>
+                  <div class="metric-label">Services</div>
+                </div>
+                <div class="status-tile">
+                  <div class="metric-value" id="crawler-summary">Checking</div>
+                  <div class="metric-label">Crawler</div>
+                </div>
+                <div class="status-tile">
+                  <div class="metric-value" id="ai-summary">Checking</div>
+                  <div class="metric-label">AI Core</div>
+                </div>
               </div>
-            </div>
-          </div>
-          <div class="col-xl-3 col-lg-6 col-md-6">
-            <div class="dashboard-card">
-              <div class="metric-value" id="active-services">0/0</div>
-              <div class="metric-label">Active Services</div>
-            </div>
-          </div>
-        </div>
 
-        </div><!-- /mobile-section-dashboard -->
+              <div class="domain-grid">
+                <div>
+                  <div class="dashboard-card">
+                    <h5><i class="fas fa-exclamation-triangle text-warning"></i> Attention Queue</h5>
+                    <div class="attention-list" id="attention-list">
+                      <div class="attention-item">
+                        <i class="fas fa-circle-notch fa-spin text-info"></i>
+                        <span>Checking SAM service state</span>
+                        <span class="status-chip">Live</span>
+                      </div>
+                    </div>
+                  </div>
 
-        <!-- Services Section (mobile-section: services) -->
-        <div class="mobile-section mobile-active" id="mobile-section-services">
-        <!-- Service Status Grid -->
-        <div class="service-grid" id="service-status-grid">
-          <!-- Service cards will be populated dynamically -->
-        </div>
-        </div><!-- /mobile-section-services -->
+                  <div class="dashboard-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                      <h5><i class="fas fa-list text-info"></i> Recent Activity</h5>
+                      <button class="icon-action" onclick="clearLogs()" title="Clear activity"><i class="fas fa-trash"></i></button>
+                    </div>
+                    <div class="activity-log" id="activity-log">
+                      <div class="log-entry">
+                        <span class="log-timestamp">00:00:00</span>
+                        <span class="log-message">System initialized. Waiting for service status...</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-        <!-- Logs/Overview Section (mobile-section: logs) -->
-        <div class="mobile-section mobile-active" id="mobile-section-logs">
-        <!-- Dashboard Tabs -->
-        <div class="row mt-3 mb-3">
-          <div class="col-12">
-            <ul class="nav nav-pills" id="dashboardTabs" style="gap: 8px;">
-              <li class="nav-item">
-                <a class="nav-link active" href="#" onclick="switchDashboardTab('overview')" id="tab-overview" style="background: var(--accent-primary); color: #fff; border-radius: 8px; padding: 6px 16px;">Overview</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="#" onclick="switchDashboardTab('logs')" id="tab-logs" style="background: var(--bg-card); color: var(--text-secondary); border-radius: 8px; padding: 6px 16px;">Logs</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="#" onclick="switchDashboardTab('topology')" id="tab-topology" style="background: var(--bg-card); color: var(--text-secondary); border-radius: 8px; padding: 6px 16px;">Topology</a>
-              </li>
-            </ul>
-          </div>
-        </div>
+                <div>
+                  <div class="dashboard-card">
+                    <h5><i class="fas fa-id-badge text-primary"></i> Session</h5>
+                    <div class="service-info">
+                      <div class="info-row">
+                        <span class="info-label">User</span>
+                        <span class="info-value inject-human-name">Loading...</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Session</span>
+                        <span class="info-value" id="session-status">Active</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Environment</span>
+                        <span class="info-value" id="environment">Production</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Crawler Threads</span>
+                        <span class="info-value" id="crawler-env">ENV</span>
+                      </div>
+                    </div>
+                  </div>
 
-        <!-- Logs Tab Content (hidden by default) -->
+                  <div class="dashboard-card">
+                    <h5><i class="fas fa-bolt text-warning"></i> Quick Actions</h5>
+                    <div class="quick-actions">
+                      <button class="btn btn-primary-custom" onclick="refreshAllData()" title="Refresh">
+                        <i class="fas fa-sync"></i> Refresh
+                      </button>
+                      <button class="btn btn-primary-custom" onclick="openTerminal()" title="Terminal">
+                        <i class="fas fa-terminal"></i> Terminal
+                      </button>
+                      <button class="btn btn-primary-custom" onclick="exportLogs()" title="Export logs">
+                        <i class="fas fa-download"></i> Logs
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="mobile-section domain-band" id="mobile-section-ai">
+              <h5><i class="fas fa-brain"></i> AI Core</h5>
+              <div class="panel-grid">
+                <div class="ops-panel ai">
+                  <div class="panel-title">Local Models</div>
+                  <ul class="signal-list">
+                    <li class="signal-row"><span>Ollama</span><span class="status-chip" id="ollama-inline-status">Checking</span></li>
+                    <li class="signal-row"><span>Installed Models</span><span class="signal-value" id="ollama-models">-</span></li>
+                    <li class="signal-row"><span>Version</span><span class="signal-value" id="ollama-version">-</span></li>
+                  </ul>
+                  <div class="service-controls mt-3">
+                    <button class="btn btn-info-custom btn-sm" onclick="manageOllamaModels()"><i class="fas fa-cog"></i> Models</button>
+                    <button class="btn btn-warning-custom btn-sm" onclick="installOllama()"><i class="fas fa-download"></i> Install</button>
+                  </div>
+                </div>
+                <div class="ops-panel ai">
+                  <div class="panel-title">Voice Interface</div>
+                  <ul class="signal-list">
+                    <li class="signal-row"><span>Voice Assistant</span><span class="status-chip" id="voice-inline-status">Checking</span></li>
+                    <li class="signal-row"><span>STT / TTS</span><span class="signal-value">Configured by API</span></li>
+                    <li class="signal-row"><span>Command Path</span><span class="signal-value">/api/voice</span></li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+
+            <section class="mobile-section domain-band" id="mobile-section-home">
+              <h5><i class="fas fa-home"></i> Home Automation</h5>
+              <div class="panel-grid">
+                <div class="ops-panel home">
+                  <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="panel-title mb-0">LIFX Scenes</div>
+                    <div class="service-controls compact">
+                      <button class="btn btn-primary-custom btn-sm" onclick="LifXTouchControls.showZonePicker()" title="Zones"><i class="fas fa-th"></i></button>
+                      <button class="btn btn-primary-custom btn-sm" onclick="LifXTouchControls.showTouchSensitivityPanel()" title="Touch settings"><i class="fas fa-sliders-h"></i></button>
+                    </div>
+                  </div>
+                  <div class="scene-strip" id="lifx-quick-scenes">
+                    <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('relax')"><i class="fas fa-spa"></i><br><small>Relax</small></button>
+                    <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('focus')"><i class="fas fa-brain"></i><br><small>Focus</small></button>
+                    <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('energize')"><i class="fas fa-bolt"></i><br><small>Energize</small></button>
+                    <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('night')"><i class="fas fa-moon"></i><br><small>Night</small></button>
+                    <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('movie')"><i class="fas fa-film"></i><br><small>Movie</small></button>
+                    <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('goodnight')"><i class="fas fa-moon"></i><br><small>Sleep</small></button>
+                  </div>
+                  <div id="lifx-quick-scenes-row2" style="display:none;"></div>
+                  <div id="lifx-special-scenes" style="display:none;"></div>
+                </div>
+                <div class="ops-panel home">
+                  <div class="panel-title">Rooms & Things</div>
+                  <ul class="signal-list">
+                    <li class="signal-row"><span>Rooms API</span><span class="signal-value">/api/rooms</span></li>
+                    <li class="signal-row"><span>Things API</span><span class="signal-value">/api/things</span></li>
+                    <li class="signal-row"><span>Matter / mDNS</span><span class="signal-value">Discovery</span></li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+
+            <section class="mobile-section" id="mobile-section-services">
+              <div class="dashboard-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h5><i class="fas fa-server text-info"></i> Service Operations</h5>
+                  <button class="icon-action" onclick="refreshAllData()" title="Refresh services"><i class="fas fa-sync"></i></button>
+                </div>
+                <div class="service-grid ops-service-table" id="service-status-grid"></div>
+              </div>
+
+              <div class="panel-grid">
+                <div class="ops-panel crawler">
+                  <div class="panel-title">Knowledge Crawler</div>
+                  <ul class="signal-list">
+                    <li class="signal-row"><span>Runtime</span><span class="status-chip" id="crawler-inline-status">Checking</span></li>
+                    <li class="signal-row"><span>HTTP Threads</span><span class="signal-value" id="crawler-http-threads">ENV</span></li>
+                    <li class="signal-row"><span>DNS Threads</span><span class="signal-value" id="crawler-dns-threads">ENV</span></li>
+                  </ul>
+                </div>
+                <div class="ops-panel media">
+                  <div class="panel-title">Media & Storage</div>
+                  <ul class="signal-list">
+                    <li class="signal-row"><span>NextCloud</span><span class="status-chip" id="nextcloud-inline-status">Checking</span></li>
+                    <li class="signal-row"><span>Dropbox / SeaweedFS</span><span class="signal-value">Available</span></li>
+                    <li class="signal-row"><span>Media Sync</span><span class="signal-value">Lights ready</span></li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+
+            <section class="mobile-section" id="mobile-section-logs">
+              <div class="row mt-3 mb-3">
+                <div class="col-12">
+                  <ul class="nav nav-pills" id="dashboardTabs" style="gap: 8px;">
+                    <li class="nav-item">
+                      <a class="nav-link active" href="#" onclick="switchDashboardTab('overview'); return false;" id="tab-overview" style="background: var(--accent-primary); color: #fff; border-radius: 8px; padding: 6px 16px;">Overview</a>
+                    </li>
+                    <li class="nav-item">
+                      <a class="nav-link" href="#" onclick="switchDashboardTab('logs'); return false;" id="tab-logs" style="background: var(--bg-card); color: var(--text-secondary); border-radius: 8px; padding: 6px 16px;">Logs</a>
+                    </li>
+                    <li class="nav-item">
+                      <a class="nav-link" href="#" onclick="switchDashboardTab('topology'); return false;" id="tab-topology" style="background: var(--bg-card); color: var(--text-secondary); border-radius: 8px; padding: 6px 16px;">Topology</a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div id="tab-content-overview">
+                <div class="panel-grid">
+                  <div class="ops-panel media">
+                    <div class="panel-title">Media Integration</div>
+                    <div id="media-presets"></div>
+                    <button id="media-sync-toggle" class="btn btn-primary-custom btn-sm mt-2">
+                      <i class="fas fa-wave-square"></i> Sync Lights
+                    </button>
+                  </div>
+                  <div class="ops-panel security">
+                    <div class="panel-title">Security State</div>
+                    <ul class="signal-list security-status">
+                      <li class="signal-row"><span>XSS Protection</span><span class="badge badge-success">Enabled</span></li>
+                      <li class="signal-row"><span>CSP Headers</span><span class="badge badge-success">Active</span></li>
+                      <li class="signal-row"><span>Input Validation</span><span class="badge badge-success">Enforced</span></li>
+                      <li class="signal-row"><span>Session Security</span><span class="badge badge-success" id="session-security-status">Active</span></li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="dashboard-card mt-3" id="secure-upload-section">
+                  <h5><i class="fas fa-upload text-success"></i> Secure File Upload</h5>
+                  <form id="secure-upload-form" enctype="multipart/form-data">
+                    <div class="form-group">
+                      <label for="file-input">Select File (Max 50MB)</label>
+                      <input type="file" class="form-control-file" id="file-input" accept="image/*,application/pdf,.txt,.doc,.docx">
+                      <small class="form-text text-muted">Allowed types: Images, PDF, Text documents</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary-custom">
+                      <i class="fas fa-cloud-upload-alt"></i> Upload
+                    </button>
+                  </form>
+                  <div id="upload-status" class="mt-3"></div>
+                </div>
+              </div>
+
         <div id="tab-content-logs" style="display: none;">
           <div class="row">
             <div class="col-12">
@@ -1198,264 +1798,10 @@ Licensed under GPLv3....see LICENSE file. -->
             </div>
           </div>
         </div>
-
-        <!-- Overview Tab Content (shown by default) -->
-        <div id="tab-content-overview">
-        <!-- LIFX Quick Scenes Panel -->
-        <div class="row mt-4">
-          <div class="col-12">
-            <div class="dashboard-card">
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5><i class="fas fa-lightbulb text-warning"></i> LIFX Quick Scenes</h5>
-                <div style="display: flex; gap: 8px;">
-                  <button class="btn btn-sm" onclick="LifXTouchControls.showZonePicker()" style="background: linear-gradient(135deg, #ff9f43, #e67e22); color: #fff; border-radius: 6px;" title="Zone Control">
-                    <i class="fas fa-th"></i> Zones
-                  </button>
-                  <button class="btn btn-sm" onclick="LifXTouchControls.showBreathingPanel()" style="background: linear-gradient(135deg, #00ff88, #00d4ff); color: #fff; border-radius: 6px;" title="Breathing Light">
-                    <i class="fas fa-lungs"></i> Breathing
-                  </button>
-                  <button class="btn btn-sm" onclick="LifXTouchControls.showTouchSensitivityPanel()" style="background: var(--accent-primary); color: #fff; border-radius: 6px;" title="Touch Settings">
-                    <i class="fas fa-sliders-h"></i>
-                  </button>
-                  <button class="btn btn-sm" onclick="LifXTouchControls.showGestureTutorial()" style="background: var(--accent-primary); color: #fff; border-radius: 6px;">
-                    <i class="fas fa-question-circle"></i> Touch Help
-                  </button>
-                </div>
-              </div>
-              <div class="quick-actions" id="lifx-quick-scenes" style="gap: 15px; flex-wrap: wrap;">
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('relax')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #ff6b6b, #c0392b);">
-                  <i class="fas fa-spa"></i><br><small>Relax</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('focus')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #4ecdc4, #16a085);">
-                  <i class="fas fa-brain"></i><br><small>Focus</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('energize')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #ffe66d, #f39c12);">
-                  <i class="fas fa-bolt"></i><br><small>Energize</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('night')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #1a1a2e, #4a4a6a);">
-                  <i class="fas fa-moon"></i><br><small>Night</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('sunset')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #ff9f43, #e67e22);">
-                  <i class="fas fa-cloud-sun"></i><br><small>Sunset</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('ocean')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #45b7d1, #2980b9);">
-                  <i class="fas fa-water"></i><br><small>Ocean</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('reading')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #feca57, #f39c12);">
-                  <i class="fas fa-book-open"></i><br><small>Reading</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('romance')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #ff9ff3, #e84393);">
-                  <i class="fas fa-heart"></i><br><small>Romance</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('party')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #00d4ff, #0984e3);">
-                  <i class="fas fa-glass-cheers"></i><br><small>Party</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('golden')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #f9ca24, #f0932b);">
-                  <i class="fas fa-sun"></i><br><small>Golden</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('arctic')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #70a1ff, #3498db);">
-                  <i class="fas fa-snowflake"></i><br><small>Arctic</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('tropical')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #00b894, #00cec9);">
-                  <i class="fas fa-umbrella-beach"></i><br><small>Tropical</small>
-                </button>
-              </div>
-              <div class="quick-actions" id="lifx-quick-scenes-row2" style="gap: 15px; flex-wrap: wrap; margin-top: 10px;">
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('spring')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #55efc4, #00b894);">
-                  <i class="fas fa-seedling"></i><br><small>Spring</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('autumn')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #e17055, #d63031);">
-                  <i class="fas fa-leaf"></i><br><small>Autumn</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('meditation')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #9b59b6, #8e44ad);">
-                  <i class="fas fa-spa"></i><br><small>Meditation</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('gaming')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #e91e63, #c0392b);">
-                  <i class="fas fa-gamepad"></i><br><small>Gaming</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('cooking')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #f39c12, #d35400);">
-                  <i class="fas fa-utensils"></i><br><small>Cooking</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('creative')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #8e44ad, #9b59b6);">
-                  <i class="fas fa-palette"></i><br><small>Creative</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('yoga')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #27ae60, #2ecc71);">
-                  <i class="fas fa-om"></i><br><small>Yoga</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('movie')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #d35400, #e67e22);">
-                  <i class="fas fa-film"></i><br><small>Movie</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('study')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #3498db, #2980b9);">
-                  <i class="fas fa-graduation-cap"></i><br><small>Study</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('dinner')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #f39c12, #d35400);">
-                  <i class="fas fa-utensils"></i><br><small>Dinner</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('morning')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #f1c40f, #f39c12);">
-                  <i class="fas fa-sun"></i><br><small>Morning</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('goodnight')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #2c3e50, #34495e);">
-                  <i class="fas fa-moon"></i><br><small>Goodnight</small>
-                </button>
-              </div>
-              <div class="quick-actions" id="lifx-special-scenes" style="gap: 15px; flex-wrap: wrap; margin-top: 10px;">
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('rainbow')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #ff0080, #00ff80, #0080ff, #ff00ff); background-size: 200% 200%; animation: rainbow-bg 3s ease infinite;">
-                  <i class="fas fa-rainbow"></i><br><small>Rainbow</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('fireplace')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #ff4500, #ff8c00); animation: fireplace-flicker 2s ease-in-out infinite;">
-                  <i class="fas fa-fire"></i><br><small>Fireplace</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('ice')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #7fffd4, #00ced1);">
-                  <i class="fas fa-icicles"></i><br><small>Ice</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('aurora')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #00ff88, #00ced1, #0080ff); animation: aurora-flow 5s ease infinite;">
-                  <i class="fas fa-wind"></i><br><small>Aurora</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('nebula')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #9b59b6, #e91e63, #3498db); animation: nebula-pulse 4s ease infinite;">
-                  <i class="fas fa-cloud"></i><br><small>Nebula</small>
-                </button>
-                <button class="btn btn-primary-custom" onclick="LifXTouchControls.applyScene('thunder')" style="min-width: 100px; padding: 15px 20px; background: linear-gradient(135deg, #f1c40f, #fff); animation: thunder-flash 2s ease infinite;">
-                  <i class="fas fa-bolt"></i><br><small>Thunder</small>
-                </button>
-              </div>
-              <div class="mt-3" style="color: var(--text-secondary); font-size: 0.85rem;">
-                <i class="fas fa-hand-pointer"></i> <strong>Touch Controls:</strong> Double-tap bulb to toggle power | Touch & hold to adjust brightness | Swipe to change color temp
-                <br><i class="fas fa-magic"></i> <strong>Enhanced:</strong> 95 preset scenes | Real-time audio beat detection | Media-synced lighting | Multi-bulb selection | Gesture calibration
-              </div>
-            </div>
-            
-            <!-- Media Integration Panel -->
-            <div class="dashboard-card mt-4">
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5><i class="fas fa-music text-success"></i> Media Integration</h5>
-                <button id="media-sync-toggle" class="btn btn-sm" style="background: linear-gradient(135deg, #00d4ff, #0984e3); color: #fff; border-radius: 6px;">
-                  <i class="fas fa-wave-square"></i> Sync Lights
-                </button>
-              </div>
-              <div id="media-presets"></div>
-              <div class="mt-3" style="color: var(--text-secondary); font-size: 0.85rem;">
-                <i class="fas fa-robot"></i> <strong>AI DJ:</strong> Lights sync to your music automatically | Beat detection | Frequency analysis
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Main Dashboard Sections -->
-        <div class="row mt-4">
-          <!-- Activity Log -->
-          <div class="col-lg-8">
-            <div class="dashboard-card">
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5><i class="fas fa-list text-info"></i> System Activity Log</h5>
-                <button class="btn btn-primary-custom btn-sm" onclick="clearLogs()">
-                  <i class="fas fa-trash"></i> Clear
-                </button>
-              </div>
-              <div class="activity-log" id="activity-log">
-                <div class="log-entry">
-                  <span class="log-timestamp">00:00:00</span>
-                  <span class="log-message">System initialized. Waiting for service status...</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- System Information -->
-          <div class="col-lg-4">
-            <div class="dashboard-card">
-              <h5><i class="fas fa-info-circle text-primary"></i> System Information</h5>
-              <div class="service-info">
-                <div class="info-row">
-                  <span class="info-label">User:</span>
-                  <span class="info-value inject-human-name">Loading...</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Session:</span>
-                  <span class="info-value" id="session-status">Active</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Version:</span>
-                  <span class="info-value">S.A.M. v1.0</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Environment:</span>
-                  <span class="info-value" id="environment">Production</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Quick Actions -->
-            <div class="dashboard-card mt-3">
-              <h5><i class="fas fa-bolt text-warning"></i> Quick Actions</h5>
-              <div class="quick-actions flex-column">
-                <button class="btn btn-primary-custom" onclick="refreshAllData()">
-                  <i class="fas fa-sync"></i> Refresh All Data
-                </button>
-                <button class="btn btn-primary-custom" onclick="openTerminal()">
-                  <i class="fas fa-terminal"></i> Open Terminal
-                </button>
-                <button class="btn btn-primary-custom" onclick="exportLogs()">
-                  <i class="fas fa-download"></i> Export Logs
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- File Upload Section (Secure) -->
-        <div class="row mt-4" id="secure-upload-section">
-          <div class="col-md-12">
-            <div class="dashboard-card">
-              <h5><i class="fas fa-upload text-success"></i> Secure File Upload</h5>
-              <form id="secure-upload-form" enctype="multipart/form-data">
-                <div class="form-group">
-                  <label for="file-input">Select File (Max 50MB)</label>
-                  <input type="file" class="form-control-file" id="file-input" 
-                         accept="image/*,application/pdf,.txt,.doc,.docx">
-                  <small class="form-text text-muted">
-                    Allowed types: Images, PDF, Text documents
-                  </small>
-                </div>
-                <button type="submit" class="btn btn-primary-custom">
-                  <i class="fas fa-cloud-upload-alt"></i> Upload
-                </button>
-              </form>
-              <div id="upload-status" class="mt-3"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Security Status -->
-        <div class="row mt-4">
-          <div class="col-md-12">
-            <div class="dashboard-card">
-              <h5><i class="fas fa-shield-alt text-success"></i> Security Status</h5>
-              <ul class="list-group security-status">
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                  XSS Protection
-                  <span class="badge badge-success">Enabled</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                  CSP Headers
-                  <span class="badge badge-success">Active</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                  Input Validation
-                  <span class="badge badge-success">Enforced</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                  Session Security
-                  <span class="badge badge-success" id="session-security-status">Active</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-        </div><!-- /tab-content-overview -->
-        </div><!-- /mobile-section-logs -->
+            </section>
 
         <!-- Settings Section (mobile-section: settings) -->
-        <div class="mobile-section mobile-active" id="mobile-section-settings">
+        <div class="mobile-section" id="mobile-section-settings">
           <div class="row">
             <div class="col-12">
               <div class="dashboard-card">
@@ -1476,14 +1822,24 @@ Licensed under GPLv3....see LICENSE file. -->
             </div>
           </div>
         </div><!-- /mobile-section-settings -->
+          </main>
+        </div>
 
       </div>
 
       <!-- Mobile Bottom Navigation Bar -->
       <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
         <a class="nav-tab active" data-section="dashboard" onclick="switchMobileSection('dashboard')">
-          <i class="fas fa-tachometer-alt"></i>
-          <span>Dashboard</span>
+          <i class="fas fa-satellite-dish"></i>
+          <span>Now</span>
+        </a>
+        <a class="nav-tab" data-section="ai" onclick="switchMobileSection('ai')">
+          <i class="fas fa-brain"></i>
+          <span>AI</span>
+        </a>
+        <a class="nav-tab" data-section="home" onclick="switchMobileSection('home')">
+          <i class="fas fa-home"></i>
+          <span>Home</span>
         </a>
         <a class="nav-tab" data-section="services" onclick="switchMobileSection('services')">
           <i class="fas fa-server"></i>
@@ -1624,6 +1980,7 @@ Licensed under GPLv3....see LICENSE file. -->
     function initializeDashboard() {
       // Load user data and initialize session-aware components
       loadCurrentUser();
+      loadEnvironmentSnapshot();
       setupSecureFileUpload();
       initializeServiceMonitoring();
       startSystemMonitoring();
@@ -1631,6 +1988,13 @@ Licensed under GPLv3....see LICENSE file. -->
       // Initialize core UI components
       if (typeof Clock !== 'undefined') {
         Clock.init();
+      }
+
+      const commandInput = document.getElementById('sam-command-input');
+      if (commandInput) {
+        commandInput.addEventListener('keydown', function(event) {
+          if (event.key === 'Enter') runSamCommand();
+        });
       }
     }
 
@@ -1744,170 +2108,49 @@ Licensed under GPLv3....see LICENSE file. -->
 
     function initializeServiceMonitoring() {
       const services = [
-        { name: 'Redis Cache', id: 'redis', icon: '🗄️' },
-        { name: 'PostgreSQL', id: 'postgres', icon: '🐘' },
-        { name: 'Web Crawler', id: 'crawler', icon: '🕷️' },
-        { name: 'Docker', id: 'docker', icon: '🐳' },
-        { name: 'Ollama AI', id: 'ollama', icon: '🤖' },
-        { name: 'Voice Assistant', id: 'voice', icon: '🎤' },
-        { name: 'WebSocket Server', id: 'websocket', icon: '🔌' },
-        { name: 'NextCloud', id: 'nextcloud', icon: '☁️' }
+        { name: 'Redis Cache', id: 'redis', icon: 'fas fa-database', domain: 'Cache', controllable: true },
+        { name: 'PostgreSQL', id: 'postgres', icon: 'fas fa-table', domain: 'Database', controllable: true },
+        { name: 'Web Crawler', id: 'crawler', icon: 'fas fa-spider', domain: 'Knowledge', controllable: true },
+        { name: 'Docker', id: 'docker', icon: 'fab fa-docker', domain: 'Runtime', controllable: true, caproverHidden: true },
+        { name: 'Ollama AI', id: 'ollama', icon: 'fas fa-brain', domain: 'AI', controllable: true },
+        { name: 'Voice Assistant', id: 'voice', icon: 'fas fa-microphone', domain: 'AI', controllable: true },
+        { name: 'WebSocket Server', id: 'websocket', icon: 'fas fa-plug', domain: 'Realtime', controllable: false },
+        { name: 'NextCloud', id: 'nextcloud', icon: 'fas fa-cloud', domain: 'Storage', controllable: false }
       ];
       
       const serviceGrid = document.getElementById('service-status-grid');
       if (!serviceGrid) return;
       
-      serviceGrid.innerHTML = services.map(service => {
-        if (service.id === 'ollama') {
-          return `
-            <div class="dashboard-card" id="${service.id}-card">
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <div class="d-flex align-items-center">
-                  <span style="margin-right: 10px; font-size: 1.5rem;">${service.icon}</span>
-                  <h6 class="mb-0">${service.name}</h6>
-                </div>
-                <span class="status-indicator status-unknown" id="${service.id}-status"></span>
-              </div>
-              <div class="service-info">
-                <div class="info-row">
-                  <span class="info-label">Status</span>
-                  <span class="info-value" id="${service.id}-status-text">Checking...</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Models</span>
-                  <span class="info-value" id="${service.id}-models">-</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Version</span>
-                  <span class="info-value" id="${service.id}-version">-</span>
-                </div>
-              </div>
-              <div class="service-controls">
-                <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')">
-                  <i class="fas fa-play"></i> Start
-                </button>
-                <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')">
-                  <i class="fas fa-stop"></i> Stop
-                </button>
-                <button class="btn btn-primary-custom btn-sm" onclick="restartService('${service.id}')">
-                  <i class="fas fa-redo"></i> Restart
-                </button>
-                <button class="btn btn-info-custom btn-sm" onclick="manageOllamaModels()">
-                  <i class="fas fa-cog"></i> Models
-                </button>
-                <button class="btn btn-warning-custom btn-sm" onclick="installOllama()">
-                  <i class="fas fa-download"></i> Install
-                </button>
-              </div>
-            </div>
-          `;
-        } else if (service.id === 'nextcloud') {
-          return `
-            <div class="dashboard-card" id="${service.id}-card">
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <div class="d-flex align-items-center">
-                  <span style="margin-right: 10px; font-size: 1.5rem;">${service.icon}</span>
-                  <h6 class="mb-0">${service.name}</h6>
-                </div>
-                <span class="status-indicator status-unknown" id="${service.id}-status"></span>
-              </div>
-
-              <div class="nextcloud-config" id="nextcloud-config">
-                <div class="form-group">
-                  <label for="nextcloud-server">Server URL</label>
-                  <input type="url" class="form-control" id="nextcloud-server" placeholder="https://cloud.example.com">
-                </div>
-                <div class="form-group">
-                  <label for="nextcloud-username">Username</label>
-                  <input type="text" class="form-control" id="nextcloud-username" placeholder="username">
-                </div>
-                <div class="form-group">
-                  <label for="nextcloud-password">Password</label>
-                  <input type="password" class="form-control" id="nextcloud-password" placeholder="password">
-                </div>
-                <button class="btn btn-primary-custom btn-sm" onclick="testNextCloudConnection()">
-                  <i class="fas fa-plug"></i> Test Connection
-                </button>
-                <button class="btn btn-success-custom btn-sm" onclick="connectNextCloud()">
-                  <i class="fas fa-link"></i> Connect
-                </button>
-              </div>
-
-              <div class="nextcloud-file-manager" id="nextcloud-file-manager" style="display: none;">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                  <h6 class="mb-0">File Manager</h6>
-                  <div class="btn-group">
-                    <button class="btn btn-info-custom btn-sm" onclick="refreshNextCloudFiles()">
-                      <i class="fas fa-sync"></i> Refresh
-                    </button>
-                    <button class="btn btn-success-custom btn-sm" onclick="showUploadDialog()">
-                      <i class="fas fa-upload"></i> Upload
-                    </button>
-                    <button class="btn btn-primary-custom btn-sm" onclick="showCreateFolderDialog()">
-                      <i class="fas fa-folder-plus"></i> New Folder
-                    </button>
-                  </div>
-                </div>
-
-                <div class="nextcloud-path" id="nextcloud-path">
-                  <span class="text-muted">Path: /</span>
-                </div>
-
-                <div class="nextcloud-files" id="nextcloud-files">
-                  <div class="text-center text-muted">
-                    <i class="fas fa-spinner fa-spin"></i> Loading files...
-                  </div>
-                </div>
-              </div>
-
-              <div class="service-controls">
-                <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')">
-                  <i class="fas fa-play"></i> Start
-                </button>
-                <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')">
-                  <i class="fas fa-stop"></i> Stop
-                </button>
-                <button class="btn btn-warning-custom btn-sm" onclick="disconnectNextCloud()">
-                  <i class="fas fa-unlink"></i> Disconnect
-                </button>
-              </div>
-            </div>
-          `;
-        } else {
-          return `
-            <div class="dashboard-card" id="${service.id}-card">
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <div class="d-flex align-items-center">
-                  <span style="margin-right: 10px; font-size: 1.5rem;">${service.icon}</span>
-                  <h6 class="mb-0">${service.name}</h6>
-                </div>
-                <span class="status-indicator status-unknown" id="${service.id}-status"></span>
-              </div>
-              <div class="service-info">
-                <div class="info-row">
-                  <span class="info-label">Status</span>
-                  <span class="info-value" id="${service.id}-status-text">Checking...</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Uptime</span>
-                  <span class="info-value" id="${service.id}-uptime">-</span>
-                </div>
-              </div>
-              <div class="service-controls">
-                <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')">
-                  <i class="fas fa-play"></i> Start
-                </button>
-                <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')">
-                  <i class="fas fa-stop"></i> Stop
-                </button>
-                <button class="btn btn-primary-custom btn-sm" onclick="restartService('${service.id}')">
-                  <i class="fas fa-redo"></i> Restart
-                </button>
-              </div>
-            </div>
-          `;
-        }
-      }).join('');
+      serviceGrid.innerHTML = services.map(service => `
+        <div class="service-row" id="${service.id}-card"${service.caproverHidden ? ' style="display: none;"' : ''}>
+          <div class="service-name">
+            <i class="${service.icon}"></i>
+            <span>${service.name}</span>
+          </div>
+          <div class="service-meta">
+            <span class="status-indicator status-unknown" id="${service.id}-status"></span>
+            <span class="status-chip" id="${service.id}-status-text">Checking</span>
+          </div>
+          <div class="service-meta">
+            <span class="signal-value" id="${service.id}-uptime">${service.domain}</span>
+          </div>
+          <div class="service-controls compact">
+            ${service.controllable ? `
+            <button class="btn btn-success-custom btn-sm" onclick="startService('${service.id}')" title="Start ${service.name}">
+              <i class="fas fa-play"></i>
+            </button>
+            <button class="btn btn-danger-custom btn-sm" onclick="stopService('${service.id}')" title="Stop ${service.name}">
+              <i class="fas fa-stop"></i>
+            </button>
+            <button class="btn btn-primary-custom btn-sm" onclick="restartService('${service.id}')" title="Restart ${service.name}">
+              <i class="fas fa-redo"></i>
+            </button>
+            ` : ''}
+            ${service.id === 'ollama' ? `<button class="btn btn-info-custom btn-sm" onclick="manageOllamaModels()" title="Manage models"><i class="fas fa-cog"></i></button>` : ''}
+            ${service.id === 'nextcloud' ? `<button class="btn btn-warning-custom btn-sm" onclick="disconnectNextCloud()" title="Disconnect NextCloud"><i class="fas fa-unlink"></i></button>` : ''}
+          </div>
+        </div>
+      `).join('');
     }
 
     function startSystemMonitoring() {
@@ -1919,6 +2162,32 @@ Licensed under GPLv3....see LICENSE file. -->
         updateSystemMetrics();
         updateServiceStatuses();
       }, 5000);
+    }
+
+    function loadEnvironmentSnapshot() {
+      fetch('/api/environment')
+        .then(response => {
+          if (!response.ok) throw new Error(`Environment API returned ${response.status}`);
+          return response.json();
+        })
+        .then(data => {
+          const env = data.environment || data.env || data || {};
+          const crawlerThreads = env.crawler_threads || env.CRAWLER_THREADS || env.CRAWLER_CONCURRENCY || 'ENV';
+          const dnsThreads = env.crawler_dns_threads || env.CRAWLER_DNS_THREADS || env.CRAWLER_DNS_CONCURRENCY || 'ENV';
+          setText('crawler-env', `${crawlerThreads} / ${dnsThreads}`);
+          setText('crawler-http-threads', crawlerThreads);
+          setText('crawler-dns-threads', dnsThreads);
+          if (typeof env.is_caprover === 'boolean') {
+            window.samIsCaprover = env.is_caprover;
+            setText('environment', env.is_caprover ? 'CapRover' : 'Local');
+          } else if (env.CAPROVER) {
+            window.samIsCaprover = env.CAPROVER === 'true';
+            setText('environment', window.samIsCaprover ? 'CapRover' : env.CAPROVER);
+          }
+        })
+        .catch(() => {
+          setText('crawler-env', 'ENV');
+        });
     }
 
     function updateSystemMetrics() {
@@ -1963,15 +2232,28 @@ Licensed under GPLv3....see LICENSE file. -->
     }
 
     function updateServiceStatuses() {
-      fetch('/api/services')
-        .then(response => response.json())
+      fetch('/api/services/status', { credentials: 'same-origin' })
+        .then(response => {
+          if (!response.ok) throw new Error(`Service API returned ${response.status}`);
+          return response.json();
+        })
         .then(data => {
           let activeCount = 0;
           let totalCount = 0;
+          const downServices = [];
           
           // Process service data
           Object.keys(data).forEach(serviceId => {
             const service = data[serviceId];
+            const card = document.getElementById(`${serviceId}-card`);
+            const statusText = service.status_text || (service.running ? 'running' : 'stopped');
+
+            if (serviceId === 'docker') {
+              const hideDocker = window.samIsCaprover === true || /caprover/i.test(statusText);
+              if (card) card.style.display = hideDocker ? 'none' : '';
+              if (hideDocker) return;
+            }
+
             totalCount++;
             
             const statusElement = document.getElementById(`${serviceId}-status`);
@@ -1980,26 +2262,102 @@ Licensed under GPLv3....see LICENSE file. -->
             if (statusElement && textElement) {
               if (service.running) {
                 statusElement.className = 'status-indicator status-running';
-                textElement.textContent = 'Running';
+                textElement.className = 'status-chip running';
+                textElement.textContent = formatServiceStatus(statusText, true);
                 activeCount++;
               } else {
                 statusElement.className = 'status-indicator status-stopped';
-                textElement.textContent = 'Stopped';
+                textElement.className = 'status-chip stopped';
+                textElement.textContent = formatServiceStatus(statusText, false);
+                downServices.push(serviceId);
               }
             }
           });
           
-          document.getElementById('active-services').textContent = `${activeCount}/${totalCount}`;
+          setText('active-services', `${activeCount}/${totalCount}`);
+          updateDomainSummaries(data, activeCount, totalCount, downServices);
         })
         .catch(error => {
           console.error('Failed to fetch service statuses:', error);
+          updateAttentionQueue(['Service API unavailable']);
         });
     }
 
+    function formatServiceStatus(statusText, running) {
+      const normalized = String(statusText || '').trim();
+      if (!normalized) return running ? 'Running' : 'Stopped';
+      if (normalized === 'running') return 'Running';
+      if (normalized === 'stopped') return 'Stopped';
+      if (normalized.length > 22) return normalized.slice(0, 19) + '...';
+      return normalized;
+    }
+
+    function updateDomainSummaries(data, activeCount, totalCount, downServices) {
+      const crawlerRunning = !!(data.crawler && data.crawler.running);
+      const ollamaRunning = !!(data.ollama && data.ollama.running);
+      const voiceRunning = !!(data.voice && data.voice.running);
+      const nextcloudRunning = !!(data.nextcloud && data.nextcloud.running);
+
+      setText('crawler-summary', crawlerRunning ? 'Running' : 'Stopped');
+      setText('ai-summary', (ollamaRunning || voiceRunning) ? 'Ready' : 'Offline');
+      setChip('crawler-inline-status', crawlerRunning ? 'Running' : 'Stopped', crawlerRunning ? 'running' : 'stopped');
+      setChip('ollama-inline-status', ollamaRunning ? 'Running' : 'Stopped', ollamaRunning ? 'running' : 'stopped');
+      setChip('voice-inline-status', voiceRunning ? 'Running' : 'Stopped', voiceRunning ? 'running' : 'stopped');
+      setChip('nextcloud-inline-status', nextcloudRunning ? 'Running' : 'Stopped', nextcloudRunning ? 'running' : 'stopped');
+
+      const attention = [];
+      if (totalCount && activeCount < totalCount) {
+        attention.push(`${totalCount - activeCount} services need attention`);
+      }
+      if (!crawlerRunning) attention.push('Crawler is not running');
+      if (!ollamaRunning && !voiceRunning) attention.push('AI and voice services are offline');
+      if (!attention.length) attention.push('All monitored services are reporting healthy');
+      updateAttentionQueue(attention, downServices);
+    }
+
+    function updateAttentionQueue(messages, downServices = []) {
+      const list = document.getElementById('attention-list');
+      if (!list) return;
+      list.innerHTML = messages.map((message, index) => {
+        const isHealthy = message.indexOf('healthy') !== -1;
+        const icon = isHealthy ? 'fas fa-check-circle text-success' : 'fas fa-exclamation-circle text-warning';
+        const chipClass = isHealthy ? 'running' : 'warning';
+        const label = isHealthy ? 'Clear' : (downServices[index] || 'Check');
+        return `
+          <div class="attention-item">
+            <i class="${icon}"></i>
+            <span>${message}</span>
+            <span class="status-chip ${chipClass}">${label}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    }
+
+    function setChip(id, value, state) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = value;
+      el.className = `status-chip ${state}`;
+    }
+
     // Service control functions
+    function parseServiceActionResponse(response) {
+      return response.json().catch(() => ({})).then(data => {
+        if (!response.ok || data.error) {
+          throw new Error(data.error || `Request failed with ${response.status}`);
+        }
+        return data;
+      });
+    }
+
     function startService(serviceId) {
       fetch(`/api/services/${serviceId}/start`, { method: 'POST' })
-        .then(response => response.json())
+        .then(parseServiceActionResponse)
         .then(data => {
           showToast(`${serviceId} service started`, 'success');
           addLogEntry(`Started ${serviceId} service`, 'success');
@@ -2013,7 +2371,7 @@ Licensed under GPLv3....see LICENSE file. -->
 
     function stopService(serviceId) {
       fetch(`/api/services/${serviceId}/stop`, { method: 'POST' })
-        .then(response => response.json())
+        .then(parseServiceActionResponse)
         .then(data => {
           showToast(`${serviceId} service stopped`, 'success');
           addLogEntry(`Stopped ${serviceId} service`, 'success');
@@ -2027,7 +2385,7 @@ Licensed under GPLv3....see LICENSE file. -->
 
     function restartService(serviceId) {
       fetch(`/api/services/${serviceId}/restart`, { method: 'POST' })
-        .then(response => response.json())
+        .then(parseServiceActionResponse)
         .then(data => {
           showToast(`${serviceId} service restarted`, 'success');
           addLogEntry(`Restarted ${serviceId} service`, 'success');
@@ -2313,8 +2671,39 @@ Licensed under GPLv3....see LICENSE file. -->
       updateSystemMetrics();
       updateServiceStatuses();
       loadCurrentUser();
+      loadEnvironmentSnapshot();
       loadNotificationRules();
       showToast('Dashboard data refreshed', 'success');
+    }
+
+    function runSamCommand() {
+      const input = document.getElementById('sam-command-input');
+      const command = input ? input.value.trim().toLowerCase() : '';
+      if (!command) return;
+
+      addLogEntry(`Command submitted: ${command}`, 'info');
+
+      if (command.indexOf('refresh') !== -1 || command.indexOf('status') !== -1) {
+        refreshAllData();
+      } else if (command.indexOf('service') !== -1) {
+        switchMobileSection('services');
+      } else if (command.indexOf('log') !== -1) {
+        switchMobileSection('logs');
+      } else if (command.indexOf('terminal') !== -1 || command.indexOf('console') !== -1) {
+        openTerminal();
+      } else if (typeof ws !== 'undefined' && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'command',
+          id: 'dashboard_cmd_' + Date.now(),
+          command: command,
+          args: {}
+        }));
+        showToast('Command sent to SAM', 'info');
+      } else {
+        showToast('Command captured in activity log', 'info');
+      }
+
+      if (input) input.value = '';
     }
 
     // ============ Notification Settings ============
@@ -2331,7 +2720,7 @@ Licensed under GPLv3....see LICENSE file. -->
       var container = document.getElementById('notification-rules-list');
       if (!container) return;
       // If no WS, show placeholder
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (typeof ws === 'undefined' || !ws || ws.readyState !== WebSocket.OPEN) {
         container.innerHTML = '<div style="color: var(--text-muted);">WebSocket not connected. Rules are configured in ~/.sam/config.toml</div>';
       }
     }
@@ -2862,19 +3251,20 @@ Licensed under GPLv3....see LICENSE file. -->
 
     // ============ Mobile Bottom Nav Section Switching ============
     function switchMobileSection(section) {
-      var sections = ['dashboard', 'services', 'logs', 'settings'];
+      var sections = ['dashboard', 'ai', 'home', 'services', 'logs', 'settings'];
+
       sections.forEach(function(s) {
         var el = document.getElementById('mobile-section-' + s);
         if (el) {
           if (s === section) {
             el.classList.add('mobile-active');
           } else {
-            el.classList.remove('mobile-active');
+          el.classList.remove('mobile-active');
           }
         }
       });
       // Update nav tab active states
-      var tabs = document.querySelectorAll('.mobile-bottom-nav .nav-tab');
+      var tabs = document.querySelectorAll('.mobile-bottom-nav .nav-tab, .ops-rail a');
       tabs.forEach(function(tab) {
         if (tab.getAttribute('data-section') === section) {
           tab.classList.add('active');
@@ -2882,8 +3272,6 @@ Licensed under GPLv3....see LICENSE file. -->
           tab.classList.remove('active');
         }
       });
-      // Scroll to top when switching sections
-      window.scrollTo(0, 0);
     }
 
     // ============ Log Streaming ============

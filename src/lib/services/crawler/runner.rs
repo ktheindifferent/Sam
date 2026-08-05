@@ -115,9 +115,55 @@ static TIMEOUT_COUNT: once_cell::sync::Lazy<std::sync::Mutex<usize>> =
 static DOMAIN_LAST_ACCESS: once_cell::sync::Lazy<tokio::sync::Mutex<HashMap<String, u64>>> =
     once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(HashMap::new()));
 
-static REDIS_URL: &str = "redis://127.0.0.1/";
+fn env_usize(names: &[&str]) -> Option<usize> {
+    names.iter().find_map(|name| {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value > 0)
+    })
+}
+
+fn is_caprover() -> bool {
+    std::env::var("CAPROVER")
+        .map(|value| value.eq_ignore_ascii_case("true") || value == "1")
+        .unwrap_or(false)
+}
+
+fn crawler_page_concurrency() -> usize {
+    if let Some(value) = env_usize(&[
+        "CRAWLER_THREADS",
+        "CRAWLER_CONCURRENCY",
+        "SAM_WORKER_THREADS",
+    ]) {
+        return value.clamp(1, 64);
+    }
+
+    let cores = num_cpus::get();
+    if is_caprover() {
+        2
+    } else if cores >= 16 {
+        (cores / 2).clamp(2, 16)
+    } else {
+        cores.clamp(1, 4)
+    }
+}
+
+fn crawler_dns_concurrency() -> usize {
+    if let Some(value) = env_usize(&["CRAWLER_DNS_THREADS", "CRAWLER_DNS_CONCURRENCY"]) {
+        return value.clamp(1, 128);
+    }
+
+    if is_caprover() {
+        4
+    } else {
+        (num_cpus::get() * 4).clamp(8, 64)
+    }
+}
+
 static REDIS_POOL: once_cell::sync::Lazy<Pool> = once_cell::sync::Lazy::new(|| {
-    let cfg = DeadpoolConfig::from_url(REDIS_URL);
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+    let cfg = DeadpoolConfig::from_url(redis_url);
 
     cfg.create_pool(Some(Runtime::Tokio1))
         .expect("Failed to create Redis connection pool")
@@ -1704,24 +1750,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
                 0,
             )])));
 
-            let concurrency = std::env::var("SAM_WORKER_THREADS")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or_else(|| {
-                    let cores = num_cpus::get();
-                    let is_caprover = std::env::var("CAPROVER").is_ok();
-
-                    if is_caprover {
-                        // Very conservative for CapRover to prevent resource exhaustion
-                        std::cmp::min(cores / 2, 8).max(2)
-                    } else if cores >= 32 {
-                        cores / 2 // Reduced from 2x to 0.5x for high-core systems
-                    } else if cores >= 16 {
-                        cores / 2 // Reduced from 1.5x to 0.5x for mid-range
-                    } else {
-                        std::cmp::min(cores, 4) // Cap at 4 for low-core systems
-                    }
-                });
+            let concurrency = crawler_page_concurrency();
             log::info!(
                 "Starting crawl loop with concurrency={}, max_depth={}",
                 concurrency,
@@ -2084,8 +2113,7 @@ pub async fn run_crawler_service() -> crate::memory::Result<()> {
 
             let mut urls_found = Vec::new();
 
-            // Use higher concurrency for DNS lookups (DNS is lightweight)
-            let concurrency = (num_cpus::get() * 8).max(32).min(128);
+            let concurrency = crawler_dns_concurrency();
             log::info!(
                 "Starting DNS lookups for {} domains with concurrency {}",
                 domains.len(),

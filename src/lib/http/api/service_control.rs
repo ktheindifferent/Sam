@@ -33,6 +33,9 @@ pub struct EnvironmentInfo {
     pub postgres_configured: bool,
     pub tts_configured: bool,
     pub stt_configured: bool,
+    pub crawler_threads: Option<String>,
+    pub crawler_dns_threads: Option<String>,
+    pub crawler_disabled: Option<String>,
 }
 
 /// Handle service control API endpoints
@@ -74,6 +77,16 @@ pub fn handle(request: &Request) -> Result<Response, crate::http::Error> {
         return handle_websocket_service(request);
     }
 
+    // Ollama service endpoints
+    if url.contains("/api/services/ollama") {
+        return handle_ollama_service(request);
+    }
+
+    // NextCloud service endpoints
+    if url.contains("/api/services/nextcloud") {
+        return handle_nextcloud_service(request);
+    }
+
     // Get all services status
     if url == "/api/services/status" {
         return handle_all_services_status();
@@ -94,6 +107,9 @@ fn handle_environment_check() -> Result<Response, crate::http::Error> {
         postgres_configured: env_config.postgres_url.is_some(),
         tts_configured: env_config.tts_url.is_some(),
         stt_configured: env_config.stt_url.is_some(),
+        crawler_threads: std::env::var("CRAWLER_THREADS").ok(),
+        crawler_dns_threads: std::env::var("CRAWLER_DNS_THREADS").ok(),
+        crawler_disabled: std::env::var("CRAWLER_DISABLED").ok(),
     };
 
     Ok(Response::json(&info))
@@ -157,6 +173,17 @@ fn handle_redis_service(request: &Request) -> Result<Response, crate::http::Erro
         return Ok(Response::json(&serde_json::json!({"status": "stopped"})));
     }
 
+    if url.ends_with("/restart") && request.method() == "POST" {
+        info!("Restarting Redis service...");
+        let rt =
+            tokio::runtime::Runtime::new().map_err(|e| crate::http::Error::from(e.to_string()))?;
+        rt.block_on(async {
+            crate::services::redis::stop().await;
+            crate::services::redis::start().await;
+        });
+        return Ok(Response::json(&serde_json::json!({"status": "restarted"})));
+    }
+
     Ok(Response::empty_404())
 }
 
@@ -202,6 +229,17 @@ fn handle_crawler_service(request: &Request) -> Result<Response, crate::http::Er
         info!("Stopping Crawler service...");
         crate::services::crawler::stop_service();
         return Ok(Response::json(&serde_json::json!({"status": "stopped"})));
+    }
+
+    if url.ends_with("/restart") && request.method() == "POST" {
+        info!("Restarting Crawler service...");
+        crate::services::crawler::stop_service();
+        let rt =
+            tokio::runtime::Runtime::new().map_err(|e| crate::http::Error::from(e.to_string()))?;
+        rt.block_on(async {
+            crate::services::crawler::start_service_async().await;
+        });
+        return Ok(Response::json(&serde_json::json!({"status": "restarted"})));
     }
 
     Ok(Response::empty_404())
@@ -267,6 +305,24 @@ fn handle_docker_service(request: &Request) -> Result<Response, crate::http::Err
             crate::services::docker::stop().await;
         });
         return Ok(Response::json(&serde_json::json!({"status": "stopped"})));
+    }
+
+    if url.ends_with("/restart") && request.method() == "POST" {
+        if env_config.is_caprover {
+            return Ok(Response::json(&serde_json::json!({
+                "error": "Docker management disabled in CapRover mode"
+            }))
+            .with_status_code(409));
+        }
+
+        info!("Restarting Docker service...");
+        let rt =
+            tokio::runtime::Runtime::new().map_err(|e| crate::http::Error::from(e.to_string()))?;
+        rt.block_on(async {
+            crate::services::docker::stop().await;
+            crate::services::docker::start().await;
+        });
+        return Ok(Response::json(&serde_json::json!({"status": "restarted"})));
     }
 
     Ok(Response::empty_404())
@@ -359,6 +415,28 @@ fn handle_postgres_service(request: &Request) -> Result<Response, crate::http::E
         return Ok(Response::json(&serde_json::json!({"status": "stopped"})));
     }
 
+    if url.ends_with("/restart") && request.method() == "POST" {
+        if env_config.is_caprover {
+            return Ok(Response::json(&serde_json::json!({
+                "error": "PostgreSQL is externally managed in CapRover mode"
+            }))
+            .with_status_code(409));
+        }
+
+        info!("Restarting PostgreSQL service...");
+        let rt =
+            tokio::runtime::Runtime::new().map_err(|e| crate::http::Error::from(e.to_string()))?;
+        rt.block_on(async {
+            if let Err(e) = crate::services::docker::stop_postgres().await {
+                error!("Failed to stop PostgreSQL: {}", e);
+            }
+            if let Err(e) = crate::services::docker::start_postgres().await {
+                error!("Failed to start PostgreSQL: {}", e);
+            }
+        });
+        return Ok(Response::json(&serde_json::json!({"status": "restarted"})));
+    }
+
     Ok(Response::empty_404())
 }
 
@@ -401,6 +479,21 @@ fn handle_voice_service(request: &Request) -> Result<Response, crate::http::Erro
         return Ok(Response::json(&serde_json::json!({"status": "stopped"})));
     }
 
+    if url.ends_with("/restart") && request.method() == "POST" {
+        info!("Restarting voice service...");
+        let rt =
+            tokio::runtime::Runtime::new().map_err(|e| crate::http::Error::from(e.to_string()))?;
+        rt.block_on(async {
+            crate::services::voice::shutdown()
+                .await
+                .map_err(|e| crate::http::Error::from(e.to_string()))?;
+            crate::services::voice::initialize()
+                .await
+                .map_err(|e| crate::http::Error::from(e.to_string()))
+        })?;
+        return Ok(Response::json(&serde_json::json!({"status": "restarted"})));
+    }
+
     Ok(Response::empty_404())
 }
 
@@ -440,12 +533,138 @@ fn handle_websocket_service(request: &Request) -> Result<Response, crate::http::
     Ok(Response::empty_404())
 }
 
+/// Handle Ollama service control
+fn handle_ollama_service(request: &Request) -> Result<Response, crate::http::Error> {
+    let url = request.url();
+    let rt = tokio::runtime::Runtime::new().map_err(|e| crate::http::Error::from(e.to_string()))?;
+    let service = crate::services::llms::ollama::OllamaService::new_with_defaults();
+
+    if url.ends_with("/status") {
+        return Ok(Response::json(&ollama_status(&rt, &service)));
+    }
+
+    if url.ends_with("/start") && request.method() == "POST" {
+        let result = rt.block_on(async { service.start_service().await });
+        return service_action_response("started", result);
+    }
+
+    if url.ends_with("/stop") && request.method() == "POST" {
+        let result = rt.block_on(async { service.stop_service().await });
+        return service_action_response("stopped", result);
+    }
+
+    if url.ends_with("/restart") && request.method() == "POST" {
+        let _ = rt.block_on(async { service.stop_service().await });
+        let result = rt.block_on(async { service.start_service().await });
+        return service_action_response("restarted", result);
+    }
+
+    Ok(Response::empty_404())
+}
+
+/// Handle NextCloud service status
+fn handle_nextcloud_service(request: &Request) -> Result<Response, crate::http::Error> {
+    let url = request.url();
+
+    if url.ends_with("/status") {
+        return Ok(Response::json(&nextcloud_status()));
+    }
+
+    Ok(Response::empty_404())
+}
+
+fn service_action_response(
+    status: &str,
+    result: anyhow::Result<String>,
+) -> Result<Response, crate::http::Error> {
+    match result {
+        Ok(message) => Ok(Response::json(&serde_json::json!({
+            "status": status,
+            "message": message
+        }))),
+        Err(e) => Ok(Response::json(&serde_json::json!({
+            "error": e.to_string()
+        }))
+        .with_status_code(500)),
+    }
+}
+
+fn ollama_status(
+    rt: &tokio::runtime::Runtime,
+    service: &crate::services::llms::ollama::OllamaService,
+) -> ServiceStatus {
+    let installed = rt.block_on(async { service.is_installed().await });
+    let running = if installed {
+        rt.block_on(async { service.is_running().await })
+    } else {
+        false
+    };
+    let version = if running {
+        rt.block_on(async { service.get_version().await.ok() })
+    } else {
+        None
+    };
+
+    ServiceStatus {
+        running,
+        status_text: if !installed {
+            "Ollama not installed".to_string()
+        } else if running {
+            "running".to_string()
+        } else {
+            "installed but stopped".to_string()
+        },
+        metrics: Some(ServiceMetrics {
+            version,
+            ..Default::default()
+        }),
+    }
+}
+
+fn nextcloud_status() -> ServiceStatus {
+    let env_configured = std::env::var("NEXTCLOUD_URL").is_ok()
+        || std::env::var("NEXTCLOUD_ENDPOINT").is_ok()
+        || std::env::var("NEXTCLOUD_SERVER_URL").is_ok();
+
+    let storage_configured =
+        crate::memory::config::FileStorageLocation::select(None, None, None, None)
+            .map(|locations| {
+                locations.iter().any(|location| {
+                    location.storage_type.eq_ignore_ascii_case("nextcloud")
+                        || location.endpoint.to_lowercase().contains("nextcloud")
+                })
+            })
+            .unwrap_or(false);
+
+    let service_configured = crate::memory::config::Service::select(None, None, None, None)
+        .map(|services| {
+            services.iter().any(|service| {
+                service.identifier.eq_ignore_ascii_case("nextcloud")
+                    || service.endpoint.to_lowercase().contains("nextcloud")
+            })
+        })
+        .unwrap_or(false);
+
+    let configured = env_configured || storage_configured || service_configured;
+
+    ServiceStatus {
+        running: configured,
+        status_text: if configured {
+            "configured".to_string()
+        } else {
+            "not configured".to_string()
+        },
+        metrics: None,
+    }
+}
+
 /// Get status of all services
 fn handle_all_services_status() -> Result<Response, crate::http::Error> {
     let mut statuses = HashMap::new();
 
     // Check each service
     let rt = tokio::runtime::Runtime::new().map_err(|e| crate::http::Error::from(e.to_string()))?;
+    let env_config = crate::services::environment::get_env_config();
 
     // Redis
     let redis_running = rt.block_on(async { crate::services::redis::is_running().await });
@@ -453,7 +672,15 @@ fn handle_all_services_status() -> Result<Response, crate::http::Error> {
         "redis",
         ServiceStatus {
             running: redis_running,
-            status_text: if redis_running { "running" } else { "stopped" }.to_string(),
+            status_text: if env_config.is_caprover && redis_running {
+                "CapRover Redis configured".to_string()
+            } else if env_config.is_caprover {
+                "Redis not configured".to_string()
+            } else if redis_running {
+                "running".to_string()
+            } else {
+                "stopped".to_string()
+            },
             metrics: None,
         },
     );
@@ -471,15 +698,75 @@ fn handle_all_services_status() -> Result<Response, crate::http::Error> {
     );
 
     // Docker
-    let docker_running = crate::services::docker::is_running();
+    let docker_running = if env_config.is_caprover {
+        false
+    } else {
+        crate::services::docker::is_running()
+    };
     statuses.insert(
         "docker",
         ServiceStatus {
             running: docker_running,
-            status_text: if docker_running { "running" } else { "stopped" }.to_string(),
+            status_text: if env_config.is_caprover {
+                "Disabled in CapRover mode".to_string()
+            } else if docker_running {
+                "running".to_string()
+            } else {
+                "stopped".to_string()
+            },
             metrics: None,
         },
     );
+
+    // PostgreSQL
+    statuses.insert(
+        "postgres",
+        ServiceStatus {
+            running: if env_config.is_caprover {
+                env_config.postgres_url.is_some()
+            } else {
+                env_config.should_use_postgres()
+            },
+            status_text: if env_config.is_caprover && env_config.postgres_url.is_some() {
+                "External PostgreSQL configured".to_string()
+            } else if env_config.should_use_postgres() {
+                "configured".to_string()
+            } else {
+                "not configured".to_string()
+            },
+            metrics: None,
+        },
+    );
+
+    // Ollama
+    let ollama = crate::services::llms::ollama::OllamaService::new_with_defaults();
+    statuses.insert("ollama", ollama_status(&rt, &ollama));
+
+    // Voice
+    let voice_running = if env_config.is_caprover {
+        env_config.tts_url.is_some() || env_config.stt_url.is_some()
+    } else {
+        crate::services::voice::is_initialized()
+    };
+    statuses.insert(
+        "voice",
+        ServiceStatus {
+            running: voice_running,
+            status_text: if env_config.is_caprover && voice_running {
+                "CapRover voice endpoint configured".to_string()
+            } else if env_config.is_caprover {
+                "voice endpoint not configured".to_string()
+            } else if voice_running {
+                "running".to_string()
+            } else {
+                "stopped".to_string()
+            },
+            metrics: None,
+        },
+    );
+
+    // NextCloud
+    statuses.insert("nextcloud", nextcloud_status());
 
     // WebSocket (always running with HTTP)
     statuses.insert(

@@ -91,6 +91,8 @@ fn handle_prefix_routes(
         || url.contains("/api/services/postgres")
         || url.contains("/api/services/voice")
         || url.contains("/api/services/websocket")
+        || url.contains("/api/services/ollama")
+        || url.contains("/api/services/nextcloud")
         || url == "/api/services/status"
         || url == "/api/environment"
     {

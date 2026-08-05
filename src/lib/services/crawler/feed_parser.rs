@@ -246,7 +246,7 @@ fn parse_rss(content: &str) -> Result<Feed> {
                         }
                     }
 
-                    if in_entry {
+                    if in_item {
                         if let Some(ref mut item) = current_item {
                             if rel.is_empty() || rel == "alternate" {
                                 item.link = href;

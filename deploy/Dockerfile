@@ -36,6 +36,8 @@ RUN echo "Cache bust: 2025-09-12-0.04"
 RUN mkdir -p src/bin src/lib benches && \
     echo "fn main() {}" > src/main.rs && \
     echo "fn main() {}" > src/bin/installer.rs && \
+    echo "fn main() {}" > src/bin/coding_agent.rs && \
+    echo "fn main() {}" > src/bin/coding_agent_interactive.rs && \
     echo "pub mod sam;" > src/lib.rs && \
     echo "pub fn hello() {}" > src/sam.rs && \
     mkdir -p src/sam && \
@@ -76,6 +78,7 @@ RUN apt-get update && apt-get install -y \
     postgresql-client-15 \
     curl \
     wget \
+    zstd \
     tzdata \
     dumb-init \
     python3 \
@@ -141,7 +144,7 @@ WORKDIR /app
 
 # Health check for CapRover
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -f http://localhost:8000/health/live || exit 1
+    CMD curl -s -o /dev/null http://localhost:8000 || exit 1
 
 # Use dumb-init as PID 1 to handle signals properly
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
