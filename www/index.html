@@ -2789,6 +2789,33 @@ Licensed under GPLv3....see LICENSE file. -->
     let nextCloudCredentials = null;
     let nextCloudCurrentPath = '';
 
+    function getDashboardWebSocket() {
+      if (typeof ws !== 'undefined' && ws) return ws;
+      if (window.ws) return window.ws;
+      if (window.websocket) return window.websocket;
+      return null;
+    }
+
+    function sendDashboardNextCloudCommand(message) {
+      const socket = getDashboardWebSocket();
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+        return true;
+      }
+      showToast('WebSocket connection required for NextCloud operations', 'error');
+      return false;
+    }
+
+    function arrayBufferToDashboardBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      const chunkSize = 0x8000;
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary);
+    }
+
     async function testNextCloudConnection() {
       const serverUrl = document.getElementById('nextcloud-server').value;
       const username = document.getElementById('nextcloud-username').value;
@@ -2813,12 +2840,7 @@ Licensed under GPLv3....see LICENSE file. -->
           }
         };
 
-        // Send via WebSocket if available
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-          websocket.send(JSON.stringify(message));
-        } else {
-          showToast('WebSocket connection required for NextCloud operations', 'error');
-        }
+        sendDashboardNextCloudCommand(message);
       } catch (error) {
         showToast('Error testing connection: ' + error.message, 'error');
       }
@@ -2885,11 +2907,7 @@ Licensed under GPLv3....see LICENSE file. -->
           }
         };
 
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-          websocket.send(JSON.stringify(message));
-        } else {
-          showToast('WebSocket connection required for NextCloud operations', 'error');
-        }
+        sendDashboardNextCloudCommand(message);
       } catch (error) {
         showToast('Error loading files: ' + error.message, 'error');
         filesContainer.innerHTML = '<div class="text-center text-danger">Error loading files</div>';
@@ -2987,11 +3005,7 @@ Licensed under GPLv3....see LICENSE file. -->
           }
         };
 
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-          websocket.send(JSON.stringify(message));
-        } else {
-          showToast('WebSocket connection required for NextCloud operations', 'error');
-        }
+        sendDashboardNextCloudCommand(message);
       } catch (error) {
         showToast('Error downloading file: ' + error.message, 'error');
       }
@@ -3022,11 +3036,7 @@ Licensed under GPLv3....see LICENSE file. -->
           }
         };
 
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-          websocket.send(JSON.stringify(message));
-        } else {
-          showToast('WebSocket connection required for NextCloud operations', 'error');
-        }
+        sendDashboardNextCloudCommand(message);
       } catch (error) {
         showToast('Error deleting file: ' + error.message, 'error');
       }
@@ -3055,7 +3065,7 @@ Licensed under GPLv3....see LICENSE file. -->
 
       try {
         const arrayBuffer = await file.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        const base64 = arrayBufferToDashboardBase64(arrayBuffer);
 
         const remotePath = nextCloudCurrentPath ? `${nextCloudCurrentPath}/${file.name}` : file.name;
 
@@ -3072,11 +3082,7 @@ Licensed under GPLv3....see LICENSE file. -->
           }
         };
 
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-          websocket.send(JSON.stringify(message));
-        } else {
-          showToast('WebSocket connection required for NextCloud operations', 'error');
-        }
+        sendDashboardNextCloudCommand(message);
       } catch (error) {
         showToast(`Error uploading ${file.name}: ` + error.message, 'error');
       }
@@ -3112,11 +3118,7 @@ Licensed under GPLv3....see LICENSE file. -->
           }
         };
 
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-          websocket.send(JSON.stringify(message));
-        } else {
-          showToast('WebSocket connection required for NextCloud operations', 'error');
-        }
+        sendDashboardNextCloudCommand(message);
       } catch (error) {
         showToast(`Error creating folder: ` + error.message, 'error');
       }

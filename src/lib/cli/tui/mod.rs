@@ -265,15 +265,15 @@ async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         unsafe {
             libc::signal(
                 libc::SIGTSTP,
-                terminal::handle_suspend as libc::sighandler_t,
+                terminal::handle_suspend as *const () as libc::sighandler_t,
             );
             libc::signal(
                 libc::SIGCONT,
-                terminal::handle_continue as libc::sighandler_t,
+                terminal::handle_continue as *const () as libc::sighandler_t,
             );
             libc::signal(
                 libc::SIGWINCH,
-                terminal::handle_resize as libc::sighandler_t,
+                terminal::handle_resize as *const () as libc::sighandler_t,
             );
         }
     }

@@ -35,6 +35,7 @@ function initWebSocket() {
     
     try {
         ws = new WebSocket(wsUrl);
+        window.ws = ws;
         
         ws.onopen = () => {
             console.log('WebSocket connected');

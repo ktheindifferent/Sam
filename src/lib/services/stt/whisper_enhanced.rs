@@ -134,7 +134,7 @@ impl WhisperEngine {
         self.transcribe(&audio_data)
     }
 
-    fn create_params(&self) -> FullParams {
+    fn create_params(&self) -> FullParams<'_, '_> {
         let strategy = if self.config.beam_size > 1 {
             SamplingStrategy::BeamSearch {
                 beam_size: self.config.beam_size,

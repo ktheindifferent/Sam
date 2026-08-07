@@ -16,6 +16,22 @@ let currentMediaFilter = 'all';
 let mediaFiles = [];
 let currentMediaFile = null;
 let websocketConnection = null;
+const nextcloudWsPendingCallbacks = {};
+
+function normalizeStorageCommandResponse(message) {
+    const payload = message && typeof message.data === 'object' && message.data !== null
+        ? message.data
+        : {};
+    const normalized = Object.assign({}, payload);
+    normalized.id = message.id;
+    normalized.command = payload.command || message.command;
+    normalized.envelopeSuccess = message.success;
+    if (typeof normalized.success !== 'boolean') {
+        normalized.success = !!message.success;
+    }
+    normalized.data = payload.data || payload;
+    return normalized;
+}
 
 // Initialize WebSocket connection for NextCloud commands
 function initializeWebSocket() {
@@ -49,6 +65,12 @@ function initializeWebSocket() {
             console.error('Malformed WebSocket message:', e);
             return;
         }
+        if (data.type === 'command_response' && nextcloudWsPendingCallbacks[data.id]) {
+            const cb = nextcloudWsPendingCallbacks[data.id];
+            delete nextcloudWsPendingCallbacks[data.id];
+            cb(normalizeStorageCommandResponse(data));
+            return;
+        }
         handleNextCloudMediaResponse(data);
     };
 
@@ -60,6 +82,30 @@ function initializeWebSocket() {
     websocketConnection.onerror = function(error) {
         console.error('WebSocket error:', error);
     };
+}
+
+function sendNextCloudCommand(command, args, callback) {
+    if (!websocketConnection || websocketConnection.readyState !== WebSocket.OPEN) {
+        showMediaToast('WebSocket connection required for NextCloud operations', 'error');
+        initializeWebSocket();
+        return false;
+    }
+
+    const message = {
+        type: 'command',
+        id: generateMediaId(),
+        command,
+        args
+    };
+
+    if (callback) {
+        nextcloudWsPendingCallbacks[message.id] = function(response) {
+            response.command = response.command || command;
+            callback(response);
+        };
+    }
+    websocketConnection.send(JSON.stringify(message));
+    return true;
 }
 
 // Connect to NextCloud server
@@ -78,89 +124,91 @@ async function connectToNextCloud() {
     // Store credentials
     nextcloudMediaCredentials = { serverUrl, username, password };
 
-    // Test connection first
-    const testMessage = {
-        type: 'command',
-        id: generateMediaId(),
-        command: 'nextcloud_test_connection',
-        args: {
+    sendNextCloudCommand(
+        'nextcloud_test_connection',
+        {
             server_url: serverUrl,
             username: username,
             password: password
-        }
-    };
+        },
+        handleNextCloudOperationResponse
+    );
+}
 
-    if (websocketConnection && websocketConnection.readyState === WebSocket.OPEN) {
-        websocketConnection.send(JSON.stringify(testMessage));
-    } else {
-        showMediaToast('WebSocket connection required for NextCloud operations', 'error');
-        initializeWebSocket();
+function handleNextCloudOperationResponse(response) {
+    switch (response.command) {
+        case 'nextcloud_test_connection':
+            if (response.success) {
+                showMediaToast('NextCloud connection successful!', 'success');
+                document.getElementById('nextcloud-connection-panel').style.display = 'none';
+                document.getElementById('nextcloud-media-browser').style.display = 'block';
+                loadNextCloudMediaFiles();
+            } else {
+                showMediaToast('NextCloud connection failed: ' + (response.error || 'Unknown error'), 'error');
+            }
+            break;
+
+        case 'nextcloud_list_files':
+            if (response.success && response.files) {
+                mediaFiles = response.files || [];
+                renderMediaFiles();
+            } else {
+                showMediaToast('Failed to load files: ' + (response.error || 'Unknown error'), 'error');
+            }
+            break;
+
+        case 'nextcloud_upload_file':
+            if (response.success) {
+                showMediaToast('File uploaded successfully', 'success');
+                loadNextCloudMediaFiles();
+            } else {
+                showMediaToast('Upload failed: ' + (response.error || 'Unknown error'), 'error');
+            }
+            break;
+
+        case 'nextcloud_download_file':
+            if (response.success && response.content) {
+                downloadMediaFileFromResponse(response);
+            } else {
+                showMediaToast('Download failed: ' + (response.error || 'Unknown error'), 'error');
+            }
+            break;
+
+        case 'nextcloud_delete_file':
+            if (response.success) {
+                showMediaToast('File deleted successfully', 'success');
+                loadNextCloudMediaFiles();
+            } else {
+                showMediaToast('Delete failed: ' + (response.error || 'Unknown error'), 'error');
+            }
+            break;
+
+        case 'nextcloud_create_directory':
+            if (response.success) {
+                showMediaToast('Folder created successfully', 'success');
+                loadNextCloudMediaFiles();
+            } else {
+                showMediaToast('Create folder failed: ' + (response.error || 'Unknown error'), 'error');
+            }
+            break;
     }
+}
+
+function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
 }
 
 // Handle NextCloud WebSocket responses
 function handleNextCloudMediaResponse(data) {
     if (data.type === 'command_response') {
-        const response = data;
-
-        switch (response.command) {
-            case 'nextcloud_test_connection':
-                if (response.success) {
-                    showMediaToast('NextCloud connection successful!', 'success');
-                    // Hide connection panel and show browser
-                    document.getElementById('nextcloud-connection-panel').style.display = 'none';
-                    document.getElementById('nextcloud-media-browser').style.display = 'block';
-                    // Load initial media files
-                    loadNextCloudMediaFiles();
-                } else {
-                    showMediaToast('NextCloud connection failed: ' + (response.error || 'Unknown error'), 'error');
-                }
-                break;
-
-            case 'nextcloud_list_files':
-                if (response.success && response.files) {
-                    mediaFiles = response.files || [];
-                    renderMediaFiles();
-                } else {
-                    showMediaToast('Failed to load files: ' + (response.error || 'Unknown error'), 'error');
-                }
-                break;
-
-            case 'nextcloud_upload_file':
-                if (response.success) {
-                    showMediaToast('File uploaded successfully', 'success');
-                    loadNextCloudMediaFiles();
-                } else {
-                    showMediaToast('Upload failed: ' + (response.error || 'Unknown error'), 'error');
-                }
-                break;
-
-            case 'nextcloud_download_file':
-                if (response.success && response.content) {
-                    downloadMediaFileFromResponse(response);
-                } else {
-                    showMediaToast('Download failed: ' + (response.error || 'Unknown error'), 'error');
-                }
-                break;
-
-            case 'nextcloud_delete_file':
-                if (response.success) {
-                    showMediaToast('File deleted successfully', 'success');
-                    loadNextCloudMediaFiles();
-                } else {
-                    showMediaToast('Delete failed: ' + (response.error || 'Unknown error'), 'error');
-                }
-                break;
-
-            case 'nextcloud_create_directory':
-                if (response.success) {
-                    showMediaToast('Folder created successfully', 'success');
-                    loadNextCloudMediaFiles();
-                } else {
-                    showMediaToast('Create folder failed: ' + (response.error || 'Unknown error'), 'error');
-                }
-                break;
-        }
+        const response = normalizeStorageCommandResponse(data);
+        handleNextCloudOperationResponse(response);
     }
 }
 
@@ -171,21 +219,16 @@ function loadNextCloudMediaFiles() {
         return;
     }
 
-    const message = {
-        type: 'command',
-        id: generateMediaId(),
-        command: 'nextcloud_list_files',
-        args: {
+    sendNextCloudCommand(
+        'nextcloud_list_files',
+        {
             server_url: nextcloudMediaCredentials.serverUrl,
             username: nextcloudMediaCredentials.username,
             password: nextcloudMediaCredentials.password,
             path: currentMediaPath
-        }
-    };
-
-    if (websocketConnection && websocketConnection.readyState === WebSocket.OPEN) {
-        websocketConnection.send(JSON.stringify(message));
-    }
+        },
+        handleNextCloudOperationResponse
+    );
 }
 
 // Render media files in grid
@@ -489,25 +532,20 @@ async function uploadMediaFile(file) {
 
     try {
         const arrayBuffer = await file.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        const base64 = arrayBufferToBase64(arrayBuffer);
         const remotePath = currentMediaPath ? `${currentMediaPath}/${file.name}` : file.name;
 
-        const message = {
-            type: 'command',
-            id: generateMediaId(),
-            command: 'nextcloud_upload_file',
-            args: {
+        sendNextCloudCommand(
+            'nextcloud_upload_file',
+            {
                 server_url: nextcloudMediaCredentials.serverUrl,
                 username: nextcloudMediaCredentials.username,
                 password: nextcloudMediaCredentials.password,
                 remote_path: remotePath,
                 content: base64
-            }
-        };
-
-        if (websocketConnection && websocketConnection.readyState === WebSocket.OPEN) {
-            websocketConnection.send(JSON.stringify(message));
-        }
+            },
+            handleNextCloudOperationResponse
+        );
     } catch (error) {
         showMediaToast(`Error uploading ${file.name}: ` + error.message, 'error');
     }
@@ -525,21 +563,16 @@ function createMediaFolder() {
 
     const remotePath = currentMediaPath ? `${currentMediaPath}/${folderName}` : folderName;
 
-    const message = {
-        type: 'command',
-        id: generateMediaId(),
-        command: 'nextcloud_create_directory',
-        args: {
+    sendNextCloudCommand(
+        'nextcloud_create_directory',
+        {
             server_url: nextcloudMediaCredentials.serverUrl,
             username: nextcloudMediaCredentials.username,
             password: nextcloudMediaCredentials.password,
             remote_path: remotePath
-        }
-    };
-
-    if (websocketConnection && websocketConnection.readyState === WebSocket.OPEN) {
-        websocketConnection.send(JSON.stringify(message));
-    }
+        },
+        handleNextCloudOperationResponse
+    );
 }
 
 // Refresh NextCloud media
@@ -556,21 +589,16 @@ function deleteMediaFile(path) {
         return;
     }
 
-    const message = {
-        type: 'command',
-        id: generateMediaId(),
-        command: 'nextcloud_delete_file',
-        args: {
+    sendNextCloudCommand(
+        'nextcloud_delete_file',
+        {
             server_url: nextcloudMediaCredentials.serverUrl,
             username: nextcloudMediaCredentials.username,
             password: nextcloudMediaCredentials.password,
             remote_path: path
-        }
-    };
-
-    if (websocketConnection && websocketConnection.readyState === WebSocket.OPEN) {
-        websocketConnection.send(JSON.stringify(message));
-    }
+        },
+        handleNextCloudOperationResponse
+    );
 }
 
 // Delete current media (from modal) — unified dispatcher
@@ -592,21 +620,16 @@ function downloadCurrentMedia() {
     } else if (seaweedfsCurrentMediaFile) {
         downloadCurrentSeaweedFSMedia();
     } else if (currentMediaFile) {
-        const message = {
-            type: 'command',
-            id: generateMediaId(),
-            command: 'nextcloud_download_file',
-            args: {
+        sendNextCloudCommand(
+            'nextcloud_download_file',
+            {
                 server_url: nextcloudMediaCredentials.serverUrl,
                 username: nextcloudMediaCredentials.username,
                 password: nextcloudMediaCredentials.password,
                 remote_path: currentMediaFile.path
-            }
-        };
-
-        if (websocketConnection && websocketConnection.readyState === WebSocket.OPEN) {
-            websocketConnection.send(JSON.stringify(message));
-        }
+            },
+            handleNextCloudOperationResponse
+        );
     }
 }
 

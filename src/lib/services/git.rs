@@ -11,7 +11,7 @@ impl GitRepo {
         Ok(GitRepo { repo })
     }
 
-    pub fn latest_commit(&self) -> Result<Commit, Error> {
+    pub fn latest_commit(&self) -> Result<Commit<'_>, Error> {
         let head = self.repo.head()?;
         let oid = head
             .target()

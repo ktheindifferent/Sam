@@ -4,6 +4,9 @@ version = "0.0.2"
 edition = "2021"
 build = "build.rs"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("opencv"))'] }
+
 # Configure both lib and bin targets
 [[bin]]
 name = "sam"
@@ -160,6 +163,7 @@ rustls = ["reqwest/rustls-tls", "trust-dns-resolver/dns-over-rustls"]
 nst = ["tch", "image"]
 plugins = ["wasmtime", "notify"]
 opencl = ["opencl3"]
+timeout = []
 
 [[bin]]
 name = "installer"

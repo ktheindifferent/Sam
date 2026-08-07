@@ -16,13 +16,47 @@ let seaweedfsCurrentMediaFile = null;
 // Initialize WebSocket connection for SeaweedFS commands
 let seaweedfsWsConnection = null;
 const seaweedfsWsPendingCallbacks = {};
+let seaweedfsWsInitRetries = 0;
+const seaweedfsWsMaxInitRetries = 20;
 
 function initializeSeaweedFSMediaWS() {
-    if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
-        console.error('WebSocket connection not available for SeaweedFS media');
+    if (!window.ws) {
+        if (seaweedfsWsInitRetries < seaweedfsWsMaxInitRetries) {
+            seaweedfsWsInitRetries++;
+            setTimeout(initializeSeaweedFSMediaWS, 250);
+        } else {
+            console.error('WebSocket connection not available for SeaweedFS media');
+        }
         return;
     }
+
     seaweedfsWsConnection = window.ws;
+    seaweedfsWsInitRetries = 0;
+}
+
+function sendSeaweedFSCommand(command, args, callback) {
+    if (!seaweedfsWsConnection || seaweedfsWsConnection.readyState !== WebSocket.OPEN) {
+        initializeSeaweedFSMediaWS();
+    }
+
+    if (!seaweedfsWsConnection || seaweedfsWsConnection.readyState !== WebSocket.OPEN) {
+        showSeaweedFSToast('WebSocket connection required for SeaweedFS operations', 'error');
+        return false;
+    }
+
+    const message = {
+        type: 'command',
+        id: generateSeaweedFSId(),
+        command,
+        args
+    };
+
+    if (callback) {
+        seaweedfsWsPendingCallbacks[message.id] = callback;
+    }
+
+    seaweedfsWsConnection.send(JSON.stringify(message));
+    return true;
 }
 
 // Connect to SeaweedFS
@@ -53,18 +87,10 @@ function testSeaweedFSConnection() {
         initializeSeaweedFSMediaWS();
     }
 
-    // Send test connection command via WebSocket
-    const testCommand = {
-        type: 'command',
-        id: generateSeaweedFSId(),
-        command: 'seaweedfs_test_connection',
-        args: {
-            master_url: seaweedfsMediaCredentials.masterUrl,
-            filer_url: seaweedfsMediaCredentials.filerUrl
-        }
-    };
-
-    seaweedfsWsPendingCallbacks[testCommand.id] = function(data) {
+    sendSeaweedFSCommand('seaweedfs_test_connection', {
+        master_url: seaweedfsMediaCredentials.masterUrl,
+        filer_url: seaweedfsMediaCredentials.filerUrl
+    }, function(data) {
         if (data.success) {
             showSeaweedFSToast('Connected to SeaweedFS successfully!', 'success');
             document.getElementById('seaweedfs-connection-panel').style.display = 'none';
@@ -73,28 +99,20 @@ function testSeaweedFSConnection() {
         } else {
             showSeaweedFSToast('Failed to connect to SeaweedFS: ' + data.error, 'error');
         }
-    };
-    seaweedfsWsConnection.send(JSON.stringify(testCommand));
+    });
 }
 
 function loadSeaweedFSFiles(path = '/') {
-    if (!seaweedfsMediaCredentials || !seaweedfsWsConnection) {
+    if (!seaweedfsMediaCredentials) {
         showSeaweedFSToast('Please connect to SeaweedFS first', 'error');
         return;
     }
 
-    const listCommand = {
-        type: 'command',
-        id: generateSeaweedFSId(),
-        command: 'seaweedfs_list_files',
-        args: {
-            filer_url: seaweedfsMediaCredentials.filerUrl,
-            path: path,
-            limit: 100
-        }
-    };
-
-    seaweedfsWsPendingCallbacks[listCommand.id] = function(data) {
+    sendSeaweedFSCommand('seaweedfs_list_files', {
+        filer_url: seaweedfsMediaCredentials.filerUrl,
+        path: path,
+        limit: 100
+    }, function(data) {
         if (data.success) {
             seaweedfsMediaFiles = data.data.files || [];
             displaySeaweedFSFiles(seaweedfsMediaFiles);
@@ -102,8 +120,7 @@ function loadSeaweedFSFiles(path = '/') {
         } else {
             showSeaweedFSToast('Failed to load SeaweedFS files: ' + data.error, 'error');
         }
-    };
-    seaweedfsWsConnection.send(JSON.stringify(listCommand));
+    });
 }
 
 function refreshSeaweedFSFiles() {
@@ -201,7 +218,7 @@ function uploadSeaweedFSFiles() {
 }
 
 async function uploadSeaweedFSFile(file) {
-    if (!seaweedfsMediaCredentials || !seaweedfsWsConnection) {
+    if (!seaweedfsMediaCredentials) {
         showSeaweedFSToast('Please connect to SeaweedFS first', 'error');
         return;
     }
@@ -230,15 +247,15 @@ async function uploadSeaweedFSFile(file) {
     };
 
     return new Promise((resolve) => {
-        seaweedfsWsPendingCallbacks[uploadCommand.id] = function(data) {
+        const sent = sendSeaweedFSCommand(uploadCommand.command, uploadCommand.args, function(data) {
             if (data.success) {
                 showSeaweedFSToast(`${file.name} uploaded successfully!`, 'success');
             } else {
                 showSeaweedFSToast(`Failed to upload ${file.name}: ${data.error}`, 'error');
             }
             resolve();
-        };
-        seaweedfsWsConnection.send(JSON.stringify(uploadCommand));
+        });
+        if (!sent) resolve();
     });
 }
 
@@ -360,7 +377,7 @@ function deleteCurrentSeaweedFSMedia() {
             }
         };
 
-        seaweedfsWsPendingCallbacks[deleteCommand.id] = function(data) {
+        sendSeaweedFSCommand(deleteCommand.command, deleteCommand.args, function(data) {
             if (data.success) {
                 showSeaweedFSToast('File deleted successfully', 'success');
                 $('#mediaPlayerModal').modal('hide');
@@ -368,8 +385,7 @@ function deleteCurrentSeaweedFSMedia() {
             } else {
                 showSeaweedFSToast('Failed to delete file: ' + data.error, 'error');
             }
-        };
-        seaweedfsWsConnection.send(JSON.stringify(deleteCommand));
+        });
     }
 }
 
@@ -388,15 +404,14 @@ function createSeaweedFSFolder() {
         }
     };
 
-    seaweedfsWsPendingCallbacks[createCommand.id] = function(data) {
+    sendSeaweedFSCommand(createCommand.command, createCommand.args, function(data) {
         if (data.success) {
             showSeaweedFSToast('Folder created successfully', 'success');
             refreshSeaweedFSFiles();
         } else {
             showSeaweedFSToast('Failed to create folder: ' + data.error, 'error');
         }
-    };
-    seaweedfsWsConnection.send(JSON.stringify(createCommand));
+    });
 }
 
 // Initialize when page loads
